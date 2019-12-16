@@ -25,6 +25,7 @@ import mapanalysistools.digital_filters as FILT
 from minis import minis_methods
 
 ampdataname = 'Clamp1.ma'
+ampdataname = 'MultiClamp1.ma'
 # or MultiClamp1.ma... etc
 # datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
 # dbfile = 'NF107Ai32Het_bcorr2.pkl'

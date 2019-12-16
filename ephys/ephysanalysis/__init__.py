@@ -24,7 +24,7 @@ import ephys.ephysanalysis.poisson_score
 import ephys.ephysanalysis.bridge
 import ephys.ephysanalysis.cursor_plot
 import ephys.ephysanalysis.MakeClamps
-import ephys.ephysanalysis.test_notch
+import ephys.ephysanalysis.show_data
 import ephys.ephysanalysis.plot_maps
 import ephys.ephysanalysis.fix_objscale
 
