@@ -1,0 +1,6 @@
+ephysanalysis 0.20  15 March 2018
+
+  * Initial release with standard python package structure.
+  * Includes IV curve analysis, acq4 reader, and updated dataSummary generator
+  
+  

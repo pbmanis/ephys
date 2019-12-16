@@ -1,0 +1,3 @@
+recursive-include ephysanalysis *.py README *.txt *.h *.c *.pyx
+include README.md LICENSE.txt
+
