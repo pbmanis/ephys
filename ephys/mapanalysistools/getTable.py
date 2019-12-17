@@ -18,9 +18,9 @@ import pyqtgraph as pg
 #from PyQt5 import pg.Qt.QtGui, pg.Qt.QtCore
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ephysanalysis import acq4read
-from mapanalysistools import analyzeMapData as AMD
-import pylibrary.fileselector as FS
+from ephys.ephysanalysis import acq4read
+from ephys.mapanalysistools import analyzeMapData as AMD
+import pylibrary.tools.fileselector as FS
 
 AR = acq4read.Acq4Read()  # instance of the acq4 file reader
 

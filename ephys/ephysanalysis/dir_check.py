@@ -41,7 +41,7 @@ from collections import OrderedDict
 import pandas as pd
 import pandas.compat # for StringIO
 
-from ephysanalysis import acq4read
+from ephys.ephysanalysis import acq4read
 from pyqtgraph.metaarray import MetaArray
 
 latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}

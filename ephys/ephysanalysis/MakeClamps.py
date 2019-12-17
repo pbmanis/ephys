@@ -11,8 +11,8 @@ import matplotlib
 
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
-from pylibrary.params import Params
-import ephysanalysis.metaarray as EM 
+from pylibrary.tools.params import Params
+import ephys.ephysanalysis.metaarray as EM 
 
 
 class MakeClamps():

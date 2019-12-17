@@ -21,11 +21,11 @@ import timeit
 from scipy.optimize import curve_fit
 from numba import jit
 import lmfit
-import minis.digital_filters as dfilt
-import minis.functions as FN # Luke's misc. function library
+import ephys.mini_analyses.digital_filters as dfilt
+import ephys.mini_analyses.functions as FN # Luke's misc. function library
 import pyximport
 pyximport.install()
-from minis import clembek
+from ephys.mini_analyses import clembek
 
 # ANSI terminal colors  - just put in as part of the string to get color terminal output
 colors = {'red': '\x1b[31m', 'yellow': '\x1b[33m', 'green': '\x1b[32m', 'magenta': '\x1b[35m',

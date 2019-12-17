@@ -27,9 +27,9 @@ from cycler import cycler
 from itertools import cycle
 import numpy as np
 
-import ephysanalysis as EP
-import ephysanalysis.metaarray as EM  # need to use this version for Python 3
-import ephysanalysis.cursor_plot as CP
+import ephys.ephysanalysis as EP
+import ephys.ephysanalysis.metaarray as EM  # need to use this version for Python 3
+import ephys.ephysanalysis.cursor_plot as CP
 import pylibrary.plotting.plothelpers as PH
 import matplotlib.pyplot as mpl
 import matplotlib.colors

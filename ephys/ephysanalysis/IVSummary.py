@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 import matplotlib.colors
 import pylibrary.plotting.plothelpers as PH
-import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
 

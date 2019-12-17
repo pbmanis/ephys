@@ -6,7 +6,7 @@ from __future__ import print_function
 import sys
 import os
 #import read_protocol as rp
-import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 import minis_methods as minis
 import numpy as np
 import matplotlib.pyplot as mpl

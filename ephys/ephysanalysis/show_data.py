@@ -17,12 +17,12 @@ import argparse
 from pathlib import Path
 import pathlib
 import numpy as np
-import ephysanalysis as EP
-import pylibrary.fileselector as FS
+import ephys.ephysanalysis as EP
+import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
-import mapanalysistools.digital_filters as FILT
-from minis import minis_methods
+import ephys.mapanalysistools.digital_filters as FILT
+from ephys.mini_analyses import minis_methods
 
 ampdataname = 'Clamp1.ma'
 ampdataname = 'MultiClamp1.ma'

@@ -85,8 +85,8 @@ from collections import OrderedDict
 import pandas as pd
 import pandas.compat # for StringIO
 
-from ephysanalysis import acq4read
-from ephysanalysis.metaarray import MetaArray
+from ephys.ephysanalysis import acq4read
+from ephys.ephysanalysis.metaarray import MetaArray
 
 def ansi_colors(color):
     colors = {

@@ -12,7 +12,7 @@ import os
 import re
 from pathlib import Path
 
-import ephysanalysis.metaarray as EM
+import ephys.ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 import numpy as np
 import datetime

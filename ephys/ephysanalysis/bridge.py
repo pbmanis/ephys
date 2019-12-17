@@ -18,7 +18,7 @@ import argparse
 from pathlib import Path
 import pathlib
 import numpy as np
-import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 import pandas as pd

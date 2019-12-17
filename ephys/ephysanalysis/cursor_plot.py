@@ -13,8 +13,8 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 from pyqtgraph.parametertree import Parameter, ParameterTree
-import ephysanalysis as EP
-import pylibrary.fileselector as FS
+import ephys.ephysanalysis as EP
+import pylibrary.tools.fileselector as FS
 import lmfit
 font = QtGui.QFont()
 font.setFamily('Arial')

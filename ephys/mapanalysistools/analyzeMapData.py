@@ -28,15 +28,15 @@ import math
 import dill as pickle
 import datetime
 import timeit
-import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 import montage as MONT
-import minis
+import ephys.mini_analyses as minis
 
 #from pyqtgraph.metaarray import MetaArray
 
-from mapanalysistools import functions
-import mapanalysistools.digital_filters as FILT
-from minis import minis_methods
+from ephys.mapanalysistools import functions
+import ephys.mapanalysistools.digital_filters as FILT
+from ephys.mini_analyses import minis_methods
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
@@ -45,7 +45,7 @@ from matplotlib.patches import Wedge
 from matplotlib.collections import PatchCollection
 from  matplotlib import colors as mcolors
 import matplotlib.cm
-from pylibrary.plotting import colormaps
+import pylibrary.plotting.colormaps as colormaps
 import pylibrary.plotting.plothelpers as PH
 
 color_sequence = ['k', 'r', 'b']
@@ -70,7 +70,6 @@ np.seterr(divide='raise')
 # print ('maps: ', colormaps)
 # print(dir(colormaps))
 def setMapColors(colormapname, reverse=False):
-    from mapanalysistools import colormaps
     if colormapname == 'terrain':
         cm_sns = mpl.cm.get_cmap('terrain_r')  # terrain is not bad    #
     elif colormapname == 'gray':
@@ -82,16 +81,12 @@ def setMapColors(colormapname, reverse=False):
     #     cm_sns = seaborn.cubehelix_palette(n_colors=64, start=3, rot=0.5, gamma=1.0, dark=0, light=1.0, reverse=reverse,
     #      as_cmap=True)
     elif colormapname == 'a':
-        from colormaps import option_a
         cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_a', colormaps.option_a.cm_data)
     elif colormapname == 'b':
-        import colormaps.option_b
         cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_b', colormaps.option_b.cm_data)
     elif colormapname == 'c':
-        import colormaps.option_c
         cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_c', colormaps.option_c.cm_data)
     elif colormapname == 'd':
-        import colormaps.option_a
         cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_d', colormaps.option_d.cm_data)
     elif colormapname == 'parula':
         cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)

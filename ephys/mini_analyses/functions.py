@@ -19,7 +19,7 @@ import six
 from six.moves import range
 import sys
 import os, re, math, time, threading, decimal
-import ephysanalysis.metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
+import ephys.ephysanalysis.metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
 #from scipy import *
 #from scipy.optimize import leastsq
 #from scipy.ndimage import gaussian_filter, generic_filter, median_filter

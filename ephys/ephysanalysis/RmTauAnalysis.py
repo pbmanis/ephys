@@ -33,7 +33,7 @@ import functools
 import numpy as np
 import scipy
 import pyqtgraph as pg
-import ephysanalysis.Fitting as Fitting
+import ephys.ephysanalysis.Fitting as Fitting
 import pprint
 import time
 

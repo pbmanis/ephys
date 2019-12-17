@@ -12,8 +12,8 @@ import matplotlib
 import numpy as np
 
 import os.path
-import ephysanalysis as EP
-import ephysanalysis.metaarray as EM
+import ephys.ephysanalysis as EP
+import ephys.ephysanalysis.metaarray as EM
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib

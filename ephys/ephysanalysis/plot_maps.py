@@ -29,10 +29,10 @@ import shapely.geometry as SG
 import descartes
 
 from pylibrary.plotting import plothelpers as PH
-import pylibrary.utility as PU
+import pylibrary.tools.utility as PU
 import seaborn as sns
-import ephysanalysis.acq4read as ARC
-import ephysanalysis.metaarray as EM
+import ephys.ephysanalysis.acq4read as ARC
+import ephys.ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
 import scipy.ndimage
@@ -42,9 +42,9 @@ import datetime
 import pprint
 import textwrap as WR
 import collections
-import tifffile as tf
-import ephysanalysis.boundrect as BR
-import mapanalysistools.digital_filters as FILT
+import pylibrary.tools.tifffile as tf
+import ephys.ephysanalysis.boundrect as BR
+import ephys.mapanalysistools.digital_filters as FILT
 import montage
 import mahotas as MH
 
