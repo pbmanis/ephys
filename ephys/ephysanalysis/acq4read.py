@@ -508,8 +508,7 @@ class Acq4Read():
         if info is not None:
             holdcheck = info['devices'][self.shortdname]['holdingCheck']
             holdvalue = info['devices'][self.shortdname]['holdingSpin']
-        if holdcheck:
-            self.holding = holdvalue
+        self.holding = holdvalue
         trx = []
         cmd = []
         self.protocol_important = self._getImportant(info)  # save the protocol importance flag
