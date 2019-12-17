@@ -57,7 +57,7 @@ class SpikeAnalysis():
         """
         configure the inputs to the SpikeAnalysis class
         
-        Paramters
+        Parameters
         ---------
         clamps : class (default: None)
             PatchEphys clamp data holding/accessing all ephys data for this analysis

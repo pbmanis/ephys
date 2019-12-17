@@ -12,7 +12,7 @@ import ephys.mini_analyses.digital_filters
 import ephys.mini_analyses.make_table
 import ephys.mini_analyses.minis_methods
 import ephys.mini_analyses.mini_analysis
-#import mini_summary
+import ephys.mini_analyses.mini_summary
 import ephys.mini_analyses.mini_summary_plots
 import ephys.mini_analyses.clembek
 import ephys.mini_analyses.functions

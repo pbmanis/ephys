@@ -7,31 +7,17 @@ import sys
 import os
 #import read_protocol as rp
 import ephys.ephysanalysis as EP
-import minis_methods as minis
+import ephys.mini_analyses.minis_methods as minis
 import numpy as np
 import matplotlib.pyplot as mpl
 from scipy.optimize import curve_fit
 from collections import OrderedDict
 
-import commands
-computer_name = commands.getoutput('scutil --get ComputerName')
-print('computer name: {0}'.format(computer_name))
-if computer_name in ['Tamalpais']:
-    basedir = ('/Volumes/PBM_004/data/NCAM-miniIPSCs')
-elif computer_name in ['Lytle']:
-    basedir = ('/Volumes/Pegasus/ManisLab_Data3/Sullivan_Chelsea/miniIPSCs')
-elif computer_name in ['Tule']:
-    basedir = ('/Users/experimenters/Data/Chelsea/CHL1/')
-elif computer_name in ['Tamalpais2']:
-    basedir = ('/Users/pbmanis/Documents/data/CHL1/')
-else:
-    raise ValueError('Computer name not in known list of names to set base path')
-
 
 
 class Summary():
-    def __init__(self):
-        pass
+    def __init__(self, basedir):
+        self.basedir = basedir
         
     def doubleexp(self, x, A, tau_1, tau_2, dc):
         tm = A * ((1-(np.exp(-x/tau_1)))**4 * np.exp((-x/tau_2))) + dc
@@ -54,7 +40,7 @@ class Summary():
         self.tau2 = best_vals[2]
 
     def do_one_protocol(self, ds, dprot, sign=-1, plots=False):
-        fn = os.path.join(basedir, datasets[ds]['dir'], ('minis_{0:03d}'.format(datasets[ds]['prots'][dprot])))
+        fn = os.path.join(self.basedir, datasets[ds]['dir'], ('minis_{0:03d}'.format(datasets[ds]['prots'][dprot])))
         print('fn: ', fn)
         self.acq = EP.acq4read.Acq4Read(dataname='Clamp1.ma')
         self.acq.setProtocol(fn)
@@ -199,32 +185,33 @@ class Summary():
 
 
 if __name__ == '__main__':
-    import CS_CHL1_minis as cs
-    basedir = cs.basepath
-    datasets = cs.datasets
-    #print( datasets)
-    s = Summary()
-    sign = -1 # pick negative going events
-    if len(sys.argv) == 1:
-        s.runall(sign=sign)
-    else:
-        ds = sys.argv[1]
-        for i, dprot in enumerate(range(len(datasets[ds]['prots']))):
-            s.do_one_protocol(ds, dprot, sign=sign, plots=True)
-            if i == 0:
-                allev = s.events
-            else:
-                allev = np.concatenate((allev, s.events))
-        avg = np.mean(allev, axis=0)
-        t = np.arange(0, s.dt*avg.shape[0], s.dt)
-        tsel = np.argwhere(t >= 5.0 + s.delay)[0][0]
-        s.tbx = t[:-tsel]
-        s.fit_average_event(t[:-tsel], avg[tsel:])
-        print('    Tau1: %7.3f  Tau2: %7.3f' % (s.best_vals[1], s.best_vals[2]))
-#        s.best_fit = [-30., 0.5, 4., -3]
-        mpl.plot(t,  avg, 'k')
-        mpl.plot(t[tsel:], s.best_fit, 'r--')
-#        mpl.plot(t[tsel:], s.doubleexp(t[:-tsel], s.best_fit[0] , s.best_fit[1], s.best_fit[2], s.best_fit[3]), 'r--')
-        mpl.show()
+    pass
+#     import CS_CHL1_minis as cs
+#     basedir = cs.basepath
+#     datasets = cs.datasets
+#     #print( datasets)
+#     s = Summary()
+#     sign = -1 # pick negative going events
+#     if len(sys.argv) == 1:
+#         s.runall(sign=sign)
+#     else:
+#         ds = sys.argv[1]
+#         for i, dprot in enumerate(range(len(datasets[ds]['prots']))):
+#             s.do_one_protocol(ds, dprot, sign=sign, plots=True)
+#             if i == 0:
+#                 allev = s.events
+#             else:
+#                 allev = np.concatenate((allev, s.events))
+#         avg = np.mean(allev, axis=0)
+#         t = np.arange(0, s.dt*avg.shape[0], s.dt)
+#         tsel = np.argwhere(t >= 5.0 + s.delay)[0][0]
+#         s.tbx = t[:-tsel]
+#         s.fit_average_event(t[:-tsel], avg[tsel:])
+#         print('    Tau1: %7.3f  Tau2: %7.3f' % (s.best_vals[1], s.best_vals[2]))
+# #        s.best_fit = [-30., 0.5, 4., -3]
+#         mpl.plot(t,  avg, 'k')
+#         mpl.plot(t[tsel:], s.best_fit, 'r--')
+# #        mpl.plot(t[tsel:], s.doubleexp(t[:-tsel], s.best_fit[0] , s.best_fit[1], s.best_fit[2], s.best_fit[3]), 'r--')
+#         mpl.show()
 
           
