@@ -27,9 +27,9 @@ from cycler import cycler
 from itertools import cycle
 import numpy as np
 
-import ephys.ephysanalysis as EP
-import ephys.ephysanalysis.metaarray as EM  # need to use this version for Python 3
-import ephys.ephysanalysis.cursor_plot as CP
+from . import acq4read
+from . import metaarray as EM  # need to use this version for Python 3
+from ..tools import cursor_plot as CP
 import pylibrary.plotting.plothelpers as PH
 import matplotlib.pyplot as mpl
 import matplotlib.colors
@@ -161,7 +161,7 @@ class PSCAnalyzer():
     
         """
         self.datapath = datapath
-        self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.plot = plot
         self.db = None
         self.db_filename = None

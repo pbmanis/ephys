@@ -19,12 +19,13 @@ setup(name='ephys',
           'console_scripts': [
                'dataSummary=ephys.ephysanalysis.dataSummary:main',
                'ma2tiff=ephys.ephysanalysis.ma2tiff:convertfiles',
-               'bridge=ephys.ephysanalysis.bridge:main',
-               'dataview=ephys.ephysanalysis.show_data:main',
-               'measure=ephys.ephysanalysis.cursor_plot:main',
+               'bridge=ephys.tools.bridge:main',
+               'dataview=ephys.tools.show_data:main',
+               'measure=ephys.tools.cursor_plot:main',
                'matread=ephys.ephysanalysis.MatdatacRead:main',
-               'plotmaps=ephys.ephysanalysis.plot_maps:main',
-               'fix_objscale=ephys.ephysanalysis.fix_objscale:main',
+               'plotmaps=ephys.tools.plot_maps:main',
+               'fix_objscale=ephys.tools.fix_objscale:main',
+               'analyzemapdata=ephys.mapanalysistools.analyzeMapData:main',
                
                #'plotmaps=ephys.mapanalysistools.plot_maps:main',
           ]

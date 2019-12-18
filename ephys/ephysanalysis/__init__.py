@@ -21,12 +21,7 @@ from . import VCSummary
 from . import PSCAnalyzer
 from . import boundrect
 from . import poisson_score
-from . import bridge
-from . import cursor_plot
 from . import MakeClamps
-from . import show_data
-from . import plot_maps
-from . import fix_objscale
 
 from . import metaarray as MetaArray
 

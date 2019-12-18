@@ -16,7 +16,16 @@ import argparse
 import json
 from collections import OrderedDict
 from pathlib import Path
+import datetime
+import pprint
+import textwrap as WR
+import collections
 import pandas as pd
+import scipy.ndimage
+import scipy.signal
+import numpy as np
+import seaborn as sns
+
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as mpl
@@ -26,25 +35,17 @@ import scipy.ndimage as SND
 import shapely as SH
 import shapely.affinity as SHA
 import shapely.geometry as SG
-import descartes
+# import descartes
 
 from pylibrary.plotting import plothelpers as PH
 import pylibrary.tools.utility as PU
-import seaborn as sns
-import ephys.ephysanalysis.acq4read as ARC
-import ephys.ephysanalysis.metaarray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
-import scipy.ndimage
-import scipy.signal
-import numpy as np
-import datetime
-import pprint
-import textwrap as WR
-import collections
 import pylibrary.tools.tifffile as tf
-import ephys.ephysanalysis.boundrect as BR
-import ephys.mapanalysistools.digital_filters as FILT
+from .. ephysanalysis import acq4read as ARC
+from .. ephysanalysis import metaarray as EM
+from .. ephysanalysis import boundrect as BR
+from .. mapanalysistools import digital_filters as FILT
 import montage
 import mahotas as MH
 

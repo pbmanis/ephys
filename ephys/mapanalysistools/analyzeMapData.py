@@ -14,6 +14,7 @@ import sqlite3
 import matplotlib
 import pyqtgraph.multiprocess as mp
 import matplotlib.colors as CM
+import seaborn
 import argparse
 from pathlib import Path
 import numpy as np
@@ -28,15 +29,6 @@ import math
 import dill as pickle
 import datetime
 import timeit
-import ephys.ephysanalysis as EP
-import montage as MONT
-import ephys.mini_analyses as minis
-
-#from pyqtgraph.metaarray import MetaArray
-
-from ephys.mapanalysistools import functions
-import ephys.mapanalysistools.digital_filters as FILT
-from ephys.mini_analyses import minis_methods
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
@@ -45,7 +37,16 @@ from matplotlib.patches import Wedge
 from matplotlib.collections import PatchCollection
 from  matplotlib import colors as mcolors
 import matplotlib.cm
-import pylibrary.plotting.colormaps as colormaps
+
+from .. import ephysanalysis as EP
+import montage as MONT
+import ephys.mini_analyses as minis
+
+from ephys.mapanalysistools import functions
+from ephys.mapanalysistools import digital_filters as FILT
+from ephys.mini_analyses import minis_methods
+
+# import pylibrary.plotting.colormaps as colormaps
 import pylibrary.plotting.plothelpers as PH
 
 color_sequence = ['k', 'r', 'b']
@@ -74,25 +75,27 @@ def setMapColors(colormapname, reverse=False):
         cm_sns = mpl.cm.get_cmap('terrain_r')  # terrain is not bad    #
     elif colormapname == 'gray':
         cm_sns = mpl.cm.get_cmap('gray')  # basic gray scale map
-    # elif colormap == 'cubehelix':
-    #     cm_sns = seaborn.cubehelix_palette(n_colors=6, start=0, rot=0.4, gamma=1.0,
-    #         hue=0.8, light=0.85, dark=0.15, reverse=reverse, as_cmap=False)
-    # elif colormap == 'snshelix':
-    #     cm_sns = seaborn.cubehelix_palette(n_colors=64, start=3, rot=0.5, gamma=1.0, dark=0, light=1.0, reverse=reverse,
-    #      as_cmap=True)
-    elif colormapname == 'a':
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_a', colormaps.option_a.cm_data)
-    elif colormapname == 'b':
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_b', colormaps.option_b.cm_data)
-    elif colormapname == 'c':
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_c', colormaps.option_c.cm_data)
-    elif colormapname == 'd':
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_d', colormaps.option_d.cm_data)
-    elif colormapname == 'parula':
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)
+    elif colormapname == 'cubehelix':
+        cm_sns = seaborn.cubehelix_palette(n_colors=6, start=0, rot=0.4, gamma=1.0,
+            hue=0.8, light=0.85, dark=0.15, reverse=reverse, as_cmap=False)
+    elif colormapname == 'snshelix':
+        cm_sns = seaborn.cubehelix_palette(n_colors=64, start=3, rot=0.5, gamma=1.0, dark=0, light=1.0, reverse=reverse,
+         as_cmap=True)
+    # elif colormapname == 'a':
+    #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_a', colormaps.option_a.cm_data)
+    # elif colormapname == 'b':
+    #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_b', colormaps.option_b.cm_data)
+    # elif colormapname == 'c':
+    #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_c', colormaps.option_c.cm_data)
+    # elif colormapname == 'd':
+    #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_d', colormaps.option_d.cm_data)
+    # elif colormapname == 'parula':
+    #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)
     else:
-        print('Unrecongnized color map {0:s}; setting to "parula"'.format(colormapname))
-        cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)
+        print('Unrecongnized color map {0:s}; setting to "snshelix"'.format(colormapname))
+        cm_sns = seaborn.cubehelix_palette(n_colors=64, start=3, rot=0.5, gamma=1.0, dark=0, light=1.0, reverse=reverse,
+         as_cmap=True)
+    # elif colormapname == '
     return cm_sns
 
 cm_sns = setMapColors('parula')

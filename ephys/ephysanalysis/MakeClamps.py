@@ -12,7 +12,7 @@ import matplotlib
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools.params import Params
-import ephys.ephysanalysis.metaarray as EM 
+from ..ephysanalysis import metaarray as EM 
 
 
 class MakeClamps():

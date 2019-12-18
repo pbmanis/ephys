@@ -5,14 +5,13 @@ Analysis
 from __future__ import print_function
 import sys
 import os
-#import read_protocol as rp
-import ephys.ephysanalysis as EP
-import ephys.mini_analyses.minis_methods as minis
+from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as mpl
 from scipy.optimize import curve_fit
-from collections import OrderedDict
 
+from .. import ephysanalysis as EP
+from . import minis_methods
 
 
 class Summary():
@@ -48,7 +47,7 @@ class Summary():
         data = self.acq.data_array*1e12
         time_base = self.acq.time_base
         dt = self.acq.sample_interval
-        aj = minis.AndradeJonas()
+        aj = minis_methods.AndradeJonas()
         # try:
         #     data, time_base, dt = rp.readPhysProtocol(fn, records=None)
         # except:
