@@ -21,8 +21,8 @@ import timeit
 from scipy.optimize import curve_fit
 from numba import jit
 import lmfit
-import ephys.mini_analyses.digital_filters as dfilt
-import ephys.mini_analyses.functions as FN # Luke's misc. function library
+from . import digital_filters as dfilt
+from . import functions as FN # Luke's misc. function library
 import pyximport
 pyximport.install()
 from ephys.mini_analyses import clembek

@@ -1,29 +1,51 @@
 """
-Create a Clamps structure (for the acq4/ephysanalysis routines) from modeling data generated
-in VCN_Model (the pickled file)
+Create an acq4-style Clamps structure (for the acq4/ephysanalysis routines)
+from modeling data generated in VCN_Model (the pickled file)
 
 """
 from pathlib import Path
 import numpy as np
 import pickle
 import matplotlib
-# matplotlib.use('Qt4Agg')
 
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools.params import Params
-import ephys.ephysanalysis.metaarray as EM 
+from ..ephysanalysis import metaarray as EM 
 
 
 class MakeClamps():
+    """
+    Make acq4 clamp structures from data passed from other formats
+    """
     
     def __init__(self):
         self.holding = 0.  # set a default value for models
         self.WCComp = 0.
         self.CCComp = 0.
-        pass
     
-    def set_clamps(self, dmode='CC', time=None, data=None, cmddata=None, tstart_tdur=[0.01, 0.100]):
+    def set_clamps(self, time, data, cmddata=None, dmode='CC', tstart_tdur=[0.01, 0.100]):
+        """
+        Copy parameters into the Clamps structure.
+        
+        Parameters
+        ----------
+        time: np.array (no default)
+            An array holding the time data. Should be same length as the data
+        
+        data: np.array or ndarray (no default)
+            An array of the data 
+        
+        cmddata: np.array (default None)
+            Command waveform data if available
+        
+        dmode : str (default: 'CC')
+            data mode: CC for current clamp, vc for voltage clamp
+        
+        tatsrt_tdur: 2-element list or np.array (default: [0.01, 0.10]; values in seconds)
+            The start and duration for current/voltage pulses and steps.
+        
+        """
         self.data = data
         self.time = time
         self.rate = np.diff(self.time)*1e6
@@ -34,6 +56,19 @@ class MakeClamps():
         self.dmode = dmode
     
     def read_pfile(self, filename, plot=False):
+        """
+        Read a pickled file; optionally plot the data
+        Puts the data into a Clamps structure.
+
+        Parameters
+        ----------
+        filename : str or Path
+            The file to be read
+        
+        plot: Boolean (default: False)
+            Flag to specify plotting the data in a simple mode
+        """
+        
         fh = open(filename, 'rb')
         df = pickle.load(fh)
         r = df['Results'][0]
@@ -92,7 +127,6 @@ class MakeClamps():
             dinfo = df['runInfo']
         if isinstance(dinfo, Params):
             dinfo = dinfo.todict()
-        print(dinfo)
         dur = dinfo['stimDur']
         delay = dinfo['stimDelay']
         mode = dinfo['postMode'].upper()
@@ -110,7 +144,7 @@ class MakeClamps():
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
 
-    def getClampData(self, verbose=False):
+    def getClampData(self):
         """
         Translates fields as best as we can from the original DATAC structure
         create a Clamp structure for use in SpikeAnalysis and RMTauAnalysis.
@@ -161,6 +195,11 @@ class MakeClamps():
         40000.0, 'type': 'ai', 'startTime': 1296241556.7347913}}, 'startTime': 1296241556.7347913}]
 
         )
+        
+        Parameters
+        ----------
+        None
+            
         """
         if self.data is None:
             raise ValueError('No data has been set')

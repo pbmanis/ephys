@@ -12,27 +12,12 @@ import matplotlib
 import numpy as np
 
 import os.path
-import ephys.ephysanalysis as EP
-import ephys.ephysanalysis.metaarray as EM
+from . import acq4read
+from . import metaarray as EM
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
-#import colormaps.parula
 import pylibrary.plotting.plothelpers as PH
-# from matplotlib import rc
-# #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-# #rcParams['font.sans-serif'] = ['Arial']
-# #rcParams['font.family'] = 'sans-serif'
-# rc('text', usetex=True)
-# rcParams = matplotlib.rcParams
-# rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
-# rcParams['pdf.fonttype'] = 42
-# rcParams['ps.fonttype'] = 42
-# rcParams['text.latex.unicode'] = True
-#import seaborn
-#cm_sns = mpl.cm.get_cmap('terrain')  # terrain is not bad
-#cm_sns = mpl.cm.get_cmap('parula')  # terrain is not bad
-#cm_sns = mpl.cm.get_cmap('jet')  # jet is terrible
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
 
@@ -40,7 +25,7 @@ colormap = 'snshelix'
 class VCSummary():
     def __init__(self, datapath, plot=True):
         self.datapath = datapath
-        self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.plot = plot
 
     def setup(self, clamps=None, baseline=[0, 0.001], taumbounds = [0.002, 0.050]):

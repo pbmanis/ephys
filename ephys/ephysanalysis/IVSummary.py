@@ -13,7 +13,9 @@ from collections import OrderedDict
 
 import matplotlib.colors
 import pylibrary.plotting.plothelpers as PH
-import ephys.ephysanalysis as EP
+from . import acq4read
+from . import SpikeAnalysis
+from . import RmTauAnalysis
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
 
@@ -23,9 +25,9 @@ class IVSummary():
         self.datapath = datapath
 
         self.IVFigure = None
-        self.AR = EP.acq4read.Acq4Read()  # make our own private version of the analysis and reader
-        self.SP = EP.SpikeAnalysis.SpikeAnalysis()
-        self.RM = EP.RmTauAnalysis.RmTauAnalysis()
+        self.AR = acq4read.Acq4Read()  # make our own private version of the analysis and reader
+        self.SP = SpikeAnalysis.SpikeAnalysis()
+        self.RM = RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
 
     def iv_check(self, duration=0.):

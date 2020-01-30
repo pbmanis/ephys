@@ -17,12 +17,14 @@ import argparse
 from pathlib import Path
 import pathlib
 import numpy as np
-import ephys.ephysanalysis as EP
+from ..ephysanalysis import acq4read
+from ..ephysanalysis import SpikeAnalysis
+from ..ephysanalysis import RmTauAnalysis
 import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 import ephys.mapanalysistools.digital_filters as FILT
-from ephys.mini_analyses import minis_methods
+from ..mini_analyses import minis_methods
 
 ampdataname = 'Clamp1.ma'
 ampdataname = 'MultiClamp1.ma'
@@ -35,9 +37,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         super(TraceAnalyzer, self).__init__()
         self.app = app
         self.datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
-        self.AR = EP.acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
-        self.SP = EP.SpikeAnalysis.SpikeAnalysis()
-        self.RM = EP.RmTauAnalysis.RmTauAnalysis()
+        self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.SP = SpikeAnalysis.SpikeAnalysis()
+        self.RM = RmTauAnalysis.RmTauAnalysis()
         self.LPF = 5000.
         self.HPF = 0.
         self.tb = None

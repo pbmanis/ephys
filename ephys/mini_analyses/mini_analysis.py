@@ -55,11 +55,12 @@ import matplotlib.gridspec as gridspec
 import scipy.signal
 import scipy.stats
 
-import ephys.mini_analyses.minis_methods as minis
+from . import minis_methods as minis
+from . import digital_filters as DF
+from .. import ephysanalysis as EP
+
 import pylibrary.tools.utility as PU
-import ephys.mini_analyses.digital_filters as DF
 import pylibrary.plotting.plothelpers as PH
-import ephys.ephysanalysis as EP
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.collections as collections
 import matplotlib.path as mplpath

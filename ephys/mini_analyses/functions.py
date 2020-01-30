@@ -19,14 +19,9 @@ import six
 from six.moves import range
 import sys
 import os, re, math, time, threading, decimal
-import ephys.ephysanalysis.metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
-#from scipy import *
-#from scipy.optimize import leastsq
-#from scipy.ndimage import gaussian_filter, generic_filter, median_filter
 from scipy import stats
 import scipy.signal, scipy.ndimage, scipy.optimize
 import numpy.ma
-# from acq4.util.debug import *
 import numpy as np
 
 try:
@@ -34,6 +29,8 @@ try:
     from scipy.weave import converters
 except:
     pass    
+
+from ..ephysanalysis import metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
 
 
 def dirDialog(startDir='', title="Select Directory"):

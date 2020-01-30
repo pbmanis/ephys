@@ -21,8 +21,8 @@ from collections import OrderedDict
 from scipy.io import matlab
 import numpy as np
 import pprint
-import ephys.ephysanalysis.metaarray as EM
-import ephys.ephysanalysis.IVSummary as IVS
+from .metaarray import MetaArray as EM
+from .IVSummary import IVSummary as IVS
 import pylibrary.tools.fileselector as FS
 
 import matplotlib
