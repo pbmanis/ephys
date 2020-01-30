@@ -23,7 +23,7 @@ setup(name='ephys',
                'dataview=ephys.ephysanalysis.show_data:main',
                'measure=ephys.ephysanalysis.cursor_plot:main',
                'matread=ephys.ephysanalysis.MatdatacRead:main',
-               'plotmaps=ephys.ephysanalysis.plot_maps:main',
+               'plot_maps=ephys.ephysanalysis.plot_maps:main',
                'fix_objscale=ephys.ephysanalysis.fix_objscale:main',
                
                #'plotmaps=ephys.mapanalysistools.plot_maps:main',

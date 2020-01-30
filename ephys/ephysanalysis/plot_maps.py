@@ -924,7 +924,7 @@ class MapTraces(object):
                     # secdistmap[i, j] = np.mean(self.eventdata['ZScore'][0][siri])
                     secdistmap[i, j] = np.sum(self.eventdata[measure][0][siri] > thresh)
 
-        center_of_mass = (0.,0.)  # relative to cell body.
+        center_of_mass = [0.,0.]  # relative to cell body.
         for i in range(0, 2):
             center_of_mass[i] = np.sum((self.eventdata[measure][0][:] > thresh)*(x[i,:]))
 
@@ -1006,6 +1006,10 @@ class MapTraces(object):
                         self.ax.plot(x[0,i], x[1,i], c=self.edgecolor[j], marker=self.sectorsymbol[j], markersize=1)  # color by sector
         maxmass = np.max(self.mass)
         for i in range(self.nsectors):
+            if pd.isnull(self.sector_center_of_mass[i,1]):
+                continue
+            # print('com: ', self.sector_center_of_mass[i,1])
+            # print('maxmass: ', maxmass, self.mass[i])
             self.ax.plot(self.sector_center_of_mass[i,0], self.sector_center_of_mass[i,1], c=self.edgecolor[i], 
                 marker= self.sectorsymbol[i], markersize=8*self.mass[i]/maxmass, alpha=0.75)
         self.scholl_plot = True

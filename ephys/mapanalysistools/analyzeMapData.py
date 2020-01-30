@@ -505,7 +505,7 @@ class AnalyzeMap(object):
         imax = int(max(np.where(tb < self.maxtime)[0]))
         # imax = len(tb)
         data2 = np.zeros_like(data)
-        if data.ndim == 3:
+        if data.ndim == 3 and self.LPF_flag:
             if self.notch_flag:
                 print(self.colors['yellow']+'Notch Filtering Enabled:', self.notch_freqs, self.colors['white'])
             for r in range(data.shape[0]):
@@ -517,7 +517,7 @@ class AnalyzeMap(object):
                     if self.notch_flag:
                         data2[r,t,:imax] = FILT.NotchFilterZP(data2[r, t, :imax], notchf=self.notch_freqs, Q=self.notch_Q,
                             QScale=False, samplefreq=samplefreq)
-        else:
+        elif data.ndim == 2 and self.LPF_flag:
             data2 = filtfunc(b, a, data - np.mean(data[0:250]))
             if self.HPF_flag:
                 data2[r,t,:imax] = filtfunc(bh, ah, data2[r, t, :imax]) #  - np.mean(data[r, t, 0:250]))
@@ -526,7 +526,8 @@ class AnalyzeMap(object):
                     print(self.colors['yellow']+'Notch Filtering Enabled', self.notch_freqs, self.colors['white'])
                 data2 = FILT.NotchFilterZP(data2, notchf=self.notch_freqs, Q=self.notch_Q,
                     QScale=False, samplefreq=samplefreq)
-        
+        else:
+            return data
         # if self.notch_flag:  ### DO NOT USE THIS WHEN RUNNING PARALLEL MODE
             # f, ax = mpl.subplots(1,1)
             # f.set_figheight(14.)
@@ -1434,7 +1435,8 @@ class AnalyzeMap(object):
             ax.plot(tb, np.mean(pddata, axis=0), color, rasterized=self.rasterized, linewidth=0.6)
         ax.set_xlim(0., self.AR.tstart-0.001)
 
-    def plot_map(self, axp, axcbar, pos, measure, measuretype='I_max', vmaxin=None, imageHandle=None, imagefile=None, angle=0, spotsize=20e-6, cellmarker=False, whichstim=-1, average=False):
+    def plot_map(self, axp, axcbar, pos, measure, measuretype='I_max', vmaxin=None, imageHandle=None, 
+                 imagefile=None, angle=0, spotsize=20e-6, cellmarker=False, whichstim=-1, average=False):
 
         sf = 1.0 # could be 1e-6 ? data in Meters? scale to mm.
         cmrk = 50e-6*sf # size, microns
@@ -1464,6 +1466,7 @@ class AnalyzeMap(object):
             axp.imshow(img, aspect='equal', extent=extents, origin='lower', cmap=setMapColors('gray'))
 
         spotsize = 1e3*spotsize
+        print('measure len: ', len(measure[measuretype]))
         if whichstim < 0:
             spotsizes = spotsize*np.linspace(1.0, 0.2, len(measure[measuretype]))
         else:
@@ -1495,6 +1498,10 @@ class AnalyzeMap(object):
         cmx = matplotlib.cm.ScalarMappable(norm=norm, cmap=cm_sns)
         for im in whichmeasures:  # there may be multiple measure[measuretype]s (repeated stimuli of different kinds) in a map
             # note circle size is radius, and is set by the laser spotsize (which is diameter)
+            print('spotsizes size: ', spotsizes.shape)
+            print('im: ', im)
+            print('spotsizes: ', spotsizes)
+            print('whichmeasures: ', whichmeasures)
             radw = np.ones(pos.shape[0])*spotsizes[im]
             radh = np.ones(pos.shape[0])*spotsizes[im]
             spotcolors = cmx.to_rgba(np.clip(measure[measuretype][im], 0., vmax))
@@ -1560,7 +1567,7 @@ class AnalyzeMap(object):
         if imageHandle is not None and imagefile is not None:
             axp.set_aspect('equal')
         axp.set_aspect('equal')
-        title = measuretype
+        title = measuretype.replace('_', '\_')
         if whichstim >= 0:
             title += f', Stim \# {whichstim:d} Only'
         if average:

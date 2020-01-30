@@ -421,7 +421,7 @@ class MiniAnalysis():
                     #data[i] = dfilt[len(data[i]):2*len(data[i])]  # remove padded segments
                     data[i] = dfilt
             
-                data[i] = DF.SignalFilter_LPFButter(data[i], 2800., 1000./dt, NPole=4) # always LPF data
+                # data[i] = DF.SignalFilter_LPFButter(data[i], 2800., 1000./dt, NPole=4) # LPF THE DATA
     #            frsfilt, freqsf = PU.pSpectrum(dfilt, samplefreq=1000./dt)
 
                 if mode == 'aj':
