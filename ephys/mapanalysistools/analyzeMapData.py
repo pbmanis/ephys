@@ -1,4 +1,3 @@
-from __future__ import print_function
 from __future__ import absolute_import
 """
 
@@ -8,11 +7,10 @@ may be otherwise useful...
 
 """
 
-
+import re
 import sys
 import sqlite3
 import matplotlib
-import pyqtgraph.multiprocess as mp
 import matplotlib.colors as CM
 import seaborn
 import argparse
@@ -24,7 +22,6 @@ import scipy.ndimage
 import os.path
 from collections import OrderedDict
 
-import re
 import math
 import dill as pickle
 import datetime
@@ -38,6 +35,8 @@ from matplotlib.collections import PatchCollection
 from  matplotlib import colors as mcolors
 import matplotlib.cm
 
+import pyqtgraph.multiprocess as mp
+
 from .. import ephysanalysis as EP
 import montage as MONT
 import ephys.mini_analyses as minis
@@ -48,20 +47,11 @@ from ephys.mini_analyses import minis_methods
 
 # import pylibrary.plotting.colormaps as colormaps
 import pylibrary.plotting.plothelpers as PH
+import pylibrary.tools.cprint as CP
 
 color_sequence = ['k', 'r', 'b']
 colormapname = 'parula'
-# ANSI terminal colors  - just put in as part of the string to get color terminal output
-colors = {'red': '\x1b[31m', 'yellow': '\x1b[33m', 'green': '\x1b[32m', 'magenta': '\x1b[35m',
-              'blue': '\x1b[34m', 'cyan': '\x1b[36m' , 'white': '\x1b[0m', 'backgray': '\x1b[100m'}
 
-def cprint(c, txt):
-    """
-    color print: one line
-    """
-    if not isinstance(txt, str):
-        txt = str(txt)
-    print(f"{colors[c]:s}{txt:s}{colors['white']:s}")
 
 basedir = "/Users/pbmanis/Desktop/Python/mapAnalysisTools"
 
@@ -619,7 +609,7 @@ class AnalyzeMap(object):
     def analyze_one_map(self, dataset, plotevents=False, raster=False, noparallel=False, verbose=False):
         self.verbose = verbose
         if self.verbose:
-            cprint('red', '  ANALYZE ONE MAP')
+            CP.cprint('red', '  ANALYZE ONE MAP')
         self.noparallel = noparallel
         self.data, self.tb, pars, info = self.readProtocol(dataset, sparsity=None)
         if self.tb is None:
@@ -1349,7 +1339,7 @@ class AnalyzeMap(object):
                         npev += 1
                         # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
                         if self.verbose:
-                            cprint('green', '   Plotting')
+                            CP.cprint('green', '   Plotting')
                         ax.plot(tb[:len(evdata)]*1e3, scale*evdata, line[evtype], linewidth=0.15, alpha=0.25, rasterized=False)
                         minev = np.min([minev, np.min(scale*evdata)])
                         maxev = np.max([maxev, np.max(scale*evdata)])
@@ -1362,7 +1352,7 @@ class AnalyzeMap(object):
         if (len(aved) == 0) or (aved.shape[0] == 0) or (nev == 0):
             return
         if self.verbose:
-                cprint('red', f"aved shape is {str(aved.shape):s}")
+                CP.cprint('red', f"aved shape is {str(aved.shape):s}")
                 return
         tx = np.broadcast_to(tb, (aved.shape[0], tb.shape[0])).T
         if self.sign < 0:
@@ -1547,7 +1537,7 @@ class AnalyzeMap(object):
                     axp.add_collection(ec)
                     ri += rs
         if cellmarker:
-            cprint('yellow', 'Cell marker is plotted')
+            CP.cprint('yellow', 'Cell marker is plotted')
             axp.plot([-cmrk, cmrk], [0., 0.], '-', color='r') # cell centered coorinates
             axp.plot([0., 0.], [-cmrk, cmrk], '-', color='r') # cell centered coorinates
         

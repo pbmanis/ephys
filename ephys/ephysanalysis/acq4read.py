@@ -11,9 +11,6 @@ Requires pyqtgraph to read the .ma files and the .index file
 import os
 import re
 from pathlib import Path
-
-from .metaarray import MetaArray as EM
-from pyqtgraph import configfile
 import numpy as np
 import datetime
 import pprint
@@ -21,6 +18,10 @@ import textwrap as WR
 import collections
 import tifffile as tf
 import scipy.ndimage as SND
+
+from ephys.ephysanalysis import metaarray as EM
+from pyqtgraph import configfile
+
 pp = pprint.PrettyPrinter(indent=4)
 
 
