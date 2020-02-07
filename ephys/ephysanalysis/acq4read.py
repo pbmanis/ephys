@@ -11,6 +11,7 @@ Requires pyqtgraph to read the .ma files and the .index file
 import os
 import re
 from pathlib import Path
+
 import numpy as np
 import datetime
 import pprint
