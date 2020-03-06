@@ -24,7 +24,7 @@ from typing import Type
 
 from ephys.ephysanalysis import metaarray as EM
 from pyqtgraph import configfile
-import tifffile as tf
+import pylibrary.tools.tifffile as tf
 
 pp = pprint.PrettyPrinter(indent=4)
 

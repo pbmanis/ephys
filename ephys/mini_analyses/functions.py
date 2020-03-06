@@ -30,7 +30,7 @@ try:
 except:
     pass    
 
-from ..ephysanalysis import metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
+from ephys.ephysanalysis import metaarray as MetaArray  # eliminate reliance on out of date acq4 and pyqtgraph versions
 
 
 def dirDialog(startDir='', title="Select Directory"):

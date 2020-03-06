@@ -82,7 +82,7 @@ def setMapColors(colormapname, reverse=False):
     # elif colormapname == 'parula':
     #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)
     else:
-        print('Unrecongnized color map {0:s}; setting to "snshelix"'.format(colormapname))
+        print('(analyzemapdata) Unrecongnized color map {0:s}; setting to "snshelix"'.format(colormapname))
         cm_sns = seaborn.cubehelix_palette(n_colors=64, start=3, rot=0.5, gamma=1.0, dark=0, light=1.0, reverse=reverse,
          as_cmap=True)
     # elif colormapname == '
