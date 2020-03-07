@@ -16,7 +16,7 @@ from . import SpikeAnalysis
 from . import dataSummary
 from . import IVSummary
 from . import VCSummary
-from . import PSCAnalyzer
+# from . import PSCAnalyzer
 from . import boundrect
 from . import poisson_score
 from . import MakeClamps
