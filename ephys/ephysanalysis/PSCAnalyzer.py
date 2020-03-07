@@ -1250,36 +1250,40 @@ class PSCAnalyzer():
         return (date, sliceid, cell, proto, p3)
         
 
-if __name__ == '__main__':
-    """
-    This is for testing - normally an instance of EPSC_analyzer would be
-    created and these values would be filled in.
-    """
-    import matplotlib
-    matplotlib.use('Qt5Agg')
-    from matplotlib import rc
-    #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-    #rcParams['font.sans-serif'] = ['Arial']
-    #rcParams['font.family'] = 'sans-serif'
-    rc('text', usetex=False)
-    rcParams = matplotlib.rcParams
-    rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
-    rcParams['pdf.fonttype'] = 42
-    rcParams['ps.fonttype'] = 42
-    rcParams['text.latex.unicode'] = True    
-    # disk = '/Volumes/Pegasus/ManisLab_Data3'
-    # disk = '/Volumes/PBM_005/data'
-    disk = '/Volumes/Pegasus/ManisLab_Data3'
-    middir = 'Kasten_Michael'
-    directory = 'Maness_PFC_stim'
-    cell = '2019.03.19_000/slice_000/cell_001'
-    # cell = '2019.03.19_000/slice_001/cell_000'
+    def test(self):
+        """
+        This is for testing - normally an instance of EPSC_analyzer would be
+        created and these values would be filled in.
+        """
+        import matplotlib
+        matplotlib.use('Qt5Agg')
+        from matplotlib import rc
+        #rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+        #rcParams['font.sans-serif'] = ['Arial']
+        #rcParams['font.family'] = 'sans-serif'
+        rc('text', usetex=False)
+        rcParams = matplotlib.rcParams
+        rcParams['svg.fonttype'] = 'none' # No text as paths. Assume font installed.
+        rcParams['pdf.fonttype'] = 42
+        rcParams['ps.fonttype'] = 42
+        rcParams['text.latex.unicode'] = True    
+        # disk = '/Volumes/Pegasus/ManisLab_Data3'
+        # disk = '/Volumes/PBM_005/data'
+        disk = '/Volumes/Pegasus/ManisLab_Data3'
+        middir = 'Kasten_Michael'
+        directory = 'Maness_PFC_stim'
+        cell = '2019.03.19_000/slice_000/cell_001'
+        # cell = '2019.03.19_000/slice_001/cell_000'
     
-    ddc = Path(disk, middir, directory, cell)
-    protocol = 'Stim_IO_1'
-    # protocol = 'PPF_2_001'
-    # protocol = 'VC-EPSC_3_ver2_003'
-    fn = Path(ddc, protocol)
-    PSC = PSCAnalyzer(fn)
-    PSC.measure_PSC(protocol[:-4], savetimes=True)
+        ddc = Path(disk, middir, directory, cell)
+        protocol = 'Stim_IO_1'
+        # protocol = 'PPF_2_001'
+        # protocol = 'VC-EPSC_3_ver2_003'
+        fn = Path(ddc, protocol)
+        PSC = PSCAnalyzer(fn)
+        PSC.measure_PSC(protocol[:-4], savetimes=True)
+        
+        
+if __name__ == '__main__':
+    pass
     
