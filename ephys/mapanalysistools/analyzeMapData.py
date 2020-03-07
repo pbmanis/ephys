@@ -38,7 +38,7 @@ import matplotlib.cm
 import pyqtgraph.multiprocess as mp
 
 from .. import ephysanalysis as EP
-import .montage as MONT
+from . import montage as MONT
 import ephys.mini_analyses as minis
 
 from ephys.mapanalysistools import functions
