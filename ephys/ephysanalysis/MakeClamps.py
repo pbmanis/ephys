@@ -55,7 +55,7 @@ class MakeClamps():
         self.tend = np.sum(tstart_tdur)
         self.dmode = dmode
     
-    def read_pfile(self, filename, plot=False):
+    def read_pfile(self, filename:str, vscale:float=1e-3, iscale:float=1e-9, plot=False):
         """
         Read a pickled file; optionally plot the data
         Puts the data into a Clamps structure.
@@ -137,8 +137,8 @@ class MakeClamps():
             fk = list(df['Results'][i].keys())[0]
             dfx = df['Results'][i][fk]['monitor']
             timebase = dfx['time']
-            V[i] = dfx['postsynapticV']
-            I[i] = dfx['i_stim0']
+            V[i] = dfx['postsynapticV']*vscale
+            I[i] = dfx['i_stim0']*iscale
         V = np.array(V)
         I = np.array(I)
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
@@ -296,6 +296,7 @@ class MakeClamps():
         #     self.traces[0,mainch,:] = self.traces[0,mainch,:]
 
         self.traces = EM.MetaArray(self.traces, info=info)
+        self.sample_rate = np.ones(self.traces.shape[0])*self.sample_interval
         self.cmd_wave = EM.MetaArray(self.cmd_wave,
              info=[{'name': 'Command', 'units': 'A',
               'values': np.array(self.values)},
