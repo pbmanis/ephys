@@ -61,6 +61,8 @@ np.seterr(divide='raise')
 # print ('maps: ', colormaps)
 # print(dir(colormaps))
 def setMapColors(colormapname, reverse=False):
+    if colormapname == 'parula':
+        colormapname = 'snshelix'
     if colormapname == 'terrain':
         cm_sns = mpl.cm.get_cmap('terrain_r')  # terrain is not bad    #
     elif colormapname == 'gray':
