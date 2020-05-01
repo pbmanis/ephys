@@ -7,7 +7,9 @@ from pathlib import Path
 import numpy as np
 import pickle
 import matplotlib
-
+from dataclasses import dataclass
+import dataclasses
+import datetime
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools.params import Params
@@ -55,7 +57,7 @@ class MakeClamps():
         self.tend = np.sum(tstart_tdur)
         self.dmode = dmode
     
-    def read_pfile(self, filename:str, vscale:float=1e-3, iscale:float=1e-9, plot=False):
+    def read_pfile(self, filename:str, filemode:str='vcnmodel.v0', vscale:float=1e-3, iscale:float=1e-9, plot=False):
         """
         Read a pickled file; optionally plot the data
         Puts the data into a Clamps structure.
@@ -65,29 +67,30 @@ class MakeClamps():
         filename : str or Path
             The file to be read
         
+        mode: str
+            version name
         plot: Boolean (default: False)
             Flag to specify plotting the data in a simple mode
         """
         
-        fh = open(filename, 'rb')
-        df = pickle.load(fh)
-        r = df['Results'][0]
 
-        if plot:
-            P = PH.Plotter((1, 1), figsize=(6, 4))
-            cell_ax = list(P.axdict.keys())[0]
-            for trial in range(len(df['Results'])):
-                ds = df['Results'][trial]
-                k0 = list(df['Results'][trial].keys())[0]
-                dx = ds[k0]['monitor']
-                P.axdict[cell_ax].plot(dx['time'], dx['postsynapticV'], linewidth=1.0)
-                P.axdict[cell_ax].set_xlim(0., 150.)
-                P.axdict[cell_ax].set_ylim(-200., 50.)
-            PH.calbar(P.axdict[cell_ax], calbar=[120., -95., 25., 20.], axesoff=True, orient='left', 
-                    unitNames={'x': 'ms', 'y': 'mV'}, font='Arial', fontsize=8)
-
-            # mpl.savefig(outfile)
-            mpl.show()
+        # r = df['Results'][0]
+        #
+        # if plot:
+        #     P = PH.Plotter((1, 1), figsize=(6, 4))
+        #     cell_ax = list(P.axdict.keys())[0]
+        #     for trial in range(len(df['Results'])):
+        #         ds = df['Results'][trial]
+        #         k0 = list(df['Results'][trial].keys())[0]
+        #         dx = ds[k0]['monitor']
+        #         P.axdict[cell_ax].plot(dx['time'], dx['postsynapticV'], linewidth=1.0)
+        #         P.axdict[cell_ax].set_xlim(0., 150.)
+        #         P.axdict[cell_ax].set_ylim(-200., 50.)
+        #     PH.calbar(P.axdict[cell_ax], calbar=[120., -95., 25., 20.], axesoff=True, orient='left',
+        #             unitNames={'x': 'ms', 'y': 'mV'}, font='Arial', fontsize=8)
+        #
+        #     # mpl.savefig(outfile)
+        #     mpl.show()
         # print(list(df.keys()))
         # print('\nbasename: ', df['basename'])
         # print('\nruninfo: ', df['runInfo'])
@@ -119,26 +122,88 @@ class MakeClamps():
         'temperature': 34.0}
         
         Note 10/28/2019 changed structure so that runInfo and modelPars are both 
-        subdictionaries of Params
+        subdictionaries of Params (filemode is 'vcnmodel.v0')
+        ... and undone later, so that all are top-level (filemode is 'vcnmodel.v1')
         """
-        if 'runInfo' not in list(df.keys()):  # handle data structure change 10/28/2019
-            dinfo = df['Params']['runInfo']
+        fh = open(filename, 'rb')
+        df = pickle.load(fh)
+        if filemode in ['vcnmodel.v0']:
+            print(len(df['Results']))
+        elif filemode in ['vcnmodel.v1']:
+            for i, v in df['Results'].items():
+                print(i, v)
+        else:
+            raise ValueError(f'Unknown file mode: {filemode:s}')
+        print('\nFile keys: ', df.keys())
+
+        print('\nbasename: ', df['basename'])
+        mtime = Path(filename).stat().st_mtime
+        timestamp_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d-%H:%M')
+        print('\nFile timestamp: ', timestamp_str)
+        
+        # print('\nmodelPars: ', df['modelPars'])
+        # print('\nrunInfo: ', df['runInfo'])
+
+        # if 'mode' in list(df.keys()):
+        #     print('\nmode: ', df['mode'])
+        # print(len(df['Results']))
+        # for i in range(len(df['Results'])):
+        #     print('Results keys: ', df['Results'][i].keys())
+        # print('\nstimInfo in Results: ', df['Results'][0]['stimInfo'])
+        # if filemode == 'vcnmodel.v0':
+        #     if 'runInfo' not in list(df.keys()):  # handle data structure change 10/28/2019
+        #
+        # else:
+        #     dinfo = df['runInfo']
+        # if isinstance(dinfo, Params):
+        #     dinfo = dinfo.todict()
+        # print('\n', dinfo)
+        # print(type(dinfo))
+        # # if isinstance(dinfo, dataclass):
+        # #     dinfo = dataclasses.asdict(dinfo)
+        # print('dinfo: ', dinfo.keys())
+
+        if filemode == 'vcnmodel.v0':
+            # print(df['Params'].keys())
+            try:
+                dinfo = df['Params']['runInfo']
+            except:
+                try:
+                    dinfo = df['runInfo']
+                except:
+                    raise ValueError ("Cannot read the file in v0 mode?")
+            if isinstance(dinfo, Params):
+                dinfo = dinfo.todict()
+            dur = dinfo['stimDur']
+            delay = dinfo['stimDelay']
+            mode = dinfo['postMode'].upper()
+            ntr = len(df['Results'])
+            V = [[]]*ntr
+            I = [[]]*ntr
+            for i in range(len(df['Results'])):
+                fk = list(df['Results'][i].keys())[0]
+                dfx = df['Results'][i][fk]['monitor']
+                timebase = dfx['time']
+                V[i] = dfx['postsynapticV']*vscale
+                I[i] = dfx['i_stim0']*iscale
         else:
             dinfo = df['runInfo']
-        if isinstance(dinfo, Params):
-            dinfo = dinfo.todict()
-        dur = dinfo['stimDur']
-        delay = dinfo['stimDelay']
-        mode = dinfo['postMode'].upper()
-        ntr = len(df['Results'])
-        V = [[]]*ntr
-        I = [[]]*ntr
-        for i in range(len(df['Results'])):
-            fk = list(df['Results'][i].keys())[0]
-            dfx = df['Results'][i][fk]['monitor']
-            timebase = dfx['time']
-            V[i] = dfx['postsynapticV']*vscale
-            I[i] = dfx['i_stim0']*iscale
+            dur = dinfo.stimDur
+            delay = dinfo.stimDelay
+            mode = dinfo.postMode
+            ntr = len(df['Results'])
+            V = [[]]*ntr
+            I = [[]]*ntr
+            # print(df['Results'].keys())
+            for ii, i in enumerate(df['Results'].keys()):
+                print (i) #  print(df['Results'][i].keys())
+                dfx = df['Results'][i]['monitor']
+                print('dfx: ', dfx.keys())
+                timebase = dfx['time']
+                print(dfx['postsynapticV'])
+                V[ii] = np.array(dfx['postsynapticV'])*vscale
+                I[ii] = np.array(dfx['i_stim0'])*iscale
+
         V = np.array(V)
         I = np.array(I)
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
