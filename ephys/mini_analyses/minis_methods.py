@@ -16,14 +16,15 @@ per acq4 standards...
 """
 import numpy as np
 import scipy.signal
-
 import timeit
 from scipy.optimize import curve_fit
 from numba import jit
 import lmfit
+import pyximport
+
 from . import digital_filters as dfilt
 from . import functions as FN # Luke's misc. function library
-import pyximport
+
 pyximport.install()
 from ephys.mini_analyses import clembek
 
