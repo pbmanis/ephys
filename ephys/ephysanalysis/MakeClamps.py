@@ -128,41 +128,16 @@ class MakeClamps():
         fh = open(filename, 'rb')
         df = pickle.load(fh)
         if filemode in ['vcnmodel.v0']:
-            print(len(df['Results']))
+            print('rpfile v0: ', len(df['Results']))
         elif filemode in ['vcnmodel.v1']:
-            for i, v in df['Results'].items():
-                print(i, v)
+            print('rpfile v1: ', len(df['Results']))
         else:
             raise ValueError(f'Unknown file mode: {filemode:s}')
-        print('\nFile keys: ', df.keys())
-
-        print('\nbasename: ', df['basename'])
+        # print('\nrpfile v0:  File keys: ', df.keys())
+        #
+        # print('\nrpfile v0:  basename: ', df['basename'])
         mtime = Path(filename).stat().st_mtime
         timestamp_str = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d-%H:%M')
-        print('\nFile timestamp: ', timestamp_str)
-        
-        # print('\nmodelPars: ', df['modelPars'])
-        # print('\nrunInfo: ', df['runInfo'])
-
-        # if 'mode' in list(df.keys()):
-        #     print('\nmode: ', df['mode'])
-        # print(len(df['Results']))
-        # for i in range(len(df['Results'])):
-        #     print('Results keys: ', df['Results'][i].keys())
-        # print('\nstimInfo in Results: ', df['Results'][0]['stimInfo'])
-        # if filemode == 'vcnmodel.v0':
-        #     if 'runInfo' not in list(df.keys()):  # handle data structure change 10/28/2019
-        #
-        # else:
-        #     dinfo = df['runInfo']
-        # if isinstance(dinfo, Params):
-        #     dinfo = dinfo.todict()
-        # print('\n', dinfo)
-        # print(type(dinfo))
-        # # if isinstance(dinfo, dataclass):
-        # #     dinfo = dataclasses.asdict(dinfo)
-        # print('dinfo: ', dinfo.keys())
-
         if filemode == 'vcnmodel.v0':
             # print(df['Params'].keys())
             try:
@@ -178,6 +153,7 @@ class MakeClamps():
             delay = dinfo['stimDelay']
             mode = dinfo['postMode'].upper()
             ntr = len(df['Results'])
+            self.rate = df['Params'].dt
             V = [[]]*ntr
             I = [[]]*ntr
             for i in range(len(df['Results'])):
@@ -188,24 +164,38 @@ class MakeClamps():
                 I[i] = dfx['i_stim0']*iscale
         else:
             dinfo = df['runInfo']
+            # print('rpfile v0: dinfo: ', dinfo)
+            mode = dinfo.postMode.upper()
             dur = dinfo.stimDur
             delay = dinfo.stimDelay
             mode = dinfo.postMode
+            print(df.keys())
+            try:
+                self.rate = df['Params'].dt
+            except:
+                self.rate = df['self.Params'].dt
             ntr = len(df['Results'])
             V = [[]]*ntr
             I = [[]]*ntr
-            # print(df['Results'].keys())
-            for ii, i in enumerate(df['Results'].keys()):
-                print (i) #  print(df['Results'][i].keys())
-                dfx = df['Results'][i]['monitor']
-                print('dfx: ', dfx.keys())
-                timebase = dfx['time']
-                print(dfx['postsynapticV'])
-                V[ii] = np.array(dfx['postsynapticV'])*vscale
-                I[ii] = np.array(dfx['i_stim0'])*iscale
+            if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
 
+                for ii, i in enumerate(df['Results'].keys()):
+                    dfx = df['Results'][i]['monitor']
+                    timebase = dfx['time']
+                    V[ii] = np.array(dfx['postsynapticV'])*vscale
+                    I[ii] = np.array(dfx['i_stim0'])*iscale
+            elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO']:
+                # V = [[]]*ntr
+                # I = [[]]*ntr
+                for j in list(df['Results'].keys()):
+                    dfx = df['Results'][j]
+                    timebase = dfx['time']
+                    V[j] = np.array(dfx['somaVoltage'])*vscale
+                    I[j] = np.zeros_like(V[j])
         V = np.array(V)
         I = np.array(I)
+        # print('V shape: ', V.shape, 'I shape: ', I.shape, ' timebase: ', timebase.shape, V.shape[1]*self.rate, np.max(timebase))
+        # exit()
         self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
 
