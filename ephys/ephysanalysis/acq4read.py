@@ -77,7 +77,7 @@ class Acq4Read:
         self.clampdevices.extend([aon, apn])
         self.clamps = clamps
 
-        self.tstamp = re.compile("\s*(__timestamp__: )([\d.\d]*)")
+        self.tstamp = re.compile(r"\s*(__timestamp__: )([\d.\d]*)")
         self.clampInfo["dirs"] = []
         self.clampInfo["missingData"] = []
         self.traces = []
@@ -1458,7 +1458,7 @@ def one_test():
             markeredgecolor="w",
         )
         mpl.plot(boxw[0, :], boxw[1, :], "g-", linewidth=5)
-        mpl.plot(scboxw[0, :], scboxw[1, :], linewidth=1.5, label=d.replace("_", "\_"))
+        mpl.plot(scboxw[0, :], scboxw[1, :], linewidth=1.5, label=d.replace(r"_", r"\_"))
 
     # a.getData()
     # a.plotClampData(all=True)

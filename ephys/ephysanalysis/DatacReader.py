@@ -263,7 +263,7 @@ class ReadDatac:
             if cs in string.printable:
                 self.comment += c
  
-        self.comment.replace('_', '\_')
+        self.comment.replace(r'_', r'\_')
         self.fid.seek(self.fileheaderlen, 0)
         c_mode = self.fid.read(1)
         self.mode = struct.unpack('b', c_mode)[0]
