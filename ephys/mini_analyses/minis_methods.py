@@ -27,6 +27,8 @@ from . import functions as FN # Luke's misc. function library
 
 pyximport.install()
 from ephys.mini_analyses import clembek
+from pylibrary.tools.cprint import cprint
+
 
 # ANSI terminal colors  - just put in as part of the string to get color terminal output
 colors = {'red': '\x1b[31m', 'yellow': '\x1b[33m', 'green': '\x1b[32m', 'magenta': '\x1b[35m',
@@ -847,6 +849,7 @@ class ClementsBekkers(MiniAnalyses):
     def clements_bekkers_numba(self, data):
         self.timebase = np.arange(0.,  self.data.shape[0]*self.dt,  self.dt)
         D = data.view(np.ndarray)
+        # cprint('r', "template: , {str(self.template.shape):s}, Data: , {str(D.shape):s}, max(t): {np.max(self.timebase):f}")
         if np.std(D) < 5e-12:
             DC = np.zeros(self.template.shape[0])
             Scale = np.zeros(self.template.shape[0])
