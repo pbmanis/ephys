@@ -297,13 +297,13 @@ class DataSummary():
         self.twd['cell'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
         self.twd['pair'] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" "*2)
         
-        self.img_re = re.compile('^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
-        self.s2p_re = re.compile('^2pStack_(\d{3,3}).ma')
-        self.i2p_re = re.compile('^2pImage_(\d{3,3}).ma')
-        self.video_re = re.compile('^[Vv]ideo_(\d{3,3}).ma')
+        self.img_re = re.compile(r'^[Ii]mage_(\d{3,3}).tif')  # make case insensitive - for some reason in Xuying's data
+        self.s2p_re = re.compile(r'^2pStack_(\d{3,3}).ma')
+        self.i2p_re = re.compile(r'^2pImage_(\d{3,3}).ma')
+        self.video_re = re.compile(r'^[Vv]ideo_(\d{3,3}).ma')
 
-        self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
-#        daytype = re.compile("(2011).(06).(08)_(\d{3,3})")  # specify a day
+        self.daytype = re.compile(r"(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
+#        daytype = re.compile(r"(2011).(06).(08)_(\d{3,3})")  # specify a day
 
     def getDay(self):
         """
@@ -429,7 +429,7 @@ class DataSummary():
         
         """
         allfiles = Path(self.basedir, day).glob('*')
-        slicetype = re.compile("(slice\_)(\d{3,3})")
+        slicetype = re.compile(r"(slice\_)(\d{3,3})")
         slices = []
         for thisfile in list(allfiles):
             print(slsp + 'slicefile: ', thisfile)
@@ -486,9 +486,9 @@ class DataSummary():
         allfiles = Path(thisslice).glob('*')
         # print('in doCells, allfiles: ', list(allfiles))
         if not self.pairflag:
-            cell_re = re.compile("(cell_)(\d{3,3})")
+            cell_re = re.compile(r"(cell_)(\d{3,3})")
         else:
-            cell_re = re.compile("(pair_)(\d{3,3})")
+            cell_re = re.compile(r"(pair_)(\d{3,3})")
         cells = []
         for thisfile in allfiles:
             thisfile = str(thisfile)
@@ -550,7 +550,7 @@ class DataSummary():
         images2p = []
         videos = []
 
-        endmatch = re.compile("[\_(\d{3,3})]$")  # look for _lmn at end of directory name
+        endmatch = re.compile(r"[\_(\d{3,3})]$")  # look for _lmn at end of directory name
         for thisfile in allfiles:
             if Path(thiscell, thisfile).is_dir():
                 protocols.append(thisfile)

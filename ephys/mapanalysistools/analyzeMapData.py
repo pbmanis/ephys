@@ -55,8 +55,8 @@ colormapname = 'parula'
 
 basedir = "/Users/pbmanis/Desktop/Python/mapAnalysisTools"
 
-re_degree = re.compile('\s*(\d{1,3}d)\s*')
-re_duration = re.compile('(\d{1,3}ms)')
+re_degree = re.compile(r'\s*(\d{1,3}d)\s*')
+re_duration = re.compile(r'(\d{1,3}ms)')
 np.seterr(divide='raise')
 # print ('maps: ', colormaps)
 # print(dir(colormaps))
@@ -1101,14 +1101,14 @@ class AnalyzeMap(object):
         r, c = PH.getLayoutDimensions(len(self.images), pref='height')
         f, ax = mpl.subplots(r, c)
         self.figure_handle = f
-        f.suptitle(self.celldir.replace('_', '\_'), fontsize=9)
+        f.suptitle(self.celldir.replace(r'_', r'\_'), fontsize=9)
         ax = ax.ravel()
         PH.noaxes(ax)
         for i, img in enumerate(self.imagedata):
             fna, fne = os.path.split(self.images[i])
             imfig = ax[i].imshow(self.gamma_correction(img, 2.2))
             PH.noaxes(ax[i])
-            ax[i].set_title(fne.replace('_', '\_'), fontsize=8)
+            ax[i].set_title(fne.replace(r'_', r'\_'), fontsize=8)
             imfig.set_cmap(self.cmap)
         if show:
             mpl.show()
@@ -1236,7 +1236,7 @@ class AnalyzeMap(object):
             PH.calbar(ax, calbar=[0.6, -200e-12*self.scale_factor, 0.05, 100e-12*self.scale_factor],
                 axesoff=True, orient='left', unitNames={'x': 's', 'y': 'pA'}, fontsize=11, weight='normal', font='Arial')
 
-        mpl.suptitle(str(title).replace('_', '\_'), fontsize=8)
+        mpl.suptitle(str(title).replace(r'_', r'\_'), fontsize=8)
         self.plot_timemarker(ax)
         ax.set_xlim(0, self.AR.tstart-0.001)
 
@@ -1562,7 +1562,7 @@ class AnalyzeMap(object):
         if imageHandle is not None and imagefile is not None:
             axp.set_aspect('equal')
         axp.set_aspect('equal')
-        title = measuretype.replace('_', '\_')
+        title = measuretype.replace(r'_', r'\_')
         if whichstim >= 0:
             title += f', Stim \# {whichstim:d} Only'
         if average:

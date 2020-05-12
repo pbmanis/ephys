@@ -171,7 +171,7 @@ class MiniSummarize():
         # P.axdict['B'].set_xlim(0.5, 2.5)
 
        # P.axdict['A'].legend()
-        P.figure_handle.suptitle(self.filename.replace('_', '\_'))
+        P.figure_handle.suptitle(self.filename.replace(r'_', r'\_'))
         
         
         
