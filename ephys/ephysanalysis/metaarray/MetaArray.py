@@ -33,7 +33,7 @@ except:
     HAVE_HDF5 = False
 
 if HAVE_HDF5:
-    import h5py.highlevel
+    from h5py import File as h5pyFile
  
 if sys.version_info[0] == 3:
     basestring = str
@@ -1045,9 +1045,9 @@ class MetaArray(object):
             data[k] = val
         for k in root:
             obj = root[k]
-            if isinstance(obj, h5py.highlevel.Group):
+            if isinstance(obj,h5pyFile.Group) # h5py.highlevel.Group):
                 val = MetaArray.readHDF5Meta(obj)
-            elif isinstance(obj, h5py.highlevel.Dataset):
+            elif isinstance(obj,h5pyFile.Dataset) # h5py.highlevel.Dataset):
                 if mmap:
                     val = MetaArray.mapHDF5Array(obj)
                 else:
