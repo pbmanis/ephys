@@ -46,6 +46,7 @@ import sys
 import os
 import argparse
 from collections import OrderedDict
+from pathlib import Path
 import numpy as np
 import pickle
 import pyqtgraph.multiprocess as mp
@@ -55,16 +56,18 @@ import matplotlib.gridspec as gridspec
 import scipy.signal
 import scipy.stats
 
-from . import minis_methods as minis
-from . import digital_filters as DF
-from .. import ephysanalysis as EP
-
 import pylibrary.tools.utility as PU
 import pylibrary.plotting.plothelpers as PH
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.collections as collections
 import matplotlib.path as mplpath
 from matplotlib.path import Path
+
+
+from . import minis_methods as minis
+from . import digital_filters as DF
+from .. import ephysanalysis as EP
+
 
 rc('text', usetex=False)
 #rc('font',**{'family':'sans-serif','sans-serif':['Verdana']})
@@ -368,7 +371,8 @@ class MiniAnalysis():
             aj.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
                         template_tmax=3.0*mousedata['decay'], dt=dt, delay=0.0, sign=self.sign,
                         risepower=1.0, min_event_amplitude=self.min_event_amplitude)
-            aj.set_cb_engine('numba')
+            #aj.set_cb_engine('numba')
+            aj.set_cb_engine('cython')
         else:
             raise ValueError('Mode must be aj or cb for event detection')
 #        print('mousedata rt: ', mousedata['rt'], '   mousedata decay: ', mousedata['decay'])

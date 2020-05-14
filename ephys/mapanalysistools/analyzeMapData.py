@@ -236,12 +236,24 @@ class AnalyzeMap(object):
         self.rasterized = rasterized
 
     def set_methodname(self, methodname):
-        if methodname in ['aj', 'AJ']:
+        if methodname.lower() in ['aj']:
             self.methodname = 'aj'
-        elif methodname in ['cb', 'CB']:
+            self.engine = 'pythonn'
+        elif methodname.lower() in ['cb']:
             self.methodname = 'cb'
+            self.engine = 'numba' # set this as the default
+        elif methodname.lower() in ['cb_numba']:
+            self.methodname = 'cb'
+            self.engine='numba'
+        elif methodname.lower in ['cb_cython']:
+            self.methodname = 'cb'
+            self.engine = 'cython'
+        elif methodname.lower in ['cb_python']:
+            self.methodname = 'cb'
+            self.engine = 'python'
         elif methodname in ['zc', 'ZC']:
             self.methodname = 'zc'
+            self.engine = 'python'
         else:
             raise ValueError("Selected event detector %s is not valid" % methodname)
 
@@ -745,6 +757,7 @@ class AnalyzeMap(object):
             jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
             cb.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
                     sign=self.sign, eventstartthr=eventstartthr)
+            cb.set_cb_engine(engine=self.engine)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
             meandata = np.mean(idata[:jmax])
             cb.cbTemplateMatch(idata[:idmax]-meandata, threshold=self.threshold)
