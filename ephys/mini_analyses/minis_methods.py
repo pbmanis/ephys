@@ -1106,7 +1106,7 @@ class MiniAnalyses:
             mpl.show()
 
 
-@jit(nopython=False, parallel=True, cache=True)
+@jit(nopython=False, parallel=False, cache=True)
 def nb_clementsbekkers(data, template: Union[List, np.ndarray]):
     """
     cb algorithm for numba jit.
