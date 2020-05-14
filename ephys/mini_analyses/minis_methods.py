@@ -1154,7 +1154,7 @@ class ClementsBekkers(MiniAnalyses):
         self.dt = None
         self.data = None
         self.template = None
-        self.engine = "cython"
+        self.engine = "numba"
         self.method = "cb"
 
     def setup(
