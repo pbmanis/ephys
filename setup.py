@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+from Cython.Build import cythonize
 import os
 
 # Use Semantic Versioning, http://semver.org/
@@ -14,6 +15,7 @@ setup(name='ephys',
       author_email='pmanis@med.unc.edu',
       license='MIT',
       packages=find_packages(include=['ephys*']),
+      ext_modules=cythonize("ephys/mini_analyses/clembek.pyx"),
       zip_safe=False,
       entry_points={
           'console_scripts': [
