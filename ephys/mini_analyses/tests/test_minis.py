@@ -266,7 +266,8 @@ def run_AndradeJonas(pars:dataclass=None, bigevent:bool=False, plot: bool = Fals
             order=int(0.001 / pars.dt),
         )
         print('# events in template: ', len(t_events))
-        print(aj.threshold)
+        print('threshold: ', aj.threshold)
+        print('order: ', int(0.001 / pars.dt))
         
     if plot:
         aj.summarize(aj.data)

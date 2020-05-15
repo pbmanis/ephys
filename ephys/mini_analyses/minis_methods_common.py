@@ -36,6 +36,7 @@ class MiniAnalyses:
         self.min_event_amplitude = 5.0e-12  # pA default
         self.template = None
         self.template_tmax = 0.
+        self.analysis_window=[None, None]  # specify window or entire data set
     
     def setup(
         self,
@@ -48,7 +49,8 @@ class MiniAnalyses:
         eventstartthr: Union[float, None] = None,
         risepower: float = 4.0,
         min_event_amplitude: float = 2.0,
-        threshold = 2.5, 
+        threshold:float = 2.5, 
+        analysis_window:[Union[float, None], Union[float, None]] = [None, None],
     ) -> None:
         """
         Just store the parameters - will compute when needed
@@ -64,6 +66,7 @@ class MiniAnalyses:
         self.risepower = risepower
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
+        self.analysis_window = analysis_window
 
     def set_sign(self, sign: int = 1):
         self.sign = sign

@@ -284,17 +284,21 @@ class AndradeJonas(MiniAnalyses):
         lpf: Union[float, None] = None,
         verbose: bool = False,
     ) -> None:
-        cprint('r', "STARTING AJ")
+        # cprint('r', "STARTING AJ")
         starttime = timeit.default_timer()
         if self.template is None:
             self._make_template()
 
-        self.data = self.LPFData(data, lpf)
-        self.timebase = np.arange(0.0, self.data.shape[0] * self.dt, self.dt)
-        #    print (np.max(self.timebase), self.dt)
-        self.data -= np.mean(self.data)
-        # Weiner filtering
         starttime = timeit.default_timer()
+        self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
+        jmax = np.argmin(np.fabs(self.timebase - 0.6))
+        print(jmax)
+        self.data = self.LPFData(data[:jmax], lpf)
+        self.timebase = self.timebase[:jmax]
+        #    print (np.max(self.timebase), self.dt)
+        self.data = self.data - np.mean(self.data)
+        # Weiner filtering
+
         H = np.fft.fft(self.template)
         if H.shape[0] < self.data.shape[0]:
             H = np.hstack((H, np.zeros(self.data.shape[0] - H.shape[0])))
@@ -304,13 +308,10 @@ class AndradeJonas(MiniAnalyses):
         self.Crit = np.real(self.quot)*llambda
         # self.Crit = np.absolute(self.quot)
         if data_nostim is None:
-            sd = np.nanstd(self.Crit)
+            sd = np.std(self.Crit)
         else:  # clip to max of crit array, and be sure index array is integer, not float
             critmeas = [self.Crit[int(x)] for x in data_nostim if x < self.Crit.shape[0]]
-            print('critmeas: ', len(critmeas))
-            sd = np.nanstd(critmeas)
-        print('SD: ', sd)
-
+            sd = np.std(critmeas)
         self.sdthr = sd * self.threshold  # set the threshold
         self.above = np.clip(self.Crit, self.sdthr, None)
         self.onsets = (
