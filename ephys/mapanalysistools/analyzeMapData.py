@@ -245,13 +245,13 @@ class AnalyzeMap(object):
         elif methodname.lower() in ['cb_numba']:
             self.methodname = 'cb'
             self.engine='numba'
-        elif methodname.lower in ['cb_cython']:
+        elif methodname.lower() in ['cb_cython']:
             self.methodname = 'cb'
             self.engine = 'cython'
-        elif methodname.lower in ['cb_python']:
+        elif methodname.lower() in ['cb_python']:
             self.methodname = 'cb'
             self.engine = 'python'
-        elif methodname in ['zc', 'ZC']:
+        elif methodname.lower() in ['zc']:
             self.methodname = 'zc'
             self.engine = 'python'
         else:
@@ -746,28 +746,28 @@ class AnalyzeMap(object):
             aj = minis_methods.AndradeJonas()
             jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
             aj.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                    sign=self.sign, eventstartthr=eventstartthr)
+                    sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
             idata = data.view(np.ndarray) # [jtrial, itarget, :]
             meandata = np.mean(idata[:jmax])
             aj.deconvolve(idata[:idmax]-meandata, data_nostim=data_nostim,
-                    thresh=self.threshold, llambda=1., order=7)  # note threshold scaling...
+                    llambda=1., order=7)  # note threshold scaling...
             method = aj
         elif self.methodname == 'cb':
             cb = minis_methods.ClementsBekkers()
             jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
             cb.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                    sign=self.sign, eventstartthr=eventstartthr)
+                    sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
             cb.set_cb_engine(engine=self.engine)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
             meandata = np.mean(idata[:jmax])
-            cb.cbTemplateMatch(idata[:idmax]-meandata, threshold=self.threshold)
+            cb.cbTemplateMatch(idata[:idmax]-meandata)
             # result.append(res)
             # crit.append(cb.Crit)
             # scale.append(cb.Scale)
             method = cb
         elif self.methodname == 'zc':
             zc = minis_methods.ZCFinder()
-            zc.setup(dt=rate, tau1=self.taus[0], tau2=self.taus[1], sign=self.sign)
+            zc.setup(dt=rate, tau1=self.taus[0], tau2=self.taus[1], sign=self.sign, threshold=self.threshold)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
             jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
             meandata = np.mean(idata[:jmax])
@@ -775,8 +775,8 @@ class AnalyzeMap(object):
             iminlen = int(tminlen/rate)
 
             zc.find_events(idata[:idmax]-meandata, data_nostim=None, 
-                            minPeak=self.threshold*1e-12, minSum=self.threshold*1e-12*iminlen,
-                            thresh=None, minLength=iminlen)
+                            minPeak=5.*1e-12, minSum=5.*1e-12*iminlen,
+                            minLength=iminlen)
             method = zc
             
         else:
