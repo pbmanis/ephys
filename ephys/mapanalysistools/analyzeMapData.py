@@ -10,6 +10,10 @@ may be otherwise useful...
 import re
 import sys
 import sqlite3
+from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Union, Dict, List
+
 import matplotlib
 import matplotlib.colors as CM
 import seaborn
@@ -26,6 +30,8 @@ import math
 import dill as pickle
 import datetime
 import timeit
+
+
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
@@ -168,10 +174,57 @@ def wedges(x, y, w, h=None, theta1=0.0, theta2=360.0,
         collection.set_clim(vmin, vmax)
     return collection
 
+def def_notch():
+    return[60., 120., 180., 240.]
+    
+def def_twin_base():
+    return [0., 0.295]
+
+def def_twin_response():
+    return [0.301, 0.325]
+
+def def_taus():
+    return [0.0002, 0.005]
+
+def def_shutter_artifacts():
+    return [0.055]
+
+def def_analysis_window():
+    return [0.0, 0.999]
+
+@dataclass
+class AnalysisPars():
+    LPF_flag:bool = False
+    HPF_flag:bool = False
+    LPF : float = 5000.
+    HPF : float = 0.
+    notch_flag: bool = False
+    notch_freqs : list = field(default_factory = def_notch)
+    notch_Q : float = 90.
+    fix_artifact_flag : bool = True
+    spont_deadtime:float = 0.010
+    direct_window:float = 0.001
+    response_window:float = 0.015 # seconds
+    twin_base: list  = field(default_factory = def_twin_base)
+    twin_resp: list  = field(default_factory = def_twin_response)
+    analysis_window:list = field(default_factory = def_analysis_window)
+   # taus = [0.5, 2.0]
+    taus:list = field(default_factory = def_taus)
+    threshold:float = 3.0
+    sign:int = -1  # negative for EPSC, positive for IPSC
+    scale_factor:float = 1.0 # scale factore for data (convert to pA or mV,,, )
+    overlay_scale:float = 0.
+    shutter_artifact:list = field(default_factory = def_shutter_artifacts)
+    artifact_suppress:bool = True
+    artifact_duration:float = 2.0
+    stimdur:Union[float, None] = None
+    noderivative_artifact:bool = True  # normally
+    sd_thr:float = 3.0  # threshold in sd for diff based artifact suppression.    
 
 class AnalyzeMap(object):
 
     def __init__(self, rasterize=True):
+        self.Pars = AnalysisPars()
         self.AR = EP.acq4read.Acq4Read()
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
@@ -180,35 +233,10 @@ class AnalyzeMap(object):
         self.verbose = True
         self.last_dataset = None
         self.last_results = None
-        self.LPF_flag = False
-        self.LPF = 5000.
-        self.HPF_flag = False
-        self.HPF = 0.
-        self.notch_flag = False
-        self.notch_freqs = [60., 120., 180., 240.]
-        self.notch_Q = 90.
         self.lbr_command = False  # laser blue raw waveform (command)
         self.photodiode = False  # photodiode waveform (recorded)
-        self.fix_artifact_flag = True
-        self.response_window = 0.015  # seconds
-        self.direct_window = 0.001
-        self.spont_deadtime = 0.010 # 10 msec before the stimulus, stop plotting (but keep counting!)
+
         # set some defaults - these will be overwrittein with readProtocol
-        self.twin_base = [0., 0.295]
-        self.twin_resp = [[0.300+self.direct_window, 0.300 + self.response_window]]
-        self.maxtime = 0.999
-       # self.taus = [0.5, 2.0]
-        self.taus = [0.0002, 0.005]
-        self.threshold = 3.0
-        self.sign = -1  # negative for EPSC, positive for IPSC
-        self.scale_factor = 1 # scale factore for data (convert to pA or mV,,, )
-        self.overlay_scale = 0.
-        self.shutter_artifact = [0.055]
-        self.artifact_suppress = True
-        self.artifact_duration = 2.0
-        self.stimdur = None
-        self.noderivative_artifact = True  # normally
-        self.sd_thr = 3.0  # threshold in sd for diff based artifact suppression.
         self.template_file = None
         self.stepi = 25.
         self.datatype = 'I'  # 'I' or 'V' for Iclamp or Voltage Clamp
@@ -218,19 +246,23 @@ class AnalyzeMap(object):
               'blue': '\x1b[34m', 'cyan': '\x1b[36m' , 'white': '\x1b[0m', 'backgray': '\x1b[100m'}
         self.MA = minis.minis_methods.MiniAnalyses()  # get a minianalysis instance
 
+    def set_analysis_window(self, t0:float=0., t1:Union[float, None]=None):
+        assert t1 is not None  # force usage of t1
+        self.Pars.analysis_window = [t0, t1]
+        
     def set_notch(self, notch, freqs=[60], Q=90.):
-        self.notch_flag = notch
-        self.notch_freqs = freqs
-        self.notch_Q = Q
+        self.Pars.notch_flag = notch
+        self.Pars.notch_freqs = freqs
+        self.Pars.notch_Q = Q
 
     def set_LPF(self, LPF):
-        self.LPF = LPF
-        self.LPF_flag = True
+        self.Pars.LPF = LPF
+        self.Pars.LPF_flag = True
 
     def set_HPF(self, HPF):
-        self.HPF = HPF
+        self.Pars.HPF = HPF
         if HPF > 0:
-            self.HPF_flag = True
+            self.Pars.HPF_flag = True
 
     def set_rasterized(self, rasterized=False):
         self.rasterized = rasterized
@@ -260,27 +292,27 @@ class AnalyzeMap(object):
     def set_taus(self, taus):
         if len(taus) != 2:
             raise ValueError('Analyze Map Data: need two tau values in list!, got: ', taus)
-        self.taus = sorted(taus)
+        self.Pars.taus = sorted(taus)
 
     def set_shutter_artifact_time(self, t):
-        self.shutter_artifact = t
+        self.Pars.shutter_artifact = t
 
     def set_artifact_suppression(self, suppr=True):
         if not isinstance(suppr, bool):
             raise ValueError('analyzeMapData: artifact suppresion must be True or False')
-        self.artifact_suppress = suppr
-        self.fix_artifact_flag = suppr
+        self.Pars.artifact_suppress = suppr
+        self.Pars.fix_artifact_flag = suppr
 
     def set_artifact_duration(self, duration=2.0):
-        self.artifact_duration = duration
+        self.Pars.artifact_duration = duration
 
     def set_stimdur(self, duration=None):
-        self.stimdur = duration
+        self.Pars.stimdur = duration
 
     def set_noderivative_artifact(self, suppr=True):
         if not isinstance(suppr, bool):
             raise ValueError('analyzeMapData: derivative artifact suppresion must be True or False')
-        self.noderivative_artifact = suppr
+        self.Pars.noderivative_artifact = suppr
 
     def set_artifact_file(self, filename):
         self.template_file = Path('template_data_' + filename + '.pkl')
@@ -301,10 +333,10 @@ class AnalyzeMap(object):
 
         self.stimtimes = self.AR.getBlueLaserTimes()
         if self.stimtimes is not None:
-            self.twin_base = [0., self.stimtimes['start'][0] - 0.001]  # remember times are in seconds
-            self.twin_resp = []
+            self.Pars.twin_base = [0., self.stimtimes['start'][0] - 0.001]  # remember times are in seconds
+            self.Pars.twin_resp = []
             for j in range(len(self.stimtimes['start'])):
-                self.twin_resp.append([self.stimtimes['start'][j]+self.direct_window, self.stimtimes['start'][j]+self.response_window])
+                self.Pars.twin_resp.append([self.stimtimes['start'][j]+self.Pars.direct_window, self.stimtimes['start'][j]+self.Pars.response_window])
         self.lbr_command = self.AR.getLaserBlueCommand() # just get flag; data in self.AR
         try:
             self.photodiode = self.AR.getPhotodiode()
@@ -481,11 +513,11 @@ class AnalyzeMap(object):
                 # p0s.addPoints(x=[tb_event[jpeak-jstart]], y=[evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
                 # print('r - l = 0')
                 continue
-            if (self.sign < 0 ) and (np.mean(data[left:right]) > self.sign*min_event):  # filter events by amplitude near peak
+            if (self.Pars.sign < 0 ) and (np.mean(data[left:right]) > self.Pars.sign*min_event):  # filter events by amplitude near peak
                 # p0s.addPoints(x=[tb_event[jpeak-jstart]], y=[evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
               #  print('data pos, sign neg', np.mean(data[left:right]))
                 continue
-            if (self.sign >= 0) and (np.mean(data[left:right]) < self.sign*min_event):
+            if (self.Pars.sign >= 0) and (np.mean(data[left:right]) < self.Pars.sign*min_event):
                 #p0s.addPoints([tb_event[jpeak-jstart]], [evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
                # print('data neg, sign pos', np.mean(data[left:right]))
                 continue
@@ -504,34 +536,35 @@ class AnalyzeMap(object):
         filtfunc = scipy.signal.filtfilt
         samplefreq = 1.0/self.rate
         nyquistfreq = samplefreq/1.95
-        wn = self.LPF/nyquistfreq
+        wn = self.Pars.LPF/nyquistfreq
         b, a = scipy.signal.bessel(2, wn)
-        if self.HPF_flag:
-            wnh = self.HPF/nyquistfreq
+        if self.Pars.HPF_flag:
+            wnh = self.Pars.HPF/nyquistfreq
             bh, ah = scipy.signal.bessel(2, wnh, btype='highpass')
-        imax = int(max(np.where(tb < self.maxtime)[0]))
+
+        imax = int(max(np.where(tb < self.Pars.analysis_window[1])[0]))
         # imax = len(tb)
         data2 = np.zeros_like(data)
-        if data.ndim == 3 and self.LPF_flag:
-            if self.notch_flag:
-                print(self.colors['yellow']+'Notch Filtering Enabled:', self.notch_freqs, self.colors['white'])
+        if data.ndim == 3 and self.Pars.LPF_flag:
+            if self.Pars.notch_flag:
+                cprint('y', f'Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}')
             for r in range(data.shape[0]):
                 for t in range(data.shape[1]):
                     data2[r,t,:imax] = filtfunc(b, a, data[r, t, :imax]) #  - np.mean(data[r, t, 0:250]))
-                    if self.HPF_flag:
+                    if self.Pars.HPF_flag:
                         data2[r,t,:imax] = filtfunc(bh, ah, data2[r, t, :imax]) #  - np.mean(data[r, t, 0:250]))
                         
-                    if self.notch_flag:
-                        data2[r,t,:imax] = FILT.NotchFilterZP(data2[r, t, :imax], notchf=self.notch_freqs, Q=self.notch_Q,
+                    if self.Pars.notch_flag:
+                        data2[r,t,:imax] = FILT.NotchFilterZP(data2[r, t, :imax], notchf=self.Pars.notch_freqs, Q=self.Pars.notch_Q,
                             QScale=False, samplefreq=samplefreq)
         elif data.ndim == 2 and self.LPF_flag:
             data2 = filtfunc(b, a, data - np.mean(data[0:250]))
-            if self.HPF_flag:
+            if self.Pars.HPF_flag:
                 data2[r,t,:imax] = filtfunc(bh, ah, data2[r, t, :imax]) #  - np.mean(data[r, t, 0:250]))
-            if self.notch_flag:
-                if self.notch_flag:
-                    print(self.colors['yellow']+'Notch Filtering Enabled', self.notch_freqs, self.colors['white'])
-                data2 = FILT.NotchFilterZP(data2, notchf=self.notch_freqs, Q=self.notch_Q,
+            if self.Pars.notch_flag:
+                if self.Pars.notch_flag:
+                    cprint('y', 'Notch Filtering Enabled {str(self.Pars.notch_freqs):s}')
+                data2 = FILT.NotchFilterZP(data2, notchf=self.notch_freqs, Q=self.Pars.notch_Q,
                     QScale=False, samplefreq=samplefreq)
         else:
             return data
@@ -567,7 +600,7 @@ class AnalyzeMap(object):
 #        rate = rate*1e3  # convert rate to msec
 
         # make visual maps with simple scores
-        nstim = len(self.twin_resp)
+        nstim = len(self.Pars.twin_resp)
         self.nstim = nstim
         # find max position stored in the info dict
         pmax = len(list(info.keys()))
@@ -578,11 +611,11 @@ class AnalyzeMap(object):
         pos = np.zeros((data.shape[1], 2))
         infokeys = list(info.keys())
         for ix, t in enumerate(range(data.shape[1])):  # compute for each target
-            for s in range(len(self.twin_resp)): # and for each stimulus
-                Qr[s, t], Qb[s, t] = self.calculate_charge(tb, mdata[t,:], twin_base=self.twin_base, twin_resp=self.twin_resp[s])
-                Zscore[s, t] = self.ZScore(tb, mdata[t,:], twin_base=self.twin_base, twin_resp=self.twin_resp[s])
-                I_max[s, t] = self.Imax(tb, data[0,t,:], twin_base=self.twin_base, twin_resp=self.twin_resp[s],
-                                sign=self.sign)*self.scale_factor  # just the FIRST pass
+            for s in range(len(self.Pars.twin_resp)): # and for each stimulus
+                Qr[s, t], Qb[s, t] = self.calculate_charge(tb, mdata[t,:], twin_base=self.Pars.twin_base, twin_resp=self.Pars.twin_resp[s])
+                Zscore[s, t] = self.ZScore(tb, mdata[t,:], twin_base=self.Pars.twin_base, twin_resp=self.Pars.twin_resp[s])
+                I_max[s, t] = self.Imax(tb, data[0,t,:], twin_base=self.Pars.twin_base, twin_resp=self.Pars.twin_resp[s],
+                                sign=self.Pars.sign)*self.Pars.scale_factor  # just the FIRST pass
             try:
                 pos[t,:] = [info[infokeys[ix]]['pos'][0], info[infokeys[ix]]['pos'][1]]
             except:
@@ -618,7 +651,7 @@ class AnalyzeMap(object):
             print('  ALL trials in protocol analyzed')
         return{'Qr': Qr, 'Qb': Qb, 'ZScore': Zscore, 'I_max': I_max, 'positions': pos,
                'stimtimes': self.stimtimes, 'events': events, 'eventtimes': eventlist, 'dataset': dataset,
-               'sign': self.sign, 'avgevents': avgevents, 'rate': rate, 'ntrials': data.shape[0]}
+               'sign': self.Pars.sign, 'avgevents': avgevents, 'rate': rate, 'ntrials': data.shape[0]}
 
     def analyze_one_map(self, dataset, plotevents=False, raster=False, noparallel=False, verbose=False):
         self.verbose = verbose
@@ -633,22 +666,23 @@ class AnalyzeMap(object):
             self.P = None
             return None
         self.last_dataset = dataset
-        if self.fix_artifact_flag:
+        if self.Pars.fix_artifact_flag:
             self.data_clean, self.avgdata = self.fix_artifacts(self.data)
             if self.verbose:
                 print(self.colors['cyan']+'Fixing Artifacts', self.colors['white'])
         else:
             self.data_clean = self.data
-        if self.LPF_flag or self.notch_flag or self.HPF_flag:
+        if self.Pars.LPF_flag or self.Pars.notch_flag or self.Pars.HPF_flag:
             if self.verbose:
-                print(self.colors['magenta']+'LPF Filtering', self.LPF, self.colors['white'])
+                print(self.colors['magenta']+'LPF Filtering', self.Pars.LPF, self.colors['white'])
             self.data_clean = self.filter_data(self.tb, self.data_clean)
         
         stimtimes = []
         data_nostim = []
         # get a list of data points OUTSIDE the stimulus-response window
         lastd = 0  # keeps track of the last valid point
-        for i, tr in enumerate(self.twin_resp):  # get window for response
+        print(self.Pars.twin_resp)
+        for i, tr in enumerate(self.Pars.twin_resp):  # get window for response
             notokd = np.where((self.tb >= tr[0]) & (self.tb < tr[1]))[0]
             data_nostim.append(list(range(lastd, notokd[0])))
             lastd = notokd[-1]
@@ -738,25 +772,47 @@ class AnalyzeMap(object):
         spont_ev = []
         order = []
         nevents = 0
-        if tmaxev > self.maxtime:  # block step information
-            tmaxev = self.maxtime
-        idmax = int(self.maxtime/rate)
+        if tmaxev > self.Pars.analysis_window[1]:  # block step information
+            tmaxev = self.Pars.analysis_window[1]
+        idmax = int(self.Pars.analysis_window[1]/rate)
 
         if self.methodname == 'aj':
             aj = minis_methods.AndradeJonas()
-            jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
-            aj.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                    sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
+            jmax = int((2*self.Pars.taus[0] + 3*self.Pars.taus[1])/rate)
+            if self.Pars.LPF_flag is None:
+                lpf = None
+            else:
+                lpf = self.Pars.LPF
+            lpf = None
+            print('sign: ', self.Pars.sign)
+            aj.setup(
+                tau1=self.Pars.taus[0],
+                tau2=self.Pars.taus[1],
+                dt=rate,
+                delay=0.0,
+                template_tmax = rate*(idmax-1),  # taus are for template
+                sign=self.Pars.sign,
+                risepower=4.0,
+                threshold=self.Pars.threshold,
+                )
+            # aj.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
+            #         sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
             idata = data.view(np.ndarray) # [jtrial, itarget, :]
-            meandata = np.mean(idata[:jmax])
-            aj.deconvolve(idata[:idmax]-meandata, data_nostim=data_nostim,
-                    llambda=1., order=7)  # note threshold scaling...
+            # meandata = np.mean(idata[:idmax])
+            aj.deconvolve(
+                idata[:idmax],
+                lpf=lpf,
+                llambda=5.,
+                order=int(0.001 / rate),
+            )
+            # aj.deconvolve(idata[:idmax]-meandata, data_nostim=data_nostim,
+  #                   llambda=1., order=7)  # note threshold scaling...
             method = aj
         elif self.methodname == 'cb':
             cb = minis_methods.ClementsBekkers()
-            jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
-            cb.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                    sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
+            jmax = int((2*self.Pars.taus[0] + 3*self.Pars.taus[1])/rate)
+            cb.setup(tau1=self.Pars.taus[0], tau2=self.Pars.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
+                    sign=self.Pars.sign, eventstartthr=eventstartthr, threshold=self.Pars.threshold)
             cb.set_cb_engine(engine=self.engine)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
             meandata = np.mean(idata[:jmax])
@@ -767,11 +823,12 @@ class AnalyzeMap(object):
             method = cb
         elif self.methodname == 'zc':
             zc = minis_methods.ZCFinder()
-            zc.setup(dt=rate, tau1=self.taus[0], tau2=self.taus[1], sign=self.sign, threshold=self.threshold)
+            print('sign: ', self.sign)
+            zc.setup(dt=rate, tau1=self.Pars.taus[0], tau2=self.Pars.taus[1], sign=self.Pars.sign, threshold=self.Pars.threshold)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
-            jmax = int((2*self.taus[0] + 3*self.taus[1])/rate)
+            jmax = int((2*self.Pars.taus[0] + 3*self.Pars.taus[1])/rate)
             meandata = np.mean(idata[:jmax])
-            tminlen = self.taus[0]+self.taus[1]
+            tminlen = self.Pars.taus[0]+self.Pars.taus[1]
             iminlen = int(tminlen/rate)
 
             zc.find_events(idata[:idmax]-meandata, data_nostim=None, 
@@ -786,9 +843,9 @@ class AnalyzeMap(object):
         # build array of artifact times first
         art_starts = []
         art_durs = []
-        art_starts = [self.maxtime, self.shutter_artifact]  # generic artifacts
+        art_starts = [self.Pars.analysis_window[1], self.Pars.shutter_artifact]  # generic artifacts
         art_durs = [2, 2*rate]
-        if self.artifact_suppress:
+        if self.Pars.artifact_suppress:
             for si, s in enumerate(self.stimtimes['start']):
                 if s in art_starts:
                     continue
@@ -843,7 +900,7 @@ class AnalyzeMap(object):
         ok_events = np.array(method.smpkindex)[npk]
        # print(ok_events*rate)
 
-        npk_ev = self.select_events(ok_events, st_times, self.response_window, rate, mode='accept', first_only=True)
+        npk_ev = self.select_events(ok_events, st_times, self.Pars.response_window, rate, mode='accept', first_only=True)
         ev_onsets = np.array(method.onsets)[npk_ev]
         evoked_ev.append([np.array(method.onsets)[npk_ev], np.array(method.smpkindex)[npk_ev]])
 
@@ -954,7 +1011,7 @@ class AnalyzeMap(object):
             #     crossshutter = 0* 0.365e-21*Util.SignalFilter_HPFBessel(self.shutter['data'][0], 1900., self.AR.Photodiode_sample_rate[0], NPole=2, bidir=False)
             #     crosstalk += crossshutter
 
-            maxi = np.argmin(np.fabs(self.tb - self.maxtime))
+            maxi = np.argmin(np.fabs(self.tb - self.Pars.analysis_window[1]))
             ifitx = []
             art_times = np.array(self.stimtimes['start'])
             # artifact are:
@@ -970,7 +1027,7 @@ class AnalyzeMap(object):
 
             art_times = np.append(art_times, other_arts)  # unknown (shutter is at 50 msec)
             art_durs = np.array(self.stimtimes['duration'])
-            other_artdurs = self.artifact_duration*np.ones_like(other_arts)
+            other_artdurs = self.Pars.artifact_duration*np.ones_like(other_arts)
             art_durs = np.append(art_durs, other_artdurs)  # shutter - do 2 msec
 
             for i in range(len(art_times)):
@@ -996,7 +1053,7 @@ class AnalyzeMap(object):
             # derivative=based artifact suppression - for what might be left
             # just for fast artifacts
             print('Derivative-based artifact suppression is ON')
-            itmax = int(self.maxtime/dt)
+            itmax = int(self.Pars.analysis_window[1]/dt)
             avgdr = datar.copy()
             olddatar = datar.copy()
             while olddatar.ndim > 1:
@@ -1189,7 +1246,7 @@ class AnalyzeMap(object):
         nevtimes = 0
         spont_ev_count = 0
         dt = np.mean(np.diff(self.tb))
-        itmax = int(self.maxtime/dt)
+        itmax = int(self.Pars.analysis_window[1]/dt)
         if trsel is None:
             for j in range(mdata.shape[0]):
                 for i in range(mdata.shape[1]):
@@ -1211,7 +1268,7 @@ class AnalyzeMap(object):
                                 sd = events[j][i]['spont_dur'][0]
                                 tsi = smpki[np.where(tb[smpki] < sd)[0].astype(int)]  # find indices of spontanteous events (before first stimulus)
                                 tri = np.ndarray(0)
-                                for iev in self.twin_resp:  # find events in all response windows
+                                for iev in self.Pars.twin_resp:  # find events in all response windows
                                     tri = np.concatenate((tri.copy(), smpki[np.where((tb[smpki] >= iev[0]) & (tb[smpki] < iev[1]))[0]]), axis=0).astype(int)
                                 ts2i = list(set(smpki) - set(tri.astype(int)).union(set(tsi.astype(int))))  # remainder of events (not spont, not possibly evoked)
                                 ms = np.array(mdata[j, i, tsi]).ravel() # spontaneous events
@@ -1224,11 +1281,11 @@ class AnalyzeMap(object):
                                 ck = CM.to_rgba('k', alpha=1.0)
                                 cg = CM.to_rgba('gray', alpha=1.0)
 
-                                ax.plot(tb[tsi], ms*self.scale_factor + self.stepi*i,
+                                ax.plot(tb[tsi], ms*self.Pars.scale_factor + self.stepi*i,
                                  'o', color=ck, markersize=2, markeredgecolor='None', zorder=0, rasterized=self.rasterized)
-                                ax.plot(tb[tri], mr*self.scale_factor + self.stepi*i,
+                                ax.plot(tb[tri], mr*self.Pars.scale_factor + self.stepi*i,
                                  'o', color=cr, markersize=2, markeredgecolor='None', zorder=0, rasterized=self.rasterized)
-                                ax.plot(tb[ts2i], ms2*self.scale_factor + self.stepi*i,
+                                ax.plot(tb[ts2i], ms2*self.Pars.scale_factor + self.stepi*i,
                                  'o', color=cg, markersize=2, markeredgecolor='None', zorder=0, rasterized=self.rasterized)
                     if tb.shape[0] > 0 and mdata[j,i,:].shape[0] > 0:
                         if crflag:
@@ -1237,16 +1294,16 @@ class AnalyzeMap(object):
                         else:
                             alpha = 0.5
                             lw = 0.2
-                        ax.plot(tb[:itmax], mdata[j, i, :itmax]*self.scale_factor + self.stepi*i, linewidth=lw,
+                        ax.plot(tb[:itmax], mdata[j, i, :itmax]*self.Pars.scale_factor + self.stepi*i, linewidth=lw,
                                 rasterized=False, zorder=10, alpha=alpha)
             print(f"      SPONTANEOUS Event Count: {spont_ev_count:d}")
         else:
             for j in range(mdata.shape[0]):
                 if tb.shape[0] > 0 and mdata[j,trsel,:].shape[0] > 0:
-                    ax.plot(tb[:itmax], mdata[0, trsel, :itmax]*self.scale_factor, linewidth=0.2,
+                    ax.plot(tb[:itmax], mdata[0, trsel, :itmax]*self.Pars.scale_factor, linewidth=0.2,
                             rasterized=False, zorder=10)
             PH.clean_axes(ax)
-            PH.calbar(ax, calbar=[0.6, -200e-12*self.scale_factor, 0.05, 100e-12*self.scale_factor],
+            PH.calbar(ax, calbar=[0.6, -200e-12*self.Pars.scale_factor, 0.05, 100e-12*self.Pars.scale_factor],
                 axesoff=True, orient='left', unitNames={'x': 's', 'y': 'pA'}, fontsize=11, weight='normal', font='Arial')
 
         mpl.suptitle(str(title).replace(r'_', r'\_'), fontsize=8)
@@ -1330,7 +1387,7 @@ class AnalyzeMap(object):
                     #     continue
                     if evtype == 'avgspont':
                         spont_ev_count += 1
-                        if trace_tb[jevent] + self.spont_deadtime > spont_dur:  # remove events that cross into stimuli
+                        if trace_tb[jevent] + self.Pars.spont_deadtime > spont_dur:  # remove events that cross into stimuli
                             if self.verbose:
                                 print(f"     Event {jevent:6d} in trace {itrace:4d} crosses into stimulus")
                             continue
@@ -1370,20 +1427,20 @@ class AnalyzeMap(object):
                 CP.cprint('red', f"aved shape is {str(aved.shape):s}")
                 return
         tx = np.broadcast_to(tb, (aved.shape[0], tb.shape[0])).T
-        if self.sign < 0:
+        if self.Pars.sign < 0:
             maxev = -minev
-        self.MA.set_sign(self.sign)
+        self.MA.set_sign(self.Pars.sign)
         avedat = np.mean(aved, axis=0)
         tb = tb[:len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-        self.MA.fit_average_event(tb, avedat, debug=False, label='Map average', inittaus=self.taus, initdelay=tpre)
+        self.MA.fit_average_event(tb, avedat, debug=False, label='Map average', inittaus=self.Pars.taus, initdelay=tpre)
         Amplitude = self.MA.fitresult[0]
         tau1 = self.MA.fitresult[1]
         tau2 = self.MA.fitresult[2]
         bfdelay = self.MA.fitresult[3]
         bfit = self.MA.avg_best_fit
-        if self.sign == -1:
+        if self.Pars.sign == -1:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
@@ -1426,7 +1483,7 @@ class AnalyzeMap(object):
         while mdata.ndim > 1:
             mdata = mdata.mean(axis=0)
         if len(tb) > 0 and len(mdata) > 0:
-            ax.plot(tb*1e3, mdata*self.scale_factor, color, rasterized=self.rasterized, linewidth=0.6)
+            ax.plot(tb*1e3, mdata*self.Pars.scale_factor, color, rasterized=self.rasterized, linewidth=0.6)
         ax.set_xlim(0., self.AR.tstart*1e3-1.0)
         return
 
@@ -1666,8 +1723,8 @@ class AnalyzeMap(object):
         if self.AR.spotsize == None:
             self.AR.spotsize=50e-6
         self.newvmax = np.max(results[measuretype])
-        if self.overlay_scale > 0.:
-            self.newvmax = self.overlay_scale
+        if self.Pars.overlay_scale > 0.:
+            self.newvmax = self.Pars.overlay_scale
         self.newvmax = self.plot_map(self.P.axdict['A'], cbar, results['positions'], measure=results, measuretype=measuretype,
             vmaxin=self.newvmax, imageHandle=self.MT, imagefile=imagefile, angle=rotation, spotsize=self.AR.spotsize,
             whichstim=whichstim, average=average)
