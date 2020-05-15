@@ -1,6 +1,6 @@
 from __future__ import print_function
 """
-Run unit tests for cnmodel
+Run unit tests for minis
 """
 
 import os, sys
@@ -33,7 +33,7 @@ def main():
             add_path = False
             break
     if add_path:
-        flags.append('ephysanalysis')
+        flags.append('mini_analyses')
 
     # ignore the an cache
     # flags.append('--ignore=minis/somedir')

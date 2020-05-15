@@ -20,14 +20,14 @@ import ephys.mini_analyses.minis_methods as MM
 
 # import pyqtgraph as pg
 
-
+testmode = True # set false to hold graphs up until closed; true for 2 sec display
 
 def def_taus():
-    return [0.001, 0.010]  # in seconds
+    return [0.001, 0.010] # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
 
 
 def def_template_taus():
-    return [0.002, 0.005]
+    return [0.001, 0.005] # [0.001, 0.003] # was 0.001, 0.005
 
 
 @dataclass
@@ -38,7 +38,7 @@ class EventParameters:
     meanrate: float = 10.0  # Hz
     amp: float = 20e-12  # Amperes
     ampvar: float = 5e-12  # Amperes (variance)
-    noise: float = 4e-12# 0.0  # Amperes, gaussian nosie
+    noise: float = 4e-12# 0.0  # Amperes, gaussian nosie  # was 4e-12
     threshold: float = 2.5  # threshold used in the analyses
     LPF:Union[None, float] = None # low-pass filtering applied to data, f in Hz or None
     HPF:Union[None, float] = None # high pass filter (sometimes useful)
@@ -177,19 +177,27 @@ def run_ZeroCrossing(pars=None, bigevent:bool=False, plot: bool = False) -> obje
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
     for i in range(1):
-        timebase, testpsc, testpscn, i_events, t_events = generate_testdata(pars)
+        pars.noiseseed = i * 47
+        pars.expseed = i
         zc = MM.ZCFinder()
         zc.setup(
-            dt=pars.dt, tau1=pars.template_taus[0], tau2=pars.template_taus[1], sign=pars.sign
-        )  # dt=dt, tau1=0.001, tau2=0.005, sign=-1)
+            tau1=pars.template_taus[0],
+            tau2=pars.template_taus[1],
+            dt=pars.dt,
+            delay=0.0,
+            template_tmax= 5.0*pars.template_taus[1],
+            sign=pars.sign,
+            threshold=pars.threshold,
+        )
+        timebase, testpsc, testpscn, i_events, t_events = generate_testdata(pars)
         events = zc.find_events(
-            testpscn, data_nostim=None, thresh=pars.threshold, minLength=minlen,
+            testpscn, data_nostim=None, minLength=minlen,
             lpf=pars.LPF, hpf=pars.HPF,
         )
-        print('# events in template: ', len(t_events))
+        print('# events in test data set: ', len(t_events))
         
     if plot:
-        zc.plots(title="Zero Crossings", testmode=True)
+        zc.plots(title="Zero Crossings", testmode=testmode)
     return zc
 
 
@@ -202,9 +210,7 @@ def run_ClementsBekkers(pars:dataclass=None, bigevent:bool=False, extra='numba',
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
     for i in range(1):
-        pars.noiseseed = i * 47
-        pars.expseed = i
-        timebase, testpsc, testpscn, i_events, t_events = generate_testdata(pars)
+
         cb = MM.ClementsBekkers()
         pars.baseclass = cb
         cb.setup(
@@ -212,15 +218,16 @@ def run_ClementsBekkers(pars:dataclass=None, bigevent:bool=False, extra='numba',
             tau2=pars.template_taus[1],
             dt=pars.dt,
             delay=0.0,
-            template_tmax= 5*pars.template_taus[1],
+            template_tmax= 5.0*pars.template_taus[1],
             sign=pars.sign,
         )
+        timebase, testpsc, testpscn, i_events, t_events = generate_testdata(pars)
         cb._make_template()
         cb.set_cb_engine(extra)
         cb.cbTemplateMatch(testpscn, threshold=pars.threshold, lpf=pars.LPF)
         print('# events in template: ', len(t_events))
     if plot:
-        cb.plots(title=f"Clements Bekkers using {extra:s}", testmode=True)
+        cb.plots(title=f"Clements Bekkers using {extra:s}", testmode=testmode)
     return cb
 
 
@@ -231,10 +238,15 @@ def run_AndradeJonas(pars:dataclass=None, bigevent:bool=False, plot: bool = Fals
     # amp = 100e-12
     if pars is None:
         pars = EventParameters()
+    print(pars)
+    
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
     for i in range(1):
         aj = MM.AndradeJonas()
+        pars.baseclass = aj
+        pars.noiseseed = i * 47
+        pars.expseed = i
         aj.setup(
             tau1=pars.template_taus[0],
             tau2=pars.template_taus[1],
@@ -243,25 +255,22 @@ def run_AndradeJonas(pars:dataclass=None, bigevent:bool=False, plot: bool = Fals
             template_tmax = pars.maxt,  # taus are for template
             sign=pars.sign,
             risepower=4.0,
+            threshold=pars.threshold,
         )
         # generate test data
-        pars.baseclass = aj
-        pars.noiseseed = i * 47
-        pars.expseed = i
         timebase, testpsc, testpscn, i_events, t_events = generate_testdata(pars)
-
         aj.deconvolve(
             testpscn - np.mean(testpscn),
-            thresh=pars.threshold,
             lpf=pars.LPF,
-            llambda=1,
+            llambda=5.,
             order=int(0.001 / pars.dt),
         )
         print('# events in template: ', len(t_events))
+        print(aj.threshold)
         
     if plot:
         aj.summarize(aj.data)
-        aj.plots(events=None, title="AJ", testmode=True)  # i_events)
+        aj.plots(events=None, title="AJ", testmode=testmode)  # i_events)
     return aj
 
 class MiniTestMethods():
@@ -426,11 +435,18 @@ if __name__ == "__main__":
                 mpl.plot(zct, zc.allevents[a])
             mpl.show()
         if testmethod in ["CB", "cb"]:
-            cb = run_ClementsBekkers(pars, plot=True)
-            print(len(cb.allevents))
-            for a in range(len(cb.allevents)):
-                mpl.plot(cb.t_template, cb.allevents[a])
-            mpl.show()
+            for extras in  ['numba', 'cython',]:  # python version still does not work correctly
+                cb = run_ClementsBekkers(pars, extra=extras, plot=True)
+                print(len(cb.allevents))
+                for a in range(len(cb.allevents)):
+                    try:
+                        mpl.plot(cb.t_template, cb.allevents[a])
+                    except:
+                        # print(dir(cb))
+                        for k in range(len(cb.allevents)):
+                            print(cb.allevents[k].shape)
+                        raise ValueError(f"a={a:d}, templ = {cb.t_template.shape[0]:d}, ev: {cb.allevents[a].shape[0]:d}, {cb.onsets[a]:d}, {str(cb.data.shape):s}")
+                mpl.show()
         if testmethod in ["AJ", "aj"]:
             aj = run_AndradeJonas(pars, plot=True)
             print(len(aj.allevents))
