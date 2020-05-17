@@ -823,7 +823,7 @@ class AnalyzeMap(object):
             method = cb
         elif self.methodname == 'zc':
             zc = minis_methods.ZCFinder()
-            print('sign: ', self.sign)
+            print('sign: ', self.Pars.sign)
             zc.setup(dt=rate, tau1=self.Pars.taus[0], tau2=self.Pars.taus[1], sign=self.Pars.sign, threshold=self.Pars.threshold)
             idata = data.view(np.ndarray)# [jtrial, itarget, :]
             jmax = int((2*self.Pars.taus[0] + 3*self.Pars.taus[1])/rate)
