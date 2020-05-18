@@ -51,6 +51,8 @@ class MiniAnalyses:
         min_event_amplitude: float = 2.0,
         threshold:float = 2.5, 
         analysis_window:[Union[float, None], Union[float, None]] = [None, None],
+        lpf:Union[float, None] = None,
+        hpf:Union[float, None] = None
     ) -> None:
         """
         Just store the parameters - will compute when needed
@@ -67,6 +69,8 @@ class MiniAnalyses:
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
         self.analysis_window = analysis_window
+        self.lpf = lpf
+        self.hpf = hpf
 
     def set_sign(self, sign: int = 1):
         self.sign = sign
@@ -117,27 +121,16 @@ class MiniAnalyses:
         else:
             return data
 
-    def HPFData(self, data, hpf=None, NPole=8) -> np.ndarray:
-        if hpf is not None:
-            if len(data.shape) == 1:
-                ndata = data.shape[0]
-            else:
-                ndata = data.shape[1]
-            nyqf = 0.5 * ndata * self.dt
-            if hpf < 1.0 / nyqf:  # duration of a trace
-                raise ValueError(
-                    "hpf < Nyquist: ",
-                    hpf,
-                    "nyquist",
-                    1.0 / nyqf,
-                    "ndata",
-                    ndata,
-                    "dt",
-                    self.dt,
-                    "sampelrate",
-                    1.0 / self.dt,
-                )
-            print(
+    def HPFData(self, data:np.ndarray, hpf: Union[float, None] = None, NPole: int = 8) -> np.ndarray:
+        if hpf is None:
+            return data
+        if len(data.shape) == 1:
+            ndata = data.shape[0]
+        else:
+            ndata = data.shape[1]
+        nyqf = 0.5 * ndata * self.dt
+        if hpf < 1.0 / nyqf:  # duration of a trace
+            raise ValueError(
                 "hpf < Nyquist: ",
                 hpf,
                 "nyquist",
@@ -149,16 +142,47 @@ class MiniAnalyses:
                 "sampelrate",
                 1.0 / self.dt,
             )
-            data = dfilt.SignalFilter_HPFButter(data, hpf, 1.0 / self.dt, NPole=8)
-            import matplotlib.pyplot as mpl
+        print(
+            "OK, hpf > Nyquist: ",
+            "hpf = ", hpf,
+            "nyquist = ",
+            1.0 / nyqf,
+            "ndata",
+            ndata,
+            "dt",
+            self.dt,
+            "samplerate",
+            1.0 / self.dt,
+        )
+        data = dfilt.SignalFilter_HPFButter(data-data[0], hpf, 1.0 / self.dt, NPole=4)
+        import matplotlib.pyplot as mpl
 
-            mpl.plot(data)
-            mpl.show()
-            return data
+        mpl.plot(data)
+        mpl.title("HPF")
+        mpl.show()
+        return data
+    
+    def prepare_data(self, data):
+        """
+        This function prepares the incoming data for the mini analyses.
+        1. Clip the data in time (remove sections with current or voltage steps)
+        2. Filter the data (LPF, HPF)
+        """
+        self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
+        if self.analysis_window[1] is not None:
+            jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
         else:
-
-            return data
-
+            jmax = len(self.timebase)
+        if self.analysis_window[0] is not None:
+            jmin = np.argmin(np.fabs(self.timebase) - self.analysis_window[0])
+        else:
+            jmin = 0
+        print('jmax: ', jmin, jmax, data.shape, self.dt, np.max(self.timebase))
+        data = data[jmin:jmax]
+        data = self.LPFData(data, lpf=self.lpf)
+        self.data = self.HPFData(data, hpf=self.hpf)
+        self.timebase = self.timebase[jmin:jmax]
+        
     def moving_average(self, a, n: int = 3) -> (np.array, int):
         ret = np.cumsum(a, dtype=float)
         ret[n:] = ret[n:] - ret[:-n]

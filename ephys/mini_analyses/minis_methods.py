@@ -229,8 +229,8 @@ class ClementsBekkers(MiniAnalyses):
         order: int = 7,
         lpf: Union[float, None] = None,
     ) -> None:
-        self.data = self.LPFData(data, lpf)
-
+        
+        self.prepare_data(data) # also does timebase
         self.clements_bekkers(self.data)  # flip data sign if necessary
         # svwinlen = self.Crit.shape[0]  # smooth the crit a bit so not so dependent on noise
         # if svwinlen > 11:
@@ -286,16 +286,13 @@ class AndradeJonas(MiniAnalyses):
     ) -> None:
         # cprint('r', "STARTING AJ")
         starttime = timeit.default_timer()
+        
+        self.prepare_data(data) # also does timebase
         if self.template is None:
             self._make_template()
 
         starttime = timeit.default_timer()
-        self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
-        jmax = np.argmin(np.fabs(self.timebase - 0.6))
-        print(jmax)
-        self.data = self.LPFData(data[:jmax], lpf)
-        self.timebase = self.timebase[:jmax]
-        #    print (np.max(self.timebase), self.dt)
+
         self.data = self.data - np.mean(self.data)
         # Weiner filtering
 
@@ -326,7 +323,74 @@ class AndradeJonas(MiniAnalyses):
         if verbose:
             print("AJ run time: {0:.4f} s".format(endtime))
 
+class RSDeconvolve(MiniAnalyses):
+    """Event finder using Richardson Silberberg Method, J. Neurophysiol. 2008
+    
+    """
+    def __init__(self):
+        self.template = None
+        self.onsets = None
+        self.timebase = None
+        self.dt = None
+        self.sign = 1
+        self.taus = None
+        self.template_max = None
+        self.idelay = 0
+        self.threshold=2.0
+        self.method = "rs"
 
+    def deconvolve(
+        self,
+        data: np.ndarray,
+        data_nostim: Union[list, np.ndarray, None] = None,
+        verbose: bool = False,
+    ) -> None:
+        
+        self.prepare_data(data) # windowing, filtering and timebase
+        starttime = timeit.default_timer()
+                # if data_nostim is None:
+        #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
+        # else:  # clip to max of crit array, and be sure index array is integer, not float
+        #     data_nostim = [int(x) for x in data_nostim if x < self.Crit.shape[0]]
+        # data = FN.lowPass(data,cutoff=3000.,dt = 1/20000.)
+
+        self.Crit = self.sign*FN.expDeconvolve(
+            self.data, self.taus[1]  # use decay value for deconvolve
+        )
+        self.sdthr = self.threshold*np.std(self.Crit)
+        
+        self.above = np.clip(self.Crit, self.sdthr, None)
+        self.onsets = (
+            scipy.signal.argrelextrema(self.above, np.greater, order=int(100))[0]
+            - 1
+            + self.idelay
+        )
+        # that actually gives peaks. Need onsets of events, so go back to where trace < 0.5*std(data)
+
+        for i, o in enumerate(self.onsets):
+            last0 = int(o - int(self.taus[1]/self.dt))
+            if last0 < 0:
+                last0 = 0
+
+            new_o = np.where(self.Crit[last0:o] < 2.0*np.std(self.Crit))[0]
+            if len(new_o) == 0:
+                if self.sign == 1:
+                    new_o = np.argmin(self.Crit[last0:o])
+                else:
+                    new_o = np.argmax(self.Crit[last0:o])
+            else:
+                new_o = new_o[-1]
+            if new_o < last0:
+                new_o = last0
+            # print(new_o)
+            self.onsets[i] = new_o
+        # filter amplitudes now:
+        
+        self.summarize(self.data)
+        endtime = timeit.default_timer() - starttime
+        if verbose:
+            print("RS run time: {0:.4f} s".format(endtime))    
+    
 class ZCFinder(MiniAnalyses):
     """
     Event finder using Luke's zero-crossing algorithm
@@ -349,22 +413,17 @@ class ZCFinder(MiniAnalyses):
         self,
         data: np.ndarray,
         data_nostim: Union[list, np.ndarray, None] = None,
-        lpf: Union[float, None] = None,
-        hpf: Union[float, None] = None,
         minPeak: float = 0.0,
         minSum: float = 0.0,
         minLength: int = 3,
         verbose: bool = False,
     ) -> None:
-        self.data = self.LPFData(data, lpf)
-        if hpf is not None:
-            self.data = FN.highPass(self.data, cutoff=hpf, dt=self.dt)
-        # self.data = self.HPFData(data, hpf)
-        self.timebase = np.arange(0.0, self.data.shape[0] * self.dt, self.dt)
-
+        
+        self.prepare_data(data) # windowing, filtering and timebase
         starttime = timeit.default_timer()
         self.sdthr = self.threshold*np.std(self.data)
         self.Crit = np.zeros_like(self.data)
+        print('zc sdthr: ', self.sdthr)
         # if data_nostim is None:
         #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
         # else:  # clip to max of crit array, and be sure index array is integer, not float
