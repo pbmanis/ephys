@@ -235,7 +235,6 @@ class AnalyzeMap(object):
         self.last_results = None
         self.lbr_command = False  # laser blue raw waveform (command)
         self.photodiode = False  # photodiode waveform (recorded)
-
         # set some defaults - these will be overwrittein with readProtocol
         self.template_file = None
         self.stepi = 25.
@@ -1225,18 +1224,20 @@ class AnalyzeMap(object):
                 # print(iev, iev+ntrialev, eventtimes.shape, ntrialev)
                 eventtimes[iev:iev+ntrialev] = events[itrial][jtrace]['onsets'][0]
                 iev += ntrialev
-        print('total events: ', iev, ' # event times: ', len(eventtimes), plotevents)
+        print('total events: ', iev, ' # event times: ', len(eventtimes), plotevents, 'rate: ', rate)
         
         if plotevents and len(eventtimes) > 0:
             nevents = 0
             y = np.array(eventtimes)*rate
             # print('AR Tstart: ', self.AR.tstart, y.shape)
-            bins = np.linspace(0., self.AR.tstart, int(self.AR.tstart*1000/2.0)+1)
+            bins = np.linspace(0., self.ar_tstart, int(self.ar_tstart*1000./2.0)+1)
+            print(bins)
+            print(y)
             axh.hist(y, bins=bins,
                 facecolor='k', edgecolor='k', linewidth=0.5, histtype='stepfilled', align='right')
             self.plot_timemarker(axh)
             PH.nice_plot(axh, spines=['left', 'bottom'], position=-0.025, direction='outward', axesoff=False)
-            axh.set_xlim(0., self.AR.tstart-0.005)
+            axh.set_xlim(0., self.ar_tstart-0.005)
 
     def plot_stacked_traces(self, tb, mdata, title, results, ax=None, trsel=None):
         print('start stack plot')
@@ -1310,7 +1311,7 @@ class AnalyzeMap(object):
 
         mpl.suptitle(str(title).replace(r'_', r'\_'), fontsize=8)
         self.plot_timemarker(ax)
-        ax.set_xlim(0, self.AR.tstart-0.001)
+        ax.set_xlim(0, self.ar_tstart-0.001)
 
     def get_calbar_Yscale(self, amp):
         """
@@ -1486,7 +1487,7 @@ class AnalyzeMap(object):
             mdata = mdata.mean(axis=0)
         if len(tb) > 0 and len(mdata) > 0:
             ax.plot(tb*1e3, mdata*self.Pars.scale_factor, color, rasterized=self.rasterized, linewidth=0.6)
-        ax.set_xlim(0., self.AR.tstart*1e3-1.0)
+        ax.set_xlim(0., self.ar_tstart*1e3-1.0)
         return
 
     def clip_colors(self, cmap, clipcolor):
@@ -1500,10 +1501,10 @@ class AnalyzeMap(object):
     def plot_photodiode(self, ax, tb, pddata, color='k'):
         if len(tb) > 0 and len(np.mean(pddata, axis=0)) > 0:
             ax.plot(tb, np.mean(pddata, axis=0), color, rasterized=self.rasterized, linewidth=0.6)
-        ax.set_xlim(0., self.AR.tstart-0.001)
+        ax.set_xlim(0., self.ar_tstart-0.001)
 
     def plot_map(self, axp, axcbar, pos, measure, measuretype='I_max', vmaxin=None, imageHandle=None, 
-                 imagefile=None, angle=0, spotsize=20e-6, cellmarker=False, whichstim=-1, average=False):
+                 imagefile=None, angle=0, spotsize=42e-6, cellmarker=False, whichstim=-1, average=False):
 
         sf = 1.0 # could be 1e-6 ? data in Meters? scale to mm.
         cmrk = 50e-6*sf # size, microns
@@ -1544,43 +1545,82 @@ class AnalyzeMap(object):
         # if vmaxin is not None:
         #     vmax = vmaxin  # fixed
         # else:
-        vmax = np.max(np.max(measure[measuretype]))
-        vmin = np.min(np.min(measure[measuretype]))
-        # print('vmax: ', vmin, vmax)
-        if vmax < 6.0:
-            vmax = 6.0  # force a fixed
-        scaler = PH.NiceScale(0, vmax)
-        vmax = scaler.niceMax
-        # print('vmax: ', vmax)
+        sign = measure['sign']
+
+        upscale = 1.0
+        if measuretype == 'ZScore':
+            data = measure[measuretype]
+            vmax = np.max(np.max(measure[measuretype]))
+            vmin = np.min(np.min(measure[measuretype]))
+            # print('vmax: ', vmin, vmax)
+            if vmax < 6.0:
+                vmax = 6.0  # force a fixed
+            scaler = PH.NiceScale(0., vmax)
+            vmax = scaler.niceMax
+        else:
+            data = measure[measuretype]  # to make life easy, correct sign first
+            if measuretype == 'Qr':
+                data *= sign
+            vmax = np.max(data)  
+            print('vmax before: ', vmax, 'vmin before: ', np.min(data))
+            bk = 0.
+            if measuretype in ['Qr']:
+                bk = np.mean(sign*measure['Qb'])
+            if measuretype in ['Imax', 'I_max']:
+                bk = np.min(data)  
+            print('bk: ', bk)
+            if bk == vmax:
+                vmin = 0.0
+            else:
+                data -= bk
+                vmin = 0.0
+                vmax =np.max(data)
+            print('o: vmax: ', vmax, 'vmin: ', vmin, 'sign: ', sign, 'bk: ', bk)
+            if measuretype == 'Qr':
+                if vmax < 5.:
+                    vmax = 5.
+            elif measuretype in ['Imax', 'I_max']:
+                if vmax < 200.: # pA
+                    vmax = 200.
+            scaler = PH.NiceScale(vmin, 1.25*vmax)
+
+            
         if whichstim >= 0:  # which stim of -1 is ALL stimuli
             whichmeasures = [whichstim]
         elif average:
             whichmeasures = [0]
-            measure[measuretype][0] = np.mean(measure[measuretype])  # just
+            data[0] = np.mean(data)  # just
         else:
-            whichmeasures = range(len(measure[measuretype]))
+            whichmeasures = range(len(data))
         norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
         # red_rgba = matplotlib.colors.to_rgba('r')
         # black_rgba = matplotlib.colors.to_rgba('k')
         cmx = matplotlib.cm.ScalarMappable(norm=norm, cmap=cm_sns)
+
         for im in whichmeasures:  # there may be multiple measure[measuretype]s (repeated stimuli of different kinds) in a map
             # note circle size is radius, and is set by the laser spotsize (which is diameter)
             print('spotsizes size: ', spotsizes.shape)
             print('im: ', im)
             print('spotsizes: ', spotsizes)
             print('whichmeasures: ', whichmeasures)
+            print('measuretype: ', measuretype)
+            print('reps: ', self.nreps)
             radw = np.ones(pos.shape[0])*spotsizes[im]
             radh = np.ones(pos.shape[0])*spotsizes[im]
-            spotcolors = cmx.to_rgba(np.clip(measure[measuretype][im], 0., vmax))
+            if measuretype in ['Qr', 'Imax']:
+
+                spotcolors = cmx.to_rgba(np.clip((data[im]), 0., vmax))
+            else: # zscore, no sign.
+                spotcolors = cmx.to_rgba(np.clip(data[im], 0., vmax))
             edgecolors = spotcolors.copy()
-            
-            for i in range(len(measure[measuretype][im])):
-                em = measure[measuretype][im][i]
-                if em < 1.96:
+            for i in range(len(data[im])):
+                em = data[im][i]
+                if measuretype == 'ZScore' and em < 1.96:
                     spotcolors[i][3] = em/1.96 # scale down
-                    edgecolors[i] = matplotlib.colors.to_rgba([0.2, 0.2, 0.2, 0.5])
+                edgecolors[i] = matplotlib.colors.to_rgba([0.2, 0.2, 0.2, 0.5])
                 #     print(' .. ', spotcolors[i])
-            order = np.argsort(measure[measuretype][im])  # plot from smallest to largest (so largest on top)
+            # print('spotcolors, edgecolors: ', spotcolors, edgecolors)
+            order = np.argsort(data[im])  # plot from smallest to largest (so largest on top)
             # for i, p in enumerate(pos[order]):  # just checking - it appears in one map.
             #     if p[0] > 55.2 and p[1] < 3.45:
             #         print('wayward: ', i, p)
@@ -1622,10 +1662,18 @@ class AnalyzeMap(object):
         except:
             ntick = 3
         ticks = np.linspace(0, vmax, num=ntick, endpoint=True)
+
+        # PH.talbotTicks(
+        #     axp, tickPlacesAdd={"x": 1, "y": 1}, floatAdd={"x": 2, "y": 2})
+
         if axcbar is not None:
-            c2 = matplotlib.colorbar.ColorbarBase(axcbar, cmap=cm_sns, ticks=ticks, norm=norm)
-            c2.ax.plot([0, 10], [1.96, 1.96], 'w-')
+            c2 = matplotlib.colorbar.ColorbarBase(axcbar, cmap=cm_sns, ticks=ticks,  norm=norm)
+            if measuretype == 'ZScore':
+                c2.ax.plot([0, 10], [1.96, 1.96], 'w-')
             c2.ax.tick_params(axis='y', direction='out')
+            # PH.talbotTicks(
+            #     c2.ax, tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0}
+            # )
        # axp.scatter(pos[:,0], pos[:,1], s=2, marker='.', color='k', zorder=4)
         axr = 250.
 
@@ -1635,21 +1683,74 @@ class AnalyzeMap(object):
             axp.set_aspect('equal')
         axp.set_aspect('equal')
         title = measuretype.replace(r'_', r'\_')
+        print('title: ', title)
         if whichstim >= 0:
             title += f', Stim \# {whichstim:d} Only'
         if average:
             title += ', Average'
-        axp.set_title(title)
+        # axp.set_title(title)
         if vmaxin is None:
             return vmax
         else:
             return vmaxin
 
+    def display_position_maps(self, dataset_name:Union[Path, str], result:dict) -> bool:
+        
+        measures = ["ZScore", "Qr", "Imax"]
+        measuredict = {'ZScore': "ZScore", 'Qr': 'Qr', "Imax": "I_max"}
+        nmaptypes = len(measures)
+        rows, cols = PH.getLayoutDimensions(4)
+        
+        plabels = measures
+        for i in range(rows*cols-nmaptypes):
+            plabels.append(f"empty{i:d}")
+            plabels[-1].replace('_', '')
+
+        # self.P = PH.regular_grid(
+        #     rows,
+        #     cols,
+        #     order='rowsfirst',
+        #     figsize=(10, 10),
+        #     panel_labels=plabels,
+        #     labelposition=(0.05, 0.95),
+        #     margins={
+        #         "leftmargin": 0.07,
+        #         "rightmargin": 0.05,
+        #         "topmargin": 0.12,
+        #         "bottommargin": 0.1,
+        #     },
+        # )
+        
+        self.plotspecs = OrderedDict([('ZScore', {'pos': [0.07, 0.3, 0.55, 0.3], 'labelpos':(0.5,1.05)}),
+                             ('ZScore-Cbar',     {'pos': [0.4, 0.012, 0.55, 0.3], 'labelpos':(0, 1.05)}), # scale bar
+                             ('Qr',              {'pos': [0.52, 0.3, 0.55, 0.3], 'labelpos':(0.5,1.05)}),
+                             ('Qr-Cbar',         {'pos': [0.85, 0.012, 0.55, 0.3], 'labelpos':(0, 1.05)}),
+                             ('Imax',            {'pos': [0.07, 0.3, 0.065, 0.3], 'labelpos':(0.5,1.05)}),
+                             ('Imax-Cbar',       {'pos': [0.4, 0.012, 0.05, 0.3], 'labelpos':(0, 1.05)}),
+                             # ('E', {'pos': [0.47, 0.45, 0.05, 0.85]}),
+                        #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
+                             ])  # a1 is cal bar
+        spotsize = 42e-6
+        self.P = PH.Plotter(self.plotspecs, label=True, figsize=(10., 8.))
+        self.nreps = result['ntrials']
+        
+        print('ntrials: ', result['ntrials'])
+        for measure in measures:
+            if measure.startswith('empty'):
+                continue
+            cbar = self.P.axdict[f"{measure:s}-Cbar"]
+            print('\nmeasure: ', measure)
+            self.plot_map(self.P.axdict[measure],
+                        cbar, result['positions'], 
+                        measure=result, 
+                        measuretype=measuredict[measure],
+               )
+        return True
 
     def display_one_map(self, dataset, imagefile=None, rotation=0.0, measuretype=None,
             plotevents=True, rasterized=True, whichstim=-1, average=False, trsel=None,
-            plotmode='document'):
-        if dataset != self.last_dataset:
+            plotmode='document') -> bool:
+        if  dataset != self.last_dataset:
             results = self.analyze_one_map(dataset)
         else:
             results = self.last_results
@@ -1722,13 +1823,13 @@ class AnalyzeMap(object):
         else:
             cbar = None
         idm = self.mapfromid[ident]
-        if self.AR.spotsize == None:
-            self.AR.spotsize=50e-6
+        # if self.AR.spotsize == None:
+        #     self.AR.spotsize=50e-6
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.:
             self.newvmax = self.Pars.overlay_scale
         self.newvmax = self.plot_map(self.P.axdict['A'], cbar, results['positions'], measure=results, measuretype=measuretype,
-            vmaxin=self.newvmax, imageHandle=self.MT, imagefile=imagefile, angle=rotation, spotsize=self.AR.spotsize,
+            vmaxin=self.newvmax, imageHandle=self.MT, imagefile=imagefile, angle=rotation, spotsize=spotsize,
             whichstim=whichstim, average=average)
         self.plot_stacked_traces(self.tb, self.data_clean, dataset, results, ax=self.P.axdict['E'], trsel=trsel)  # stacked on right
 
@@ -1822,5 +1923,5 @@ if __name__ == '__main__':
         AM.sign = plan[cell]['Sign']
         AM.overlay_scale = args.scale
         AM.display_one_map(os.path.join(datapath, str(plan[cell]['Map']).strip()),
-            imagefile=os.path.join(datapath, plan[cell]['Image'])+'.tif', rotation=rotation, measuretype='ZScore')
+            justplot=False, imagefile=os.path.join(datapath, plan[cell]['Image'])+'.tif', rotation=rotation, measuretype='ZScore')
         mpl.show()

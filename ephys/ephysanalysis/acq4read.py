@@ -494,7 +494,28 @@ class Acq4Read:
         Get important information from the info[1] directory that we can use
         to determine the acquisition type
         """
-        self.mode = info[1]["ClampState"]["mode"]
+        try:  # old acq4 may not have this
+            self.mode = info[1]["ClampState"]["mode"]
+        except:
+            print("info 1: ")
+            for k in list(info[1].keys()):
+                print(k, '=', info[1][k])
+            print("info 0: ")
+            for k in list(info[0].keys()):
+                print(k, '=', info[0][k])
+            self.units = [info[1]['units'], 'V']
+            self.samp_rate = info[1]['rate']
+            if info[1]['units'] == 'V':
+                self.mode = 'IC'
+            if self.mode in ["IC", "I=0"]:
+                self.tracepos = 1
+                self.cmdpos = 0
+            elif self.mode in ["VC"]:
+                self.tracepos = 1
+                self.cmdpos = 0            
+            
+            return
+        
         self.units = [
             info[1]["ClampState"]["primaryUnits"],
             info[1]["ClampState"]["secondaryUnits"],
@@ -610,8 +631,20 @@ class Acq4Read:
         holdcheck = False
         holdvalue = 0.0
         if info is not None:
-            holdcheck = info["devices"][self.shortdname]["holdingCheck"]
-            holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+            try:
+                holdcheck = info["devices"][self.shortdname]["holdingCheck"]
+                holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+            except:
+                print("short dname: ", self.shortdname, "failed")
+                print("trying a different name")
+                self.setDataName('Clamp1.ma')
+                try:
+                    holdcheck = info["devices"][self.shortdname]["holdingCheck"]
+                    holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+                except:
+                    print('that also failed')
+                    raise()
+                
         self.holding = holdvalue
         trx = []
         cmd = []
