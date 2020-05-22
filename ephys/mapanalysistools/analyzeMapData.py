@@ -851,16 +851,16 @@ class AnalyzeMap(object):
                     continue
                 art_starts.append(s)
                 if isinstance(self.stimtimes['duration'], float):
-                    if self.stimdur is None:  # allow override 
+                    if self.Pars.stimdur is None:  # allow override 
                         art_starts.append(s+self.stimtimes['duration'])
                     else:
-                        art_starts.append(s+self.stimdur)
+                        art_starts.append(s+self.Pars.stimdur)
                         
                 else:
-                    if self.stimdur is None:
+                    if self.Pars.stimdur is None:
                         art_starts.append(s+self.stimtimes['duration'][si])
                     else:
-                        art_starts.append(s+self.stimdur)
+                        art_starts.append(s+self.Pars.stimdur)
                 art_durs.append(2.*rate)
                 art_durs.append(2.*rate)
         # if self.stimdur is not None:
@@ -983,12 +983,14 @@ class AnalyzeMap(object):
         if self.template_file is None: # use generic templates for subtraction
             if protocol.find('_VC_10Hz') > 0:
                 template_file = 'template_data_map_10Hz.pkl'
+                self.template_file = Path('/Users/pbmanis/Desktop/Python/mrk-nf107/datasets/NF107Ai32_Het/', template_file)
                 ptype = '10Hz'
             elif protocol.find('_single') > 0 or protocol.find('_Single') > 0 or (protocol.find('_weird') > 0) or (protocol.find('_WCChR2')) > 0:
                 template_file = 'template_data_map_Singles.pkl'
+                self.template_file = Path('/Users/pbmanis/Desktop/Python/mrk-nf107/datasets/NF107Ai32_Het/', template_file)
                 ptype = 'single'
         else:
-            template_file = self.template_file
+            self.template_file = Path('/Users/pbmanis/Desktop/Python/mrk-nf107/datasets/NF107Ai32_Het/', self.template_file)
             if protocol.find('_VC_10Hz') > 0:
                 ptype = '10Hz'
             elif protocol.find('_Single') > 0 or protocol.find('_weird') > 0 or (protocol.find('_WCChR2')) > 0:
@@ -996,8 +998,8 @@ class AnalyzeMap(object):
         if ptype is None:
             lbr = np.zeros_like(avgd)
         else:
-            print('Artifact template: ', template_file)
-            with open(template_file, 'rb') as fh:
+            print('Artifact template: ', self.template_file)
+            with open(self.template_file, 'rb') as fh:
                 d = pickle.load(fh)
             ct_SR = np.mean(np.diff(d['t']))
 
@@ -1049,7 +1051,7 @@ class AnalyzeMap(object):
         for i in range(data.shape[0]):
             datar[i,:] = data[i,:] - lbr
 
-        if not self.noderivative_artifact:
+        if not self.Pars.noderivative_artifact:
             # derivative=based artifact suppression - for what might be left
             # just for fast artifacts
             print('Derivative-based artifact suppression is ON')
