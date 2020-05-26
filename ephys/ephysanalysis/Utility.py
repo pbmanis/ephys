@@ -477,6 +477,35 @@ class Utility():
             spikeTimes = st
         return spikeTimes
 
+    def deriv(self, x, y, order=1):
+        dout = np.zeros_like(y)
+        c_deriv.c_deriv(x.view(np.ndarray), y.view(np.ndarray), dout.shape[0]-1, order, dout)
+        return dout
+    
+    def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75):
+        """
+        FInd spikes using a box method:
+        Must be > threshol, and have slope values related
+        Units must be consistent: x, dt, d2 (s or ms)
+        Unist must be consistent: y, thr, C1, C2 (V or mV)
+        to C1, C2 and the width dt2
+        From Hight and Kalluri, J Neurophysiol., 2016
+        Note: Implementation is in cython (pyx) file in ephys/ephysanalysis
+        
+        Returns an array of indices in x where spikes occur
+        """
+        spikes = np.zeros_like(y)
+        c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
+           x.view(np.ndarray), y.view(np.ndarray),
+           x.shape[0]-1,
+           thr, # threshold -35 mV
+           C1,  #  # slope value
+           C2, # slope value 
+           dt2, # spike window (nominal 1.75 msec)
+           spikes, # calculated spikes (times, set to 1 else 0)
+           )
+        return np.argwhere(spikes>0.0)*dt
+    
 
     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', detector='threshold', 
                     refract=0.0007,
@@ -524,7 +553,7 @@ class Utility():
             raise ValueError('pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri": got %s' % detector)
         
         if detector == 'Kalluri':
-            return self.box_spike_find(x=x, y=v*1e3,
+            return self.box_spike_find(x=x, y=v*1e3, dt=dt,
                 thr=thresh, C1=-12.0, C2=11.0, dt2=1.75)
         
         if t1 is not None and t0 is not None:
@@ -663,33 +692,7 @@ class Utility():
 
         return(self.clean_spiketimes(st, mindT=refract))
 
-    def deriv(self, x, y, order=1):
-        dout = np.zeros_like(y)
-        c_deriv.c_deriv(x.view(np.ndarray), y.view(np.ndarray), dout.shape[0]-1, order, dout)
-        return dout
-    
-    def box_spike_find(self, x, y, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75):
-        """
-        FInd spikes using a box method:
-        Must be > threshol, and have slope values related
-        to C1, C2 and the width dt2
-        From Hight and Kalluri, 2016
-        Note: Implementation is in cython (pyx) file in ephys/ephysanalysis
-        
-        Returns an array of indices in x where spikes occur
-        """
-        spikes = np.zeros_like(y)
-        c_deriv.c_box_spike_find(
-           x.view(np.ndarray), y.view(np.ndarray),
-           x.shape[0]-1,
-           thr, # threshold -35 mV
-           C1,  #  # slope value
-           C2, # slope value 
-           dt2, # spike window (nominal 1.75 msec)
-           spikes, # calculated spikes (times, set to 1 else 0)
-           )
-        return np.argwhere(spikes>0.0)
-    
+
     def findspikes2(self, xin, vin, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False, debug=False):
         """ findspikes identifies the times of action potential in the trace v, with the
         times in t. An action potential is simply timed at the first point that exceeds

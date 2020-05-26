@@ -50,6 +50,7 @@ class SpikeAnalysis():
         self.verbose = False
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
         self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
+        self.detector = 'argrelmax'
 
 
     def setup(self, clamps=None, threshold=None, refractory=0.0007, peakwidth=0.001,
@@ -104,6 +105,10 @@ class SpikeAnalysis():
         self.min_peaktotrough = 0.010 # change in V on falling phase to be considered a spike
         self.max_spike_look = 0.010  # msec over which to measure spike widths
 
+    def set_detector(self, detector:str='argrelmax'):
+        assert detector in ['argrelmax', 'threshold', 'Kalluri']
+        self.detector = detector
+
     def analyzeSpikes(self):
         """
         analyzeSpikes: Using the threshold set in the control panel, count the
@@ -154,7 +159,8 @@ class SpikeAnalysis():
                                               dt=self.Clamps.sample_interval,
                                               mode=self.mode,  # mode to use for finding spikes
                                               interpolate=self.interpolate,
-                                              detector='argrelmax',
+                                              detector=self.detector,
+                                              mindip = 1e-2,
                                               refract=self.refractory,
                                               peakwidth=self.peakwidth,
                                               verify=self.verify,
@@ -242,7 +248,7 @@ class SpikeAnalysis():
                                               dt=self.Clamps.sample_interval,
                                               mode=self.mode,  # mode to use for finding spikes
                                               interpolate=self.interpolate,
-                                              detector='argrelmax',
+                                              detector=self.detector,
                                               refract=self.refractory,
                                               peakwidth=self.peakwidth,
                                               verify=self.verify,
@@ -375,7 +381,7 @@ class SpikeAnalysis():
             kend = self.spikeIndices[i][j+1]
         else:
             kend = int(self.spikeIndices[i][j]+self.max_spike_look/dt)
-        if kend > dv.shape[0]:
+        if kend >= dv.shape[0]:
             return(thisspike)  # end of spike would be past end of trace
         else:
             if kend < k:
