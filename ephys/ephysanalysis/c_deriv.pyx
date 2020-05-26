@@ -35,7 +35,8 @@ def c_deriv(
             dtemp1 = (y_data[i+1]-y_data[i])/(x_data[i+1]-x_data[i])
             dtemp2 = (y_data[i]-y_data[i-1])/(x_data[i]-x_data[i-1])
             deriv[i] = (dtemp1 + dtemp2)/2.0
-    
+
+
 # Implement box finder for spikes from Hight and Kalluri
 # V > threshold (mV)  # min spike height
 # V(t0 > v(t0+dt))  # gets a spike peak
@@ -63,12 +64,8 @@ def c_box_spike_find(
     iwid = (int)(dt2/dt)
     spkflag = 0
     for i in range(iwid, npts-iwid):
-        if (y_data[i] > thr):
-            # printf("i: %ld\n", i)
+        if (y_data[i] > thr): # increasingly restrictive measures: works for clean data
             if (y_data[i]>y_data[i-1]) and (y_data[i] > y_data[i+1]):
-                #printf("  ii: %ld\n", i)
-                #printf("   yd: %f  C1: %f, \n", (y_data[i+iwid] - y_data[i]), C1)
-                #printf("   yd: %f  C2: %f\n", (y_data[i]-y_data[i-iwid]), C2)
                 if ((y_data[i+iwid] - y_data[i]) < C1) and ((y_data[i]-y_data[i-iwid]) > C2):
                    #  printf("  spike: %ld\n", i)
                     spikes[i] = 1.0
