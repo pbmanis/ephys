@@ -42,12 +42,29 @@ import numpy as np
 import numpy.ma as ma
 import scipy.fftpack as spFFT
 import scipy.signal
-
-
+from numba import jit
+from ephys.ephysanalysis import c_deriv
 from random import sample
 
 class ScriptError(Exception):
     pass
+
+@jit(nopython=False, parallel=False, cache=True)
+def nb_deriv(x, y, order=1):
+    """
+    Compute a derivative of order n of V
+    """
+    deriv = np.zeros_like(y)
+    d = y.copy()
+    for k in range(order):
+        deriv[0] = np.diff(d[:2])/np.diff(x[:2]) # endpoints
+        deriv[-1] = np.diff(d[-2:])/np.diff(x[-2:])
+        for i in range(1, deriv.shape[0]-1):  # for all interior points, use 3-point measure.
+            # print(np.diff(d[i-1:i+2]))
+            deriv[i] = np.mean(np.diff(d[i-1:i+2]))/np.mean(np.diff(x[i-1:i+2]))
+        d = deriv
+    return deriv
+
 
 class Utility():
     def __init__(self):
@@ -459,7 +476,8 @@ class Utility():
             st = np.append(st, [spikeTimes[s+1] for s in sok])
             spikeTimes = st
         return spikeTimes
-        
+
+
     def findspikes(self, x, v, thresh, t0=None, t1=None, dt=0.001, mode='schmitt', detector='threshold', 
                     refract=0.0007,
                     interpolate=False, peakwidth=0.001, mindip=0.01, debug=False, verify=False):
@@ -502,8 +520,13 @@ class Utility():
                     
         if mode not in ['schmitt', 'threshold', 'peak']:
             raise ValueError('pylibrary.utility.findspikes: mode must be one of "schmitt", "threshold", "peak" : got %s' % mode)
-        if detector not in ['threshold', 'argrelmax']:
-            raise ValueError('pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" : got %s' % detector)
+        if detector not in ['threshold', 'argrelmax', 'Kalluri']:
+            raise ValueError('pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri": got %s' % detector)
+        
+        if detector == 'Kalluri':
+            return self.box_spike_find(x=x, y=v*1e3,
+                thr=thresh, C1=-12.0, C2=11.0, dt2=1.75)
+        
         if t1 is not None and t0 is not None:
             xt = ma.masked_outside(x, t0, t1)
             vma = ma.array(v, mask = ma.getmask(xt))
@@ -514,9 +537,9 @@ class Utility():
             vma = np.array(vma)
 
         dv = np.diff(vma)/dt # compute slope
-        dv2 = np.diff(dv)/dt
-        st = np.array([])
-        it0 = int(t0/dt)
+        dv2 = np.diff(dv)/dt # and second derivative 
+        st = np.array([])  # store spike times
+
         if detector == 'threshold':
             spv = np.where(vma > thresh)[0].tolist() # find points above threshold
             sps = (np.where(dv > 0.0)[0]+1).tolist() # find points where slope is positive
@@ -539,7 +562,7 @@ class Utility():
             # BETWEEN spikes, so we need to do an additional
             # check of the last "spike" separately
             removed = []
-            t_forward = int(0.010/dt)  # use 10 msec forward for drop
+            t_forward = int(10./dt)  # use 10 msec forward for drop
             for i in range(len(stn)-1):  # for all putative peaks
                 if i in removed:  # this can happen if event was removed in j loop
                     continue
@@ -573,7 +596,7 @@ class Utility():
             #     ax.plot(xt[stn2], vma[stn2], 'ro')
             #     ax.plot(xt[stn], vma[stn], 'bx')
             #     mpl.show()
-            xspk = x[[s+it0 for s in stn2]]
+            xspk = x[[s+int(t0/dt) for s in stn2]]
             return(self.clean_spiketimes(xspk, mindT=refract))  # done here.
         else:
             raise ValueError('Utility:findspikes: invalid detector')
@@ -585,7 +608,7 @@ class Utility():
         if sp is ():
             return(st) # nothing detected
 
-        if mode in  ['schmitt', 'Schmitt', 'threshold']: # normal operating mode is fixed voltage threshold
+        if mode in  ['schmitt', 'Schmitt']: # normal operating mode is fixed voltage threshold, with hysterisis
             for k in sp:
                 xx = xt[k-1:k+1]
                 y = vma[k-1:k+1]
@@ -640,6 +663,32 @@ class Utility():
 
         return(self.clean_spiketimes(st, mindT=refract))
 
+    def deriv(self, x, y, order=1):
+        dout = np.zeros_like(y)
+        c_deriv.c_deriv(x.view(np.ndarray), y.view(np.ndarray), dout.shape[0]-1, order, dout)
+        return dout
+    
+    def box_spike_find(self, x, y, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75):
+        """
+        FInd spikes using a box method:
+        Must be > threshol, and have slope values related
+        to C1, C2 and the width dt2
+        From Hight and Kalluri, 2016
+        Note: Implementation is in cython (pyx) file in ephys/ephysanalysis
+        
+        Returns an array of indices in x where spikes occur
+        """
+        spikes = np.zeros_like(y)
+        c_deriv.c_box_spike_find(
+           x.view(np.ndarray), y.view(np.ndarray),
+           x.shape[0]-1,
+           thr, # threshold -35 mV
+           C1,  #  # slope value
+           C2, # slope value 
+           dt2, # spike window (nominal 1.75 msec)
+           spikes, # calculated spikes (times, set to 1 else 0)
+           )
+        return np.argwhere(spikes>0.0)
     
     def findspikes2(self, xin, vin, thresh, t0=None, t1= None, dt=1.0, mode=None, interpolate=False, debug=False):
         """ findspikes identifies the times of action potential in the trace v, with the
@@ -654,7 +703,7 @@ class Utility():
         2012/10/9: Removed masked arrays and forced into ndarray from start
         (metaarrays were really slow...) 
         """
-
+        
         st=np.array([])
         spk = []
         if xin is None:
