@@ -89,8 +89,9 @@ class Acq4Read:
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         self.importantFlag = (
-            True  # set to false to IGNORE the important flag for traces
+            False # set to false to IGNORE the important flag for traces
         )
+
 
     def setImportant(self, flag: bool = False) -> None:
         """
@@ -291,8 +292,10 @@ class Acq4Read:
                 "Directory '%s' is not managed or '.index' file not found"
                 % (str(indexFile))
             )
+
             return self._index
         self._index = configfile.readConfigFile(indexFile)
+
         return self._index
 
     def readDirIndex(self, currdir: Union[str, Path, None] = None):
@@ -635,14 +638,14 @@ class Acq4Read:
                 holdcheck = info["devices"][self.shortdname]["holdingCheck"]
                 holdvalue = info["devices"][self.shortdname]["holdingSpin"]
             except:
-                print("short dname: ", self.shortdname, "failed")
-                print("trying a different name")
+                print("Getting holding with short dname: ", self.shortdname, "failed")
+                print("Trying a different name (Clamp1.ma)")
                 self.setDataName('Clamp1.ma')
                 try:
                     holdcheck = info["devices"][self.shortdname]["holdingCheck"]
                     holdvalue = info["devices"][self.shortdname]["holdingSpin"]
                 except:
-                    print('that also failed')
+                    print('That also failed')
                     raise()
                 
         self.holding = holdvalue
@@ -700,7 +703,7 @@ class Acq4Read:
         if not any(important):
             important = [True for i in range(len(important))]  # set all true
         self.trace_important = important
-
+        
         j = 0
         # get traces.
         # if traces are not marked (or computed above) to be "important", then they
@@ -716,7 +719,7 @@ class Acq4Read:
                     continue
             if check:
                 return True
-            if not important[i]:  # only return traces marked "important"
+            if self.importantFlag and not important[i]:  # only return traces marked "important"
                 continue
             self.protoDirs.append(
                 Path(d).name
@@ -770,7 +773,6 @@ class Acq4Read:
             self.values = np.zeros(ntr)  # fake
         else:
             ntr = len(self.values)
-
         self.traces = EM.MetaArray(
             self.data_array,
             info=[

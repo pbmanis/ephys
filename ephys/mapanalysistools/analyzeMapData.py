@@ -343,6 +343,7 @@ class AnalyzeMap(object):
             pass
         self.shutter = self.AR.getDeviceData('Laser-Blue-raw', 'Shutter')
         self.AR.getScannerPositions()
+        self.ar_tstart = self.AR.tstart
         # print('traces shape, repetitions: ', self.AR.traces.shape)
         # print(self.AR.repetitions)
         data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
@@ -850,16 +851,16 @@ class AnalyzeMap(object):
                     continue
                 art_starts.append(s)
                 if isinstance(self.stimtimes['duration'], float):
-                    if self.stimdur is None:  # allow override 
+                    if self.Pars.stimdur is None:  # allow override 
                         art_starts.append(s+self.stimtimes['duration'])
                     else:
-                        art_starts.append(s+self.stimdur)
+                        art_starts.append(s+self.Pars.stimdur)
                         
                 else:
-                    if self.stimdur is None:
+                    if self.Pars.stimdur is None:
                         art_starts.append(s+self.stimtimes['duration'][si])
                     else:
-                        art_starts.append(s+self.stimdur)
+                        art_starts.append(s+self.Pars.stimdur)
                 art_durs.append(2.*rate)
                 art_durs.append(2.*rate)
         # if self.stimdur is not None:
@@ -996,6 +997,7 @@ class AnalyzeMap(object):
             lbr = np.zeros_like(avgd)
         else:
             print('Artifact template: ', template_file)
+            print(os.getcwd())
             with open(template_file, 'rb') as fh:
                 d = pickle.load(fh)
             ct_SR = np.mean(np.diff(d['t']))
@@ -1048,7 +1050,7 @@ class AnalyzeMap(object):
         for i in range(data.shape[0]):
             datar[i,:] = data[i,:] - lbr
 
-        if not self.noderivative_artifact:
+        if not self.Pars.noderivative_artifact:
             # derivative=based artifact suppression - for what might be left
             # just for fast artifacts
             print('Derivative-based artifact suppression is ON')
@@ -1565,12 +1567,12 @@ class AnalyzeMap(object):
             if measuretype in ['Qr']:
                 bk = np.mean(sign*measure['Qb'])
             if measuretype in ['Imax', 'I_max']:
-                bk = np.min(data)  
+                bk = 0. # np.min(data)  
             print('bk: ', bk)
             if bk == vmax:
                 vmin = 0.0
             else:
-                data -= bk
+                data = data - bk
                 vmin = 0.0
                 vmax =np.max(data)
             print('o: vmax: ', vmax, 'vmin: ', vmin, 'sign: ', sign, 'bk: ', bk)
@@ -1823,6 +1825,7 @@ class AnalyzeMap(object):
         idm = self.mapfromid[ident]
         # if self.AR.spotsize == None:
         #     self.AR.spotsize=50e-6
+        spotsize = self.AR.spotsize
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.:
             self.newvmax = self.Pars.overlay_scale
