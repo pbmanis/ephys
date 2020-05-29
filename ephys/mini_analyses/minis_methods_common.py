@@ -177,7 +177,7 @@ class MiniAnalyses:
             jmin = np.argmin(np.fabs(self.timebase) - self.analysis_window[0])
         else:
             jmin = 0
-        print('jmax: ', jmin, jmax, data.shape, self.dt, np.max(self.timebase))
+        # print('jmax: ', jmin, jmax, data.shape, self.dt, np.max(self.timebase))
         data = data[jmin:jmax]
         data = self.LPFData(data, lpf=self.lpf)
         self.data = self.HPFData(data, hpf=self.hpf)

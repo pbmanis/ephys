@@ -343,6 +343,7 @@ class AnalyzeMap(object):
             pass
         self.shutter = self.AR.getDeviceData('Laser-Blue-raw', 'Shutter')
         self.AR.getScannerPositions()
+        self.ar_tstart = self.AR.tstart
         # print('traces shape, repetitions: ', self.AR.traces.shape)
         # print(self.AR.repetitions)
         data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
@@ -795,7 +796,7 @@ class AnalyzeMap(object):
                 threshold=self.Pars.threshold,
                 )
             # aj.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-            #         sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
+            #         sign=self.Pars.sign, eventstartthr=eventstartthr, threshold=self.Pars.threshold)
             idata = data.view(np.ndarray) # [jtrial, itarget, :]
             # meandata = np.mean(idata[:idmax])
             aj.deconvolve(
@@ -1064,7 +1065,7 @@ class AnalyzeMap(object):
                 avgdr = np.mean(avgdr, axis=0)
             diff_avgd = np.diff(avgdr)/np.diff(self.tb)
             sd_diff = np.std(diff_avgd[:itmax])  # ignore the test pulse
-            tpts = np.where(np.fabs(diff_avgd) > sd_diff*self.sd_thr)[0]
+            tpts = np.where(np.fabs(diff_avgd) > sd_diff*self.Pars.sd_thr)[0]
             tpts = [t-1 for t in tpts]
             for i in range(datar.shape[0]):
                 for j in range(datar.shape[1]):
@@ -1200,6 +1201,7 @@ class AnalyzeMap(object):
         hist goes into axh
         traces into axt
         """
+        self.ar_start = self.AR.tstart
         plotevents = True
         rotation = 0.
         plotFlag = True
@@ -1825,6 +1827,7 @@ class AnalyzeMap(object):
         idm = self.mapfromid[ident]
         # if self.AR.spotsize == None:
         #     self.AR.spotsize=50e-6
+        spotsize = self.AR.spotsize
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.:
             self.newvmax = self.Pars.overlay_scale
