@@ -1145,7 +1145,7 @@ class AnalyzeMap(object):
         else:
             CP.cprint("w", f"   Artifact template: {str(template_file):s}")
             CP.cprint("w", f"   Current Working Dir: {os.getcwd():s}")
-            with open(template_file, "rb") as fh:
+            with open(Path(os.getcwd(), 'datasets', 'artifact_templates', template_file), "rb") as fh:
                 d = pickle.load(fh)
             ct_SR = np.mean(np.diff(d["t"]))
 
