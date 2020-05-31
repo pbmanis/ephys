@@ -812,7 +812,7 @@ class AnalyzeMap(object):
                     tasker.results[itarget] = result
             # print('Result keys parallel: ', results.keys())
         else:
-            print(" Not parallel...each trace in map in sequence")
+            print("Not parallel...each trace in map in sequence")
             for itarget in range(data.shape[0]):
                 results[itarget] = self.analyze_one_trace(
                     data[itarget], itarget, pars=pars
@@ -879,7 +879,7 @@ class AnalyzeMap(object):
             else:
                 lpf = self.Pars.LPF
             lpf = None
-            print("sign: ", self.Pars.sign)
+            # print("sign: ", self.Pars.sign)
             aj.setup(
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
@@ -923,7 +923,7 @@ class AnalyzeMap(object):
             method = cb
         elif self.methodname == "zc":
             zc = minis_methods.ZCFinder()
-            print("sign: ", self.Pars.sign)
+            # print("sign: ", self.Pars.sign)
             zc.setup(
                 dt=rate,
                 tau1=self.Pars.taus[0],
@@ -1229,7 +1229,7 @@ class AnalyzeMap(object):
         if not self.Pars.noderivative_artifact:
             # derivative=based artifact suppression - for what might be left
             # just for fast artifacts
-            CP.cprint("w", f"Derivative-based artifact suppression is ON")
+            CP.cprint("w", f"   Derivative-based artifact suppression is ON")
             itmax = int(self.Pars.analysis_window[1] / dt)
             avgdr = datar.copy()
             olddatar = datar.copy()
@@ -1315,9 +1315,7 @@ class AnalyzeMap(object):
         return data
 
 
-
-
-if __name__ == "__main__":
+def main():
     # these must be done here to avoid conflict when we import the class, versus
     # calling directly for testing etc.
     matplotlib.use("Agg")
@@ -1419,4 +1417,8 @@ if __name__ == "__main__":
             rotation=rotation,
             measuretype="ZScore",
         )
-        mpl.show()
+        mpl.show()    
+
+if __name__ == "__main__":
+    main()
+

@@ -592,7 +592,7 @@ class PlotMapData():
         label: str = "pA",
         rasterized: bool = False,
     ) -> None:
-        print("start avgevent plot for ", evtype)
+        # print("start avgevent plot for ", evtype)
         if events is None or ax is None or trace_tb is None:
             print("evtype:  no events, no axis, or no time base", evtype)
             return
@@ -621,7 +621,7 @@ class PlotMapData():
         evoked_ev_count = 0
         npev = 0
         # tau1 = self.Pars.MA.fitresult[1]  # get rising tau so we can make a logical tpre
-        print("plotting # trials = ", mdata.shape[0])
+        # print("plotting # trials = ", mdata.shape[0])
         for trial in range(mdata.shape[0]):
             if self.verbose:
                 print("plotting: trial: ", trial)
@@ -974,9 +974,11 @@ class PlotMapData():
 
         elif measuretype in ["A", "Q"]:
             events = measure["events"]
-            nspots = len(events[0])  # on trial 0
-            print("npulses: ", len(measure["stimtimes"]), measure["stimtimes"])
-            npulses = measure["stimtimes"]["npulses"][0]
+            nspots = len(measure["events"][0])  # on trial 0
+            if 'npulses' in list(measure['stimtimes'].keys()):
+                npulses = measure["stimtimes"]["npulses"][0]
+            else:
+                npulses =  len(measure["stimtimes"]["start"])
 
             # data = np.zeros((measure['ntrials'], npulses, nspots))
             data = np.zeros((npulses, nspots))
@@ -992,10 +994,6 @@ class PlotMapData():
                         [stims[j] + self.Pars.direct_window, stims[j] + self.Pars.response_window]
                     )
 
-            nspots = len(measure["events"][0])  # on trial 0
-            npulses = measure["stimtimes"]["npulses"][0]
-
-            data = np.zeros((npulses, nspots))
             rate = measure["rate"]
             nev = 0
             nev_spots = 0
@@ -1035,7 +1033,7 @@ class PlotMapData():
             vmin = 0.0
             vmax = np.max(data)
             nev = len(np.where(data > 0.0)[0])
-            print(nev, nev_spots)
+            # print(nev, nev_spots)
 
             if vmax == 0:
                 vmax = 1e-10
@@ -1063,12 +1061,12 @@ class PlotMapData():
             whichmeasures
         ):  # there may be multiple measure[measuretype]s (repeated stimuli of different kinds) in a map
             # note circle size is radius, and is set by the laser spotsize (which is diameter)
-            print("spotsizes size: ", spotsizes.shape)
-            print("im: ", im)
-            print("spotsizes: ", spotsizes)
-            print("whichmeasures: ", whichmeasures)
-            print("measuretype: ", measuretype)
-            print("reps: ", self.nreps)
+            # print("spotsizes size: ", spotsizes.shape)
+            # print("im: ", im)
+            # print("spotsizes: ", spotsizes)
+            # print("whichmeasures: ", whichmeasures)
+            # print( ", measuretype)
+            # print("reps: ", self.nreps)
             radw = np.ones(pos.shape[0]) * spotsizes[im]
             radh = np.ones(pos.shape[0]) * spotsizes[im]
             if measuretype in ["Qr", "Imax"]:
@@ -1168,7 +1166,6 @@ class PlotMapData():
             axp.set_aspect("equal")
         axp.set_aspect("equal")
         title = measuretype.replace(r"_", r"\_")
-        print("title: ", title)
         if whichstim >= 0:
             title += f", Stim \# {whichstim:d} Only"
         if average:
@@ -1232,12 +1229,11 @@ class PlotMapData():
         self.P = PH.Plotter(self.plotspecs, label=True, figsize=(10.0, 8.0))
         self.nreps = result["ntrials"]
 
-        print("ntrials: ", self.nreps)
         for measure in measures:
             if measure.startswith("empty"):
                 continue
             cbar = self.P.axdict[f"{measure:s}-Cbar"]
-            print("\nmeasure: ", measure)
+            # print("\nmeasure: ", measure)
             self.plot_map(
                 self.P.axdict[measure],
                 cbar,
