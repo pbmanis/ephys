@@ -419,6 +419,8 @@ p[4]*np.exp(-(p[5] + x)/p[6]))**2.0
             F = F(break)+ F2amp(1-exp^(-t * Irate))
         """
         Fzero, Ibreak, F1amp, F2amp, Irate = p
+        if Ibreak == 0.0:
+            Ibreak = 0.001
         yd = np.zeros(x.shape)
         m1 = (x < Ibreak)
         m2 = (x >= Ibreak)
