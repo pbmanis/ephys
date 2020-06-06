@@ -611,7 +611,7 @@ class Acq4Read:
             important = info["important"]
         else:
             important = False
-        CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
+        # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
     def getData(self, pos: int = 1, check: bool = False):
@@ -621,7 +621,7 @@ class Acq4Read:
         True if it does and false if it does not
         """
         # non threaded
-        CP.cprint('r', 'GETDATA ****')
+        # CP.cprint('c', 'GETDATA ****')
         dirs = self.subDirs(self.protocol)
         index = self._readIndex()
         self.clampInfo["dirs"] = dirs
@@ -660,7 +660,7 @@ class Acq4Read:
         self.protocol_important = self._getImportant(
             info
         )  # save the protocol importance flag
-        CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
+        # CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
         sequence_values = None
         self.sequence = []
         if index is not None and "sequenceParams" in index["."].keys():
@@ -690,7 +690,6 @@ class Acq4Read:
                 important.append(self._getImportant(self.getIndex(d)))
             else:
                 important.append(True)
-        print('important: ', important)
         if sum(important) % 2 == 0:  # even number of "True", fill in between.
             state = False
             for i in range(len(important)):
