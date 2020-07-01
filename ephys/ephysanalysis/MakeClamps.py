@@ -169,29 +169,43 @@ class MakeClamps():
             dur = dinfo.stimDur
             delay = dinfo.stimDelay
             mode = dinfo.postMode
-            print(df.keys())
+            # print(df.keys())
             try:
                 self.rate = df['Params'].dt
             except:
                 self.rate = df['self.Params'].dt
-            ntr = len(df['Results'])
-            V = [[]]*ntr
-            I = [[]]*ntr
-            if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
 
+ 
+            if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
+                ntr = len(df['Results'])
+                V = [[]]*ntr
+                I = [[]]*ntr
                 for ii, i in enumerate(df['Results'].keys()):
                     dfx = df['Results'][i]['monitor']
                     timebase = dfx['time']
                     V[ii] = np.array(dfx['postsynapticV'])*vscale
                     I[ii] = np.array(dfx['i_stim0'])*iscale
-            elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO']:
-                # V = [[]]*ntr
-                # I = [[]]*ntr
-                for j in list(df['Results'].keys()):
-                    dfx = df['Results'][j]
-                    timebase = dfx['time']
-                    V[j] = np.array(dfx['somaVoltage'])*vscale
-                    I[j] = np.zeros_like(V[j])
+            elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO', 'runANSingles']:
+
+                # two ways data can be organized, so try both
+                try:  # cnmodel_models simulations
+                    ntr = len(df['Results'])
+                    V = [[]]*ntr
+                    I = [[]]*ntr
+                    for j in list(df['Results'].keys()):
+                        dfx = df['Results'][j]
+                        timebase = dfx['time']
+                        V[j] = np.array(dfx['somaVoltage'])*vscale
+                        I[j] = np.zeros_like(V[j])
+                except:  # vcnmodel simulatipns
+                    ntr = len(df["Results"]['somaVoltage'])
+                    V = [[]]*ntr
+                    I = [[]]*ntr
+                    for j in range(ntr):
+                        timebase = df['Results']['time']
+                        V[j] = np.array(df['Results']['somaVoltage'][j])*vscale
+                        I[j] = np.zeros_like(V[j])
+
         V = np.array(V)
         I = np.array(I)
         # print('V shape: ', V.shape, 'I shape: ', I.shape, ' timebase: ', timebase.shape, V.shape[1]*self.rate, np.max(timebase))
