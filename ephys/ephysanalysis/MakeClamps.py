@@ -185,6 +185,16 @@ class MakeClamps():
                     timebase = dfx['time']
                     V[ii] = np.array(dfx['postsynapticV'])*vscale
                     I[ii] = np.array(dfx['i_stim0'])*iscale
+            elif dinfo.runProtocol in ['runVC', 'initVC', 'testVC']:
+                ntr = len(df['Results'])
+                V = [[]]*ntr
+                I = [[]]*ntr
+                for ii, i in enumerate(df['Results'].keys()):
+                    dfx = df['Results'][i]['monitor']
+                    timebase = dfx['time']
+                    V[ii] = np.array(dfx['postsynapticV'])*vscale
+                    I[ii] = np.array(dfx['postsynapticI'])*iscale
+                    
             elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO', 'runANSingles']:
 
                 # two ways data can be organized, so try both
@@ -210,7 +220,10 @@ class MakeClamps():
         I = np.array(I)
         # print('V shape: ', V.shape, 'I shape: ', I.shape, ' timebase: ', timebase.shape, V.shape[1]*self.rate, np.max(timebase))
         # exit()
-        self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
+        if dinfo.runProtocol in ['runVC', 'initVC', 'testVC']:
+            self.set_clamps(dmode=mode, time=timebase, data=I, cmddata=V, tstart_tdur=[delay, dur])
+        else:
+            self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
 
     def getClampData(self):
