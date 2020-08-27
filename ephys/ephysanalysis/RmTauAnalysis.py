@@ -328,6 +328,9 @@ class RmTauAnalysis():
         self.r_in = np.nan
         self.analysis_summary['Rin'] = np.nan
         self.ivss_v = []
+        self.ivss_v_all = []
+        self.ivss_cmd = []
+        self.ivss_cmd_all = []
         if data1.shape[1] == 0 or data1.shape[0] == 1:
             return  # skip it
 
@@ -338,12 +341,13 @@ class RmTauAnalysis():
             print("ivss_analysis: spikes not counted yet? - let's go analyze them...")
             self.analyzeSpikes()
 
-        self.ivss_v = data1.mean(axis=1)  # all traces
+        self.ivss_v_all = data1.mean(axis=1)  # all traces
         self.analysis_summary['Rin'] = np.NaN
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
-            self.ivss_v = self.ivss_v[self.Spikes.nospk]
-            self.ivss_cmd = self.Clamps.commandLevels[self.Spikes.nospk]
+            self.ivss_v = self.ivss_v_all[self.Spikes.nospk]
+            self.ivss_cmd_all = self.Clamps.commandLevels
+            self.ivss_cmd = self.ivss_cmd_all[self.Spikes.nospk]
             isort = np.argsort(self.ivss_cmd)
             self.ivss_cmd = self.ivss_cmd[isort]
             self.ivss_v = self.ivss_v[isort]
@@ -388,7 +392,10 @@ class RmTauAnalysis():
         
         self.r_in_peak = np.nan
         self.analysis_summary['Rin_peak'] = np.nan
+        self.ivpk_cmd = []
+        self.ivpk_cmd_all = []
         self.ivpk_v = []
+        self.ivpk_v_all = []
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
         if data1.shape[1] == 0 or data1.shape[0] == 1:
             return  # skip it
@@ -400,11 +407,12 @@ class RmTauAnalysis():
             print("ivss_analysis: spikes not counted yet? - let's go analyze them...")
             self.analyzeSpikes()
 
-        self.ivpk_v = data1.min(axis=1)  # all traces, minimum voltage found
+        self.ivpk_v_all = data1.min(axis=1)  # all traces, minimum voltage found
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
-            self.ivpk_v = self.ivpk_v[self.Spikes.nospk]
-            self.ivpk_cmd = self.Clamps.commandLevels[self.Spikes.nospk]
+            self.ivpk_v = self.ivpk_v_all[self.Spikes.nospk]
+            self.ivpk_cmd_all = self.Clamps.commandLevels
+            self.ivpk_cmd = self.ivpk_cmd_all[self.Spikes.nospk]
             bl = self.ivbaseline[self.Spikes.nospk]
             isort = np.argsort(self.ivpk_cmd)
             self.ivpk_cmd = self.ivpk_cmd[isort]

@@ -164,16 +164,25 @@ class MakeClamps():
                 I[i] = dfx['i_stim0']*iscale
         else:
             dinfo = df['runInfo']
+            x = dir(dinfo)
+            if 'stimVC' not in x:  # create fields for missing values from older versions of files.
+                dinfo.stimVC = None
             # print('rpfile v0: dinfo: ', dinfo)
             mode = dinfo.postMode.upper()
             dur = dinfo.stimDur
             delay = dinfo.stimDelay
             mode = dinfo.postMode
             # print(df.keys())
+            # print('Mode: ', mode)
             try:
-                self.rate = df['Params'].dt
+                self.rate = df['Params'].dt  # old version, now separated IC and VC
             except:
-                self.rate = df['self.Params'].dt
+                if mode == 'VC':
+                    self.rate = df['Params'].dtVC
+                elif mode == "CC":
+                    self.rate = df['Params'].dtIC
+                else:
+                    raise ValueError("Cannot find rate for data mode: ", mode)
 
  
             if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
@@ -186,6 +195,8 @@ class MakeClamps():
                     V[ii] = np.array(dfx['postsynapticV'])*vscale
                     I[ii] = np.array(dfx['i_stim0'])*iscale
             elif dinfo.runProtocol in ['runVC', 'initVC', 'testVC']:
+                dur = dinfo.vstimDur # msec
+                delay = dinfo.vstimDelay # msec
                 ntr = len(df['Results'])
                 V = [[]]*ntr
                 I = [[]]*ntr
