@@ -117,7 +117,8 @@ class DataSummary():
 
     def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
                  after=None, before=None, day=None, dryrun=False, depth='all', inspect=True,
-                 deep=False, append=False, verbose=False, update=False, pairflag=False):
+                 deep=False, append=False, verbose=False, update=False, pairflag=False,
+                 device='MultiClamp1.ma'):
         """
         Note that the init is just setup - you have to call getDay the object to do anything
     
@@ -194,6 +195,7 @@ class DataSummary():
         self.update = update
         self.deep_check = deep
         self.pairflag = pairflag
+        self.device = device
         self.append = append
  
         self.daylist = None
@@ -234,8 +236,11 @@ class DataSummary():
         self.data_template = (
             OrderedDict([('incomplete', '{0:s}'), ('complete', '{1:s}'), ('images', '{2:s}'), ('annotated', '{3:s}'), ('directory', '{4:s}')])
                         )        
-        self.AR = acq4read.Acq4Read()  # instance of the reader
+        self.coldefs = 'Date \tDescription \tNotes \tGenotype \tAge \tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t'
+        self.coldefs += 'Cell \t Cell Notes \t \tProtocols \tImages \t'
 
+        self.AR = acq4read.Acq4Read()  # instance of the reader
+        self.AR.setDataName(device)
         if self.outputMode == 'tabfile':
             print('Tabfile output: Writing to {:<s}'.format(self.outFilename))
             h = open(self.outFilename, 'w')  # write new file
@@ -275,7 +280,7 @@ class DataSummary():
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0]*1e4+mindayx[1]*1e2+mindayx[2]
             self.maxday = maxdayx[0]*1e4+maxdayx[1]*1e2+maxdayx[2]
-            print(self.minday, self.maxday)
+            print('Min, max day: ', self.minday, self.maxday)
         else:
             self.daylist = []
             with open(self.daylistfile, 'r') as f:
@@ -601,16 +606,25 @@ class DataSummary():
                 # if self.verbose:
 #    print('**DATA INFO: ', info)
                 datafile = Path(directory_name, mainDevice+'.ma')  # clamp device file name
-                if self.deep_check:  # .index file is found, so proceed
+                if self.deep_check and i == 0:  # .index file is found, so proceed
                     clampInfo = self.AR.getDataInfo(datafile)
                     if self.verbose:
-                        print(prsp+'**CLAMPINFO: ', clampInfo)
+                        print(f"\n{prsp:s}**Datafile: {str(datafile):s}")
+                        print(f"{prsp:s}**CLAMPINFO: {str(clampInfo):s}")
                         print(prsp+'**DATAFILE: ', datafile)
                         print(prsp+'**DEVICE: ', mainDevice)
                     if clampInfo is None:
                         break
                     self.holding = self.AR.parseClampHoldingLevel(clampInfo)
                     self.amp_settings = self.AR.parseClampWCCompSettings(clampInfo)
+                    if self.amp_settings['WCEnabled'] == 1 and self.amp_settings['CompEnabled'] == 1:
+                        print(f"\n{prsp:s}WC R (MOhm) : {1e-6*self.amp_settings['WCResistance']:>6.2f}", end="")
+                        print(f"{prsp:s}WC C (pF)   : {1e12*self.amp_settings['WCCellCap']:>6.1f}", end="")
+                        print(f"{prsp:s}WC % Comp   : {self.amp_settings['CompCorrection']:>6.1f}", end="")
+                        print(f"{prsp:s}WC BW (kHz) : {1e-3*self.amp_settings['CompBW']:>6.2f}")
+                    else:
+                        print(prsp+"****NO WC Compensation****")
+
                     ncomplete += 1  # count up
                 else:  # superficial check for existence of the file
                     datafile = Path(directory_name, mainDevice+'.ma')  # clamp device file name
@@ -850,6 +864,9 @@ def main():
     parser.add_argument('--depth', type=str, default='all', dest='depth',
                         choices = ['days', 'slices', 'cells', 'protocols', 'all'],
                         help='Specify depth for --dry-run')
+    parser.add_argument('--device', type=str, default="MultiClamp1.ma", dest='device',
+                        choices=["MultiClamp1.ma", "MultiClamp2.ma", "Clamp1.ma", "Clamp2.ma"],
+                        help='Specify device to examine parameters from')
     parser.add_argument('-A', '--append', action='store_true', dest='append',
                         help='update new/missing entries to specified output file')
     parser.add_argument('-p', '--pairs', action='store_true', dest='pairflag',
@@ -859,7 +876,8 @@ def main():
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
             after=args.after, before=args.before, day=args.day, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
             deep=args.deep, append=args.append,
-            verbose=args.verbose, update=args.update, pairflag=args.pairflag)
+            verbose=args.verbose, update=args.update, pairflag=args.pairflag,
+            device=args.device)
 
     if args.write:
         print('Writing: ')

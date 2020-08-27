@@ -104,7 +104,7 @@ class Acq4Read:
             for each trace when returning data; if False, we ignore the flag
         """
         self.importantFlag = flag
-        CP.cprint('r', f"Important falg was sett: {flag:b}")
+        CP.cprint('r', f"Important' flag was set: {flag:b}")
         exit()
 
     def setProtocol(self, pathtoprotocol: Union[str, Path, None] = None) -> None:
@@ -487,12 +487,8 @@ class Acq4Read:
         info = None
         fn = Path(filename)
         if fn.is_file():
-            try:
-                tr = EM.MetaArray(file=fn, readAllData=False)
-            except:
-                return info
+            tr = EM.MetaArray(file=fn, readAllData=False)
             info = tr[0].infoCopy()
-            #            print ('info: ', info)
             self.parseClampInfo(info)
         return info
 
