@@ -38,6 +38,7 @@ import os
 import re
 import sys
 import types
+from typing import Union, List, Tuple
 from random import sample
 
 import numpy as np
@@ -75,7 +76,6 @@ def nb_deriv(x, y, order=1):
 
 class Utility:
     def __init__(self):
-
         self.debugFlag = False
 
     def setDebug(self, debug=False):
