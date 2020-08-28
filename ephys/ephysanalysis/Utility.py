@@ -503,6 +503,7 @@ class Utility:
         Must be > threshol, and have slope values related
         Units must be consistent: x, dt, d2 (s or ms)
         Unist must be consistent: y, thr, C1, C2 (V or mV)
+        Note: probably works best with mV and ms, given the constants above.
         to C1, C2 and the width dt2
         From Hight and Kalluri, J Neurophysiol., 2016
         Note: Implementation is in cython (pyx) file in ephys/ephysanalysis
@@ -520,22 +521,24 @@ class Utility:
             dt2,  # spike window (nominal 1.75 msec)
             spikes,  # calculated spikes (times, set to 1 else 0)
         )
-        return np.argwhere(spikes > 0.0) * dt
+        # spikes = [s[0] for s in spikes] # make into 1-d array
+        spikes = np.argwhere(spikes > 0.0) * dt
+        return [s[0] for s in spikes]
 
     def findspikes(
         self,
-        x: np.ndarray,
-        v: np.ndarray,
-        thresh: float = 0.0,
-        t0: Union[float, None] = None,
-        t1: Union[float, None] = None,
-        dt: float = 0.001,
+        x: np.ndarray,  # expected in seconds
+        v: np.ndarray,  # expected in Volts
+        thresh: float = 0.0,  # V
+        t0: Union[float, None] = None,  # sec
+        t1: Union[float, None] = None,  # sec
+        dt: float = 2e-5,  # sec
         mode: str = "schmitt",
         detector: str = "threshold",
-        refract: float = 0.0007,
+        refract: float = 0.0007,  # sec
         interpolate: bool = False,
-        peakwidth: float = 0.001,
-        mindip: float = 0.01,
+        peakwidth: float = 0.001,  # sec
+        mindip: float = 0.01,  # V
         debug: bool = False,
         verify: bool = False,
     ) -> Union[np.ndarray, List]:
@@ -552,6 +555,8 @@ class Utility:
                     
         Note: TIME UNITS MUST MATCH.
         Units are set up for SECONDS in time base (acq4 standard)
+        Units are set up for VOLTS in voltages.
+        All time entities should be in SECONDS.
         
         Parameters
         ----------
@@ -564,7 +569,7 @@ class Utility:
             t0, t1 : float (default: None)
                 time for start end end of spike search (seconds)
                 if None, whole trace is used
-            dt : float (default: 0.001)
+            dt : float (default: 20e-5 seconds)
                 sample rate, in seconds
             mode : string (default: 'schmitt')
                 trigger mode for most detection algorithms
@@ -589,7 +594,7 @@ class Utility:
 
         if detector == "Kalluri":
             return self.box_spike_find(
-                x=x, y=v * 1e3, dt=dt, thr=thresh, C1=-12.0, C2=11.0, dt2=1.75
+                x=x*1e3, y=v * 1e3, dt=dt*1e3, thr=thresh*1e3, C1=-12.0, C2=11.0, dt2=1.75
             )
 
         if t1 is not None and t0 is not None:
@@ -600,6 +605,8 @@ class Utility:
         else:
             xt = np.array(x)
             vma = np.array(vma)
+        print('max x: ', np.max(xt))
+        print('dt: ', dt)
 
         dv = np.diff(vma) / dt  # compute slope
         dv2 = np.diff(dv) / dt  # and second derivative
@@ -619,7 +626,7 @@ class Utility:
             #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
             order = int(refract / dt) + 1
             stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
-            ## argrelmax seems to miss peaks occasionally
+            # argrelmax seems to miss peaks occasionally
             # spks = scipy.signal.argrelmax(vma, order=order)[0]
             # stn = spks[np.where(vma[spks] >= thresh)[0]]
             if len(stn) > 0:
@@ -631,7 +638,7 @@ class Utility:
             # BETWEEN spikes, so we need to do an additional
             # check of the last "spike" separately
             removed = []
-            t_forward = int(10.0 / dt)  # use 10 msec forward for drop
+            t_forward = int(0.010 / dt)  # use 10 msec forward for drop
             for i in range(len(stn) - 1):  # for all putative peaks
                 if i in removed:  # this can happen if event was removed in j loop
                     continue
@@ -724,7 +731,11 @@ class Utility:
                         st = np.append(st, xx[1])  # always save the first one
 
         # clean spike times
-        # st = clean_spiketimes(st, mindT=refract)
+        # # st = clean_spiketimes(st, mindT=refract)
+        # print(("nspikes detected: ", len(st)), 'max spike time:', np.max(st))
+        # st2 = self.clean_spiketimes(st, mindT=refract)
+        # print(("nspikes detected after cleaning: ", len(st2)))
+
         if verify:
             from matplotlib import pyplot as mpl
 
@@ -751,7 +762,7 @@ class Utility:
         interpolate=False,
         debug=False,
     ):
-        """ findspikes identifies the times of action potential in the trace v, with the
+        """ Findspikes identifies the times of action potential in the trace v, with the
         times in t. An action potential is simply timed at the first point that exceeds
         the threshold... or is the peak. 
         4/1/11 - added peak mode
