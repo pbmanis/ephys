@@ -122,7 +122,7 @@ class MiniAnalyses:
             return data
 
     def HPFData(self, data:np.ndarray, hpf: Union[float, None] = None, NPole: int = 8) -> np.ndarray:
-        if hpf is None:
+        if hpf is None or hpf == 0.0:
             return data
         if len(data.shape) == 1:
             ndata = data.shape[0]
@@ -497,6 +497,9 @@ class MiniAnalyses:
             label=label,
         )
         # print('rdelay: ', rdelay)
+        if res is None:
+            self.fitted = False
+            return
         self.fitresult = res.x
         self.Amplitude = self.fitresult[0]
         self.fitted_tau1 = self.fitresult[1]
@@ -607,6 +610,8 @@ class MiniAnalyses:
             res, rdelay = self.event_fitter(
                 self.avgeventtb, self.allevents[i, :], time_past_peak=time_past_peak
             )
+            if res is None:   # skip events that won't fit
+                continue
             self.fitresult = res.x
 
             # lmfit version - fails for odd reason
@@ -664,6 +669,8 @@ class MiniAnalyses:
         
         """
         debug = False
+        if debug:
+            import matplotlib.pyplot as mpl
         try:
             dt = self.dt
         except:
@@ -692,18 +699,29 @@ class MiniAnalyses:
             fdelay = 0.2 * dt * peak_pos
         init_vals_rise = [0.9, dt * peak_pos, fdelay]
 
-        res_rise = scipy.optimize.minimize(
-            self.risefit,
-            init_vals_rise,
-            bounds=bounds_rise,
-            method="SLSQP",  # x_scale=[1e-12, 1e-3, 1e-3],
-            args=(
-                timebase[:peak_pos],  # x
-                evfit[:peak_pos],  # 'y
-                self.risepower,
-                1,
-            ),  # risepower, mode
-        )
+        try:
+            res_rise = scipy.optimize.minimize(
+                self.risefit,
+                init_vals_rise,
+                bounds=bounds_rise,
+                method="SLSQP",  # x_scale=[1e-12, 1e-3, 1e-3],
+                args=(
+                    timebase[:peak_pos],  # x
+                    evfit[:peak_pos],  # 'y
+                    self.risepower,
+                    1,
+                ),  # risepower, mode
+            )
+        except:
+            # mpl.plot(self.timebase[:peak_pos], evfit[:peak_pos], 'k-')
+  #           mpl.show()
+  #           print('risefit: ', self.risefit)
+  #           print('init_vals_rise: ', init_vals_rise)
+  #           print('bounds rise: ', bounds_rise)
+  #           print('peak_pos: ', peak_pos)
+            return None, None
+            # raise ValueError()
+            
         if debug:
             import matplotlib.pyplot as mpl
 
@@ -711,6 +729,7 @@ class MiniAnalyses:
             ax[0].plot(timebase, evfit, "-k")
             ax[1].plot(timebase[:peak_pos], evfit[:peak_pos], "-k")
             print("\nrise fit:")
+            ax[1].set_title('To peak (black), to end (red)')
             print("dt: ", dt, " maxev: ", maxev, " peak_pos: ", peak_pos)
             print("bounds: ", bounds_rise)
             print("init values: ", init_vals_rise)
@@ -757,6 +776,7 @@ class MiniAnalyses:
             # f, ax = mpl.subplots(2, 1)
             # ax[0].plot(timebase, evfit)
             ax[1].plot(decay_tb, decay_ev, "g-")
+            ax[1].set_title('Decay fit (green)')
             print("\ndecay fit:")
             print("dt: ", dt, " maxev: ", maxev, " peak_pos: ", peak_pos)
             print("bounds: ", bounds_decay)
@@ -772,7 +792,8 @@ class MiniAnalyses:
             # print(y)
             # ax[1].plot(decay_tb, y, 'bo', markersize=3)
             ax[1].plot(decay_tb, y, "g-")
-
+        if res_rise.x[2] == 0.0:
+            res_rise.x[2] = 2.0*dt
         # now tune by fitting the whole trace, allowing some (but not too much) flexibility
         bounds_full = [
             [a * 10.0 for a in amp_bounds],  # overall amplitude
@@ -791,14 +812,27 @@ class MiniAnalyses:
         #     print('Label: ', label)
         #     print('bounds full: ', bounds_full)
         #     print('init_vals: ', init_vals)
-        res = scipy.optimize.minimize(
+        try:
+            res = scipy.optimize.minimize(
             self.doubleexp,
             init_vals,
             method="L-BFGS-B",
+            # method="Nelder-Mead",
             args=(timebase, evfit, self.risepower, res_rise.x[2], 1),
             bounds=bounds_full,
             options={"maxiter": 100000},
         )
+        except:
+            print('Fitting failed in event fitter')
+            print('evfit: ', evfit)
+            return None, None
+            # print('timebase: ', timebase)
+            # import matplotlib.pyplot as mpl
+            # mpl.plot(timebase, evfit)
+            # mpl.show()
+            # print('risepower: ', self.risepower, res_rise.x[2], bounds_full)
+            # raise ValueError()
+            
         if debug:
             print("\nFull fit:")
             print("dt: ", dt, " maxev: ", maxev, " peak_pos: ", peak_pos)
@@ -817,6 +851,7 @@ class MiniAnalyses:
                 mode=-1,
             )
             ax[1].plot(timebase, y, "bo", markersize=3)
+            f.suptitle("Full fit")
             mpl.show()
 
         self.rise_fit = self.risefit(

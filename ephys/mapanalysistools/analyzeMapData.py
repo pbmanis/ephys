@@ -650,7 +650,7 @@ class AnalyzeMap(object):
         # fill end space...
         endindx = np.where(self.Data.tb >= self.Pars.ar_tstart)[0][0]
         data_nostim.append(list(range(lastd, endindx)))
-        data_nostim = list(np.hstack(np.array(data_nostim)))
+        data_nostim = list(np.hstack(np.array(data_nostim, dtype=object)))
         if self.verbose:
             CP.cprint('c', f"      Data shape going into analyze_protocol: str(elf.data_clean.shape:s)")
         results = self.analyze_protocol(
@@ -870,7 +870,8 @@ class AnalyzeMap(object):
         if tmaxev > self.Pars.analysis_window[1]:  # block step information
             tmaxev = self.Pars.analysis_window[1]
         idmax = int(self.Pars.analysis_window[1] / rate)
-
+        
+        # print('Pars: ', self.Pars)
         if self.methodname == "aj":
             aj = minis_methods.AndradeJonas()
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
@@ -879,6 +880,7 @@ class AnalyzeMap(object):
             else:
                 lpf = self.Pars.LPF
             lpf = None
+            hpf = None
             # print("sign: ", self.Pars.sign)
             aj.setup(
                 tau1=self.Pars.taus[0],
@@ -889,17 +891,18 @@ class AnalyzeMap(object):
                 sign=self.Pars.sign,
                 risepower=4.0,
                 threshold=self.Pars.threshold,
+                lpf=lpf,
+                hpf=hpf,
             )
-            # aj.setup(tau1=self.taus[0], tau2=self.taus[1], dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-            #         sign=self.sign, eventstartthr=eventstartthr, threshold=self.threshold)
-            idata = data.view(np.ndarray)  # [jtrial, itarget, :]
-            # meandata = np.mean(idata[:idmax])
+            idata = data.view(np.ndarray) 
             aj.deconvolve(
-                idata[:idmax], lpf=lpf, llambda=5.0, order=int(0.001 / rate),
+                idata[:idmax]-np.mean(idata[:idmax]),
+                llambda=5.0,
+                order=int(0.001 / rate),
             )
-            # aj.deconvolve(idata[:idmax]-meandata, data_nostim=data_nostim,
-            #                   llambda=1., order=7)  # note threshold scaling...
             method = aj
+            aj.summarize(aj.data)
+
         elif self.methodname == "cb":
             cb = minis_methods.ClementsBekkers()
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
@@ -908,15 +911,19 @@ class AnalyzeMap(object):
                 tau2=self.Pars.taus[1],
                 dt=rate,
                 delay=0.0,
-                template_tmax=rate * (jmax - 1),
+                template_tmax=5.0*self.Pars.taus[1], #rate * (jmax - 1),
                 sign=self.Pars.sign,
                 eventstartthr=eventstartthr,
                 threshold=self.Pars.threshold,
+                lpf=self.Pars.LPF,
+                hpf=self.Pars.HPF
             )
             cb.set_cb_engine(engine=self.engine)
+            cb._make_template()
             idata = data.view(np.ndarray)  # [jtrial, itarget, :]
             meandata = np.mean(idata[:jmax])
-            cb.cbTemplateMatch(idata[:idmax] - meandata)
+            cb.cbTemplateMatch(idata[:idmax] - meandata, lpf=self.Pars.LPF)
+            cb.summarize(cb.data)
             # result.append(res)
             # crit.append(cb.Crit)
             # scale.append(cb.Scale)
@@ -925,11 +932,15 @@ class AnalyzeMap(object):
             zc = minis_methods.ZCFinder()
             # print("sign: ", self.Pars.sign)
             zc.setup(
-                dt=rate,
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
+                dt=rate,
+                delay=0.0,
+                template_tmax=5.0*self.Pars.taus[1],
                 sign=self.Pars.sign,
                 threshold=self.Pars.threshold,
+                lpf=self.Pars.LPF,
+                hpf=self.Pars.HPF,
             )
             idata = data.view(np.ndarray)  # [jtrial, itarget, :]
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
@@ -945,7 +956,7 @@ class AnalyzeMap(object):
                 minLength=iminlen,
             )
             method = zc
-
+            zc.summarize(zc.data)
         else:
             raise ValueError(
                 f'analyzeMapData:analyzeOneTrace: Method <{self.methodname:s}> is not valid (use "aj" or "cb" or "zc")'

@@ -83,7 +83,8 @@ import numpy as np
 import textwrap
 from collections import OrderedDict
 import pandas as pd
-import pandas.compat # for StringIO
+# import pandas_compat # for StringIO - separate package - but only for pandas < 0.24 or so
+from io import StringIO
 
 from ephys.ephysanalysis import acq4read
 from ephys.ephysanalysis.metaarray import MetaArray
@@ -768,7 +769,7 @@ class DataSummary():
             print('\nOUTPUTTING DIRECTLY VIA PANDAS')
           #  self.colprint()
             print('pandstring: ', self.panda_string)
-            df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
+            df = pd.read_csv(StringIO(self.panda_string), delimiter='\t')
            # print('Head write: \n', df.head(5), '\n')
             df.to_pickle(self.outFilename)
         if self.outputMode == 'pandas' and self.append:
@@ -784,7 +785,7 @@ class DataSummary():
                 ofile.rename(bkfile)
             else:
                 raise ValueError(f'Cannot append to non-existent file: {self.outFilename:s}')
-            df = pd.read_csv(pandas.compat.StringIO(self.panda_string), delimiter='\t')
+            df = pd.read_csv(StringIO(self.panda_string), delimiter='\t')
             maindf = maindf.append(df)
             maindf = maindf.reset_index(level=0, drop=True)
            # maindf = maindf.reset_index()  # redo the indices so all in sequence
