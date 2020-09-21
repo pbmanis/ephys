@@ -136,7 +136,6 @@ class SpikeAnalysis():
         Nothing, but see the list of class variables that are modified
         
         """
-        print('ANALYZING SPIKES')
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         maxspkrate = 50  # max rate to count  in adaptation is 50 spikes/second
         minspk = 4
@@ -168,7 +167,7 @@ class SpikeAnalysis():
                                               debug=False)
            # print (ntr, i, self.Clamps.values[i], len(spikes))
             if len(spikes) == 0:
-                print ('no spikes found')
+                # print ('no spikes found')
                 continue
             spikes = np.array(spikes)
             self.spikes[i] = spikes

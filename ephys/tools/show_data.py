@@ -122,10 +122,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         rate = np.mean(np.diff(self.tb))
         jmax = int((2*self.tau1 + 3*self.tau2)/rate)
         cb.setup(tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                sign=self.sign, eventstartthr=None)
+                threshold=self.thresh, sign=self.sign, eventstartthr=None)
         meandata = np.mean(self.current_data)
-        cb._make_template()
-        cb.cbTemplateMatch(self.current_data,  threshold=self.thresh)
+        template = cb._make_template()
+        cb.cbTemplateMatch(self.current_data)
         self.decorate(cb)
         self.method = cb
         self.last_method = 'cb'
@@ -136,10 +136,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         rate = np.mean(np.diff(self.tb))
         jmax = int((2*self.tau1 + 3*self.tau2)/rate)
         aj.setup(tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-                sign=self.sign, eventstartthr=None)
+                threshold=self.thresh/5., sign=self.sign, eventstartthr=None)
         meandata = np.mean(self.current_data)
-        aj.deconvolve(self.current_data, data_nostim=None,
-                thresh=self.thresh, llambda=1., order=7)  # note threshold scaling...
+        aj.deconvolve(self.current_data-meandata, data_nostim=None,
+                llambda=5., order=int(0.001 / rate)) 
         self.decorate(aj)
         self.method = aj
         self.last_method = 'aj'
