@@ -16,6 +16,7 @@ per acq4 standards...
 
 import numpy as np
 import scipy.signal
+from dataclasses import dataclass, field
 from typing import Union, List
 import timeit
 from scipy.optimize import curve_fit
@@ -25,6 +26,59 @@ import pylibrary.tools.digital_filters as dfilt
 from pylibrary.tools.cprint import cprint
 
 
+@dataclass
+class Filtering:
+    LPF_applied: bool=False
+    HPF_applied: bool=False
+    LPF_frequency: Union[float, None]= None
+    HPF_frequency: Union[float, None]= None
+
+def def_empty_list():
+    return [0] # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
+
+@dataclass
+class AverageEvent:
+    """
+        The AverageEvent class holds the averaged events from all
+        traces/trials
+    """
+    
+    averaged : bool= False  # set flags in case of no events found
+    avgeventtb:Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    avgevent: Union[List, np.ndarray] =field(
+        default_factory=def_empty_list)
+    fitted :bool = False
+    fitted_tau1 :float = np.nan
+    fitted_tau2 :float = np.nan
+    Amplitude :float = np.nan
+    avg_fiterr :float = np.nan
+       
+
+@dataclass
+class Summaries:
+    """
+        The Summaries dataclass holdes the results of the
+        individual events that were detected,
+        as well as the results of various fits
+        and the averge fit
+    """
+    onsets: Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    peaks: Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    smpkindex: Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    smoothed_peaks : Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    amplitudes : Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    Qtotal : Union[List, np.ndarray] = field(
+        default_factory=def_empty_list)
+    individual_events: bool = False
+    average: object = AverageEvent()
+
+
 class MiniAnalyses:
     def __init__(self):
         """
@@ -32,14 +86,21 @@ class MiniAnalyses:
         Provides template generation, and summary analyses
         Allows use of common methods between different algorithms
         """
+        self.verbose = False
+        self.ntraces = 1
+        self.filtering = Filtering()
+        print(self.filtering)
         self.risepower = 4.0
         self.min_event_amplitude = 5.0e-12  # pA default
+        self.Criterion = [None]
         self.template = None
         self.template_tmax = 0.
         self.analysis_window=[None, None]  # specify window or entire data set
-    
+        super().__init__()
+        
     def setup(
         self,
+        ntraces: int = 1,
         tau1: Union[float, None] = None,
         tau2: Union[float, None] = None,
         template_tmax: float = 0.05,
@@ -49,15 +110,22 @@ class MiniAnalyses:
         eventstartthr: Union[float, None] = None,
         risepower: float = 4.0,
         min_event_amplitude: float = 2.0,
-        threshold:float = 2.5, 
+        threshold:float = 2.5,
+        global_SD:Union[float, None] = None,
         analysis_window:[Union[float, None], Union[float, None]] = [None, None],
         lpf:Union[float, None] = None,
         hpf:Union[float, None] = None
     ) -> None:
         """
         Just store the parameters - will compute when needed
+        Use of globalSD and threshold: 
+        if glboal SD is None, we use the threshold as it.
+        If Global SD has a value, then we use that rather than the 
+        current trace SD for threshold determinations
         """
         assert sign in [-1, 1]  # must be selective, positive or negative events only
+        self.ntraces = ntraces
+        self.Criterion = [None]*ntraces
         self.sign = sign
         self.taus = [tau1, tau2]
         self.dt = dt
@@ -109,26 +177,37 @@ class MiniAnalyses:
             self.template = -self.template
             self.template_amax = np.min(self.template)
 
+
+    def reset_filtering(self):
+        self.filtering.LPF_applied = False
+        self.filtering.HPF_applied = False
+        
     def LPFData(
         self, data: np.ndarray, lpf: Union[float, None] = None, NPole: int = 8
     ) -> np.ndarray:
-        if lpf is not None:
+        assert (not self.filtering.LPF_applied)  # block repeated application of filtering
+        cprint('y', f"minis_methods_common, LPF data:  {lpf:f}")
+        if lpf is not None : 
+            cprint('y', f"     ... lpf at {lpf:f}")
             if lpf > 0.49 / self.dt:
                 raise ValueError(
                     "lpf > Nyquist: ", lpf, 0.49 / self.dt, self.dt, 1.0 / self.dt
                 )
-            return dfilt.SignalFilter_LPFButter(data, lpf, 1.0 / self.dt, NPole=8)
-        else:
-            return data
+            data = dfilt.SignalFilter_LPFButter(data, lpf, 1.0 / self.dt, NPole=8)
+            self.filtering.LPF = lpf
+            self.filtering.LPF_applied = True
+        return data
 
     def HPFData(self, data:np.ndarray, hpf: Union[float, None] = None, NPole: int = 8) -> np.ndarray:
-        if hpf is None or hpf == 0.0:
+        assert (not self.filtering.HPF_applied)  # block repeated application of filtering
+        if hpf is None or hpf == 0.0 :
             return data
         if len(data.shape) == 1:
             ndata = data.shape[0]
         else:
             ndata = data.shape[1]
         nyqf = 0.5 * ndata * self.dt
+        cprint('y', f"minis_methods: hpf at {hpf:f}")
         if hpf < 1.0 / nyqf:  # duration of a trace
             raise ValueError(
                 "hpf < Nyquist: ",
@@ -142,24 +221,11 @@ class MiniAnalyses:
                 "sampelrate",
                 1.0 / self.dt,
             )
-        print(
-            "OK, hpf > Nyquist: ",
-            "hpf = ", hpf,
-            "nyquist = ",
-            1.0 / nyqf,
-            "ndata",
-            ndata,
-            "dt",
-            self.dt,
-            "samplerate",
-            1.0 / self.dt,
-        )
-        data = dfilt.SignalFilter_HPFButter(data-data[0], hpf, 1.0 / self.dt, NPole=4)
-        import matplotlib.pyplot as mpl
 
-        mpl.plot(data)
-        mpl.title("HPF")
-        mpl.show()
+        data = dfilt.SignalFilter_HPFButter(data-data[0], hpf, 1.0 / self.dt, NPole=4)
+        self.filtering.HPF = hpf
+        self.filtering.HPF_applied = True
+
         return data
     
     def prepare_data(self, data):
@@ -168,6 +234,8 @@ class MiniAnalyses:
         1. Clip the data in time (remove sections with current or voltage steps)
         2. Filter the data (LPF, HPF)
         """
+        # cprint('r', 'Prepare data')
+
         self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
         if self.analysis_window[1] is not None:
             jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
@@ -177,59 +245,87 @@ class MiniAnalyses:
             jmin = np.argmin(np.fabs(self.timebase) - self.analysis_window[0])
         else:
             jmin = 0
-        # print('jmax: ', jmin, jmax, data.shape, self.dt, np.max(self.timebase))
         data = data[jmin:jmax]
-        data = self.LPFData(data, lpf=self.lpf)
-        self.data = self.HPFData(data, hpf=self.hpf)
+        if self.verbose:
+            if self.lpf is not None:
+                cprint('y', f"minis_methods_common, prepare_data: LPF: {self.lpf:.1f} Hz")
+            else:
+                cprint('r', f"minis_methods_common, no LPF applied")
+            if self.hpf is not None:
+                cprint('y', f"minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz")
+            else:
+                cprint('r', f"minis_methods_common, no HPF applied")
+        if isinstance(self.lpf, float):
+            data = self.LPFData(data, lpf=self.lpf)
+        if isinstance(self.hpf, float):
+            data = self.HPFData(data, hpf=self.hpf)
+        self.data = data
         self.timebase = self.timebase[jmin:jmax]
         
     def moving_average(self, a, n: int = 3) -> (np.array, int):
         ret = np.cumsum(a, dtype=float)
         ret[n:] = ret[n:] - ret[:-n]
         return ret[n - 1 :] / n, n
+        
+    def remove_outliers(self, x:np.ndarray, scale:float=3.0) -> np.ndarray:
+        a = np.array(x)
+        upper_quartile = np.percentile(a, 75)
+        lower_quartile = np.percentile(a, 25)
+        IQR = (upper_quartile - lower_quartile) * scale
+        quartileSet = (lower_quartile - IQR, upper_quartile + IQR)
+        result = np.where(((a >= quartileSet[0]) & (a <= quartileSet[1])), a, np.nan)
+        # import matplotlib.pyplot as mpl
+        # mpl.plot(x)
+        # mpl.plot(result)
+        # mpl.show()
+        return result
+    
 
     def summarize(self, data, order: int = 11, verbose: bool = False) -> None:
         """
-        compute intervals,  peaks and ampitudes for all found events in a trace
+        compute intervals,  peaks and ampitudes for all found events in a
+        trace or a group of traces
         """
-        self.intervals = np.diff(self.timebase[self.onsets])  # event intervals
         i_decay_pts = int(2 * self.taus[1] / self.dt)  # decay window time (points)
-        self.peaks = []
-        self.smpkindex = []
-        self.smoothed_peaks = []
-        self.amplitudes = []
-        self.Qtotal = []
-        self.averaged = False  # set flags in case of no events found
-        self.individual_events = False
-        self.fitted = False
-        self.fitted_tau1 = np.nan
-        self.fitted_tau2 = np.nan
-        self.Amplitude = np.nan
-        self.avg_fiterr = np.nan
+        self.Summary = Summaries()  # a single summary class is created
+
         ndata = len(data)
+        
+        # set up arrays
+        self.Summary.peaks = [[]]*ndata
+        self.Summary.smoothed_peaks = [[]]*ndata
+        self.Summary.smpkindex = [[]]*ndata
+        self.Summary.amplitudes = [[]]*ndata
+ 
         avgwin = (
             5  # int(1.0/self.dt)  # 5 point moving average window for peak detection
         )
         #        print('dt: ', self.dt)
         mwin = int((0.050) / self.dt)
-        #        print('mwin: ', mwin)
-        # order = int(0.0004/self.dt)
-        #     print('onsets: ', self.onsets)
+
         if self.sign > 0:
             nparg = np.greater
         else:
             nparg = np.less
-        if len(self.onsets) > 0:  # original events
+        self.intervals = []
+        self.timebase = np.arange(0., data.shape[1]*self.dt, self.dt)
+        for i, dataset in enumerate(data):  # each trial/trace
+            # print('Onsets: ', self.onsets)
+            if len(self.onsets[i]) == 0:  # original events
+                continue
             #            print('no: ', len(self.onsets))
             acceptlist = []
-            for j in range(len(data[self.onsets])):
+            self.intervals.append(np.diff(self.timebase[self.onsets[i]]))  # event intervals
+            for j in range(dataset[self.onsets[i]].shape[0]):  # for all of the events in this trace
+                onset = self.onsets[i][j]  # get the onset
                 if self.sign > 0 and self.eventstartthr is not None:
-                    if self.data[self.onsets[j]] < self.eventstartthr:
+                    if dataset[onset] < self.eventstartthr:
                         continue
                 if self.sign < 0 and self.eventstartthr is not None:
-                    if self.data[self.onsets[j]] > -self.eventstartthr:
+                    if dataset[onset] > -self.eventstartthr:
                         continue
-                svwinlen = data[self.onsets[j] : (self.onsets[j] + mwin)].shape[0]
+                event_data = dataset[onset : (onset + mwin)]  # get this event
+                svwinlen = event_data.shape[0]
                 if svwinlen > 11:
                     svn = 11
                 else:
@@ -242,52 +338,52 @@ class MiniAnalyses:
                 if svn > 3:  # go ahead and filter
                     p = scipy.signal.argrelextrema(
                         scipy.signal.savgol_filter(
-                            data[self.onsets[j] : (self.onsets[j] + mwin)], svn, 2
+                            event_data, svn, 2
                         ),
                         nparg,
                         order=order,
                     )[0]
                 else:  # skip filtering
                     p = scipy.signal.argrelextrema(
-                        data[self.onsets[j] : (self.onsets[j] + mwin)],
+                        event_data,
                         nparg,
                         order=order,
                     )[0]
                 if len(p) > 0:
-                    self.peaks.extend([int(p[0] + self.onsets[j])])
-                    amp = self.sign * (self.data[self.peaks[-1]] - data[self.onsets[j]])
-
-                    self.amplitudes.extend([amp])
-                    i_end = i_decay_pts + self.onsets[j]  # distance from peak to end
-                    i_end = min(ndata, i_end)  # keep within the array limits
-                    if j < len(self.onsets) - 1:
-                        if i_end > self.onsets[j + 1]:
+                    self.Summary.peaks[i].extend([int(p[0] + onset)])
+                    amp = self.sign * (dataset[self.Summary.peaks[-1]] - dataset[onset])
+                    self.Summary.amplitudes[i].extend([amp])
+                    i_end = i_decay_pts + onset # distance from peak to end
+                    i_end = min(dataset.shape[0], i_end)  # keep within the array limits
+                    if j < len(self.onsets[i]) - 1:
+                        if i_end > self.onsets[i][j + 1]:
                             i_end = (
-                                self.onsets[j + 1] - 1
+                                self.onsets[i][j + 1] - 1
                             )  # only go to next event start
                     move_avg, n = self.moving_average(
-                        data[self.onsets[j] : i_end],
-                        n=min(avgwin, len(data[self.onsets[j] : i_end])),
+                        dataset[onset : i_end],
+                        n=min(avgwin, len(dataset[onset : i_end])),
                     )
                     if self.sign > 0:
                         pk = np.argmax(move_avg)  # find peak of smoothed data
                     else:
                         pk = np.argmin(move_avg)
-                    self.smoothed_peaks.extend([move_avg[pk]])  # smoothed peak
-                    self.smpkindex.extend([self.onsets[j] + pk])
+                    self.Summary.smoothed_peaks[i].extend([move_avg[pk]])  # smoothed peak
+                    self.Summary.smpkindex[i].extend([onset + pk])
                     acceptlist.append(j)
-            if len(acceptlist) < len(self.onsets):
+            if len(acceptlist) < len(self.onsets[i]):
                 if verbose:
-                    print("Trimmed %d events" % (len(self.onsets) - len(acceptlist)))
-                self.onsets = self.onsets[
+                    print("Trimmed %d events" % (len(self.onsets[i]) - len(acceptlist)))
+                self.onsets[i] = self.onsets[i][
                     acceptlist
                 ]  # trim to only the accepted values
             # print(self.onsets)
-            self.avgevent, self.avgeventtb, self.allevents = self.average_events(
-                self.onsets
-            )
-            if self.averaged:
-                self.fit_average_event(self.avgeventtb, self.avgevent, debug=False)
+        self.Summary.onsets = self.onsets 
+        self.average_events(
+            data, self.onsets, 
+        )
+        if self.Summary.average.averaged:
+            self.fit_average_event(debug=False)
 
         else:
             if verbose:
@@ -336,41 +432,59 @@ class MiniAnalyses:
                 meas["HWdown"].append(hw_down)
                 meas["HW"].append(hw_up + hw_down)
             self.measured = True
+            self.allevents = allevents
         else:
             self.measured = False
+            self.allevents = None
         return meas
 
-    def average_events(self, eventlist: list) -> tuple:
-        # compute average event with length of template
-        self.averaged = False
+    def average_events(self, data: np.ndarray, eventlist: list) -> tuple:
+        """
+        compute average event with length of template
+        Parameters
+        ----------
+        eventlist : list
+            List of event onset indices into the arrays
+            Expect a 2-d list (traces x onsets)
+        """ 
+        self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = 0.0  # self.taus[0]*10.
-        self.avgeventdur = tdur
+        avgeventdur = tdur
         self.tpre = tpre
-        self.avgnpts = int((tpre + tdur) / self.dt)  # points for the average
+        avgnpts = int((tpre + tdur) / self.dt)  # points for the average
         npre = int(tpre / self.dt)  # points for the pre time
         npost = int(tdur / self.dt)
-        avg = np.zeros(self.avgnpts)
-        avgeventtb = np.arange(self.avgnpts) * self.dt
-
-        allevents = np.zeros((len(eventlist), self.avgnpts))
+        avg = np.zeros(avgnpts)
+        avgeventtb = np.arange(avgnpts) * self.dt
+        n_events = sum(len(events) for events in eventlist)
+        allevents = np.zeros((n_events, avgnpts))
         k = 0
         pkt = 0  # np.argmax(self.template)
-        for j, i in enumerate(eventlist):
-            ix = i + pkt  # self.idelay
-            if (ix + npost) < len(self.data) and (ix - npre) >= 0:
-                allevents[k, :] = self.data[(ix - npre) : (ix + npost)]
-                k = k + 1
+        # print('eventlist: ', eventlist)
+        # print(data.shape)
+        # print(allevents.shape)
+        for itrace in range(len(eventlist)):
+            for j, event in enumerate(eventlist[itrace]):
+                ix = event + pkt  # self.idelay
+                # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
+                if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
+                    allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
+                    k = k + 1
         if k > 0:
-            allevents = allevents[0:k, :]  # trim unused
+            self.Summary.allevents = allevents[0:k, :]  # trim unused
             avgevent = allevents.mean(axis=0)
-            avgevent = avgevent - np.mean(avgevent[:3])
-            self.averaged = True
+            self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
+            self.Summary.average.averaged = True
+            self.Summary.average.avgeventtb = avgeventtb
+            return
         else:
-            avgevent = []
-            allevents = []
-            self.averaged = False
-        return (avgevent, avgeventtb, allevents)
+            self.Summary.average.avgevent = []
+            self.Summary.average.allevents = []
+            self.Summary.average.avgeventtb = []
+            self.Summary.average.averaged = False
+            return
+
 
     def doubleexp(
         self,
@@ -461,8 +575,6 @@ class MiniAnalyses:
 
     def fit_average_event(
         self,
-        tb: np.ndarray,
-        average_event: np.ndarray,
         debug: bool = False,
         label: str = "",
         inittaus: List = [0.001, 0.005],
@@ -470,6 +582,7 @@ class MiniAnalyses:
     ) -> None:
         """
         Fit the averaged event to a double exponential epsc-like function
+        Operates on the AverageEvent data structure
         """
         # tsel = np.argwhere(self.avgeventtb > self.tpre)[0]  # only fit data in event,  not baseline
         tsel = 0  # use whole averaged trace
@@ -489,8 +602,8 @@ class MiniAnalyses:
         # bounds_exp  = [(0., 0.5), (10000., 50.)]
 
         res, rdelay = self.event_fitter(
-            tb,
-            average_event,
+            self.Summary.average.avgeventtb,
+            self.Summary.average.avgevent,
             time_past_peak=time_past_peak,
             initdelay=initdelay,
             debug=debug,
@@ -507,16 +620,17 @@ class MiniAnalyses:
         self.bfdelay = rdelay
         self.avg_best_fit = self.doubleexp(
             self.fitresult,
-            tb[self.tsel :],
-            np.zeros_like(tb[self.tsel :]),
+            self.Summary.average.avgeventtb[self.tsel :],
+            np.zeros_like(self.Summary.average.avgeventtb[self.tsel :]),
             risepower=self.risepower,
             mode=0,
             fixed_delay=self.bfdelay,
         )
         self.avg_best_fit = self.sign * self.avg_best_fit
-        fiterr = np.linalg.norm(self.avg_best_fit - average_event[self.tsel :])
+        fiterr = np.linalg.norm(self.avg_best_fit - 
+            self.Summary.average.avgevent[self.tsel :])
         self.avg_fiterr = fiterr
-        ave = self.sign * average_event
+        ave = self.sign * self.Summary.average.avgevent
         ipk = np.argmax(ave)
         pk = ave[ipk]
         p10 = 0.1 * pk
@@ -531,7 +645,7 @@ class MiniAnalyses:
         i37 = np.argmin(np.fabs(ave[ipk:] - p37))
         self.risetenninety = self.dt * (i90 - i10)
         self.decaythirtyseven = self.dt * (i37 - ipk)
-        self.Qtotal = self.dt * np.sum(average_event[self.tsel :])
+        self.Qtotal = self.dt * np.sum(self.Summary.average.avgevent[self.tsel :])
         self.fitted = True
 
     def fit_individual_events(self, onsets: np.ndarray) -> None:
@@ -605,8 +719,8 @@ class MiniAnalyses:
                 print("fitted: ", self.fitted_events)
                 print("i: ", i)
                 print("allev: ", self.allevents)
-                print("len allev: ", len(self.allevents), onsets.shape[0])
-                raise
+                print("len allev: ", len(self.allevents), len(onsets))
+                raise ValueError('Fit failed)')
             res, rdelay = self.event_fitter(
                 self.avgeventtb, self.allevents[i, :], time_past_peak=time_past_peak
             )
@@ -888,7 +1002,7 @@ class MiniAnalyses:
     ) -> None:
         """
         Screen events:
-        error of he fit must be less than a limit,
+        error of the fit must be less than a limit,
         and
         tau2 must fall within a range of the default tau2
         and
@@ -1035,7 +1149,7 @@ class MiniAnalyses:
             mpl.show()
 
     def plots(
-        self, events: Union[np.ndarray, None] = None, title: Union[str, None] = None,
+        self, data, events: Union[np.ndarray, None] = None, title: Union[str, None] = None,
         testmode:bool=False
     ) -> None:
         """
@@ -1044,7 +1158,7 @@ class MiniAnalyses:
         import matplotlib.pyplot as mpl
         import pylibrary.plotting.plothelpers as PH
 
-        data = self.data
+
         P = PH.regular_grid(
             3,
             1,
@@ -1062,81 +1176,138 @@ class MiniAnalyses:
             labelposition=(-0.12, 0.95),
         )
         self.P = P
-        scf = 1e12
+
         ax = P.axarr
         ax = ax.ravel()
         PH.nice_plot(ax)
         for i in range(1, 2):
             ax[i].get_shared_x_axes().join(ax[i], ax[0])
         # raw traces, marked with onsets and peaks
-        tb = self.timebase[: len(data)]
-        ax[0].plot(tb, scf * data, "k-", linewidth=0.75, label="Data")  # original data
-        ax[0].plot(
-            tb[self.onsets],
-            scf * data[self.onsets],
-            "k^",
-            markersize=6,
-            markerfacecolor=(1, 1, 0, 0.8),
-            label="Onsets",
-        )
-        if len(self.onsets) is not None:
-            #            ax[0].plot(tb[events],  data[events],  'go',  markersize=5, label='Events')
-            #        ax[0].plot(tb[self.peaks],  self.data[self.peaks],  'r^', label=)
-            ax[0].plot(
-                tb[self.smpkindex],
-                scf * np.array(self.smoothed_peaks),
-                "r+",
-                label="Smoothed Peaks",
-            )
+        for i in range(data.shape[0]):
+            self.plot_trial(ax, i, data, events)
         ax[0].set_ylabel("I (pA)")
         ax[0].set_xlabel("T (s)")
         ax[0].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        ax[1].set_ylabel("Deconvolution")
+        ax[1].set_xlabel("T (s)")
+        ax[1].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        ax[2].set_ylabel("Averaged I (pA)")
+        ax[2].set_xlabel("T (s)")
+        ax[2].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        if title is not None:
+            P.figure_handle.suptitle(title)
+        if testmode:  # just display briefly
+            mpl.show(block=False)
+            mpl.pause(2)
+            mpl.close()
+        else:    
+            mpl.show()            
+
+    def plot_trial(self, ax, i, data, events):
+        scf = 1e12
+        print(self.timebase.shape, data.shape)
+        tb = self.timebase[: data[i].shape[0]]
+        if i == 0:
+            label = 'Data'
+        else:
+            label = ''
+        ax[0].plot(tb, scf * data[i], "k-", linewidth=0.75, label=label)  # original data
+        if i == 0:
+            label = 'Onsets'
+        else:
+            label = ''
+        ax[0].plot(
+            tb[self.onsets[i]],
+            scf * data[i][self.onsets[i]],
+            "k^",
+            markersize=6,
+            markerfacecolor=(1, 1, 0, 0.8),
+            label=label,
+        )
+        if len(self.onsets[i]) is not None:
+            #            ax[0].plot(tb[events],  data[events],  'go',  markersize=5, label='Events')
+            #        ax[0].plot(tb[self.peaks],  self.data[self.peaks],  'r^', label=)
+            if i == 0:
+                label = 'Smoothed Peaks'
+            else:
+                label = ''
+            ax[0].plot(
+                tb[self.Summary.smpkindex[i]],
+                scf * np.array(self.Summary.smoothed_peaks[i]),
+                "r+",
+                label=label,
+            )
+
 
         # deconvolution trace, peaks marked (using onsets), plus threshold)
-        ax[1].plot(tb[: self.Crit.shape[0]], self.Crit, label="Deconvolution")
+        if i == 0:
+            label = "Deconvolution"
+        else:
+            label = ''
+        ax[1].plot(tb[: self.Criterion[i].shape[0]], self.Criterion[i], label=label)
+        
+        if i == 0:
+            label="Threshold ({0:4.2f}) SD".format(self.sdthr)
+        else:
+            label = ''    
         ax[1].plot(
             [tb[0], tb[-1]],
             [self.sdthr, self.sdthr],
             "r--",
             linewidth=0.75,
-            label="Threshold ({0:4.2f}) SD".format(self.sdthr),
+            label=label,
         )
+        if i == 0:
+            label = "Deconv. Peaks"
+        else:
+            label = ''
         ax[1].plot(
-            tb[self.onsets] - self.idelay,
-            self.Crit[self.onsets],
+            tb[self.onsets[i]] - self.idelay,
+            self.Criterion[i][self.onsets[i]],
             "y^",
-            label="Deconv. Peaks",
+            label=label,
         )
         if events is not None:  # original events
             ax[1].plot(
-                tb[: self.Crit.shape[0]][events],
-                self.Crit[events],
+                tb[: self.Criterion[i].shape[0]][events],
+                self.Criterion[i][events],
                 "ro",
                 markersize=5.0,
             )
-        ax[1].set_ylabel("Deconvolution")
-        ax[1].set_xlabel("T (s)")
-        ax[1].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+ 
         # averaged events, convolution template, and fit
-        if self.averaged:
+        if self.Summary.average.averaged:
+            if i == 0:
+                nev = sum([len(x) for x in self.onsets])
+                label = f'Average Event (N={nev:d})'
+            else:
+                label=''
+            evlen = len(self.Summary.average.avgevent)
             ax[2].plot(
-                self.avgeventtb[: len(self.avgevent)],
-                scf * self.avgevent,
+                self.Summary.average.avgeventtb[: evlen],
+                scf * self.Summary.average.avgevent,
                 "k",
-                label="Average Event",
+                label=label,
             )
-            maxa = np.max(self.sign * self.avgevent)
+            maxa = np.max(self.sign * self.Summary.average.avgevent)
             # tpkmax = np.argmax(self.sign*self.template)
             if self.template is not None:
-                maxl = int(np.min([len(self.template), len(self.avgeventtb)]))
+                maxl = int(np.min([len(self.template), 
+                    len(self.Summary.average.avgeventtb)]))
                 temp_tb = np.arange(0, maxl * self.dt, self.dt)
                 # print(len(self.avgeventtb[:len(self.template)]), len(self.template))
+                if i == 0:
+                    label = "Template"
+                else:
+                    label = ''
                 ax[2].plot(
-                    self.avgeventtb[:maxl],
+                    self.Summary.average.avgeventtb[:maxl],
                     scf * self.sign * self.template[:maxl] * maxa / self.template_amax,
                     "r-",
-                    label="Template",
+                    label=label,
                 )
+           
+           
             # compute double exp based on rise and decay alone
             # print('res rise: ', self.res_rise)
             # p = [self.res_rise.x[0], self.res_rise.x[1], self.res_decay.x[1], self.res_rise.x[2]]
@@ -1147,32 +1318,27 @@ class MiniAnalyses:
                 10, (1.0 / self.risepower) * np.log10(self.tau1 * 1e3)
             )  # correct for rise power
             tau2 = self.tau2 * 1e3
+            if i == 0:
+               label = "Best Fit:\nRise Power={0:.2f}\nTau1={1:.3f} ms\nTau2={2:.3f} ms\ndelay: {3:.3f} ms".format(
+                                    self.risepower,
+                                    self.res_rise.x[1] * 1e3,
+                                    self.res_decay.x[1] * 1e3,
+                                    self.bfdelay * 1e3,
+                                )
+            else:
+                label = ''
             ax[2].plot(
-                self.avgeventtb[: len(self.avg_best_fit)],
+                self.Summary.average.avgeventtb[: len(self.avg_best_fit)],
                 scf * self.avg_best_fit,
                 "c--",
                 linewidth=2.0,
-                label="Best Fit:\nRise Power={0:.2f}\nTau1={1:.3f} ms\nTau2={2:.3f} ms\ndelay: {3:.3f} ms".format(
-                    self.risepower,
-                    self.res_rise.x[1] * 1e3,
-                    self.res_decay.x[1] * 1e3,
-                    self.bfdelay * 1e3,
-                ),
+                label=label,
             )
             # ax[2].plot(self.avgeventtb[:len(self.decay_fit)],  self.sign*scf*self.rise_fit,  'g--', linewidth=1.0,
             #     label='Rise tau  {0:.2f} ms'.format(self.res_rise.x[1]*1e3))
             # ax[2].plot(self.avgeventtb[:len(self.decay_fit)],  self.sign*scf*self.decay_fit,  'm--', linewidth=1.0,
             #     label='Decay tau {0:.2f} ms'.format(self.res_decay.x[1]*1e3))
-            if title is not None:
-                P.figure_handle.suptitle(title)
-            ax[2].set_ylabel("Averaged I (pA)")
-            ax[2].set_xlabel("T (s)")
-            ax[2].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+
+
         # if self.fitted:
         #     print('measures: ', self.risetenninety, self.decaythirtyseven)
-        if testmode:  # just display briefly
-            mpl.show(block=False)
-            mpl.pause(2)
-            mpl.close()
-        else:    
-            mpl.show()

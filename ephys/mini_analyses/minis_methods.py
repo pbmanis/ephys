@@ -27,6 +27,7 @@ import pyximport
 from scipy.optimize import curve_fit
 from numba import jit
 import lmfit
+import scipy as sp
 
 import pylibrary.tools.digital_filters as dfilt
 from pylibrary.tools.cprint import cprint
@@ -89,6 +90,7 @@ class ClementsBekkers(MiniAnalyses):
     """
 
     def __init__(self):
+        super().__init__()
         self.dt = None
         self.data = None
         self.template = None
@@ -166,8 +168,8 @@ class ClementsBekkers(MiniAnalyses):
         Crit = np.zeros_like(D)
         Scale = np.zeros_like(D)
         DetCrit = np.zeros_like(D)
-        pkl = np.zeros(100000)
-        evl = np.zeros(100000)
+        pkl = np.zeros(1000000)
+        evl = np.zeros(1000000)
         nout = 0
         nt = T.shape[0]
         nd = D.shape[0]
@@ -226,10 +228,11 @@ class ClementsBekkers(MiniAnalyses):
     def cbTemplateMatch(
         self,
         data: np.ndarray,
-        order: int = 7,
+        itrace: int = 0,
         lpf: Union[float, None] = None,
     ) -> None:
-        
+        assert data.ndim == 1
+        self.starttime = timeit.default_timer()        
         self.prepare_data(data) # also does timebase
         self.clements_bekkers(self.data)  # flip data sign if necessary
         # svwinlen = self.Crit.shape[0]  # smooth the crit a bit so not so dependent on noise
@@ -242,16 +245,71 @@ class ClementsBekkers(MiniAnalyses):
         #
         # if svn > 3:  # go ahead and filter
         #     self.Crit =  scipy.signal.savgol_filter(self.Crit, svn, 2)
-        sd = np.std(self.Crit)  # HERE IS WHERE TO SCREEN OUT STIMULI/EVOKED
-        self.sdthr = sd * self.threshold  # set the threshold
-        self.above = np.clip(self.Crit, self.sdthr, None)
-        self.onsets = (
-            scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
-            - 1
-            + self.idelay
-        )
-        self.summarize(self.data)
+       
+       
+       ###
+       ###
+        # sd = np.std(self.Crit)  # HERE IS WHERE TO SCREEN OUT STIMULI/EVOKED
+        # self.sdthr = sd * self.threshold  # set the threshold
+        # # print('SDTHR: ', self.sdthr)
+        # self.above = np.clip(self.Crit, self.sdthr, None)
+        # self.onsets = (
+        #     scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
+        #     - 1
+        #     + self.idelay
+        # )
+        self.Crit = self.Crit.squeeze()
+        self.Criterion[itrace] = self.Crit
+        
+    
+    def identify_events(self,
+             data_nostim: Union[list, np.ndarray, None] = None,
+             outlier_scale: float = 10.0, 
+             order: int = 11,
+             verbose: bool = False,
+        ):
+        """
+        Identify events. Criterion array should be 2D:
+        (trial number, criterion array)
+        """
+        criterion = np.array(self.Criterion)
+        assert criterion.ndim == 2
 
+        if data_nostim is not None:
+            # clip to max of crit array, and be sure index array is integer, not float
+            for i in range(criterion.shape[0]):
+                criterion[i,:] = criterion[i, [int(x) for x in data_nostim if x < criterion.shape[1]]]
+        # compute an SD across the entire dataset (all traces)
+        # To do this remove "outliers" in a first pass
+        valid_data = np.zeros_like(criterion)
+        for i in range(criterion.shape[0]):
+            valid_data[i,:] = self.remove_outliers(criterion[i], outlier_scale)
+        sd = np.nanstd(valid_data)
+
+        self.sdthr = sd * self.threshold  # set the threshold to multiple SD
+        self.onsets = [None]*criterion.shape[0]
+        for i in range(criterion.shape[0]):
+            self.above = np.clip(criterion[i], self.sdthr, None)
+            self.onsets[i] = (
+                scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
+                - 1
+                + self.idelay
+            )
+
+            endtime = timeit.default_timer() - self.starttime
+        self.runtime = endtime
+        # self.summarize(self.data)
+        endtime = timeit.default_timer() - self.starttime
+
+        # import matplotlib.pyplot as mpl
+        # for i in range(criterion.shape[0]):
+        #     mpl.plot(self.timebase, criterion[i])
+        #     mpl.plot(self.onsets[i]*self.dt, self.sdthr*np.ones_like(self.onsets[i]), 'ro')
+        # mpl.plot([self.timebase[0], self.timebase[-1]], [self.sdthr, self.sdthr], 'r--')
+        # mpl.show()
+        # self.summarize(self.data)
+        if verbose:
+            print("CB run time: {0:.4f} s".format(endtime))
 
 class AndradeJonas(MiniAnalyses):
     """
@@ -274,20 +332,21 @@ class AndradeJonas(MiniAnalyses):
         self.template_max = None
         self.idelay = 0
         self.method = "aj"
-
+        super().__init__()
+        
     def deconvolve(
         self,
         data: np.ndarray,
-        data_nostim: Union[list, np.ndarray, None] = None,
+        itrace: int=0,
         llambda: float = 5.0,
-        order: int = 7,
         lpf: Union[float, None] = None,
         verbose: bool = False,
     ) -> None:
         # cprint('r', "STARTING AJ")
-        starttime = timeit.default_timer()
+        assert data.ndim == 1
+        self.starttime = timeit.default_timer()
         
-        self.prepare_data(data) # also does timebase
+        self.prepare_data(data) # also generates a timebase
         if self.template is None:
             self._make_template()
 
@@ -303,26 +362,53 @@ class AndradeJonas(MiniAnalyses):
             np.fft.fft(self.data) * np.conj(H) / (H * np.conj(H) + llambda ** 2.0)
         )
         self.Crit = np.real(self.quot)*llambda
-        # self.Crit = np.absolute(self.quot)
-        if data_nostim is None:
-            sd = np.std(self.Crit)
-        else:  # clip to max of crit array, and be sure index array is integer, not float
-            critmeas = [self.Crit[int(x)] for x in data_nostim if x < self.Crit.shape[0]]
-            sd = np.std(critmeas)
-        self.sdthr = sd * self.threshold  # set the threshold
-        self.above = np.clip(self.Crit, self.sdthr, None)
-        self.onsets = (
-            scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
-            - 1
-            + self.idelay
-        )
-        endtime = timeit.default_timer() - starttime
+        self.Crit = self.Crit.squeeze()
+        self.Criterion[itrace] = self.Crit
+        
+        
+    def identify_events(self,
+
+             data_nostim: Union[list, np.ndarray, None] = None,
+             outlier_scale: float = 3.0, 
+             order: int = 7,
+             verbose: bool = False,
+        ):
+        """
+        Identify events. Criterion array should be 2D:
+        (trial number, criterion array), thus 
+        we use the global statistiscs of the set of traces
+        to do detection.
+        """
+        criterion = np.array(self.Criterion)
+        assert criterion.ndim == 2
+        # criterion = criterion.reshape(1, -1)  # make sure can be treated as a 2-d array
+        if data_nostim is not None:
+            # clip to max of crit array, and be sure index array is integer, not float
+            for i in range(criterion.shape[0]):
+                criterion[i,:] = criterion[i, [int(x) for x in data_nostim if x < criterion.shape[1]]]
+        # compute an SD across the entire dataset (all traces)
+        # To do this remove "outliers" in a first pass
+        valid_data = np.zeros_like(criterion)
+        for i in range(criterion.shape[0]):
+            valid_data[i,:] = self.remove_outliers(criterion[i], outlier_scale)
+        sd = np.nanstd(valid_data)
+
+        self.sdthr = sd * self.threshold  # set the threshold to multiple SD
+        self.onsets = [None]*criterion.shape[0]
+        for i in range(criterion.shape[0]):
+            self.above = np.clip(criterion[i], self.sdthr, None)
+            self.onsets[i] = (
+                scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
+                - 1
+                + self.idelay
+            )
+
+            endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
-        self.summarize(self.data)
-        endtime = timeit.default_timer() - starttime
+        endtime = timeit.default_timer() - self.starttime
         if verbose:
             print("AJ run time: {0:.4f} s".format(endtime))
-
+            
 class RSDeconvolve(MiniAnalyses):
     """Event finder using Richardson Silberberg Method, J. Neurophysiol. 2008
     
@@ -338,59 +424,111 @@ class RSDeconvolve(MiniAnalyses):
         self.idelay = 0
         self.threshold=2.0
         self.method = "rs"
+        super().__init__()
 
     def deconvolve(
         self,
         data: np.ndarray,
+        itrace: int=0,
         data_nostim: Union[list, np.ndarray, None] = None,
         verbose: bool = False,
     ) -> None:
-        
+        self.starttime = timeit.default_timer()        
         self.prepare_data(data) # windowing, filtering and timebase
         starttime = timeit.default_timer()
                 # if data_nostim is None:
         #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
         # else:  # clip to max of crit array, and be sure index array is integer, not float
         #     data_nostim = [int(x) for x in data_nostim if x < self.Crit.shape[0]]
-        # data = FN.lowPass(data,cutoff=3000.,dt = 1/20000.)
 
-        self.Crit = self.sign*FN.expDeconvolve(
-            self.data, self.taus[1]  # use decay value for deconvolve
+        print('RS Tau: ', self.taus[1], self.dt)
+        self.Crit = self.expDeconvolve(
+            self.sign*self.data, tau=self.taus[1], dt=self.dt, # use decay value for deconvolve tau
         )
-        self.sdthr = self.threshold*np.std(self.Crit)
-        
-        self.above = np.clip(self.Crit, self.sdthr, None)
-        self.onsets = (
-            scipy.signal.argrelextrema(self.above, np.greater, order=int(100))[0]
-            - 1
-            + self.idelay
-        )
-        # that actually gives peaks. Need onsets of events, so go back to where trace < 0.5*std(data)
+        self.Crit = self.Crit.squeeze()
+        self.Criterion[itrace] = self.Crit
 
-        for i, o in enumerate(self.onsets):
-            last0 = int(o - int(self.taus[1]/self.dt))
-            if last0 < 0:
-                last0 = 0
-
-            new_o = np.where(self.Crit[last0:o] < 2.0*np.std(self.Crit))[0]
-            if len(new_o) == 0:
-                if self.sign == 1:
-                    new_o = np.argmin(self.Crit[last0:o])
-                else:
-                    new_o = np.argmax(self.Crit[last0:o])
-            else:
-                new_o = new_o[-1]
-            if new_o < last0:
-                new_o = last0
-            # print(new_o)
-            self.onsets[i] = new_o
-        # filter amplitudes now:
+    def expDeconvolve(self, data, tau, dt=None):
+        assert dt is not None
+        # if (hasattr(data, 'implements') and data.implements('MetaArray')):
+        #     dt = data.xvals(0)[1] - data.xvals(0)[0]
+        # if dt is None:
+        #     dt = 1
+        # d = data[:-1] + (tau / dt) * (data[1:] - data[:-1])
+       #  return d
         
-        self.summarize(self.data)
-        endtime = timeit.default_timer() - starttime
-        if verbose:
-            print("RS run time: {0:.4f} s".format(endtime))    
+        wlen = int(tau/dt)
+        if wlen % 2 == 0:
+            wlen += 1
+        
+        dVdt =  np.gradient(data, dt) # sp.signal.savgol_filter(data, window_length=wlen, polyorder=3))
+        d = (tau/dt) * tau *dVdt + data
+        return d
+
+    def expReconvolve(data, tau=None, dt=None):
+        if (hasattr(data, 'implements') and data.implements('MetaArray')):
+            if dt is None:
+                dt = data.xvals(0)[1] - data.xvals(0)[0]
+            if tau is None:
+                tau = data._info[-1].get('expDeconvolveTau', None)
+        if dt is None: 
+            dt = 1
+        if tau is None:
+            raise Exception("Must specify tau.")
+        # x(k+1) = x(k) + dt * (f(k) - x(k)) / tau
+        # OR: x[k+1] = (1-dt/tau) * x[k] + dt/tau * x[k]
+        #print tau, dt
+        d = np.zeros(data.shape, data.dtype)
+        dtt = dt / tau
+        dtti = 1. - dtt
+        for i in range(1, len(d)):
+            d[i] = dtti * d[i-1] + dtt * data[i-1]
     
+        if (hasattr(data, 'implements') and data.implements('MetaArray')):
+            info = data.infoCopy()
+            #if 'values' in info[0]:
+                #info[0]['values'] = info[0]['values'][:-1]
+            #info[-1]['expDeconvolveTau'] = tau
+            return MetaArray(d, info=info)
+        else:
+            return d
+
+
+    def identify_events(self,
+             data_nostim: Union[list, np.ndarray, None] = None,
+             outlier_scale: float = 3.0, 
+             order: int = 100,
+             verbose: bool = False,
+        ):
+        """
+        Identify events. Criterion array should be 2D:
+        (trial number, criterion array)
+        """
+        criterion = np.array(self.Criterion)
+        assert criterion.ndim == 2
+        if data_nostim is not None:
+            for i in range(criterion.shape[0]):
+                criterion[i,:] = criterion[i, [int(x) for x in data_nostim if x < criterion.shape[1]]]
+        # compute an SD across the entire dataset (all traces)
+        # To do this remove "outliers" in a first pass
+        valid_data = np.zeros_like(criterion)
+        for i in range(criterion.shape[0]):
+            valid_data[i,:] = self.remove_outliers(criterion[i], outlier_scale)
+        sd = np.nanstd(valid_data)
+        print("RS SD: ", sd)
+        self.sdthr = sd * self.threshold  # set the threshold to multiple SD
+        # that actually gives peaks. Need onsets of events, so go back to where trace < 0.5*std(data)
+        self.onsets = [None]*criterion.shape[0]
+        for j in range(len(criterion)):
+            self.above = np.clip(criterion[j], self.sdthr, None)
+            self.onsets[j] = (
+                scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
+                - 1
+                + self.idelay
+            )
+        if verbose:
+            print("RS run time: {0:.4f} s".format(endtime))
+                
 class ZCFinder(MiniAnalyses):
     """
     Event finder using Luke's zero-crossing algorithm
@@ -408,6 +546,7 @@ class ZCFinder(MiniAnalyses):
         self.idelay = 0
         self.threshold=2.5
         self.method = "zc"
+        super().__init__()
 
     def find_events(
         self,
