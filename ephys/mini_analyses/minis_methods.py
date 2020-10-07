@@ -132,8 +132,10 @@ class ClementsBekkers(MiniAnalyses):
         self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
         if self.engine == "numba":
             self.Scale, self.Crit = nb_clementsbekkers(D, T)
+            print('numba')
         elif self.engine == "cython":
             self.Scale, self.Crit = self.clements_bekkers_cython(D, T)
+            print('cython')
         elif self.engine == "python":
             self.Scale, self.Crit = self.clements_bekkers_python(D, T)
 
@@ -183,12 +185,12 @@ class ClementsBekkers(MiniAnalyses):
     def _rollingSum(self, data, n):
         n = int(n)
         d1 = data.copy()
-        d1[1:] =  d1[1:] + d1[:-1]
+        d1[1:] = d1[1:] + d1[:-1]
         d2 = np.empty(len(d1) - n + 1, dtype=data.dtype)
         d2[0] = d1[n-1]  # copy first point
-        d2[1:] = d1[n:] - d1[:-n]  # subtract
+        d2[1:] =  d1[n:] - d1[:-n]  # subtract
         return d2
-    
+
     def clements_bekkers_python(self, D:np.ndarray, T:np.ndarray) ->(np.ndarray, np.ndarray, np.ndarray):
         """Implements Clements-bekkers algorithm: slides template across data,
         returns array of points indicating goodness of fit.
@@ -207,9 +209,11 @@ class ClementsBekkers(MiniAnalyses):
         sumD = self._rollingSum(D, N)
         sumD2 = self._rollingSum(D**2.0, N)
         sumTD = scipy.signal.correlate(D, T, mode='valid', method='direct')
-        # sumTD = np.zeros_like(sumD)
-#         for i in range(len(D)-N+1):
-#        sumTD[i] = np.multiply(D[i : i + N], T).sum()
+
+        # sumTD2 = np.zeros_like(sumD)
+        # for i in range(len(D)-N+1):
+        #     sumTD2[i] = np.multiply(D[i : i + N], T).sum()
+        # print(np.mean(sumTD-sumTD2))
         # compute scale factor, offset at each location:
     ## compute scale factor, offset at each location:
         scale = (sumTD - sumT * sumD /N) / (sumT2 - sumT*sumT /N)
@@ -217,12 +221,15 @@ class ClementsBekkers(MiniAnalyses):
     
         ## compute SSE at every location
         SSE = sumD2 + scale**2 * sumT2 + N * offset**2 - 2 * (scale*sumTD + offset*sumD - scale*offset*sumT)
-    
         ## finally, compute error and detection criterion
         stderror = np.sqrt(SSE / (N-1))
         DetCrit = scale / stderror
         endtime = timeit.default_timer() - starttime
         self.runtime = endtime
+        # import matplotlib.pyplot as mpl
+ #        mpl.plot(DetCrit)
+ #        mpl.show()
+ #        exit()
         return scale, DetCrit
         
     def cbTemplateMatch(
@@ -235,29 +242,6 @@ class ClementsBekkers(MiniAnalyses):
         self.starttime = timeit.default_timer()        
         self.prepare_data(data) # also does timebase
         self.clements_bekkers(self.data)  # flip data sign if necessary
-        # svwinlen = self.Crit.shape[0]  # smooth the crit a bit so not so dependent on noise
-        # if svwinlen > 11:
-        #     svn = 11
-        # else:
-        #     svn = svwinlen
-        # if svn % 2 == 0:  # if even, decrease by 1 point to meet ood requirement for savgol_filter
-        #     svn -=1
-        #
-        # if svn > 3:  # go ahead and filter
-        #     self.Crit =  scipy.signal.savgol_filter(self.Crit, svn, 2)
-       
-       
-       ###
-       ###
-        # sd = np.std(self.Crit)  # HERE IS WHERE TO SCREEN OUT STIMULI/EVOKED
-        # self.sdthr = sd * self.threshold  # set the threshold
-        # # print('SDTHR: ', self.sdthr)
-        # self.above = np.clip(self.Crit, self.sdthr, None)
-        # self.onsets = (
-        #     scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
-        #     - 1
-        #     + self.idelay
-        # )
         self.Crit = self.Crit.squeeze()
         self.Criterion[itrace] = self.Crit
         
@@ -441,7 +425,7 @@ class RSDeconvolve(MiniAnalyses):
         # else:  # clip to max of crit array, and be sure index array is integer, not float
         #     data_nostim = [int(x) for x in data_nostim if x < self.Crit.shape[0]]
 
-        print('RS Tau: ', self.taus[1], self.dt)
+        # print('RS Tau: ', self.taus[1], self.dt)
         self.Crit = self.expDeconvolve(
             self.sign*self.data, tau=self.taus[1], dt=self.dt, # use decay value for deconvolve tau
         )
@@ -462,7 +446,8 @@ class RSDeconvolve(MiniAnalyses):
             wlen += 1
         
         dVdt =  np.gradient(data, dt) # sp.signal.savgol_filter(data, window_length=wlen, polyorder=3))
-        d = (tau/dt) * tau *dVdt + data
+        # d = (tau/dt) * tau *dVdt + data
+        d = tau * dVdt + data
         return d
 
     def expReconvolve(data, tau=None, dt=None):
@@ -497,16 +482,20 @@ class RSDeconvolve(MiniAnalyses):
     def identify_events(self,
              data_nostim: Union[list, np.ndarray, None] = None,
              outlier_scale: float = 3.0, 
-             order: int = 100,
+             order: int = 7,
              verbose: bool = False,
         ):
         """
         Identify events. Criterion array should be 2D:
-        (trial number, criterion array)
+        (trial number, criterion array), thus 
+        we use the global statistiscs of the set of traces
+        to do detection.
         """
         criterion = np.array(self.Criterion)
         assert criterion.ndim == 2
+        # criterion = criterion.reshape(1, -1)  # make sure can be treated as a 2-d array
         if data_nostim is not None:
+            # clip to max of crit array, and be sure index array is integer, not float
             for i in range(criterion.shape[0]):
                 criterion[i,:] = criterion[i, [int(x) for x in data_nostim if x < criterion.shape[1]]]
         # compute an SD across the entire dataset (all traces)
@@ -515,19 +504,23 @@ class RSDeconvolve(MiniAnalyses):
         for i in range(criterion.shape[0]):
             valid_data[i,:] = self.remove_outliers(criterion[i], outlier_scale)
         sd = np.nanstd(valid_data)
-        print("RS SD: ", sd)
+
         self.sdthr = sd * self.threshold  # set the threshold to multiple SD
-        # that actually gives peaks. Need onsets of events, so go back to where trace < 0.5*std(data)
         self.onsets = [None]*criterion.shape[0]
-        for j in range(len(criterion)):
-            self.above = np.clip(criterion[j], self.sdthr, None)
-            self.onsets[j] = (
+        for i in range(criterion.shape[0]):
+            self.above = np.clip(criterion[i], self.sdthr, None)
+            self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
                 + self.idelay
             )
+            
+            endtime = timeit.default_timer() - self.starttime
+        self.runtime = endtime
+        endtime = timeit.default_timer() - self.starttime
         if verbose:
             print("RS run time: {0:.4f} s".format(endtime))
+
                 
 class ZCFinder(MiniAnalyses):
     """
@@ -579,7 +572,7 @@ class ZCFinder(MiniAnalyses):
         )
         self.onsets = np.array([x[0] for x in events]).astype(int)
 
-        self.summarize(self.data)
+        # self.summarize(self.data)
         endtime = timeit.default_timer() - starttime
         if verbose:
             print("ZC run time: {0:.4f} s".format(endtime))

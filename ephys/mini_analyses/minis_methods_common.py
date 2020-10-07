@@ -36,6 +36,10 @@ class Filtering:
 def def_empty_list():
     return [0] # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
 
+def def_empty_list2():
+    return [[None]] # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
+
+
 @dataclass
 class AverageEvent:
     """
@@ -64,7 +68,7 @@ class Summaries:
         and the averge fit
     """
     onsets: Union[List, np.ndarray] = field(
-        default_factory=def_empty_list)
+        default_factory=def_empty_list2)
     peaks: Union[List, np.ndarray] = field(
         default_factory=def_empty_list)
     smpkindex: Union[List, np.ndarray] = field(
@@ -297,12 +301,12 @@ class MiniAnalyses:
 
         ndata = len(data)
         
-        # set up arrays
-        self.Summary.peaks = [[]]*ndata
-        self.Summary.smoothed_peaks = [[]]*ndata
-        self.Summary.smpkindex = [[]]*ndata
-        self.Summary.amplitudes = [[]]*ndata
- 
+        # set up arrays : note construction to avoid "same memory but different index" problem
+        self.Summary.onsets = [[] for x in range(ndata)]
+        self.Summary.peaks = [[] for x in range(ndata)]
+        self.Summary.smoothed_peaks = [[] for x in range(ndata)]
+        self.Summary.smpkindex = [[] for x in range(ndata)]
+        self.Summary.amplitudes = [[] for x in range(ndata)]
         avgwin = (
             5  # int(1.0/self.dt)  # 5 point moving average window for peak detection
         )
@@ -315,13 +319,15 @@ class MiniAnalyses:
             nparg = np.less
         self.intervals = []
         self.timebase = np.arange(0., data.shape[1]*self.dt, self.dt)
-        for i, dataset in enumerate(data):  # each trial/trace
-            if len(self.onsets[i]) == 0:  # original events
+
+        for itrial, dataset in enumerate(data):  # each trial/trace
+            if len(self.onsets[itrial]) == 0:  # original events
                 continue
-            acceptlist = []
-            self.intervals.append(np.diff(self.timebase[self.onsets[i]]))  # event intervals
-            for j in range(dataset[self.onsets[i]].shape[0]):  # for all of the events in this trace
-                onset = self.onsets[i][j]  # get the onset
+            acceptlist_trial = []
+            self.intervals.append(np.diff(self.timebase[self.onsets[itrial]]))  # event intervals
+            cprint('y', f"Summarize: trial: {itrial:d} onsets: {len(self.onsets[itrial]):d}")
+            # print('onsets: ', self.onsets[itrial])
+            for j, onset in enumerate(self.onsets[itrial]):  # for all of the events in this trace
                 if self.sign > 0 and self.eventstartthr is not None:
                     if dataset[onset] < self.eventstartthr:
                         continue
@@ -338,7 +344,6 @@ class MiniAnalyses:
                     svn % 2 == 0
                 ):  # if even, decrease by 1 point to meet ood requirement for savgol_filter
                     svn -= 1
-
                 if svn > 3:  # go ahead and filter
                     p = scipy.signal.argrelextrema(
                         scipy.signal.savgol_filter(
@@ -356,10 +361,10 @@ class MiniAnalyses:
                 if len(p) > 0:
                     i_end = i_decay_pts + onset # distance from peak to end
                     i_end = min(dataset.shape[0], i_end)  # keep within the array limits
-                    if j < len(self.onsets[i]) - 1:
-                        if i_end > self.onsets[i][j + 1]:
+                    if j < len(self.onsets[itrial]) - 1:
+                        if i_end > self.onsets[itrial][j + 1]:
                             i_end = (
-                                self.onsets[i][j + 1] - 1
+                                self.onsets[itrial][j + 1] - 1
                             )  # only go to next event start
                     windowed_data = dataset[onset : i_end]
                     move_avg, n = self.moving_average(
@@ -372,22 +377,16 @@ class MiniAnalyses:
                     else:
                         smpk = np.argmin(move_avg)
                         rawpk = np.argmin(windowed_data)
-                    self.Summary.peaks[i].extend([onset + rawpk])
-                    self.Summary.amplitudes[i].extend([windowed_data[rawpk]])
-                    self.Summary.smoothed_peaks[i].extend([move_avg[smpk]])  # smoothed peak
-                    self.Summary.smpkindex[i].extend([onset + smpk])
-                    acceptlist.append(j)
-            if len(acceptlist) < len(self.onsets[i]):
-                if verbose:
-                    print("Trimmed %d events" % (len(self.onsets[i]) - len(acceptlist)))
-                self.onsets[i] = self.onsets[i][
-                    acceptlist
-                ]  # trim to only the accepted values
-            # print(self.onsets)
-        self.Summary.onsets = self.onsets 
+                    # cprint('m', f"Extending for trial: {itrial:d}, {len(self.Summary.onsets[itrial]):d}, onset={onset}")
+                    self.Summary.onsets[itrial].append(onset)
+                    self.Summary.peaks[itrial].append(onset + rawpk)
+                    self.Summary.amplitudes[itrial].append(windowed_data[rawpk])
+                    self.Summary.smpkindex[itrial].append(onset + smpk)
+                    self.Summary.smoothed_peaks[itrial].append(move_avg[smpk])
+                    acceptlist_trial.append(j)
+ 
         self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         self.Summary.amplitudes = np.array(self.Summary.amplitudes)
-        # self.Summary.peaks = np.array(self.Summary.peaks)
         
         self.average_events(
             data,
@@ -459,7 +458,7 @@ class MiniAnalyses:
             List of event onset indices into the arrays
             Expect a 2-d list (traces x onsets)
         """ 
-        # cprint('r', 'AVERAGE EVENTS')
+        cprint('r', 'AVERAGE EVENTS')
         self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = 0.0  # self.taus[0]*10.
@@ -474,10 +473,11 @@ class MiniAnalyses:
         allevents = np.zeros((n_events, avgnpts))
         event_trace = [None]*n_events
         k = 0
-        pkt = 0  # np.argmax(self.template)
-        for itrace in range(len(self.Summary.onsets)):
-            for j, event in enumerate(self.Summary.onsets[itrace]):
-                ix = event + pkt  # self.idelay
+        pkt = 0
+        for itrace, onsets in enumerate(self.Summary.onsets):
+            cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
+            for j, event_onset in enumerate(onsets):
+                ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
@@ -489,7 +489,7 @@ class MiniAnalyses:
             self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
             self.Summary.average.averaged = True
             self.Summary.average.avgeventtb = avgeventtb
-            self.Summary.event_trace_list = event_trace
+            self.Summary.event_trace_list = event_trace[0:k]
             return
         else:
             self.Summary.average.avgevent = []
@@ -1197,8 +1197,8 @@ class MiniAnalyses:
         for i in range(1, 2):
             ax[i].get_shared_x_axes().join(ax[i], ax[0])
         # raw traces, marked with onsets and peaks
-        for i in range(data.shape[0]):
-            self.plot_trial(ax, i, data, events)
+        for i, d in enumerate(data):
+            self.plot_trial(ax, i, d, events)
         ax[0].set_ylabel("I (pA)")
         ax[0].set_xlabel("T (s)")
         ax[0].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
@@ -1223,19 +1223,19 @@ class MiniAnalyses:
 
     def plot_trial(self, ax, i, data, events, markersonly=False):
         scf = 1e12
-        tb = self.timebase[: data[i].shape[0]]
+        tb = self.timebase[: data.shape[0]]
         if i == 0:
             label = 'Data'
         else:
             label = ''
-        ax[0].plot(tb, scf * data[i], "k-", linewidth=0.75, label=label)  # original data
+        ax[0].plot(tb, scf * data, "k-", linewidth=0.75, label=label)  # original data
         if i == 0:
             label = 'Onsets'
         else:
             label = ''
         ax[0].plot(
             tb[self.onsets[i]],
-            scf * data[i][self.onsets[i]],
+            scf * data[self.onsets[i]],
             "k^",
             markersize=6,
             markerfacecolor=(1, 1, 0, 0.8),

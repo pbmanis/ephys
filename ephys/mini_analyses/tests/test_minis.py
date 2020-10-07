@@ -10,9 +10,9 @@ from typing import Union
 import time
 from dataclasses import dataclass, field
 
-
 import numpy as np
 import scipy.signal
+import pyqtgraph as pg
 
 import ephys.mini_analyses.minis_methods as MM
 from ephys.mini_analyses.util import UserTester
@@ -31,7 +31,7 @@ def def_taus():
 
 
 def def_template_taus():
-    return [0.001, 0.005]  # [0.001, 0.003] # was 0.001, 0.005
+    return [0.0005, 0.002]  # [0.001, 0.003] # was 0.001, 0.005
 
 
 @dataclass
@@ -72,8 +72,8 @@ def printPars(pars):
 # these are the tests that will be run
 
 
-def test_ZeroCrossing():
-    MinisTester(method="ZC", sign=1)
+# def test_ZeroCrossing():
+#     MinisTester(method="ZC", sign=1)
 
 
 def test_ClementsBekkers_numba():
@@ -88,16 +88,16 @@ def test_AndradeJonas():
     MinisTester(method="AJ", sign=1)
 
 
-def test_RSDeconvolve():
-    MinisTester(method="RS", sign=1)
+# def test_RSDeconvolve():
+#     MinisTester(method="RS", sign=1)
 
 
 # def test_ClementsBekkers_python():
 #     MinisTester(method='CB', extra='python') # slow interpreted method
 
 
-def test_ZeroCrossing_neg():
-    MinisTester(method="ZC", sign=-1)
+# def test_ZeroCrossing_neg():
+#     MinisTester(method="ZC", sign=-1)
 
 
 def test_ClementsBekkers_numba_neg():
@@ -116,8 +116,8 @@ def test_AndradeJonas_neg():
     MinisTester(method="AJ", sign=-1)
 
 
-def test_RSDeconvolve_neg():
-    MinisTester(method="RS", sign=-1)
+# def test_RSDeconvolve_neg():
+#     MinisTester(method="RS", sign=-1)
 
 
 def generate_testdata(
@@ -131,26 +131,34 @@ def generate_testdata(
         maxt is in seconds - duration of trace
         bigevent is a dict {'t': delayinsec, 'I': amplitudeinA}
     """
-    if baseclass is None and func is not None:
-        raise ValueError("Need base class definition")
+    # if baseclass is None and func is not None:
+   #      raise ValueError("Need base class definition")
 
     timebase = np.arange(0.0, pars.maxt, pars.dt)  # in ms
 
     t_psc = np.arange(
         0.0, pars.tdur, pars.dt
     )  # time base for single event template in ms
-    if func is None:  # make double-exp event
+    if baseclass is None and func is None:  # make double-exp event
+        print('Using our template - which may make a different psc than you want')
         tau_1 = pars.taus[0]  # ms
         tau_2 = pars.taus[1]  # ms
         Aprime = (tau_2 / tau_1) ** (tau_1 / (tau_1 - tau_2))
         g = Aprime * (-np.exp(-t_psc / tau_1) + np.exp((-t_psc / tau_2)))
         gmax = np.max(g)
         g = pars.sign * g * pars.amp / gmax
-    else:  # use template from the class
+    elif baseclass is not None:  # use template from the class
+        print('Using the baseclass template')
         baseclass._make_template()
-        gmax = np.min(baseclass.template)
-        g = pars.sign * pars.amp * baseclass.template / gmax
+        gmax = np.max(pars.sign*baseclass.template)
 
+        g =  pars.amp * baseclass.template / gmax
+    else:
+        raise ValueError("Need base class or func efinition")
+        
+    # mpl.plot(t_psc, g[:len(t_psc)])
+    # mpl.show()
+    
     testpsc = np.zeros((ntrials, timebase.shape[0]))
     testpscn = np.zeros((ntrials, timebase.shape[0]))
     i_events = [None] * ntrials
@@ -212,7 +220,7 @@ def run_ZeroCrossing(
     # minlen = int(pars.mindur / pars.dt)
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
-    print(pars)
+
     pars.threshold = 4.0
     for i in range(1):
         pars.noiseseed = i * 47
@@ -250,27 +258,39 @@ def run_ClementsBekkers(
     """
     Do some tests of the CB protocol and plot
     """
-    ntraces = 1
+    ntraces = 5
     if pars is None:
         pars = EventParameters()
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
-    pars.threshold = 2.5
+    pars.threshold =4.5
     pars.LPF = 5000.0
     # pars.HPF = None
     cb = MM.ClementsBekkers()
     pars.baseclass = cb
     crit = [None] * ntraces
+    cb.setup(
+        ntraces=ntraces,
+        tau1=5e-4, # pars.template_taus[0],
+        tau2=2e-3, # pars.template_taus[1],
+        dt=pars.dt,
+        delay=0.0,
+        template_tmax=5.0 * pars.template_taus[1],
+        sign=pars.sign,
+        threshold=pars.threshold,
+        lpf=pars.LPF,
+        hpf=pars.HPF,
+    )
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces
+        pars, ntrials=ntraces, baseclass=cb
     )
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
 
     cb.setup(
         ntraces=ntraces,
-        tau1=pars.template_taus[0],
-        tau2=pars.template_taus[1],
+        tau1=5e-4, # pars.template_taus[0],
+        tau2=2e-3, # pars.template_taus[1],
         dt=pars.dt,
         delay=0.0,
         template_tmax=5.0 * pars.template_taus[1],
@@ -288,9 +308,8 @@ def run_ClementsBekkers(
         cb.reset_filtering()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", cb.threshold)
-        print("len(crit)", len(cb.Criterion[i]))
 
-    cb.identify_events()
+    cb.identify_events(outlier_scale=3.0, order=101)
     cb.summarize(np.array(testpscn))
     tot_events = sum([len(x) for x in cb.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
@@ -299,7 +318,7 @@ def run_ClementsBekkers(
         fig_handle = cb.plots(
             np.array(testpscn), events=None, title="CB", testmode=testmode
         )  # i_events)
-        mpl.show()
+        # mpl.show()
         time.sleep(5)
     return cb, fig_handle
 
@@ -308,10 +327,10 @@ def run_AndradeJonas(
     pars: dataclass = None, bigevent: bool = False, plot: bool = False
 ) -> object:
 
-    ntraces = 1
+    ntraces = 5
     if pars is None:
         pars = EventParameters()
-    pars.threshold = 4.0
+    pars.threshold = 5.5
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
     aj = MM.AndradeJonas()
@@ -319,12 +338,6 @@ def run_AndradeJonas(
     pars.LPF = 5000.0
     # pars.HPF = None
     crit = [None] * ntraces
-    timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces
-    )
-    tot_seeded = sum([len(x) for x in i_events])
-    print("total seeded events: ", tot_seeded)
-
     aj.setup(
         ntraces=ntraces,
         tau1=pars.template_taus[0],
@@ -338,19 +351,20 @@ def run_AndradeJonas(
         lpf=pars.LPF,
         hpf=pars.HPF,
     )
-
+    timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
+        pars, ntrials=ntraces, baseclass=aj
+    )
+    tot_seeded = sum([len(x) for x in i_events])
+    print("Total # of seeded events: ", tot_seeded)
+    order = int(0.001 / pars.dt)
     for i in range(ntraces):
-        order = int(0.001 / pars.dt)
-        # generate test data
-
         aj.deconvolve(
             testpscn[i], itrace=i, llambda=5.0,
-        )  # - np.mean(testpscn),
+        )
         testpscn[i] = aj.data  # # get filtered data
         aj.reset_filtering()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", aj.threshold)
-        print("len(crit)", len(aj.Criterion[i]))
     aj.identify_events(order=order)
     aj.summarize(np.array(testpscn))
     tot_events = sum([len(x) for x in aj.onsets])
@@ -360,7 +374,7 @@ def run_AndradeJonas(
         fig_handle = aj.plots(
             np.array(testpscn), events=None, title="AJ", testmode=testmode
         )  # i_events)
-        mpl.show()
+        # mpl.show()
         # time.sleep(5)
     return aj, fig_handle
 
@@ -369,7 +383,7 @@ def run_RSDeconvolve(
     pars: dataclass = None, bigevent: bool = False, plot: bool = False
 ) -> object:
 
-    ntraces = 1
+    ntraces = 5
 
     if pars is None:
         pars = EventParameters()
@@ -379,45 +393,44 @@ def run_RSDeconvolve(
     rs.setup(
         ntraces=ntraces,
         tau1=np.power(pars.template_taus[0], 1.0),
-        tau2=0.5 * 1e-3,  # pars.template_taus[1],
+        tau2=pars.template_taus[1]/2.,  # pars.template_taus[1],
         dt=pars.dt,
         delay=0.0,
         template_tmax=pars.maxt,  # taus are for template
         sign=pars.sign,
         risepower=4.0,
         threshold=pars.threshold,
-        lpf=500.0,  # pars.LPF,
-        hpf=pars.HPF,
+        lpf=2000.0,  # pars.LPF,
+        hpf=None # pars.HPF,
     )
     pars.baseclass = rs
 
     # generate test data
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces
+        pars, ntrials=ntraces, baseclass=rs,
     )
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
 
-    if bigevent:
-        pars.bigevent = {"t": 1.0, "I": 20.0}
-
+    # if bigevent:
+    #     pars.bigevent = {"t": 1.0, "I": 20.0}
+    pars.tau2 = 4e-3
     for i in range(ntraces):
         rs.deconvolve(testpscn[i], itrace=i)
         testpscn[i] = rs.data  # # get filtered data
         rs.reset_filtering()
 
-    rs.identify_events(order=20)
+    rs.identify_events(order=101)
     rs.summarize(np.array(testpscn))
     tot_events = sum([len(x) for x in rs.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
     if plot:
-
         fig_handle = rs.plots(
             np.array(testpscn), events=None, title="RS", testmode=testmode
         )  # i_events)
         mpl.show()
-        time.sleep(5)
+        # time.sleep(5)
     return rs, fig_handle
 
 
@@ -440,41 +453,41 @@ class MiniTestMethods:
             pars.threshold = 0.5
             pars.mindur = 1e-3
             pars.HPF = None
-            result = run_ZeroCrossing(pars, plot=True)
-            print("Events found: ", len(result.allevents))
+            result, figh = run_ZeroCrossing(pars, plot=True)
+            print("Events found: ", len(result.Summary.allevents))
             if self.plot:
                 zct = np.arange(
-                    0, result.allevents.shape[1] * result.dt, result.dt
+                    0, result.Summary.allevents.shape[1] * result.dt, result.dt
                 )
-                for a in range(len(result.allevents)):
-                    mpl.plot(zct, result.allevents[a])
+                for a in range(len(result.Summary.allevents)):
+                    mpl.plot(zct, result.Summary.allevents[a])
                 mpl.show()
         if self.testmethod in ["CB", "cb"]:
-            result = run_ClementsBekkers(pars, extra=self.extra, plot=True)
-            print("Events found: ", len(result.allevents))
+            result, figh = run_ClementsBekkers(pars, extra=self.extra, plot=True)
+            print("Events found: ", len(result.Summary.allevents))
             if self.plot:
-                for a in range(len(result.allevents)):
-                    mpl.plot(result.t_template, result.allevents[a])
+                for a in range(len(result.Summary.allevents)):
+                    mpl.plot(result.t_template, result.Summary.allevents[a])
                 mpl.show()
         if self.testmethod in ["AJ", "aj"]:
             print("pars)")
-            result = run_AndradeJonas(pars, plot=True)
-            print("Events found: ", len(result.allevents))
-            ajt = result.t_template[0 : result.allevents.shape[1]]
+            result, figh = run_AndradeJonas(pars, plot=True)
+            print("Events found: ", len(result.Summary.allevents))
+            ajt = result.t_template[0 : result.Summary.allevents.shape[1]]
             if self.plot:
-                for i, a in enumerate(range(len(result.allevents))):
-                    mpl.plot(ajt, result.allevents[a] + i + 20.0)
+                for i, a in enumerate(range(len(result.Summary.allevents))):
+                    mpl.plot(ajt, result.Summary.allevents[a] + i + 20.0)
                 mpl.show()
         if self.testmethod in ["RS", "rs"]:
             pars.threshold = 2.25
-            result = run_RSDeconvolve(pars, plot=True)
-            print("Events found: ", len(result.allevents))
+            result, figh = run_RSDeconvolve(pars, plot=True)
+            print("Events found: ", len(result.Summary.allevents))
             if self.plot:
                 rst = np.arange(
-                    0, result.allevents.shape[1] * result.dt, result.dt
+                    0, result.Summary.allevents.shape[1] * result.dt, result.dt
                 )
-                for a in range(len(result.allevents)):
-                    mpl.plot(rst, result.allevents[a])
+                for a in range(len(result.Summary.allevents)):
+                    mpl.plot(rst, result.Summary.allevents[a])
                 mpl.show()
         # if self.testmethod in ["all", "ALL"]:
         #     run_ZeroCrossing(pars, plot=True)
@@ -482,9 +495,9 @@ class MiniTestMethods:
         #     run_AndradeJoans(pars, plot=True)
 
         testresult = {
-            "onsets": result.onsets,
-            "peaks": result.peaks,
-            "amplitudes": result.amplitudes,
+            "onsets": result.Summary.onsets,
+            "peaks": result.Summary.peaks,
+            "amplitudes": result.Summary.amplitudes,
             "fitresult": result.fitresult,
             "fitted_tau1": result.fitted_tau1,
             "fitted_tau2": result.fitted_tau2,
@@ -530,24 +543,29 @@ class MinisTester(UserTester):
                 del self.figure
 
 
-def plot_traces_and_markers(method, dy=20e-12):
+def plot_traces_and_markers(method, dy=20e-12, sf=1.):
     tba = method.timebase[:len(method.Summary.allevents[0])]
 
+    last_tr = 0
+    dyi = 0
     for i, a in enumerate(method.Summary.allevents):
-        dyi = i * dy
-        mpl.plot(tba, a + dyi)
+        dyi  += dy
+        mpl.plot(tba, sf*a + dyi)
         jtr = method.Summary.event_trace_list[
             i
         ]  # get trace and event number in trace
         if jtr is None:
             continue
-
+        if jtr[0] > last_tr:
+            last_tr = jtr[0]
+            dyi = dyi+10*dy
+        # print('sm, on', i, jtr, len(method.Summary.smpkindex[jtr[0]]), len(method.Summary.onsets[jtr[0]]))
         pk = method.Summary.smpkindex[jtr[0]][jtr[1]]
         on = method.Summary.onsets[jtr[0]][jtr[1]]
         onpk = (pk - on) * method.dt
         mpl.plot(
             onpk,
-            (method.Summary.smoothed_peaks[jtr[0]][jtr[1]])
+            sf*method.Summary.smoothed_peaks[jtr[0]][jtr[1]]
             + dyi,
             "ro",
             markersize=4,
@@ -557,7 +575,7 @@ def plot_traces_and_markers(method, dy=20e-12):
         onpk = (pk - on) * method.dt
         mpl.plot(
             onpk,
-            (method.Summary.amplitudes[jtr[0]][jtr[1]])
+            sf*method.Summary.amplitudes[jtr[0]][jtr[1]]
             + dyi,
             "ys",
             markersize=4,
@@ -622,12 +640,12 @@ if __name__ == "__main__":
 
         if testmethod in ["CB", "cb"]:
             for extras in [
-                "cython",
+                "cython", # 'numba',
+                # 'python',  # the python version does not work... 
             ]:
                 # python version still does not work correctly
                 # don't forget Numba, but it is not working well.
                 pars.threshold = 3.0
-                print("pars: ", pars)
                 cb, fig = run_ClementsBekkers(pars, extra=extras, plot=True)
                 print("All detected events: ", len(cb.Summary.allevents))
                 f, ax = mpl.subplots(1, 1)
@@ -638,7 +656,7 @@ if __name__ == "__main__":
         if testmethod in ["AJ", "aj"]:
             pars.threshold = 5.0
             aj, fig = run_AndradeJonas(pars, plot=True)
-
+            mpl.show()
             print("# detected events: ", len(aj.Summary.allevents))
             f, ax = mpl.subplots(1, 1)
             f.set_size_inches(5, 10)
@@ -647,13 +665,14 @@ if __name__ == "__main__":
 
         if testmethod in ["RS", "rs"]:
             rs, fig = run_RSDeconvolve(pars, plot=True)
-            print("All detected events: ", len(rs.allevents))
+            print("All detected events: ", len(rs.Summary.allevents))
             f, ax = mpl.subplots(1, 1)
             f.set_size_inches(5, 10)
-            rst = np.arange(0, len(rs.Summary.allevents[0]) * rs.dt, rs.dt)
-            for i, a in enumerate(range(len(rs.Summary.allevents))):
-                # print(dir(aj))
-                mpl.plot(rst, rs.Summary.allevents[a] + i * 10e-12)
+            plot_traces_and_markers(rs, sf=5.0)
+            # rst = np.arange(0, len(rs.Summary.allevents[0]) * rs.dt, rs.dt)
+            # for i, a in enumerate(range(len(rs.Summary.allevents))):
+            #     # print(dir(aj))
+            #     mpl.plot(rst, rs.Summary.allevents[a] + i * 10e-12)
             # note: no official template for comparison
             # rst = rs.t_template[0:rs.allevents.shape[1]]
             # for a in range(len(rs.allevents)):
@@ -667,4 +686,4 @@ if __name__ == "__main__":
 
     #    pg.show()
     # if sys.flags.interactive == 0:
-    #     pg.QtGui.QApplication.exec_()
+  #       pg.QtGui.QApplication.exec_()
