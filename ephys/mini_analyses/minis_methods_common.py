@@ -157,6 +157,7 @@ class MiniAnalyses:
         """
         Private function: make template when it is needed
         """
+        print(self.taus)
         tau_1, tau_2 = self.taus  # use the predefined taus
         t_psc = np.arange(0, self.template_tmax, self.dt)
         self.t_template = t_psc
@@ -474,17 +475,13 @@ class MiniAnalyses:
         event_trace = [None]*n_events
         k = 0
         pkt = 0  # np.argmax(self.template)
-        # print('eventlist: ', eventlist)
-        # print(data.shape)
-        # print(allevents.shape)
-
         for itrace in range(len(self.Summary.onsets)):
             for j, event in enumerate(self.Summary.onsets[itrace]):
                 ix = event + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
-                    event_trace[k] = [itrace, k]
+                    event_trace[k] = [itrace, j]
                     k = k + 1
         if k > 0:
             self.Summary.allevents = allevents[0:k, :]  # trim unused
@@ -1165,8 +1162,8 @@ class MiniAnalyses:
         if show:
             mpl.show()
 
-    def plots(
-        self, data, events: Union[np.ndarray, None] = None, title: Union[str, None] = None,
+    def plots(self, 
+        data, events: Union[np.ndarray, None] = None, title: Union[str, None] = None,
         testmode:bool=False
     ) -> object:
         """
