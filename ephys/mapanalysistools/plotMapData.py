@@ -334,21 +334,18 @@ class PlotMapData():
         eventtimes = []
         events = results["events"]
         rate = results["rate"]
-        tb0 = events[0][0]["aveventtb"]  # get from first trace in first trial
+        tb0 = events[0]["aveventtb"]  # get from first trace in first trial
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
-            for jtrace in events[itrial]:
-                nev += len(events[itrial][jtrace]["onsets"][0])
+            for j, jtrace in enumerate(events[itrial]['onsets']):
+                nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
         for itrial in events.keys():
-            for jtrace in events[itrial]:
-                # print('itrail, trace: ', itrial, jtrace)
-                ntrialev = len(events[itrial][jtrace]["onsets"][0])
-                # print('has events: ', events[itrial][jtrace]['onsets'][0])
-                # print(iev, iev+ntrialev, eventtimes.shape, ntrialev)
-                eventtimes[iev : iev + ntrialev] = events[itrial][jtrace]["onsets"][0]
+            for j, onsets in enumerate(events[itrial]['onsets']):
+                ntrialev = len(onsets)
+                eventtimes[iev : iev + ntrialev] = onsets
                 iev += ntrialev
         print(
             "total events: ",
@@ -395,6 +392,7 @@ class PlotMapData():
         ax: Union[object, None] = None,
         trsel: Union[int, None] = None,
     ) -> None:
+
         print("start stack plot")
         if ax is None:
             f, ax = mpl.subplots(1, 1)
@@ -405,124 +403,10 @@ class PlotMapData():
         spont_ev_count = 0
         dt = np.mean(np.diff(self.Data.tb))
         itmax = int(self.Pars.analysis_window[1] / dt)
-        if trsel is None:
-            for j in range(mdata.shape[0]):
-                for i in range(mdata.shape[1]):
-                    crflag = False  # indicates detected evoked response on a trace - used to increase salience in the plot
-                    if events is not None and j in list(events.keys()):
-                        smpki = events[j][i]["smpksindex"][0]
-                        # print('smpki: ', smpki)
-                        if len(events[j][i]["peaktimes"][0]) > 0:
-                            smpki = events[j][i]["peaktimes"][
-                                0
-                            ]  # actually, indices, not times
-                            # print('events[j,i].keys: ', events[j][i].keys())
-                            # exit()# for k in range(len(smpki)):
-                            #     if tb[smpki][k] < 0.6:
-                            #         print(f'tb, ev: {i:3d} {k:3d} {tb[smpki][k]:.4f}: {mdata[0,i,smpki][k]*1e12:.1f}')
-                            nevtimes += len(smpki)
-                            if (
-                                len(smpki) > 0
-                                and len(tb[smpki]) > 0
-                                and len(mdata[j, i, smpki]) > 0
-                            ):
-                                # The following plot call causes problems if done rasterized.
-                                # See: https://github.com/matplotlib/matplotlib/issues/12003
-                                # may be fixed in the future. For now, don't rasterize.
-                                sd = events[j][i]["spont_dur"][0]
-                                tsi = smpki[
-                                    np.where(tb[smpki] < sd)[0].astype(int)
-                                ]  # find indices of spontanteous events (before first stimulus)
-                                tri = np.ndarray(0)
-                                for (
-                                    iev
-                                ) in (
-                                    self.Pars.twin_resp
-                                ):  # find events in all response windows
-                                    tri = np.concatenate(
-                                        (
-                                            tri.copy(),
-                                            smpki[
-                                                np.where(
-                                                    (tb[smpki] >= iev[0])
-                                                    & (tb[smpki] < iev[1])
-                                                )[0]
-                                            ],
-                                        ),
-                                        axis=0,
-                                    ).astype(int)
-                                ts2i = list(
-                                    set(smpki)
-                                    - set(tri.astype(int)).union(set(tsi.astype(int)))
-                                )  # remainder of events (not spont, not possibly evoked)
-                                ms = np.array(
-                                    mdata[j, i, tsi]
-                                ).ravel()  # spontaneous events
-                                mr = np.array(
-                                    mdata[j, i, tri]
-                                ).ravel()  # response in window
-                                if len(mr) > 0:
-                                    crflag = True  # flag traces with detected responses
-                                ms2 = np.array(
-                                    mdata[j, i, ts2i]
-                                ).ravel()  # events not in spont and outside window
-                                spont_ev_count += ms.shape[0]
-                                cr = matplotlib.colors.to_rgba(
-                                    "r", alpha=0.6
-                                )  # just set up color for markers
-                                ck = matplotlib.colors.to_rgba("k", alpha=1.0)
-                                cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
 
-                                ax.plot(
-                                    tb[tsi],
-                                    ms * self.Pars.scale_factor + self.Pars.stepi * i,
-                                    "o",
-                                    color=ck,
-                                    markersize=2,
-                                    markeredgecolor="None",
-                                    zorder=0,
-                                    rasterized=self.rasterized,
-                                )
-                                ax.plot(
-                                    tb[tri],
-                                    mr * self.Pars.scale_factor + self.Pars.stepi * i,
-                                    "o",
-                                    color=cr,
-                                    markersize=2,
-                                    markeredgecolor="None",
-                                    zorder=0,
-                                    rasterized=self.rasterized,
-                                )
-                                ax.plot(
-                                    tb[ts2i],
-                                    ms2 * self.Pars.scale_factor + self.Pars.stepi * i,
-                                    "o",
-                                    color=cg,
-                                    markersize=2,
-                                    markeredgecolor="None",
-                                    zorder=0,
-                                    rasterized=self.rasterized,
-                                )
-                    if tb.shape[0] > 0 and mdata[j, i, :].shape[0] > 0:
-                        if crflag:
-                            alpha = 1.0
-                            lw = 0.5
-                        else:
-                            alpha = 0.5
-                            lw = 0.2
-                        ax.plot(
-                            tb[:itmax],
-                            mdata[j, i, :itmax] * self.Pars.scale_factor
-                            + self.Pars.stepi * i,
-                            linewidth=lw,
-                            rasterized=False,
-                            zorder=10,
-                            alpha=alpha,
-                        )
-            print(f"      SPONTANEOUS Event Count: {spont_ev_count:d}")
-        else:
+        if trsel is not None:
             for j in range(mdata.shape[0]):
-                if tb.shape[0] > 0 and mdata[j, trsel, :].shape[0] > 0:
+                if tb.shape[0] > 0 and mdata[jtrial, trsel, :].shape[0] > 0:
                     ax.plot(
                         tb[:itmax],
                         mdata[0, trsel, :itmax] * self.Pars.scale_factor,
@@ -546,6 +430,121 @@ class PlotMapData():
                 weight="normal",
                 font="Arial",
             )
+            mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
+            self.plot_timemarker(ax)
+            ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
+            return
+
+        for itrial in range(mdata.shape[0]):
+            evtr = events[itrial]['event_trace_list']  # of course it is the same for every entry.
+            for itrace in range(mdata.shape[1]):
+                crflag = False  # indicates detected evoked response on a trace - used to increase salience in the plot
+                # if itrial not in list(events.keys()):
+                imaptr = evtr[itrace]
+                # print('imaptr: ', imaptr)
+                # print('events it: ', mdata.shape[1], itrace, events[itrial].keys())
+                # print('len smpks: ', len(events[itrial]['smpksindex']))
+                smpki = events[itrial]["smpksindex"][itrace]
+                pktimes = events[itrial]["peaktimes"][itrace]
+                # print(itrace, smpki)
+                if len(pktimes) > 0:
+                    nevtimes += len(smpki)
+                    if (
+                        len(smpki) > 0
+                        and len(tb[smpki]) > 0
+                        and len(mdata[itrial, itrace, smpki]) > 0
+                    ):
+                        sd = events[itrial]["spont_dur"][itrace]
+                        tsi = smpki[
+                            np.where(tb[smpki] < sd)[0].astype(int)
+                        ]  # find indices of spontanteous events (before first stimulus)
+                        tri = np.ndarray(0)
+                        for (
+                            iev
+                        ) in (
+                            self.Pars.twin_resp
+                        ):  # find events in all response windows
+                            tri = np.concatenate(
+                                (
+                                    tri.copy(),
+                                    smpki[
+                                        np.where(
+                                            (tb[smpki] >= iev[0])
+                                            & (tb[smpki] < iev[1])
+                                        )[0]
+                                    ],
+                                ),
+                                axis=0,
+                            ).astype(int)
+                        ts2i = list(
+                            set(smpki)
+                            - set(tri.astype(int)).union(set(tsi.astype(int)))
+                        )  # remainder of events (not spont, not possibly evoked)
+                        ms = np.array(
+                            mdata[itrial, itrace, tsi]
+                        ).ravel()  # spontaneous events
+                        mr = np.array(
+                            mdata[itrial, itrace, tri]
+                        ).ravel()  # response in window
+                        if len(mr) > 0:
+                            crflag = True  # flag traces with detected responses
+                        ms2 = np.array(
+                            mdata[itrial, itrace, ts2i]
+                        ).ravel()  # events not in spont and outside window
+                        spont_ev_count += ms.shape[0]
+                        cr = matplotlib.colors.to_rgba(
+                            "r", alpha=0.6
+                        )  # just set up color for markers
+                        ck = matplotlib.colors.to_rgba("k", alpha=1.0)
+                        cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
+
+                        ax.plot(
+                            tb[tsi],
+                            ms * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            "o",
+                            color=ck,
+                            markersize=2,
+                            markeredgecolor="None",
+                            zorder=0,
+                            rasterized=self.rasterized,
+                        )
+                        ax.plot(
+                            tb[tri],
+                            mr * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            "o",
+                            color=cr,
+                            markersize=2,
+                            markeredgecolor="None",
+                            zorder=0,
+                            rasterized=self.rasterized,
+                        )
+                        ax.plot(
+                            tb[ts2i],
+                            ms2 * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            "o",
+                            color=cg,
+                            markersize=2,
+                            markeredgecolor="None",
+                            zorder=0,
+                            rasterized=self.rasterized,
+                        )
+                if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
+                    if crflag:
+                        alpha = 1.0
+                        lw = 0.5
+                    else:
+                        alpha = 0.5
+                        lw = 0.2
+                    ax.plot(
+                        tb[:itmax],
+                        mdata[itrial, itrace, :itmax] * self.Pars.scale_factor
+                        + self.Pars.stepi * itrace,
+                        linewidth=lw,
+                        rasterized=False,
+                        zorder=10,
+                        alpha=alpha,
+                    )
+        print(f"      SPONTANEOUS Event Count: {spont_ev_count:d}")
 
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
@@ -625,7 +624,7 @@ class PlotMapData():
         for trial in range(mdata.shape[0]):
             if self.verbose:
                 print("plotting: trial: ", trial)
-            tb0 = events[trial][0]["aveventtb"]  # get from first trace
+            tb0 = events[trial]["aveventtb"]  # get from first trace
             rate = np.mean(np.diff(tb0))
             tpre = 0.1 * np.max(tb0)
             tpost = np.max(tb0)
@@ -640,27 +639,20 @@ class PlotMapData():
                     if self.verbose:
                         print(f"     NO EVENTS in trace: {itrace:4d}")
                     continue
-                evs = events[trial][itrace][result_names[evtype]]
+                evs = events[trial][result_names[evtype]][itrace]
                 if len(evs[0]) == 0:  # skip trace if there are NO events
                     if self.verbose:
                         print(
                             f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
                         )
                     continue
-                # print('evs: ', evs)
+                spont_dur = events[trial]["spont_dur"][itrace]
+                for jevent in evs:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
 
-                spont_dur = events[trial][itrace]["spont_dur"][0]
-                # print(' plotting evdata: trial, nev, prot: ', evtype, trial, itrace, len(evs[0][1]), self.protocol)
-                for jevent in evs[0][
-                    0
-                ]:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
-                    # print('  jevent: ', jevent)
-                    # if len(evs[jevent]) == 0 or len(evs[jevent][0]) == 0:
-                    #     continue
                     if evtype == "avgspont":
                         spont_ev_count += 1
                         if (
-                            trace_tb[jevent] + self.Pars.spont_deadtime > spont_dur
+                            trace_tb[jevent[0]] + self.Pars.spont_deadtime > spont_dur
                         ):  # remove events that cross into stimuli
                             if self.verbose:
                                 print(
@@ -669,14 +661,14 @@ class PlotMapData():
                             continue
                     if evtype == "avgevoked":
                         evoked_ev_count += 1
-                        if trace_tb[jevent] <= spont_dur:  # only post events
+                        if trace_tb[jevent[0]] <= spont_dur:  # only post events
                             if self.verbose:
                                 print(
                                     f"     Event in spont window, not plotting as evoked: {jevent:6d} [t={float(jevent*rate):8.3f}] trace: {itrace:4d}"
                                 )
                             continue
                     if (
-                        jevent - ipre < 0
+                        jevent[0] - ipre < 0
                     ):  # event to be plotted would go before start of trace
                         if self.verbose:
                             print(
@@ -684,7 +676,7 @@ class PlotMapData():
                             )
                         continue
                     evdata = mdata[
-                        trial, itrace, jevent - ipre : jevent + ipost
+                        trial, itrace, jevent[0] - ipre : jevent[0] + ipost
                     ].copy()  # 0 is onsets
                     bl = np.mean(evdata[0 : ipre - ptfivems])
                     evdata -= bl
@@ -752,7 +744,7 @@ class PlotMapData():
         txt = f"Amp: {scale*amp:.1f} tau1:{1e3*tau1:.2f} tau2: {1e3*tau2:.2f} (N={aved.shape[0]:d})"
         if evtype == "avgspont":
             srate = float(aved.shape[0]) / (
-                events[0][0]["spont_dur"][0] * mdata.shape[1]
+                events[0]["spont_dur"][0] * mdata.shape[1]
             )  # dur should be same for all trials
             txt += f" SR: {srate:.2f} Hz"
         ax.text(0.05, 0.95, txt, fontsize=7, transform=ax.transAxes)

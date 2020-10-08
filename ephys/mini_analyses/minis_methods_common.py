@@ -52,6 +52,8 @@ class AverageEvent:
         default_factory=def_empty_list)
     avgevent: Union[List, np.ndarray] =field(
         default_factory=def_empty_list)
+    Nevents: int = 0
+    avgnpts: int = 0
     fitted :bool = False
     fitted_tau1 :float = np.nan
     fitted_tau2 :float = np.nan
@@ -195,9 +197,9 @@ class MiniAnalyses:
         self, data: np.ndarray, lpf: Union[float, None] = None, NPole: int = 8
     ) -> np.ndarray:
         assert (not self.filtering.LPF_applied)  # block repeated application of filtering
-        cprint('y', f"minis_methods_common, LPF data:  {lpf:f}")
+        # cprint('y', f"minis_methods_common, LPF data:  {lpf:f}")
         if lpf is not None : 
-            cprint('y', f"     ... lpf at {lpf:f}")
+            # cprint('y', f"     ... lpf at {lpf:f}")
             if lpf > 0.49 / self.dt:
                 raise ValueError(
                     "lpf > Nyquist: ", lpf, 0.49 / self.dt, self.dt, 1.0 / self.dt
@@ -216,7 +218,7 @@ class MiniAnalyses:
         else:
             ndata = data.shape[1]
         nyqf = 0.5 * ndata * self.dt
-        cprint('y', f"minis_methods: hpf at {hpf:f}")
+        # cprint('y', f"minis_methods: hpf at {hpf:f}")
         if hpf < 1.0 / nyqf:  # duration of a trace
             raise ValueError(
                 "hpf < Nyquist: ",
@@ -325,7 +327,7 @@ class MiniAnalyses:
                 continue
             acceptlist_trial = []
             self.intervals.append(np.diff(self.timebase[self.onsets[itrial]]))  # event intervals
-            cprint('y', f"Summarize: trial: {itrial:d} onsets: {len(self.onsets[itrial]):d}")
+            # cprint('y', f"Summarize: trial: {itrial:d} onsets: {len(self.onsets[itrial]):d}")
             # print('onsets: ', self.onsets[itrial])
             for j, onset in enumerate(self.onsets[itrial]):  # for all of the events in this trace
                 if self.sign > 0 and self.eventstartthr is not None:
@@ -385,24 +387,28 @@ class MiniAnalyses:
                     self.Summary.smoothed_peaks[itrial].append(move_avg[smpk])
                     acceptlist_trial.append(j)
  
-        self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
-        self.Summary.amplitudes = np.array(self.Summary.amplitudes)
+        # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
+        # self.Summary.amplitudes = np.array(self.Summary.amplitudes)
         
         self.average_events(
             data,
         )
         if self.Summary.average.averaged:
-            self.fit_average_event(debug=False)
+            self.fit_average_event(
+                self.Summary.average.avgeventtb,
+                self.Summary.average.avgevent,
+                debug=False)
 
         else:
             if verbose:
                 print("No events found")
             return
 
-    def measure_events(self, eventlist: list) -> dict:
+    def measure_events(self, data:object, eventlist: list) -> dict:
         # compute simple measurements of events (area, amplitude, half-width)
         #
-        cprint('r', 'MEASURE EVENTS')
+        # cprint('r', 'MEASURE EVENTS')
+        assert data.ndim == 1
         self.measured = False
         # treat like averaging
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
@@ -414,8 +420,7 @@ class MiniAnalyses:
         npost = int(tdur / self.dt)
         avg = np.zeros(self.avgnpts)
         avgeventtb = np.arange(self.avgnpts) * self.dt
-        assert True == False
-        
+        # assert True == False
         allevents = np.zeros((len(eventlist), self.avgnpts))
         k = 0
         pkt = 0  # np.argmax(self.template)  # accumulate
@@ -423,10 +428,10 @@ class MiniAnalyses:
         for j, i in enumerate(eventlist):
             ix = i + pkt  # self.idelay
             if (ix + npost) < len(self.data) and (ix - npre) >= 0:
-                allevents[k, :] = self.data[ix - npre : ix + npost]
+                allevents[k, :] = data[ix - npre : ix + npost]
                 k = k + 1
-            if k > 0:
-                allevents = allevents[0:k, :]  # trim unused
+        if k > 0:
+            allevents = allevents[0:k, :]  # trim unused
             for j in range(k):
                 ev_j = scipy.signal.savgol_filter(
                     self.sign * allevents[j, :], 7, 2, mode="nearest"
@@ -458,7 +463,7 @@ class MiniAnalyses:
             List of event onset indices into the arrays
             Expect a 2-d list (traces x onsets)
         """ 
-        cprint('r', 'AVERAGE EVENTS')
+        # cprint('r', 'AVERAGE EVENTS')
         self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = 0.0  # self.taus[0]*10.
@@ -475,29 +480,74 @@ class MiniAnalyses:
         k = 0
         pkt = 0
         for itrace, onsets in enumerate(self.Summary.onsets):
-            cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
+            # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
+            event_trace[itrace] = []
             for j, event_onset in enumerate(onsets):
                 ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
-                    event_trace[k] = [itrace, j]
-                    k = k + 1
+                else:
+                    allevents[k, :] = np.nan*allevents[k,:]
+                event_trace[k] = [itrace, j]
+                k = k + 1
+        # tr_incl = [u[0] for u in event_trace]
+        # print(set(tr_incl), len(set(tr_incl)), len(event_trace))
+        # exit()
         if k > 0:
-            self.Summary.allevents = allevents[0:k, :]  # trim unused
+            self.Summary.average.averaged = True
+            self.Summary.average.avgnpts = avgnpts
+            self.Summary.average.Nevents = k
+            self.Summary.allevents = allevents
             avgevent = allevents.mean(axis=0)
             self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
-            self.Summary.average.averaged = True
             self.Summary.average.avgeventtb = avgeventtb
-            self.Summary.event_trace_list = event_trace[0:k]
+            self.Summary.event_trace_list = event_trace
             return
         else:
+            self.Summary.average.avgnpts = 0
             self.Summary.average.avgevent = []
             self.Summary.average.allevents = []
             self.Summary.average.avgeventtb = []
             self.Summary.average.averaged = False
             self.Summary.event_trace_list = []
             return
+
+    def average_events_subset(self, data: np.ndarray, eventlist:list) -> tuple:
+        """
+        compute average event with length of template
+        Parameters
+        ----------
+        data:
+            1-d numpy array of the data
+            eventlist : list
+            List of event onset indices into the arrays
+            Expect a 1-d list (traces x onsets)
+        """ 
+        assert data.ndim == 1
+        # cprint('r', 'AVERAGE EVENTS')
+        tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
+        tpre = 0.0  # self.taus[0]*10.
+        avgeventdur = tdur
+        self.tpre = tpre
+        avgnpts = int((tpre + tdur) / self.dt)  # points for the average
+        npre = int(tpre / self.dt)  # points for the pre time
+        npost = int(tdur / self.dt)
+        avg = np.zeros(avgnpts)
+        avgeventtb = np.arange(avgnpts) * self.dt
+        n_events = sum([len(events) for events in self.Summary.onsets])
+        allevents = np.zeros((n_events, avgnpts))
+        event_trace = [None]*n_events
+        k = 0
+        pkt = 0
+        for itrace, event_onset in enumerate(eventlist):
+            # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
+            ix = event_onset + pkt  # self.idelay
+            # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
+            if (ix + npost) < data.shape[0] and (ix - npre) >= 0:
+                allevents[k, :] = data[(ix - npre) : (ix + npost)]
+                k = k + 1
+        return np.mean(allevents, axis=0), avgeventtb, allevents
 
 
     def doubleexp(
@@ -589,6 +639,8 @@ class MiniAnalyses:
 
     def fit_average_event(
         self,
+        tb,
+        avgevent,
         debug: bool = False,
         label: str = "",
         inittaus: List = [0.001, 0.005],
@@ -616,8 +668,8 @@ class MiniAnalyses:
         # bounds_exp  = [(0., 0.5), (10000., 50.)]
 
         res, rdelay = self.event_fitter(
-            self.Summary.average.avgeventtb,
-            self.Summary.average.avgevent,
+            tb,
+            avgevent,
             time_past_peak=time_past_peak,
             initdelay=initdelay,
             debug=debug,
@@ -634,17 +686,17 @@ class MiniAnalyses:
         self.bfdelay = rdelay
         self.avg_best_fit = self.doubleexp(
             self.fitresult,
-            self.Summary.average.avgeventtb[self.tsel :],
-            np.zeros_like(self.Summary.average.avgeventtb[self.tsel :]),
+            tb[self.tsel :],
+            np.zeros_like(tb[self.tsel :]),
             risepower=self.risepower,
             mode=0,
             fixed_delay=self.bfdelay,
         )
         self.avg_best_fit = self.sign * self.avg_best_fit
         fiterr = np.linalg.norm(self.avg_best_fit - 
-            self.Summary.average.avgevent[self.tsel :])
+            avgevent[self.tsel :])
         self.avg_fiterr = fiterr
-        ave = self.sign * self.Summary.average.avgevent
+        ave = self.sign * avgevent
         ipk = np.argmax(ave)
         pk = ave[ipk]
         p10 = 0.1 * pk
@@ -659,7 +711,7 @@ class MiniAnalyses:
         i37 = np.argmin(np.fabs(ave[ipk:] - p37))
         self.risetenninety = self.dt * (i90 - i10)
         self.decaythirtyseven = self.dt * (i37 - ipk)
-        self.Qtotal = self.dt * np.sum(self.Summary.average.avgevent[self.tsel :])
+        self.Qtotal = self.dt * np.sum(avgevent[self.tsel :])
         self.fitted = True
 
     def fit_individual_events(self, onsets: np.ndarray) -> None:

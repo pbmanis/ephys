@@ -434,6 +434,11 @@ class MiniAnalysis():
             else:
                 cb.cbTemplateMatch(data[i],  threshold=float(mousedata['thr']), order=order)
 
+
+
+###
+     ###
+
             intervals = np.diff(aj.timebase[aj.onsets])
             self.cell_summary['intervals'].extend(intervals)
             self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb, 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,

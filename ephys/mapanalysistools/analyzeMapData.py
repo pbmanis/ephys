@@ -84,11 +84,16 @@ class AnalysisPars:
     (display_one_map).
     """
     spotsize: float = 42e-6  # spot size in meters
+    baseline_flag: bool = False
+    baseline_subtracted: bool = False
     LPF_flag: bool = False  # flag enabling low-pass filter
     HPF_flag: bool = False  # flag enabling high-pass filter
+    LPF_applied: bool = False  # prevent multiple filtering
+    HPF_applied: bool = False
     LPF: float = 5000.0  # low-pass filter frequency Hz
     HPF: float = 0.0  # high-pass filter frequrency, Hz
     notch_flag: bool = False  # flag enabling notch filters
+    notch_applied: bool = False
     notch_freqs: list = field(default_factory=def_notch)  # list of notch frequencies
     notch_Q: float = 90.0  # Q value for notch filters (sharpness)
     fix_artifact_flag: bool = True  # flag enabling removeal of artifacts
@@ -125,6 +130,11 @@ class AnalysisPars:
     stimdur: Union[float, None] = None  # duration of stimuli
     noderivative_artifact: bool = True  # flag enableing artifact suppression based on derivative of trace
     sd_thr: float = 3.0  # threshold in sd for diff based artifact suppression.
+    global_SD: float = 0.0  # raw global SD
+    global_mean: float = 0.0  # raw global mean
+    global_trim_scale: float = 3.0
+    global_trimmed_SD: float = 0.0  # raw global trimeed SD with outliers > 3.0
+    global_trimmed_median : float = 0.0
 
 
 @dataclass
@@ -179,6 +189,13 @@ class AnalyzeMap(object):
         self.Pars.HPF = HPF
         if HPF > 0:
             self.Pars.HPF_flag = True
+
+    def reset_filtering(self):
+        self.Pars.LPF_applied = False
+        self.Pars.HPF_applied = False
+
+    def set_baseline(self, bl):
+        self.pars.baseline_flag = bl
 
     def set_methodname(self, methodname):
         if methodname.lower() in ["aj"]:
@@ -432,7 +449,7 @@ class AnalyzeMap(object):
         return npks
 
     def select_by_sign(
-        self, method: object, npks: int, data: np.ndarray, min_event: float = 5e-12
+        self, method: object, itrace:int, npks: int, data: np.ndarray, min_event: float = 5e-12
     ) -> Union[list, np.ndarray]:
         """
         Screen events for correct sign and minimum amplitude.
@@ -458,17 +475,17 @@ class AnalyzeMap(object):
         if len(method.onsets) == 0:
             return pkt
         tb = method.timebase  # full time base
-        smpks = np.array(method.smpkindex)
+        smpks = np.array(method.Summary.smpkindex[itrace])
         # events[trial]['aveventtb']
         rate = np.mean(np.diff(tb))
-        tb_event = method.avgeventtb  # event time base
+        tb_event = method.Summary.average.avgeventtb  # event time base
         tpre = 0.002  # 0.1*np.max(tb0)
-        tpost = np.max(method.avgeventtb) - tpre
-        ipre = int(tpre / rate)
-        ipost = int(tpost / rate)
+        tpost = np.max(method.Summary.average.avgeventtb) - tpre
+        ipre = int(tpre / self.rate)
+        ipost = int(tpost / self.rate)
         # tb = np.arange(-tpre, tpost+rate, rate) + tpre
-        pt_fivems = int(0.0005 / rate)
-        pk_width = int(0.0005 / rate / 2)
+        pt_fivems = int(0.0005 / self.rate)
+        pk_width = int(0.0005 / self.rate / 2.0)
 
         # from pyqtgraph.Qt import QtGui, QtCore
         # import pyqtgraph as pg
@@ -485,9 +502,9 @@ class AnalyzeMap(object):
         # p1s = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 255))
         # p0s = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 255, 255))
 
-        for npk, jevent in enumerate(np.array(method.onsets[npks])):
+        for npk, jevent in enumerate(np.array(method.Summary.onsets[itrace])[npks]):
             jstart = jevent - ipre
-            jpeak = method.smpkindex[npk]
+            jpeak = method.Summary.smpkindex[itrace][npk]
             jend = jevent + ipost + 1
             evdata = data[jstart:jend].copy()
             l_expect = jend - jstart
@@ -532,7 +549,21 @@ class AnalyzeMap(object):
 
         return pkt
 
-    def filter_data(self, tb: np.ndarray, data: np.ndarray) -> np.ndarray:
+    def _remove_outliers(self, x:np.ndarray, scale:float=3.0) -> np.ndarray:
+        """
+        Remove outliers from data set using quartiles
+        -- elminate large evoked responses when measureing SD of basline data
+        
+        """
+        a = np.array(x)
+        upper_quartile = np.percentile(a, 75)
+        lower_quartile = np.percentile(a, 25)
+        IQR = (upper_quartile - lower_quartile) * scale
+        quartileSet = (lower_quartile - IQR, upper_quartile + IQR)
+        result = a[np.where((a >= quartileSet[0]) & (a <= quartileSet[1]))]
+        return result
+        
+    def preprocess_data(self, tb: np.ndarray, data: np.ndarray) -> np.ndarray:
         filtfunc = scipy.signal.filtfilt
         samplefreq = 1.0 / self.rate
         nyquistfreq = samplefreq / 1.95
@@ -544,21 +575,25 @@ class AnalyzeMap(object):
 
         imax = int(max(np.where(tb < self.Pars.analysis_window[1])[0]))
         # imax = len(tb)
-        data2 = np.zeros_like(data)
-        if data.ndim == 3 and self.Pars.LPF_flag:
+        data2 = data.copy()
+        bl = 0.
+        if data.ndim == 3:
             if self.Pars.notch_flag:
-                CP.cprint("y", f"Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
-            for r in range(data.shape[0]):
-                for t in range(data.shape[1]):
-                    data2[r, t, :imax] = filtfunc(
-                        b, a, data[r, t, :imax]
-                    )  #  - np.mean(data[r, t, 0:250]))
-                    if self.Pars.HPF_flag:
+                CP.cprint("y", f"analyzeMapData (3dim): Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
+            for r in range(data2.shape[0]):
+                for t in range(data2.shape[1]):
+                    if self.Pars.baseline_flag and not self.Pars.baseline_subtracted:
+                       data2[r, t, :imax] -= np.median(self._remove_outliers(data2[r, t, :imax], self.Pars.global_trim_scale))
+                    if self.Pars.LPF_flag and not self.Pars.LPF_applied:
+                        data2[r, t, :imax] = filtfunc(
+                            b, a, data2[r, t, :imax]
+                        )
+                        self.pars.LPF_applied = True
+                    if self.Pars.HPF_flag and not self.Pars.HPF_applied:
                         data2[r, t, :imax] = filtfunc(
                             bh, ah, data2[r, t, :imax]
-                        )  #  - np.mean(data[r, t, 0:250]))
-
-                    if self.Pars.notch_flag:
+                        )
+                    if self.Pars.notch_flag and not self.Pars.notch_applied:
                         data2[r, t, :imax] = FILT.NotchFilterZP(
                             data2[r, t, :imax],
                             notchf=self.Pars.notch_freqs,
@@ -566,16 +601,36 @@ class AnalyzeMap(object):
                             QScale=False,
                             samplefreq=samplefreq,
                         )
-        elif data.ndim == 2 and self.LPF_flag:
-            data2 = filtfunc(b, a, data - np.mean(data[0:250]))
+            if self.Pars.notch_flag:
+                self.Pars.notch_applied = True
+            if self.Pars.LPF_flag:
+                self.Pars.LPF_applied = True
+            if self.Pars.HPF_flag:
+                self.Pars.HPF_applied = True
+            if self.Pars.baseline_flag:
+                self.Pars.baseline_subtracted = True
+            # Now get some stats:
+            self.Pars.global_SD = np.std(data2)
+            self.Pars.global_mean = np.mean(data2)
+            print("Global SD and mean: ", self.Pars.global_SD, self.Pars.global_mean)
+    
+            trimdata = self._remove_outliers(data2, self.Pars.global_trim_scale)
+            self.Pars.global_trimmed_SD = np.std(trimdata)
+            self.Pars.global_trimmed_median  = np.median(trimdata)
+            print("Global Trimmed SD and mean: ", self.Pars.global_trimmed_SD, self.Pars.global_trimmed_median)
+    
+             
+        elif data.ndim == 2:
+            raise ValueError("Filtering for 2d data is disabled? ")
+
             if self.Pars.HPF_flag:
                 data2[r, t, :imax] = filtfunc(
                     bh, ah, data2[r, t, :imax]
-                )  #  - np.mean(data[r, t, 0:250]))
+                )
             if self.Pars.notch_flag:
                 if self.Pars.notch_flag:
                     CP.cprint(
-                        "y", "Notch Filtering Enabled {str(self.Pars.notch_freqs):s}"
+                        "y", "analyzeMapData (2dim) Notch Filtering Enabled {str(self.Pars.notch_freqs):s}"
                     )
                 data2 = FILT.NotchFilterZP(
                     data2,
@@ -633,10 +688,10 @@ class AnalyzeMap(object):
                 CP.cprint("c", "      Fixing Artifacts")
         else:
             self.Data.data_clean = self.data
-        if self.Pars.LPF_flag or self.Pars.notch_flag or self.Pars.HPF_flag:
-            if self.verbose:
-                CP.cprint("c", f"      LPF Filtering at {self.Pars.LPF:.2f} Hz")
-            self.Data.data_clean = self.filter_data(self.Data.tb, self.Data.data_clean)
+        # if self.Pars.LPF_flag or self.Pars.notch_flag or self.Pars.HPF_flag:
+        #     if self.verbose:
+        #         CP.cprint("c", f"      LPF Filtering at {self.Pars.LPF:.2f} Hz")
+        self.Data.data_clean = self.preprocess_data(self.Data.tb, self.Data.data_clean)
 
         stimtimes = []
         data_nostim = []
@@ -770,6 +825,9 @@ class AnalyzeMap(object):
         if self.verbose:
             print("  ALL trials in protocol analyzed")
         return {
+            "analysis_parameters": self.Pars,  # save the analysis parameters (added 9/2020)
+            "engine": self.engine,
+            "method": self.methodname,
             "Qr": Qr,
             "Qb": Qb,
             "ZScore": Zscore,
@@ -799,54 +857,195 @@ class AnalyzeMap(object):
         tasks = range(
             data.shape[0]
         )  # number of tasks that will be needed is number of targets
-        result = [None] * len(tasks)  # likewise
-        results = {}
+        # result = [None] * len(tasks)  # likewise
+        # results = {}
         # print('noparallel: ', self.noparallel)
-        if not self.noparallel:
-            print("Parallel on all traces in a map")
-            with mp.Parallelize(
-                enumerate(tasks), results=results, workers=nworkers
-            ) as tasker:
-                for itarget, x in tasker:
-                    result = self.analyze_one_trace(data[itarget], itarget, pars=pars)
-                    tasker.results[itarget] = result
-            # print('Result keys parallel: ', results.keys())
-        else:
-            print("Not parallel...each trace in map in sequence")
-            for itarget in range(data.shape[0]):
-                results[itarget] = self.analyze_one_trace(
-                    data[itarget], itarget, pars=pars
-                )
+        # if not self.noparallel:
+        #     print("Parallel on all traces in a map")
+        #     with mp.Parallelize(
+        #         enumerate(tasks), results=results, workers=nworkers
+        #     ) as tasker:
+        #         for itarget, x in tasker:
+        #             result = self.analyze_one_trace(data[itarget], itarget, pars=pars)
+        #             tasker.results[itarget] = result
+        #     # print('Result keys parallel: ', results.keys())
+        # else:
+        #     print("Not parallel...each trace in map in sequence")
+        #     for itarget in range(data.shape[0]):
+        #         results[itarget] = self.analyze_traces(
+        #             data[itarget], itarget, pars=pars
+        #         )
             # print('Result keys no parallel: ', results.keys())
+        method = self.analyze_traces_in_trial(data, pars=pars)
+        method.identify_events()# order=order)
+        method.summarize(data)
+        method.fit_average_event(
+            method.Summary.average.avgeventtb,
+            method.Summary.average.avgevent,
+            inittaus = self.Pars.taus)
+        results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
+        print('Summarized....')
         if self.verbose:
             print("trial analyzed")
         return results
 
-    def analyze_one_trace(
-        self, data: np.ndarray, itarget: int, pars: dict = None
+    def analyze_traces_in_trial(
+        self, data: np.ndarray,  pars: dict = None
     ) -> dict:
         """
-        Analyze just one trace
+        Analyze the block of traces
 
         Parameters
         ----------
         data : 1D array length of trace
             The trace for just one target
+    
+        itarget : int
+            Target site for the trace to be analyzed
+    
+        pars : 
 
         """
         if self.verbose:
             print("      analyze one trace")
-        jtrial = pars["jtrial"]
-        rate = pars["rate"]
-        jtrial = pars["jtrial"]
-        tmaxev = pars["tmaxev"]
-        eventstartthr = pars["eventstartthr"]
-        data_nostim = pars["data_nostim"]
-        eventlist = pars["eventlist"]
-        nevents = pars["nevents"]
-        tb = pars["tb"]
-        testplots = pars["testplots"]
+        idmax = int(self.Pars.analysis_window[1] / self.rate)
 
+        # get the lpf and HPF settings - if they were used
+        lpf = None
+        hpf = None
+
+        if self.methodname == "aj":
+            aj = minis_methods.AndradeJonas()
+            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
+
+            # print("sign: ", self.Pars.sign)
+            aj.setup(
+                ntraces=data.shape[0],
+                tau1=self.Pars.taus[0],
+                tau2=self.Pars.taus[1],
+                dt=rate,
+                delay=0.0,
+                template_tmax=rate * (idmax - 1),  # taus are for template
+                sign=self.Pars.sign,
+                risepower=4.0,
+                threshold=self.Pars.threshold,
+                global_SD=self.Pars.global_trimmed_SD,
+                lpf=lpf,
+                hpf=hpf,
+            )
+            idata = data.view(np.ndarray)
+            # This loop can be parallelized
+ 
+            for i in range(data.shape[0]):
+                aj.deconvolve(
+                    idata[i][:idmax],
+                    itrace=i,
+                    llambda=5.0,
+                    order=int(0.001 / rate),
+            )
+            return aj
+
+        elif self.methodname == "cb":
+            cb = minis_methods.ClementsBekkers()
+            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / self.rate)
+            cb.setup(
+                ntraces=data.shape[0],
+                tau1=self.Pars.taus[0],
+                tau2=self.Pars.taus[1],
+                dt=self.rate,
+                delay=0.0,
+                template_tmax=5.0*self.Pars.taus[1], #rate * (jmax - 1),
+                sign=self.Pars.sign,
+                #eventstartthr=eventstartthr,
+                threshold=self.Pars.threshold,
+                lpf=lpf,
+                hpf=hpf,
+            )
+            cb.set_cb_engine(engine=self.engine)
+            cb._make_template()
+            idata = data.view(np.ndarray)  # [jtrial, itarget, :]
+            print(data.shape)
+            for i in range(data.shape[0]):
+                cb.cbTemplateMatch(idata[i][:idmax], itrace=i, lpf=lpf)
+            return cb
+            
+        # elif self.methodname == "zc":
+        #     zc = minis_methods.ZCFinder()
+        #     # print("sign: ", self.Pars.sign)
+        #     zc.setup(
+        #         tau1=self.Pars.taus[0],
+        #         tau2=self.Pars.taus[1],
+        #         dt=rate,
+        #         delay=0.0,
+        #         template_tmax=5.0*self.Pars.taus[1],
+        #         sign=self.Pars.sign,
+        #         threshold=self.Pars.threshold,
+        #         lpf=lpf,
+        #         hpf=hpf,
+        #     )
+        #     idata = data.view(np.ndarray)  # [jtrial, itarget, :]
+        #     jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
+        #     tminlen = self.Pars.taus[0] + self.Pars.taus[1]
+        #     iminlen = int(tminlen / rate)
+        #
+        #     for i in range(ntraces):
+        #         zc.find_events(
+        #             idata[i][:idmax],
+        #             itrace = i,
+        #             data_nostim=None,
+        #             minPeak=5.0 * 1e-12,
+        #             minSum=5.0 * 1e-12 * iminlen,
+        #             minLength=iminlen,
+        #         )
+        #     return zc
+            # zc.summarize(zc.data)
+        else:
+            raise ValueError(
+                f'analyzeMapData:analyzetracesintrial: Method <{self.methodname:s}> is not valid (use "aj" or "cb" or "zc")'
+            )
+
+    def clean_and_gather_trial_events(self, method:object, data:object, pars: dict = None):
+        """
+        After the traces have been analyzed, we next
+        filter out events at times of stimulus artifacts
+        """
+        # build array of artifact times first
+        assert data.ndim == 2
+        ntraces = data.shape[0]
+        art_starts = []
+        art_durs = []
+        art_starts = [
+            self.Pars.analysis_window[1],
+            self.Pars.shutter_artifact,
+        ]  # generic artifacts
+        art_durs = [2, 2 * self.rate]
+        if self.Pars.artifact_suppress:
+            for si, s in enumerate(self.Pars.stimtimes["start"]):
+                if s in art_starts:
+                    continue
+                art_starts.append(s)
+                if isinstance(self.Pars.stimtimes["duration"], float):
+                    if self.Pars.stimdur is None:  # allow override
+                        art_starts.append(s + self.Pars.stimtimes["duration"])
+                    else:
+                        art_starts.append(s + self.Pars.stimdur)
+
+                else:
+                    if self.Pars.stimdur is None:
+                        art_starts.append(s + self.Pars.stimtimes["duration"][si])
+                    else:
+                        art_starts.append(s + self.Pars.stimdur)
+                art_durs.append(2.0 * self.rate)
+                art_durs.append(2.0 * self.rate)
+
+        # if self.stimdur is not None:
+        #     print('used custom stimdur: ', self.stimdur)
+        """
+        Initialzie the output arrays
+        """
+        eventlist = pars["eventlist"]
+        tb = pars["tb"]
+        # nevents = pars["nevents"]
         onsets = []  # list of onsete times in this trace
         crit = []  # criteria from CB
         scale = []  # scale from CB
@@ -866,212 +1065,105 @@ class AnalyzeMap(object):
         evoked_ev = []  # subsets that pass criteria, onset values stored
         spont_ev = []
         order = []
-        nevents = 0
-        if tmaxev > self.Pars.analysis_window[1]:  # block step information
-            tmaxev = self.Pars.analysis_window[1]
-        idmax = int(self.Pars.analysis_window[1] / rate)
         
-        # print('Pars: ', self.Pars)
-        if self.methodname == "aj":
-            aj = minis_methods.AndradeJonas()
-            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
-            if self.Pars.LPF_flag is None:
-                lpf = None
+        event_trace_list = method.Summary.event_trace_list
+        
+        nevents = 0
+        for i in range(ntraces):
+            npk0 = self.select_events(
+                method.Summary.smpkindex[i], art_starts, art_durs, self.rate, mode="reject"
+            )
+            npk4 = self.select_by_sign(
+                method, itrace=i, npks=npk0, data=data[i], min_event=5e-12
+            )  # events must also be of correct sign and min magnitude
+            npk = list(
+                set(npk0).intersection(set(npk4))
+            )  # only all peaks that pass all tests
+            # if not self.artifact_suppress:
+            #     npk = npk4  # only suppress shutter artifacts  .. exception
+            if len(npk) == 0:
+                # CP.cprint('r', f"trace {i:d} has no events")
+                onsets.append(np.array([]))
+                eventlist.append(np.array([]))
+                tpks.append(np.array([]))
+                smpks.append(np.array([]))
+                smpksindex.append(np.array([]))
+                spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
+                st_times = np.array(self.Pars.stimtimes["start"])
+                ok_events = np.array([])
+                evoked_ev.append(
+                    [np.array([]), np.array([])]
+                )
+                spont_ev.append(
+                    [np.array([]), np.array([])]
+                )             
+                continue
             else:
-                lpf = self.Pars.LPF
-            lpf = None
-            hpf = None
-            # print("sign: ", self.Pars.sign)
-            aj.setup(
-                tau1=self.Pars.taus[0],
-                tau2=self.Pars.taus[1],
-                dt=rate,
-                delay=0.0,
-                template_tmax=rate * (idmax - 1),  # taus are for template
-                sign=self.Pars.sign,
-                risepower=4.0,
-                threshold=self.Pars.threshold,
-                lpf=lpf,
-                hpf=hpf,
-            )
-            idata = data.view(np.ndarray) 
-            aj.deconvolve(
-                idata[:idmax]-np.mean(idata[:idmax]),
-                llambda=5.0,
-                order=int(0.001 / rate),
-            )
-            method = aj
-            aj.summarize(aj.data)
+                nevents += len(np.array(method.Summary.onsets[i])[npk])
+                onsets.append(np.array(method.Summary.onsets[i])[npk])
+                eventlist.append(tb[np.array(method.Summary.onsets[i])[npk]])
+                tpks.append(np.array(method.Summary.peaks[i])[npk])
+                smpks.append(np.array(method.Summary.smoothed_peaks[i])[npk])
+                smpksindex.append(np.array(method.Summary.smpkindex[i])[npk])
+                spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
 
-        elif self.methodname == "cb":
-            cb = minis_methods.ClementsBekkers()
-            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
-            cb.setup(
-                tau1=self.Pars.taus[0],
-                tau2=self.Pars.taus[1],
-                dt=rate,
-                delay=0.0,
-                template_tmax=5.0*self.Pars.taus[1], #rate * (jmax - 1),
-                sign=self.Pars.sign,
-                eventstartthr=eventstartthr,
-                threshold=self.Pars.threshold,
-                lpf=self.Pars.LPF,
-                hpf=self.Pars.HPF
-            )
-            cb.set_cb_engine(engine=self.engine)
-            cb._make_template()
-            idata = data.view(np.ndarray)  # [jtrial, itarget, :]
-            meandata = np.mean(idata[:jmax])
-            cb.cbTemplateMatch(idata[:idmax] - meandata, lpf=self.Pars.LPF)
-            cb.summarize(cb.data)
-            # result.append(res)
-            # crit.append(cb.Crit)
-            # scale.append(cb.Scale)
-            method = cb
-        elif self.methodname == "zc":
-            zc = minis_methods.ZCFinder()
-            # print("sign: ", self.Pars.sign)
-            zc.setup(
-                tau1=self.Pars.taus[0],
-                tau2=self.Pars.taus[1],
-                dt=rate,
-                delay=0.0,
-                template_tmax=5.0*self.Pars.taus[1],
-                sign=self.Pars.sign,
-                threshold=self.Pars.threshold,
-                lpf=self.Pars.LPF,
-                hpf=self.Pars.HPF,
-            )
-            idata = data.view(np.ndarray)  # [jtrial, itarget, :]
-            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
-            meandata = np.mean(idata[:jmax])
-            tminlen = self.Pars.taus[0] + self.Pars.taus[1]
-            iminlen = int(tminlen / rate)
+                # define:
+                # spont is not in evoked window, and no sooner than 10 msec before a stimulus,
+                # at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
+                # evoked is after the stimulus, in a window (usually ~ 5 msec)
+                # data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
+                # stimtimes: dict_keys(['start', 'duration', 'amplitude', 'npulses', 'period', 'type'])
+                st_times = np.array(self.Pars.stimtimes["start"])
+                ok_events = np.array(method.Summary.smpkindex[i])[npk]
+                # print(ok_events*rate)
 
-            zc.find_events(
-                idata[:idmax] - meandata,
-                data_nostim=None,
-                minPeak=5.0 * 1e-12,
-                minSum=5.0 * 1e-12 * iminlen,
-                minLength=iminlen,
-            )
-            method = zc
-            zc.summarize(zc.data)
-        else:
-            raise ValueError(
-                f'analyzeMapData:analyzeOneTrace: Method <{self.methodname:s}> is not valid (use "aj" or "cb" or "zc")'
-            )
+                npk_ev = self.select_events(
+                    ok_events,
+                    st_times,
+                    self.Pars.response_window,
+                    self.rate,
+                    mode="accept",
+                    first_only=True,
+                )
+                ev_onsets = np.array(method.Summary.onsets[i])[npk_ev]
+                evoked_ev.append(
+                    [np.array(method.Summary.onsets[i])[npk_ev], np.array(method.Summary.smpkindex[i])[npk_ev]]
+                )
 
-        # filter out events at times of stimulus artifacts
-        # build array of artifact times first
-        art_starts = []
-        art_durs = []
-        art_starts = [
-            self.Pars.analysis_window[1],
-            self.Pars.shutter_artifact,
-        ]  # generic artifacts
-        art_durs = [2, 2 * rate]
-        if self.Pars.artifact_suppress:
-            for si, s in enumerate(self.Pars.stimtimes["start"]):
-                if s in art_starts:
-                    continue
-                art_starts.append(s)
-                if isinstance(self.Pars.stimtimes["duration"], float):
-                    if self.Pars.stimdur is None:  # allow override
-                        art_starts.append(s + self.Pars.stimtimes["duration"])
-                    else:
-                        art_starts.append(s + self.Pars.stimdur)
-
-                else:
-                    if self.Pars.stimdur is None:
-                        art_starts.append(s + self.Pars.stimtimes["duration"][si])
-                    else:
-                        art_starts.append(s + self.Pars.stimdur)
-                art_durs.append(2.0 * rate)
-                art_durs.append(2.0 * rate)
-
-        # if self.stimdur is not None:
-        #     print('used custom stimdur: ', self.stimdur)
-        npk0 = self.select_events(
-            method.smpkindex, art_starts, art_durs, rate, mode="reject"
-        )
-        npk4 = self.select_by_sign(
-            method, npk0, idata, min_event=5e-12
-        )  # events must also be of correct sign and min magnitude
-        npk = list(
-            set(npk0).intersection(set(npk4))
-        )  # only all peaks that pass all tests
-        # if not self.artifact_suppress:
-        #     npk = npk4  # only suppress shutter artifacts  .. exception
-
-        nevents += len(np.array(method.onsets)[npk])
-        # # collate results
-
-        onsets.append(np.array(method.onsets)[npk])
-        eventlist.append(tb[np.array(method.onsets)[npk]])
-        tpks.append(np.array(method.peaks)[npk])
-        smpks.append(np.array(method.smoothed_peaks)[npk])
-        smpksindex.append(np.array(method.smpkindex)[npk])
-        spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
-
-        if method.averaged:  # grand average, calculated after deconvolution
-            avgev.append(method.avgevent)
-            avgtb.append(method.avgeventtb)
-            avgnpts.append(method.avgnpts)
+            # avg_evoked_one, avg_evokedtb, allev_evoked = method.average_events(ev_onsets)
+            # fit_tau1.append(
+            #     method.fitted_tau1
+            # )  # these are the average fitted values for the i'th trace
+            # fit_tau2.append(method.fitted_tau2)
+            # fit_amp.append(method.Amplitude)
+            # avg_evoked.append(avg_evoked_one)
+            measures.append(method.measure_events(data[i], ev_onsets))
+            txb = method.Summary.average.avgeventtb  # only need one of these.
+            if not np.isnan(method.fitted_tau1):
+                npk_sp = self.select_events(
+                    ok_events,
+                    [0.0],
+                    st_times[0] - (method.fitted_tau1 * 5.0),
+                    self.rate,
+                    mode="accept",
+                )
+                sp_onsets = np.array(method.Summary.onsets[i])[npk_sp]
+  
+                avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(data[i], sp_onsets)
+                avg_spont.append(avg_spont_one)
+                spont_ev.append(
+                    [np.array(method.Summary.onsets[i])[npk_sp], np.array(method.Summary.smpkindex[i])[npk_sp]]
+                )
+            else:
+                spont_ev.append([])
+        if method.Summary.average.averaged:  # grand average, calculated after deconvolution
+            avgev.append(method.Summary.average.avgevent)
+            avgtb.append(method.Summary.average.avgeventtb)
+            avgnpts.append(method.Summary.average.avgnpts)
         else:
             avgev.append([])
             avgtb.append([])
             avgnpts.append(0)
-
-        # define:
-        # spont is not in evoked window, and no sooner than 10 msec before a stimulus,
-        # at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
-        # evoked is after the stimulus, in a window (usually ~ 5 msec)
-        # data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
-        # stimtimes: dict_keys(['start', 'duration', 'amplitude', 'npulses', 'period', 'type'])
-        st_times = np.array(self.Pars.stimtimes["start"])
-        ok_events = np.array(method.smpkindex)[npk]
-        # print(ok_events*rate)
-
-        npk_ev = self.select_events(
-            ok_events,
-            st_times,
-            self.Pars.response_window,
-            rate,
-            mode="accept",
-            first_only=True,
-        )
-        ev_onsets = np.array(method.onsets)[npk_ev]
-        evoked_ev.append(
-            [np.array(method.onsets)[npk_ev], np.array(method.smpkindex)[npk_ev]]
-        )
-
-        avg_evoked_one, avg_evokedtb, allev_evoked = method.average_events(ev_onsets)
-        fit_tau1.append(
-            method.fitted_tau1
-        )  # these are the average fitted values for the i'th trace
-        fit_tau2.append(method.fitted_tau2)
-        fit_amp.append(method.Amplitude)
-        avg_evoked.append(avg_evoked_one)
-        measures.append(method.measure_events(ev_onsets))
-        txb = avg_evokedtb  # only need one of these.
-        if not np.isnan(method.fitted_tau1):
-            npk_sp = self.select_events(
-                ok_events,
-                [0.0],
-                st_times[0] - (method.fitted_tau1 * 5.0),
-                rate,
-                mode="accept",
-            )
-            sp_onsets = np.array(method.onsets)[npk_sp]
-            avg_spont_one, avg_sponttb, allev_spont = method.average_events(sp_onsets)
-            avg_spont.append(avg_spont_one)
-            spont_ev.append(
-                [np.array(method.onsets)[npk_sp], np.array(method.smpkindex)[npk_sp]]
-            )
-        else:
-            spont_ev.append([])
-
         # if testplots:
         #     method.plots(title='%d' % i, events=None)
         res = {
@@ -1095,6 +1187,7 @@ class AnalyzeMap(object):
             "spont_ev": spont_ev,
             "measures": measures,
             "nevents": nevents,
+            "event_trace_list": event_trace_list,
         }
         if self.verbose:
             print("      --trace analyzed")
@@ -1105,7 +1198,6 @@ class AnalyzeMap(object):
     def fix_artifacts(self, data: np.ndarray) -> (np.ndarray, np.ndarray):
         """
         Use a template to subtract the various transients in the signal...
-
         """
         testplot = False
         CP.cprint('c', "Fixing artifacts")
@@ -1161,11 +1253,11 @@ class AnalyzeMap(object):
             ct_SR = np.mean(np.diff(d["t"]))
 
             # or if from photodiode:
-            # ct_SR = 1./self.AR.Photodiode_sample_rate[0]
+            # ct_SR = 1./self.AR.Photodiode_sample_s[0]
             crosstalk = d["I"] - np.mean(
                 d["I"][0 : int(0.020 / ct_SR)]
             )  # remove baseline
-            # crosstalk = self.filter_data(d['t'], crosstalk)
+            # crosstalk = self.preprocess_data(d['t'], crosstalk)
             avgdf = avgd - np.mean(avgd[0 : int(0.020 / ct_SR)])
             # meanpddata = crosstalk
             # if self.shutter is not None:

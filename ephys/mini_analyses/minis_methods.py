@@ -132,10 +132,10 @@ class ClementsBekkers(MiniAnalyses):
         self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
         if self.engine == "numba":
             self.Scale, self.Crit = nb_clementsbekkers(D, T)
-            print('numba')
+            # print('numba')
         elif self.engine == "cython":
             self.Scale, self.Crit = self.clements_bekkers_cython(D, T)
-            print('cython')
+            # print('cython')
         elif self.engine == "python":
             self.Scale, self.Crit = self.clements_bekkers_python(D, T)
 
