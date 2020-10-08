@@ -545,16 +545,17 @@ class MinisTester(UserTester):
 
 def plot_traces_and_markers(method, dy=20e-12, sf=1.):
     tba = method.timebase[:len(method.Summary.allevents[0])]
-
     last_tr = 0
     dyi = 0
     for i, a in enumerate(method.Summary.allevents):
         dyi  += dy
+        if np.isnan(a[0]):  # didn't fit.
+            continue
         mpl.plot(tba, sf*a + dyi)
         jtr = method.Summary.event_trace_list[
             i
         ]  # get trace and event number in trace
-        if jtr is None:
+        if len(jtr) == 0:
             continue
         if jtr[0] > last_tr:
             last_tr = jtr[0]
