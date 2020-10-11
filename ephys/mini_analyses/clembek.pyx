@@ -1,4 +1,5 @@
-#  EXPERIMENTAL... not fully tested.
+#!python
+#cython: language_level=3
 # Implementation of Clements-Bekkers mini PSC detection algorithm
 # in Cython. Adapted from the matlab mex file clembek.c
 # Build with:
