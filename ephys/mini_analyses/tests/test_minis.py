@@ -22,7 +22,7 @@ from ephys.mini_analyses.util import UserTester
 
 # import pyqtgraph as pg
 
-testmode = True  # set false to hold graphs up until closed;
+testmode = False  # set false to hold graphs up until closed;
 # true for 2 sec display
 
 
@@ -36,6 +36,7 @@ def def_template_taus():
 
 @dataclass
 class EventParameters:
+    ntraces: int = 1  # number of trials
     dt: float = 2e-5  # msec
     tdur: float = 1e-1
     maxt: float = 10.0  # sec
@@ -258,7 +259,6 @@ def run_ClementsBekkers(
     """
     Do some tests of the CB protocol and plot
     """
-    ntraces = 5
     if pars is None:
         pars = EventParameters()
     if bigevent:
@@ -268,9 +268,9 @@ def run_ClementsBekkers(
     # pars.HPF = None
     cb = MM.ClementsBekkers()
     pars.baseclass = cb
-    crit = [None] * ntraces
+    crit = [None] * pars.ntraces
     cb.setup(
-        ntraces=ntraces,
+        ntraces=pars.ntraces,
         tau1=5e-4, # pars.template_taus[0],
         tau2=2e-3, # pars.template_taus[1],
         dt=pars.dt,
@@ -282,27 +282,15 @@ def run_ClementsBekkers(
         hpf=pars.HPF,
     )
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces, baseclass=cb
+        pars, ntrials=pars.ntraces, baseclass=cb
     )
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
 
-    cb.setup(
-        ntraces=ntraces,
-        tau1=5e-4, # pars.template_taus[0],
-        tau2=2e-3, # pars.template_taus[1],
-        dt=pars.dt,
-        delay=0.0,
-        template_tmax=5.0 * pars.template_taus[1],
-        sign=pars.sign,
-        threshold=pars.threshold,
-        lpf=pars.LPF,
-        hpf=pars.HPF,
-    )
     cb._make_template()
     cb.set_cb_engine(extra)
 
-    for i in range(ntraces):
+    for i in range(pars.ntraces):
         cb.cbTemplateMatch(testpscn[i], itrace=i, lpf=pars.LPF)
         testpscn[i] = cb.data  # # get filtered data
         cb.reset_filtering()
@@ -318,8 +306,8 @@ def run_ClementsBekkers(
         fig_handle = cb.plots(
             np.array(testpscn), events=None, title="CB", testmode=testmode
         )  # i_events)
-        # mpl.show()
-        time.sleep(5)
+        mpl.show()
+        # time.sleep(5)
     return cb, fig_handle
 
 
@@ -327,7 +315,6 @@ def run_AndradeJonas(
     pars: dataclass = None, bigevent: bool = False, plot: bool = False
 ) -> object:
 
-    ntraces = 5
     if pars is None:
         pars = EventParameters()
     pars.threshold = 5.5
@@ -337,9 +324,9 @@ def run_AndradeJonas(
     pars.baseclass = aj
     pars.LPF = 5000.0
     # pars.HPF = None
-    crit = [None] * ntraces
+    crit = [None] * pars.ntraces
     aj.setup(
-        ntraces=ntraces,
+        ntraces=pars.ntraces,
         tau1=pars.template_taus[0],
         tau2=pars.template_taus[1],
         dt=pars.dt,
@@ -352,12 +339,12 @@ def run_AndradeJonas(
         hpf=pars.HPF,
     )
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces, baseclass=aj
+        pars, ntrials=pars.ntraces, baseclass=aj
     )
     tot_seeded = sum([len(x) for x in i_events])
     print("Total # of seeded events: ", tot_seeded)
     order = int(0.001 / pars.dt)
-    for i in range(ntraces):
+    for i in range(pars.ntraces):
         aj.deconvolve(
             testpscn[i], itrace=i, llambda=5.0,
         )
@@ -374,7 +361,7 @@ def run_AndradeJonas(
         fig_handle = aj.plots(
             np.array(testpscn), events=None, title="AJ", testmode=testmode
         )  # i_events)
-        # mpl.show()
+        mpl.show()
         # time.sleep(5)
     return aj, fig_handle
 
@@ -383,7 +370,6 @@ def run_RSDeconvolve(
     pars: dataclass = None, bigevent: bool = False, plot: bool = False
 ) -> object:
 
-    ntraces = 5
 
     if pars is None:
         pars = EventParameters()
@@ -391,7 +377,7 @@ def run_RSDeconvolve(
     rs = MM.RSDeconvolve()
     pars.threshold = 4.0
     rs.setup(
-        ntraces=ntraces,
+        ntraces=pars.ntraces,
         tau1=np.power(pars.template_taus[0], 1.0),
         tau2=pars.template_taus[1]/2.,  # pars.template_taus[1],
         dt=pars.dt,
@@ -407,7 +393,7 @@ def run_RSDeconvolve(
 
     # generate test data
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
-        pars, ntrials=ntraces, baseclass=rs,
+        pars, ntrials=pars.ntraces, baseclass=rs,
     )
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
@@ -415,7 +401,7 @@ def run_RSDeconvolve(
     # if bigevent:
     #     pars.bigevent = {"t": 1.0, "I": 20.0}
     pars.tau2 = 4e-3
-    for i in range(ntraces):
+    for i in range(pars.ntraces):
         rs.deconvolve(testpscn[i], itrace=i)
         testpscn[i] = rs.data  # # get filtered data
         rs.reset_filtering()
@@ -583,8 +569,11 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.):
         )
 
 if __name__ == "__main__":
+    ntraces = 5
     if len(sys.argv[0]) > 1:
         testmethod = sys.argv[1]
+    if len(sys.argv[0]) > 2:
+        ntraces = int(sys.argv[2])
     if testmethod not in [
         "ZC",
         "CB",
@@ -626,6 +615,7 @@ if __name__ == "__main__":
 
         pars = EventParameters()
         pars.LPF = 5000.0
+        pars.ntraces = ntraces
         if testmethod in ["ZC", "zc"]:
             pars.threshold = 0.9
             pars.mindur = 1e-3

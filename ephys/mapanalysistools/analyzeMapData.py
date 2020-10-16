@@ -148,6 +148,7 @@ class AnalysisData:
     data_clean: Union[None, np.ndarray] = None
     photodiode: Union[None, np.ndarray] = None
     photodiode_timebase: Union[None, np.ndarray] = None
+
     MA : Union[object, None] = None  # point to minanalysis instance used for analysis
     
 
@@ -575,11 +576,11 @@ class AnalyzeMap(object):
 
         imax = int(max(np.where(tb < self.Pars.analysis_window[1])[0]))
         # imax = len(tb)
-        data2 = data.copy()
         bl = 0.
         if data.ndim == 3:
             if self.Pars.notch_flag:
                 CP.cprint("y", f"analyzeMapData (3dim): Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
+            data2 = data.copy()
             for r in range(data2.shape[0]):
                 for t in range(data2.shape[1]):
                     if self.Pars.baseline_flag and not self.Pars.baseline_subtracted:
@@ -588,11 +589,14 @@ class AnalyzeMap(object):
                         data2[r, t, :imax] = filtfunc(
                             b, a, data2[r, t, :imax]
                         )
-                        self.pars.LPF_applied = True
+                        CP.cprint('y', f"LPF applied at {self.Pars.LPF:.1f}")
+                        self.Pars.LPF_applied = True
                     if self.Pars.HPF_flag and not self.Pars.HPF_applied:
                         data2[r, t, :imax] = filtfunc(
                             bh, ah, data2[r, t, :imax]
                         )
+                        self.Pars.HPF_applied = True
+                        CP.cprint('y', f"HPF applied at {self.Pars.HPF:.1f}")
                     if self.Pars.notch_flag and not self.Pars.notch_applied:
                         data2[r, t, :imax] = FILT.NotchFilterZP(
                             data2[r, t, :imax],
@@ -601,6 +605,7 @@ class AnalyzeMap(object):
                             QScale=False,
                             samplefreq=samplefreq,
                         )
+            data = data2
             if self.Pars.notch_flag:
                 self.Pars.notch_applied = True
             if self.Pars.LPF_flag:
@@ -610,11 +615,11 @@ class AnalyzeMap(object):
             if self.Pars.baseline_flag:
                 self.Pars.baseline_subtracted = True
             # Now get some stats:
-            self.Pars.global_SD = np.std(data2)
-            self.Pars.global_mean = np.mean(data2)
+            self.Pars.global_SD = np.std(data)
+            self.Pars.global_mean = np.mean(data)
             print("Global SD and mean: ", self.Pars.global_SD, self.Pars.global_mean)
     
-            trimdata = self._remove_outliers(data2, self.Pars.global_trim_scale)
+            trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
             self.Pars.global_trimmed_SD = np.std(trimdata)
             self.Pars.global_trimmed_median  = np.median(trimdata)
             print("Global Trimmed SD and mean: ", self.Pars.global_trimmed_SD, self.Pars.global_trimmed_median)
@@ -622,7 +627,7 @@ class AnalyzeMap(object):
              
         elif data.ndim == 2:
             raise ValueError("Filtering for 2d data is disabled? ")
-
+            data2 = data.copy()
             if self.Pars.HPF_flag:
                 data2[r, t, :imax] = filtfunc(
                     bh, ah, data2[r, t, :imax]
@@ -638,9 +643,10 @@ class AnalyzeMap(object):
                     Q=self.Pars.notch_Q,
                     QScale=False,
                     samplefreq=samplefreq,
-                )
-        else:
-            return data
+                    )
+            data = data2
+
+        return data
         # if self.notch_flag:  ### DO NOT USE THIS WHEN RUNNING PARALLEL MODE
         # f, ax = mpl.subplots(1,1)
         # f.set_figheight(14.)
@@ -658,7 +664,6 @@ class AnalyzeMap(object):
         # mpl.show()
         # exit()
 
-        return data2
 
     """
     Analyze one map calls:
@@ -916,16 +921,17 @@ class AnalyzeMap(object):
 
         if self.methodname == "aj":
             aj = minis_methods.AndradeJonas()
-            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / rate)
+            jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / self.rate)
+            print(self.Pars.taus, self.rate, jmax, self.Pars.sign)
 
             # print("sign: ", self.Pars.sign)
             aj.setup(
                 ntraces=data.shape[0],
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
-                dt=rate,
+                dt=self.rate,
                 delay=0.0,
-                template_tmax=rate * (idmax - 1),  # taus are for template
+                template_tmax=self.rate * (idmax - 1),  # taus are for template
                 sign=self.Pars.sign,
                 risepower=4.0,
                 threshold=self.Pars.threshold,
@@ -941,7 +947,7 @@ class AnalyzeMap(object):
                     idata[i][:idmax],
                     itrace=i,
                     llambda=5.0,
-                    order=int(0.001 / rate),
+                    # order=int(0.001 / self.rate),
             )
             return aj
 
@@ -1067,7 +1073,7 @@ class AnalyzeMap(object):
         order = []
         
         event_trace_list = method.Summary.event_trace_list
-        
+        print('ntraces: ', ntraces)
         nevents = 0
         for i in range(ntraces):
             npk0 = self.select_events(
@@ -1177,7 +1183,7 @@ class AnalyzeMap(object):
             "avgnpts": avgnpts,
             "avgevoked": avg_evoked,
             "avgspont": avg_spont,
-            "aveventtb": txb,
+            "aveventtb": method.Summary.average.avgeventtb ,
             "fit_tau1": fit_tau1,
             "fit_tau2": fit_tau2,
             "fit_amp": fit_amp,

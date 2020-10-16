@@ -476,12 +476,11 @@ class MiniAnalyses:
         avgeventtb = np.arange(avgnpts) * self.dt
         n_events = sum([len(events) for events in self.Summary.onsets])
         allevents = np.zeros((n_events, avgnpts))
-        event_trace = [None]*n_events
+        event_trace = [[]]*n_events
         k = 0
         pkt = 0
         for itrace, onsets in enumerate(self.Summary.onsets):
             # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
-            event_trace[itrace] = []
             for j, event_onset in enumerate(onsets):
                 ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)

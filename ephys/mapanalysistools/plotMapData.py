@@ -238,6 +238,10 @@ class PlotMapData():
     def __init__(self, verbose=False):
         self.rasterized = False
         self.verbose = verbose
+        self.reset_flags()
+
+    def reset_flags(self):
+        self.plotted_em = {'histogram': False, 'stack': False, 'avgevents': False, 'avgax': [0, None, None]}
 
     def set_Pars_and_Data(self, pars, data):
         """
@@ -319,13 +323,15 @@ class PlotMapData():
                     rasterized=self.rasterized,
                 )
 
-    def plot_events(self, axh: object, results: dict, colorid: int = 0) -> None:
+    def plot_hist(self, axh: object, results: dict, colorid: int = 0) -> None:
         """
-        Plot the events (average) and the histogram of event times
+        Plot  the histogram of event times
         hist goes into axh
-        traces into axt
+
         """
 
+        assert not self.plotted_em['histogram']
+        self.plotted_em['histogram'] = True
         plotevents = True
         rotation = 0.0
         plotFlag = True
@@ -393,7 +399,10 @@ class PlotMapData():
         trsel: Union[int, None] = None,
     ) -> None:
 
+        assert not self.plotted_em['stack']
         print("start stack plot")
+        linewidth=0.35  # base linewidth
+        self.plotted_em['stack'] = True
         if ax is None:
             f, ax = mpl.subplots(1, 1)
             self.figure_handle = f
@@ -439,11 +448,6 @@ class PlotMapData():
             evtr = events[itrial]['event_trace_list']  # of course it is the same for every entry.
             for itrace in range(mdata.shape[1]):
                 crflag = False  # indicates detected evoked response on a trace - used to increase salience in the plot
-                # if itrial not in list(events.keys()):
-                imaptr = evtr[itrace]
-                # print('imaptr: ', imaptr)
-                # print('events it: ', mdata.shape[1], itrace, events[itrial].keys())
-                # print('len smpks: ', len(events[itrial]['smpksindex']))
                 smpki = events[itrial]["smpksindex"][itrace]
                 pktimes = events[itrial]["peaktimes"][itrace]
                 # print(itrace, smpki)
@@ -531,10 +535,10 @@ class PlotMapData():
                 if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
                     if crflag:
                         alpha = 1.0
-                        lw = 0.5
+                        lw = linewidth
                     else:
-                        alpha = 0.5
-                        lw = 0.2
+                        alpha = 0.3
+                        lw = linewidth*0.25
                     ax.plot(
                         tb[:itmax],
                         mdata[itrial, itrace, :itmax] * self.Pars.scale_factor
@@ -549,6 +553,7 @@ class PlotMapData():
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
         ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
+
 
     def get_calbar_Yscale(self, amp: float):
         """
@@ -591,7 +596,20 @@ class PlotMapData():
         label: str = "pA",
         rasterized: bool = False,
     ) -> None:
-        # print("start avgevent plot for ", evtype)
+        # ensure we don't plot more than once...
+        CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
+        assert not self.plotted_em['avgevents']
+        if self.plotted_em['avgax'][0] == 0:
+            self.plotted_em['avgax'][1] = ax
+        elif self.plotted_em['avgax'][0] == 1:
+            if self.plotted_em['avgax'][1] == ax:
+                raise ValueError('plot_avgevent_traces : repeated into same axis')
+            else:
+                self.plotted_em['avgax'][2] = ax
+                self.plotted_em['avgevents'] = True
+        CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
+
+        # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
             print("evtype:  no events, no axis, or no time base", evtype)
             return
@@ -640,19 +658,18 @@ class PlotMapData():
                         print(f"     NO EVENTS in trace: {itrace:4d}")
                     continue
                 evs = events[trial][result_names[evtype]][itrace]
-                if len(evs[0]) == 0:  # skip trace if there are NO events
+                if len(evs) == 0:  # skip trace if there are NO events
                     if self.verbose:
                         print(
                             f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
                         )
                     continue
                 spont_dur = events[trial]["spont_dur"][itrace]
-                for jevent in evs:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
-
+                for jevent in evs[0]:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
                     if evtype == "avgspont":
                         spont_ev_count += 1
                         if (
-                            trace_tb[jevent[0]] + self.Pars.spont_deadtime > spont_dur
+                            trace_tb[jevent] + self.Pars.spont_deadtime > spont_dur
                         ):  # remove events that cross into stimuli
                             if self.verbose:
                                 print(
@@ -661,14 +678,15 @@ class PlotMapData():
                             continue
                     if evtype == "avgevoked":
                         evoked_ev_count += 1
-                        if trace_tb[jevent[0]] <= spont_dur:  # only post events
+                        if trace_tb[jevent] <= spont_dur:  # only post events
                             if self.verbose:
                                 print(
                                     f"     Event in spont window, not plotting as evoked: {jevent:6d} [t={float(jevent*rate):8.3f}] trace: {itrace:4d}"
                                 )
                             continue
+                    # print('ipre: ', ipre, itrace, evtype)
                     if (
-                        jevent[0] - ipre < 0
+                        jevent - ipre < 0
                     ):  # event to be plotted would go before start of trace
                         if self.verbose:
                             print(
@@ -676,7 +694,7 @@ class PlotMapData():
                             )
                         continue
                     evdata = mdata[
-                        trial, itrace, jevent[0] - ipre : jevent[0] + ipost
+                        trial, itrace, jevent - ipre : jevent + ipost
                     ].copy()  # 0 is onsets
                     bl = np.mean(evdata[0 : ipre - ptfivems])
                     evdata -= bl
@@ -1322,7 +1340,7 @@ class PlotMapData():
 
         self.P = PH.Plotter(self.plotspecs, label=False, figsize=(10.0, 8.0))
 
-        self.plot_events(self.P.axdict["B"], results)  # PSTH
+        self.plot_hist(self.P.axdict["B"], results)  # PSTH
         # if imagefile is not None:
         #     self.MT.get_image(imagefile)
         #     self.MT.load_images()
