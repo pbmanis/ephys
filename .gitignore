@@ -1,5 +1,5 @@
 # specific files
-ephys/ephysanalysis/c_cderiv.c
+ephys/ephysanalysis/c_deriv.c
 ephys/mini_analyses/clembek.c
 
 # Byte-compiled / optimized / DLL files
