@@ -497,7 +497,8 @@ class Utility:
         )
         return dout
 
-    def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75):
+    def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75,
+        data_time_units='s'):
         """
         FInd spikes using a box method:
         Must be > threshol, and have slope values related
@@ -521,14 +522,22 @@ class Utility:
             dt2,  # spike window (nominal 1.75 msec)
             spikes,  # calculated spikes (times, set to 1 else 0)
         )
+        # print('boxspikefind: ', spikes)
         # spikes = [s[0] for s in spikes] # make into 1-d array
+        sf = 1.0
+        if data_time_units == 'ms':
+            dt *= 1e3
         spikes = np.argwhere(spikes > 0.0) * dt
-        return [s[0] for s in spikes]
+        # print('thr c1 c2: ', thr, C1, C2, dt2)
+        # print('boxspikefind: ', spikes)
+        spkt = [s[0] for s in spikes]
+        # print('spkt: ', spkt)
+        return spkt
 
     def findspikes(
         self,
         x: np.ndarray,  # expected in seconds
-        v: np.ndarray,  # expected in Volts
+        v: np.ndarray,  # expected in Volts, but can modifiy with scaling below
         thresh: float = 0.0,  # V
         t0: Union[float, None] = None,  # sec
         t1: Union[float, None] = None,  # sec
@@ -539,6 +548,8 @@ class Utility:
         interpolate: bool = False,
         peakwidth: float = 0.001,  # sec
         mindip: float = 0.01,  # V
+        data_time_units: str='s',
+        data_volt_units: str='V',
         debug: bool = False,
         verify: bool = False,
     ) -> Union[np.ndarray, List]:
@@ -557,6 +568,8 @@ class Utility:
         Units are set up for SECONDS in time base (acq4 standard)
         Units are set up for VOLTS in voltages.
         All time entities should be in SECONDS.
+        The data can be converted from ms to s and from mV to V
+        by setting data_time_units and data_volt_units
         
         Parameters
         ----------
@@ -591,10 +604,26 @@ class Utility:
                 'pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri": got %s'
                 % detector
             )
+        assert data_time_units in ['s', 'ms']
+        assert data_volt_units in ['V', 'mV']
+        # parameters for the Hight and Kalluri detecctor
+        dt2 = 1.75e-3  # s
+        C1 = -0.012  # V
+        C2 = 0.011  # V
+        if data_time_units == 'ms':
+            x = x*1e-3   # convert to secs
+            dt = dt*1e-3
+            
+        if data_volt_units == 'mV':
+            v = v*1e-3
+            thresh = thresh*1e-3
+            # C1 = C1 * 1e-3
+            # C2 = C2 * 1e-3
 
         if detector == "Kalluri":
             return self.box_spike_find(
-                x=x*1e3, y=v * 1e3, dt=dt*1e3, thr=thresh*1e3, C1=-12.0, C2=11.0, dt2=1.75
+                x=x, y=v, dt=dt, thr=thresh, C1=C1, C2=C2, dt2=dt2,
+                data_time_units=data_time_units,
             )
 
         if t1 is not None and t0 is not None:
@@ -605,8 +634,8 @@ class Utility:
         else:
             xt = np.array(x)
             vma = np.array(vma)
-        print('max x: ', np.max(xt))
-        print('dt: ', dt)
+        # print('max x: ', np.max(xt))
+       #  print('dt: ', dt)
 
         dv = np.diff(vma) / dt  # compute slope
         dv2 = np.diff(dv) / dt  # and second derivative
