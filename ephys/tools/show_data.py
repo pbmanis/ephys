@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Brige balance tool
-Version 0.1
+
 
 Graphical interface
 Part of Ephysanalysis package
@@ -59,6 +58,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.curves = []
         self.crits = []
         self.scatter = []
+        self.threshold_line = None
         self.lines = []
         self.maxT = 0.6
         self.tau1 = 0.1
@@ -150,18 +150,25 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         cb.setup(
             ntraces = self.AR.data_array.shape[0],
             tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
-            threshold=self.thresh, sign=self.sign, eventstartthr=None)
+            threshold=self.thresh, sign=self.sign, eventstartthr=None,
+            lpf=self.LPF,
+            hpf=self.HPF,
+            )
         self.imax = int(self.maxT*self.AR.sample_rate[0])
 
         meandata = np.mean(self.AR.data_array[:,:self.imax])
         template = cb._make_template()
         for i in range(self.AR.data_array.shape[0]):
-            cb.cbTemplateMatch(self.AR.data_array[i,:self.imax], itrace=i)
+            cb.cbTemplateMatch(self.AR.data_array[i,:self.imax], itrace=i, lpf=self.LPF)
+            self.AR.data_array[i,:self.imax] = cb.data  # # get filtered data
+            cb.reset_filtering()
         self.method = cb
         self.last_method = 'CB'
         self.CB_update()
     
     def CB_update(self):
+        print('cbupdate')
+        self.method.threshold = self.minis_threshold
         self.method.identify_events(order=20)
         self.method.summarize(self.AR.data_array[:,:self.imax])
         self.decorate(self.method)
@@ -177,25 +184,32 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             ntraces = self.AR.data_array.shape[0],
             tau1=self.tau1, tau2=self.tau2, dt=rate,
             delay=0.0, template_tmax=np.max(self.tb),
-            threshold=self.thresh/5., sign=self.sign, eventstartthr=None)
+            threshold=self.thresh, sign=self.sign, eventstartthr=None,
+            lpf=self.LPF,
+            hpf=self.HPF,
+        )
         self.imax = int(self.maxT*self.AR.sample_rate[0])
         meandata = np.mean(self.AR.data_array[:,:self.imax])
-        order = int(1e-3/rate)
-        print(order, rate, self.tau1, self.tau2)
+        self.AJorder = int(1e-3/rate)
+        print('AJ.: Order, rate, taus: ', self.AJorder, rate, self.tau1, self.tau2)
         for i in range(self.AR.data_array.shape[0]):
             aj.deconvolve(self.AR.data_array[i,:self.imax]-meandata, 
                 itrace = i,
-                data_nostim=None,
-                llambda=5.,
-                order=order)   # assumes times are all in same units of msec
+                # data_nostim=None,
+                llambda=5.)   # assumes times are all in same units of msec
+            self.AR.data_array[i,:self.imax] = aj.data  # # get filtered data
+            aj.reset_filtering()
 
         self.method = aj
         self.last_method = 'AJ'
+        self.AJ_update()
     
     def AJ_update(self):
-        self.method.identify_events(order=order)
-        self.method.summarize(self.AR.data_array[:,:self.imax]-meandata)
-        tot_events = sum([len(x) for x in aj.onsets])
+        print('ajupdate')
+        self.method.threshold = self.minis_threshold
+        self.method.identify_events(order=self.AJorder)
+        self.method.summarize(self.AR.data_array[:,:self.imax])
+        tot_events = sum([len(x) for x in self.method.onsets])
         self.decorate(self.method)
 
     def RS(self):
@@ -231,6 +245,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.RS_update()
     
     def RS_update(self):
+        print('rsupdate')
+        self.method.threshold = self.minis_threshold
         self.method.identify_events(order=20)
         self.method.summarize(self.AR.data_array[:,:self.imax])
         self.decorate(self.method)
@@ -262,6 +278,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.last_method = 'ZC'
     
     def ZC_update(self):
+        print('zsupdate')
+        self.method.threshold = self.minis_threshold
         self.decorate(self.method)
 
     def decorate(self, minimethod):
@@ -272,26 +290,33 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             s.clear()
         for c in self.crits:
             c.clear()
+        # for line in self.threshold_line:
+        #     line.clear()
         self.scatter = []
         self.crits = []
 
-        if len(minimethod.Summary.onsets) is not None:
+        if minimethod.Summary.onsets is not None and len(minimethod.Summary.onsets) > 0:
             self.scatter.append(self.dataplot.plot(self.tb[minimethod.Summary.peaks[self.current_trace]]*1e3, 
                          self.current_data[minimethod.Summary.peaks[self.current_trace]],
                       pen = None, symbol='o', symbolPen=None, symbolSize=10, symbolBrush=(255, 0, 0, 255)))
             # self.scatter.append(self.dataplot.plot(self.tb[minimethod.peaks]*1e3,  np.array(minimethod.amplitudes),
             #           pen = None, symbol='o', symbolPen=None, symbolSize=5, symbolBrush=(255, 0, 0, 255)))
 
-            self.crits.append(self.dataplot2.plot(self.tb[:len(minimethod.Criterion[self.current_trace])]*1e3, 
+        self.crits.append(self.dataplot2.plot(self.tb[:len(minimethod.Criterion[self.current_trace])]*1e3, 
                 minimethod.Criterion[self.current_trace], pen='r'))
+        self.threshold_line.setValue(minimethod.sdthr)
+        # print('sdthr: ', minimethod.sdthr, self.minis_threshold)
             # print(' ... decorated')
     
     def update_threshold(self):
         trmap1 = {'CB': self.CB_update, 'AJ': self.AJ_update, 'ZC': self.ZC_update, "RS": self.RS_update}
         trmap1[self.last_method]() # threshold/scroll, just update
-
+        
       
-    def update_traces(self, update_analysis=False):
+    def update_traces(self, value=None, update_analysis=False):
+        if isinstance(value, int):
+            self.current_trace = value
+        print('update_traces, analysis update = ', update_analysis)
         trmap1 = {'CB': self.CB_update, 'AJ': self.AJ_update, 'ZC': self.ZC_update, "RS": self.RS_update}
         trmap2 = {'CB': self.CB, 'AJ': self.AJ, 'ZC': self.ZC, "RS": self.RS}
         if len(self.AR.traces) == 0:
@@ -439,16 +464,22 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             {"name": "LPF", "type": "list",
                 "values": ["None", 500., 1000., 1200., 1500., 1800., 2000., 2500., 3000., 4000., 5000.],
                 "value": 5000., "renamable": True},
+            {"name": "Apply Filters", "type": "action"},
+            
             {"name": "Method", "type": "list",
                 "values": ["CB", "AJ", "RS", "ZC"], "value": "CB"},
             {"name": "Sign", "type": "list",
                 "values": ['+', '-'], "value": "-"},
-            {"name": "Threshold", "type": "float",
-                'value': 3.0, 'step': 0.1, 'limits': (-1e-6, 50.0), 'default': 2.5},
             {"name": "Rise Tau", "type": "float",
                 'value': 0.15, 'step': 0.05, 'limits': (0.05, 10.0), 'default': 0.15},
             {"name": "Fall Tau", "type": "float",
                 'value': 1.0, 'step': 0.1, 'limits': (0.15, 10.0), 'default': 1.0},
+            {"name": "Apply Analysis", "type": "action"},
+            
+            {"name": "Threshold", "type": "float",
+                'value': 3.0, 'step': 0.1, 'limits': (-1e-6, 50.0), 'default': 2.5},
+
+
             {'name': "Channel Name", "type": "list",
                 "values": ['Clamp1.ma', 'MultiClamp1.ma', 'Clamp2.ma', 'MultiClamp2.ma'],
                 "value": 'MultiClamp1.ma'},
@@ -492,28 +523,31 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
             elif path[0] == "LPF":
                self.LPF = data
-               self.update_traces()
+               # self.update_traces()
             
             elif path[0] == "Notch Frequency":
                 self.notch_frequency = data
-                self.update_traces()
+                # self.update_traces()
+
+            elif path[0] == "Apply Filters":
+                self.update_traces(update_analysis=True)
+
+            elif path[0] == "Rise Tau":
+                self.minis_risetau = data
+                # self.update_traces(update_analysis=True)
+
+            elif path[0] == "Fall Tau":
+                self.minis_falltau = data
+                # self.update_traces(update_analysis=True)
+
+            elif path[0] == "sign":
+                self.minis_sign = data
+                # self.update_traces(update_analysis=True)
 
             elif path[0] == "Threshold":
                 self.minis_threshold = data
                 self.update_threshold()
 
-            elif path[0] == "Rise Tau":
-                self.minis_risetau = data
-                self.update_traces(update_analysis=True)
-
-            elif path[0] == "Fall Tau":
-                self.minis_falltau = data
-                self.update_traces(update_analysis=True)
-
-            elif path[0] == "sign":
-                self.minis_sign = data
-                self.update_traces(update_analysis=True)
-            
             elif path[0] == "Method":
                 if data == "CB":
                     self.CB()
@@ -525,6 +559,10 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                     self.RS()
                 else:
                     print('Not implemented: ', data)
+
+            elif path[0] == "Apply Analysis":
+                self.update_traces(update_analysis=True)
+
             elif path[0] == "Channel Name":
                 self.ampdataname = data
             else:
@@ -557,6 +595,14 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
         self.dataplot = pg.PlotWidget()
         self.dataplot2 = pg.PlotWidget()
+        self.dataplot2.setXLink(self.dataplot)
+        self.threshold_line = pg.InfiniteLine(self.minis_threshold,
+                angle=0., pen='c', hoverPen='y',
+                bounds = [0., 20.], movable=True,
+                label=f"{self.minis_threshold:.3e}")
+        self.dataplot2.addItem(self.threshold_line)
+        self.threshold_line.sigDragged.connect(self.update_threshold)
+        
         layout.addLayout(self.buttons,   0, 0, 7, 1)
         layout.addWidget(self.dataplot,  0, 1, 1, 6)
         layout.addWidget(self.dataplot2, 6, 1, 4, 6)
