@@ -146,6 +146,7 @@ class MiniAnalyses:
         self.risepower = risepower
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
+        self.sdthr = self.threshold # for starters
         self.analysis_window = analysis_window
         self.lpf = lpf
         self.hpf = hpf
