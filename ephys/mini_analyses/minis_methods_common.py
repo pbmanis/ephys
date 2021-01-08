@@ -135,7 +135,7 @@ class MiniAnalyses:
         """
         assert sign in [-1, 1]  # must be selective, positive or negative events only
         self.ntraces = ntraces
-        self.Criterion = [None]*ntraces
+        self.Criterion = [None for x in range(ntraces)]
         self.sign = sign
         self.taus = [tau1, tau2]
         self.dt = dt
@@ -298,6 +298,7 @@ class MiniAnalyses:
         """
         compute intervals,  peaks and ampitudes for all found events in a
         trace or a group of traces
+        filter out events that are less than min_event_amplitude
         """
         i_decay_pts = int(2 * self.taus[1] / self.dt)  # decay window time (points)
         self.Summary = Summaries()  # a single summary class is created
@@ -330,6 +331,7 @@ class MiniAnalyses:
             self.intervals.append(np.diff(self.timebase[self.onsets[itrial]]))  # event intervals
             # cprint('y', f"Summarize: trial: {itrial:d} onsets: {len(self.onsets[itrial]):d}")
             # print('onsets: ', self.onsets[itrial])
+            ev_accept = []
             for j, onset in enumerate(self.onsets[itrial]):  # for all of the events in this trace
                 if self.sign > 0 and self.eventstartthr is not None:
                     if dataset[onset] < self.eventstartthr:
@@ -380,6 +382,10 @@ class MiniAnalyses:
                     else:
                         smpk = np.argmin(move_avg)
                         rawpk = np.argmin(windowed_data)
+                    if self.sign*(move_avg[smpk] - windowed_data[0]) < self.min_event_amplitude:
+                        continue  # filter out events smaller than the amplitude
+                    else:
+                        ev_accept.append(j)
                     # cprint('m', f"Extending for trial: {itrial:d}, {len(self.Summary.onsets[itrial]):d}, onset={onset}")
                     self.Summary.onsets[itrial].append(onset)
                     self.Summary.peaks[itrial].append(onset + rawpk)
@@ -387,7 +393,7 @@ class MiniAnalyses:
                     self.Summary.smpkindex[itrial].append(onset + smpk)
                     self.Summary.smoothed_peaks[itrial].append(move_avg[smpk])
                     acceptlist_trial.append(j)
- 
+            self.onsets[itrial] = self.onsets[itrial][ev_accept]  # reduce to the accepted values only
         # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         # self.Summary.amplitudes = np.array(self.Summary.amplitudes)
         
@@ -1216,11 +1222,12 @@ class MiniAnalyses:
 
     def plots(self, 
         data, events: Union[np.ndarray, None] = None, title: Union[str, None] = None,
-        testmode:bool=False
+        testmode:bool=False, index:int=0,
     ) -> object:
         """
         Plot the results from the analysis and the fitting
         """
+
         import matplotlib.pyplot as mpl
         import pylibrary.plotting.plothelpers as PH
 
@@ -1249,8 +1256,6 @@ class MiniAnalyses:
         for i in range(1, 2):
             ax[i].get_shared_x_axes().join(ax[i], ax[0])
         # raw traces, marked with onsets and peaks
-        for i, d in enumerate(data):
-            self.plot_trial(ax, i, d, events)
         ax[0].set_ylabel("I (pA)")
         ax[0].set_xlabel("T (s)")
         ax[0].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
@@ -1262,6 +1267,10 @@ class MiniAnalyses:
         ax[2].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
         if title is not None:
             P.figure_handle.suptitle(title)
+        print(self.P.axarr)
+        for i, d in enumerate(data):
+            self.plot_trial(self.P.axarr.ravel(), i, d, events, index=index)
+
 
         if testmode:  # just display briefly
             mpl.show(block=False)
@@ -1269,26 +1278,22 @@ class MiniAnalyses:
             mpl.close()
             return None
         else:    
-            return P.figure_handle
+            return self.P.figure_handle
  
                   
 
-    def plot_trial(self, ax, i, data, events, markersonly=False):
+    def plot_trial(self, ax, i, data, events, markersonly:bool=False, index:int=0):
+        onset_marks = {0: "k^", 1:"b^", 2:"m^", 3:"c^"}
+        peak_marks = {0: "+", 1:"g+", 2:"y+", 3:"k+"}
         scf = 1e12
         tb = self.timebase[: data.shape[0]]
-        if i == 0:
-            label = 'Data'
-        else:
-            label = ''
+        label = 'Data'
         ax[0].plot(tb, scf * data, "k-", linewidth=0.75, label=label)  # original data
-        if i == 0:
-            label = 'Onsets'
-        else:
-            label = ''
+        label = 'Onsets'
         ax[0].plot(
             tb[self.onsets[i]],
             scf * data[self.onsets[i]],
-            "k^",
+            onset_marks[index],
             markersize=6,
             markerfacecolor=(1, 1, 0, 0.8),
             label=label,
@@ -1303,7 +1308,7 @@ class MiniAnalyses:
             ax[0].plot(
                 tb[self.Summary.smpkindex[i]],
                 scf * np.array(self.Summary.smoothed_peaks[i]),
-                "r+",
+                peak_marks[index],
                 label=label,
             )
         if markersonly:
@@ -1334,7 +1339,7 @@ class MiniAnalyses:
         ax[1].plot(
             tb[self.onsets[i]] - self.idelay,
             self.Criterion[i][self.onsets[i]],
-            "y^",
+            onset_marks[index],
             label=label,
         )
         if events is not None:  # original events
