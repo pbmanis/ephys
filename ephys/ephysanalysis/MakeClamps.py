@@ -147,13 +147,21 @@ class MakeClamps():
                     dinfo = df['runInfo']
                 except:
                     raise ValueError ("Cannot read the file in v0 mode?")
+            run_protocol = df['Params']['runProtocol']
             if isinstance(dinfo, Params):
                 dinfo = dinfo.todict()
             dur = dinfo['stimDur']
             delay = dinfo['stimDelay']
             mode = dinfo['postMode'].upper()
             ntr = len(df['Results'])
-            self.rate = df['Params'].dt
+            # print(df.keys())
+            # print('runinfo: ', df['runInfo'])
+            # print('Params: ', df['Params'].keys())
+            # print('dinfo: ', dinfo)
+            if 'dt' in df['Params'].keys():
+                self.rate = df['Params']['dt']
+            else:
+                self.rate = df['Params'].dt
             V = [[]]*ntr
             I = [[]]*ntr
             for i in range(len(df['Results'])):
@@ -184,7 +192,7 @@ class MakeClamps():
                 else:
                     raise ValueError("Cannot find rate for data mode: ", mode)
 
- 
+            run_protocol = dinfo.runProtocol
             if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
                 ntr = len(df['Results'])
                 V = [[]]*ntr
@@ -231,7 +239,8 @@ class MakeClamps():
         I = np.array(I)
         # print('V shape: ', V.shape, 'I shape: ', I.shape, ' timebase: ', timebase.shape, V.shape[1]*self.rate, np.max(timebase))
         # exit()
-        if dinfo.runProtocol in ['runVC', 'initVC', 'testVC']:
+
+        if run_protocol in ['runVC', 'initVC', 'testVC']:
             self.set_clamps(dmode=mode, time=timebase, data=I, cmddata=V, tstart_tdur=[delay, dur])
         else:
             self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
