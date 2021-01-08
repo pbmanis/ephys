@@ -337,10 +337,10 @@ class Utility:
         colonFound = False
         inquote = False
         for c in line:
-            if c is "{":
+            if c == "{":
                 continue
             if (
-                (c is "," or c is "}") and colonFound and not inpunct and not inquote
+                (c == "," or c == "}") and colonFound and not inpunct and not inquote
             ):  # separator is ','
                 r = eval("{%s}" % sp)
                 u[list(r.keys())[0]] = r[list(r.keys())[0]]
@@ -348,19 +348,19 @@ class Utility:
                 sp = ""
                 continue
             sp = sp + c
-            if c is ":":
+            if c == ":":
                 colonFound = True
                 continue
-            if c is "(" or c is "[":
+            if c == "(" or c == "[":
                 inpunct += 1
                 continue
-            if c is ")" or c is "]":
+            if c == ")" or c == "]":
                 inpunct -= 1
                 continue
-            if c is "'" and inquote:
+            if c == "'" and inquote:
                 inquote = False
                 continue
-            if c is "'" and not inquote:
+            if c == "'" and not inquote:
                 inquote is True
         return u
 
@@ -712,7 +712,7 @@ class Utility:
 
         spl = sp
         sp = tuple(sp)  # convert to tuple
-        if sp is ():
+        if sp == ():
             return st  # nothing detected
 
         if mode in [
@@ -842,7 +842,7 @@ class Utility:
         )  # intersection defines putative spikes
         sp.sort()  # make sure all detected events are in order (sets is unordered)
         sp = tuple(sp)  # convert to tuple
-        if sp is ():
+        if sp == ():
             return (st, spk)  # nothing detected
         dx = 1
         mingap = int(
@@ -850,7 +850,7 @@ class Utility:
         )  # 0.5 msec between spikes (a little unphysiological...)
         # normal operating mode is fixed voltage threshold
         # for this we need to just get the FIRST positive crossing,
-        if mode is "schmitt":
+        if mode == "schmitt":
             sthra = list(np.where(np.diff(sp) > mingap))
             sthr = [sp[x] for x in sthra[0]]  # bump indices by 1
             # print 'findspikes: sthr: ', len(sthr), sthr
@@ -868,7 +868,7 @@ class Utility:
                     s0 = x[1]
                 st = np.append(st, x[1])
 
-        elif mode is "peak":
+        elif mode == "peak":
             pkwidth = 1.0e-3  # in same units as dt  - usually msec
             kpkw = int(pkwidth / dt)
             z = (np.array(np.where(np.diff(spv) > 1)[0]) + 1).tolist()
@@ -1249,7 +1249,7 @@ class Utility:
         (seq2, sep, remain) = sequence.partition(
             "&"
         )  # find  and returnnested sequences
-        while seq2 is not "":
+        while len(seq2) != 0:
             try:
                 (oneseq, onetarget) = recparse(seq2)
                 seq.append(oneseq)
@@ -1280,7 +1280,7 @@ class Utility:
         seed = 0
         skip = 1.0
         (target, sep, rest) = cmdstr.partition(":")  # get the target
-        if rest is "":
+        if rest == "":
             rest = target  # no : found, so no target designated.
             target = ""
         (sfn, sep, rest1) = rest.partition(";")
@@ -1291,7 +1291,7 @@ class Utility:
         skip = float(sskip)
         ln = ln + 0.01 * skip
         #    print "mo: %s" % (mo)
-        if mo is "":  # linear spacing; skip is size of step
+        if mo == "":  # linear spacing; skip is size of step
             recs = eval("arange(%f,%f,%f)" % (fn, ln, skip))
 
         if mo.find("l") >= 0:  # log spacing; skip is length of result
@@ -1301,20 +1301,20 @@ class Utility:
             recs = eval("%f*[1]" % (fn))
 
         if mo.find("n") >= 0:  # use the number of steps, not the step size
-            if skip is 1.0:
+            if skip == 1.0:
                 sk = ln - fn
             else:
                 sk = eval("(%f-%f)/(%f-1.0)" % (ln, fn, skip))
             recs = eval("arange(%f,%f,%f)" % (fn, ln, sk))
 
         if mo.find("r") >= 0:  # randomize the result
-            if recs is []:
+            if recs == []:
                 recs = eval("arange(%f,%f,%f)" % (fn, ln, skip))
             recs = sample(recs, len(recs))
 
         if mo.find("a") >= 0:  # alternation - also test for a value after that
             (arg, sep, value) = mo.partition("a")  # is there anything after the letter?
-            if value is "":
+            if value == "":
                 value = 0.0
             else:
                 value = float(value)
