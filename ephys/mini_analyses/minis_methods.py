@@ -242,7 +242,8 @@ class ClementsBekkers(MiniAnalyses):
         self.starttime = timeit.default_timer()        
         self.prepare_data(data) # also does timebase
         self.clements_bekkers(self.data)  # flip data sign if necessary
-        self.Crit = self.Crit.squeeze()
+        if self.Crit.ndim > 1:
+            self.Crit = self.Crit.squeeze()
         self.Criterion[itrace] = self.Crit
         
     
@@ -258,7 +259,6 @@ class ClementsBekkers(MiniAnalyses):
         """
         criterion = np.array(self.Criterion)
         assert criterion.ndim == 2
-
         if data_nostim is not None:
             # clip to max of crit array, and be sure index array is integer, not float
             for i in range(criterion.shape[0]):
