@@ -27,7 +27,6 @@ import timeit
 import pyqtgraph.multiprocess as mp
 
 import ephys.ephysanalysis as EP
-import montage as MONT
 
 import ephys.mini_analyses as minis
 from ephys.mapanalysistools import functions
