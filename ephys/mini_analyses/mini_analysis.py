@@ -46,6 +46,7 @@ import sys
 import os
 import argparse
 from collections import OrderedDict
+from pathlib import Path
 import numpy as np
 import pickle
 import pyqtgraph.multiprocess as mp
@@ -55,16 +56,18 @@ import matplotlib.gridspec as gridspec
 import scipy.signal
 import scipy.stats
 
-from . import minis_methods as minis
-from . import digital_filters as DF
-from .. import ephysanalysis as EP
-
 import pylibrary.tools.utility as PU
 import pylibrary.plotting.plothelpers as PH
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.collections as collections
 import matplotlib.path as mplpath
 from matplotlib.path import Path
+
+
+from . import minis_methods as minis
+from . import digital_filters as DF
+from .. import ephysanalysis as EP
+
 
 rc('text', usetex=False)
 #rc('font',**{'family':'sans-serif','sans-serif':['Verdana']})
@@ -364,11 +367,12 @@ class MiniAnalysis():
                     template_tmax=maxt, dt=dt, delay=0.0, sign=self.sign,
                     risepower=1.0, min_event_amplitude=self.min_event_amplitude)
         elif mode == 'cb':
-            aj = minis.ClementsBekkers()
-            aj.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
+            cb = minis.ClementsBekkers()
+            cb.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
                         template_tmax=3.0*mousedata['decay'], dt=dt, delay=0.0, sign=self.sign,
                         risepower=1.0, min_event_amplitude=self.min_event_amplitude)
-            aj.set_cb_engine('numba')
+            #aj.set_cb_engine('numba')
+            cb.set_cb_engine('cython')
         else:
             raise ValueError('Mode must be aj or cb for event detection')
 #        print('mousedata rt: ', mousedata['rt'], '   mousedata decay: ', mousedata['decay'])
@@ -397,81 +401,86 @@ class MiniAnalysis():
 # #                tasker.results[(f, db, iteration)] = (stim, result)
         
         for i in tracelist:
-                yp = (ntr+i)*self.yspan
-                ypq = (ntr*i)*self.ypqspan
-                linefit= np.polyfit(time_base, data[i], 1)
-                refline = np.polyval(linefit, time_base)
-                holding = self.measure_baseline(data[i])
-                odata = data[i].copy()
-                data[i] = data[i] - refline  # linear correction
-                self.ax0.text(-1200, yp, '%03d %d' % (self.dprot, i), fontsize=8)  # label the trace
-                if i in exclude_traces:  # plot the excluded traces, but do not analyze them
-                    print('    **** Trace {0:d} excluded in list'.format(i))
-                   # self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'y-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-                    continue
-                if holding < self.dataplan_data['holding']:
-                  #  self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'m-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-                    print('    >>>> Trace {0:d} excluded for holding {1:.3f}'.format(i, holding))
-                nused = nused + 1
+            yp = (ntr+i)*self.yspan
+            ypq = (ntr*i)*self.ypqspan
+            linefit= np.polyfit(time_base, data[i], 1)
+            refline = np.polyval(linefit, time_base)
+            holding = self.measure_baseline(data[i])
+            odata = data[i].copy()
+            data[i] = data[i] - refline  # linear correction
+            self.ax0.text(-1200, yp, '%03d %d' % (self.dprot, i), fontsize=8)  # label the trace
+            if i in exclude_traces:  # plot the excluded traces, but do not analyze them
+                print('    **** Trace {0:d} excluded in list'.format(i))
+               # self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'y-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
+                continue
+            if holding < self.dataplan_data['holding']:
+              #  self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'m-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
+                print('    >>>> Trace {0:d} excluded for holding {1:.3f}'.format(i, holding))
+            nused = nused + 1
+    
+           # frs, freqs = PU.pSpectrum(data[i], samplefreq=1000./dt)
+            if self.filter: # notch and HPF traxes
+                dfilt = DF.NotchFilter(data[i], [60., 120., 180., 240., 300., 360, 420.,
+                                480., 660., 780., 1020., 1140., 1380., 1500., 4000.], Q=20., samplefreq=1000./dt)
+                #dfilt = DF.SignalFilter_HPFButter(np.pad(dfilt, (len(dfilt), len(dfilt)), mode='median', ), 2.5, 1000./dt, NPole=4)
+                #data[i] = dfilt[len(data[i]):2*len(data[i])]  # remove padded segments
+                data[i] = dfilt
         
-               # frs, freqs = PU.pSpectrum(data[i], samplefreq=1000./dt)
-                if self.filter: # notch and HPF traxes
-                    dfilt = DF.NotchFilter(data[i], [60., 120., 180., 240., 300., 360, 420.,
-                                    480., 660., 780., 1020., 1140., 1380., 1500., 4000.], Q=20., samplefreq=1000./dt)
-                    #dfilt = DF.SignalFilter_HPFButter(np.pad(dfilt, (len(dfilt), len(dfilt)), mode='median', ), 2.5, 1000./dt, NPole=4)
-                    #data[i] = dfilt[len(data[i]):2*len(data[i])]  # remove padded segments
-                    data[i] = dfilt
-            
-                # data[i] = DF.SignalFilter_LPFButter(data[i], 2800., 1000./dt, NPole=4) # LPF THE DATA
-    #            frsfilt, freqsf = PU.pSpectrum(dfilt, samplefreq=1000./dt)
+            # data[i] = DF.SignalFilter_LPFButter(data[i], 2800., 1000./dt, NPole=4) # LPF THE DATA
+#            frsfilt, freqsf = PU.pSpectrum(dfilt, samplefreq=1000./dt)
 
-                if mode == 'aj':
-                    aj.deconvolve(data[i], thresh=float(mousedata['thr']), llambda=10., order=order)
-                else:
-                    aj.cbTemplateMatch(data[i],  threshold=float(mousedata['thr']), order=order)
+            if mode == 'aj':
+                aj.deconvolve(data[i], thresh=float(mousedata['thr']), llambda=10., order=order)
+            else:
+                cb.cbTemplateMatch(data[i],  threshold=float(mousedata['thr']), order=order)
 
-                intervals = np.diff(aj.timebase[aj.onsets])
-                self.cell_summary['intervals'].extend(intervals)
-                self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb, 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
-                    'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
-                    'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven,
-                    'Qtotal': aj.Qtotal}])
-                #print('smooth peak index: ', aj.smpkindex)
-                self.cell_summary['amplitudes'].extend(aj.sign*data[i][aj.smpkindex])  # smoothed peak amplitudes
-                self.cell_summary['eventcounts'].append(len(intervals))
-                self.cell_summary['protocols'].append((self.nprot, i))
-                self.cell_summary['holding'].append(holding)
-                self.cell_summary['sign'].append(aj.sign)
-                self.cell_summary['threshold'].append(mousedata['thr'])
-            
-                aj.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
-                self.cell_summary['indiv_amp'].append(aj.ev_amp)
-                self.cell_summary['indiv_fitamp'].append(aj.ev_fitamp)
-                self.cell_summary['indiv_tau1'].append(aj.ev_tau1)
-                self.cell_summary['indiv_tau2'].append(aj.ev_tau2)
-                self.cell_summary['indiv_fiterr'].append(aj.fiterr)
-                self.cell_summary['fitted_events'].append(aj.fitted_events)
-                self.cell_summary['indiv_Qtotal'].append(aj.ev_Qtotal)
-                self.cell_summary['indiv_evok'].append(aj.events_ok)
-                self.cell_summary['indiv_notok'].append(aj.events_notok)
-                self.cell_summary['allevents'].append(np.array(aj.allevents))
-                self.cell_summary['best_fit'].append(np.array(aj.best_fit))
-                self.cell_summary['best_decay_fit'].append(np.array(aj.best_decay_fit))
-    #            for jev in range(len(aj.allevents)):
-    #                self.cell_summary['allevents'].append(aj.allevents[jev])
-    #                self.cell_summary['best_fit'].append(aj.best_fit[jev])
-                self.cell_summary['indiv_tb'].append(aj.avgeventtb)        
-                self.ax0.plot(aj.timebase, odata + yp ,'c-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-                self.ax0.plot(aj.timebase, data[i] + yp, 'k-', linewidth=0.25, rasterized=self.rasterize)
-                self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp, 'ro', markersize=1.75, rasterized=self.rasterize)
-            
-                if 'A1' in self.P.axdict.keys():
-                    self.axdec.plot(aj.timebase[:aj.Crit.shape[0]],  aj.Crit, label='Deconvolution') 
-                    self.axdec.plot([aj.timebase[0],aj.timebase[-1]],  [aj.sdthr,  aj.sdthr],  'r--',  linewidth=0.75, 
-                            label='Threshold ({0:4.2f}) SD'.format(aj.sdthr))
-                    self.axdec.plot(aj.timebase[aj.onsets]-aj.idelay,  ypq + aj.Crit[aj.onsets],  'y^', label='Deconv. Peaks')
-        #            axdec.plot(aj.timebase, aj.Crit+ypq, 'k', linewidth=0.5, rasterized=self.rasterize)
-                print('--- finished run %d/%d ---' % (i+1, tot_runs))
+
+
+###
+     ###
+
+            intervals = np.diff(aj.timebase[aj.onsets])
+            self.cell_summary['intervals'].extend(intervals)
+            self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb, 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
+                'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
+                'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven,
+                'Qtotal': aj.Qtotal}])
+            #print('smooth peak index: ', aj.smpkindex)
+            self.cell_summary['amplitudes'].extend(aj.sign*data[i][aj.smpkindex])  # smoothed peak amplitudes
+            self.cell_summary['eventcounts'].append(len(intervals))
+            self.cell_summary['protocols'].append((self.nprot, i))
+            self.cell_summary['holding'].append(holding)
+            self.cell_summary['sign'].append(aj.sign)
+            self.cell_summary['threshold'].append(mousedata['thr'])
+        
+            aj.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+            self.cell_summary['indiv_amp'].append(aj.ev_amp)
+            self.cell_summary['indiv_fitamp'].append(aj.ev_fitamp)
+            self.cell_summary['indiv_tau1'].append(aj.ev_tau1)
+            self.cell_summary['indiv_tau2'].append(aj.ev_tau2)
+            self.cell_summary['indiv_fiterr'].append(aj.fiterr)
+            self.cell_summary['fitted_events'].append(aj.fitted_events)
+            self.cell_summary['indiv_Qtotal'].append(aj.ev_Qtotal)
+            self.cell_summary['indiv_evok'].append(aj.events_ok)
+            self.cell_summary['indiv_notok'].append(aj.events_notok)
+            self.cell_summary['allevents'].append(np.array(aj.allevents))
+            self.cell_summary['best_fit'].append(np.array(aj.best_fit))
+            self.cell_summary['best_decay_fit'].append(np.array(aj.best_decay_fit))
+#            for jev in range(len(aj.allevents)):
+#                self.cell_summary['allevents'].append(aj.allevents[jev])
+#                self.cell_summary['best_fit'].append(aj.best_fit[jev])
+            self.cell_summary['indiv_tb'].append(aj.avgeventtb)        
+            self.ax0.plot(aj.timebase, odata + yp ,'c-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
+            self.ax0.plot(aj.timebase, data[i] + yp, 'k-', linewidth=0.25, rasterized=self.rasterize)
+            self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp, 'ro', markersize=1.75, rasterized=self.rasterize)
+        
+            if 'A1' in self.P.axdict.keys():
+                self.axdec.plot(aj.timebase[:aj.Crit.shape[0]],  aj.Crit, label='Deconvolution') 
+                self.axdec.plot([aj.timebase[0],aj.timebase[-1]],  [aj.sdthr,  aj.sdthr],  'r--',  linewidth=0.75, 
+                        label='Threshold ({0:4.2f}) SD'.format(aj.sdthr))
+                self.axdec.plot(aj.timebase[aj.onsets]-aj.idelay,  ypq + aj.Crit[aj.onsets],  'y^', label='Deconv. Peaks')
+    #            axdec.plot(aj.timebase, aj.Crit+ypq, 'k', linewidth=0.5, rasterized=self.rasterize)
+            print('--- finished run %d/%d ---' % (i+1, tot_runs))
                 
         return tracelist, nused
         

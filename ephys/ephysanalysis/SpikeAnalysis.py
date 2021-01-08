@@ -50,10 +50,12 @@ class SpikeAnalysis():
         self.verbose = False
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
         self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
+        self.detector = 'argrelmax'
 
 
-    def setup(self, clamps=None, threshold=None, refractory=0.0007, peakwidth=0.001,
-                    verify=False, interpolate=True, verbose=False, mode='peak', min_halfwidth=0.010):
+    def setup(self, clamps=None, threshold=None, refractory:float=0.0007, peakwidth:float=0.001,
+                    verify=False, interpolate=True, verbose=False, mode='peak', min_halfwidth=0.010,
+                    data_time_units:str = 's', data_volt_units:str='V'):
         """
         configure the inputs to the SpikeAnalysis class
         
@@ -91,6 +93,10 @@ class SpikeAnalysis():
         if clamps is None or threshold is None:
             raise ValueError("Spike Analysis requires defined clamps and threshold")
         self.Clamps = clamps
+        assert data_time_units in ['s', 'ms']
+        assert data_volt_units in ['V', 'mV']
+        self.time_units = data_time_units
+        self.volt_units = data_volt_units  # needed by spike detector for data conversion
         self.threshold = threshold
         self.refractory = refractory
         self.interpolate = interpolate # use interpolation on spike thresholds...
@@ -103,6 +109,10 @@ class SpikeAnalysis():
         self.ar_lastspike = 0.075
         self.min_peaktotrough = 0.010 # change in V on falling phase to be considered a spike
         self.max_spike_look = 0.010  # msec over which to measure spike widths
+
+    def set_detector(self, detector:str='argrelmax'):
+        assert detector in ['argrelmax', 'threshold', 'Kalluri']
+        self.detector = detector
 
     def analyzeSpikes(self):
         """
@@ -154,15 +164,19 @@ class SpikeAnalysis():
                                               dt=self.Clamps.sample_interval,
                                               mode=self.mode,  # mode to use for finding spikes
                                               interpolate=self.interpolate,
-                                              detector='argrelmax',
+                                              detector=self.detector,
+                                              mindip = 1e-2,
                                               refract=self.refractory,
                                               peakwidth=self.peakwidth,
+                                              data_time_units=self.time_units,
+                                              data_volt_units=self.volt_units,
                                               verify=self.verify,
                                               debug=False)
            # print (ntr, i, self.Clamps.values[i], len(spikes))
             if len(spikes) == 0:
-              #  print ('no spikes found')
+                # print ('no spikes found')
                 continue
+            spikes = np.array(spikes)
             self.spikes[i] = spikes
            # print 'found %d spikes in trace %d' % (len(spikes), i)
             self.spikeIndices[i] = [np.argmin(np.fabs(self.Clamps.time_base-t)) for t in spikes]
@@ -242,7 +256,7 @@ class SpikeAnalysis():
                                               dt=self.Clamps.sample_interval,
                                               mode=self.mode,  # mode to use for finding spikes
                                               interpolate=self.interpolate,
-                                              detector='argrelmax',
+                                              detector=self.detector,
                                               refract=self.refractory,
                                               peakwidth=self.peakwidth,
                                               verify=self.verify,
@@ -375,7 +389,7 @@ class SpikeAnalysis():
             kend = self.spikeIndices[i][j+1]
         else:
             kend = int(self.spikeIndices[i][j]+self.max_spike_look/dt)
-        if kend > dv.shape[0]:
+        if kend >= dv.shape[0]:
             return(thisspike)  # end of spike would be past end of trace
         else:
             if kend < k:
@@ -393,7 +407,9 @@ class SpikeAnalysis():
 
         # find points on spike waveform
         # because index is to peak, we look for previous spike
-        k = self.spikeIndices[i][j]-1
+        k = self.spikeIndices[i][j]
+        # print('i, j, spikeindices: ', i, j, self.spikeIndices[i][j])
+        # print('k: dt: ', k, dt)
         if j > 0:
             kbegin = self.spikeIndices[i][j-1] # index to previous spike start
         else:
@@ -403,6 +419,7 @@ class SpikeAnalysis():
             k = kbegin + 2
         if k > len(dv):  # end of block of data, so can not measure
             return(thisspike)
+        # print('kbegin, k: ', kbegin, k)
         try:
             km = np.argmax(dv[kbegin:k]) + kbegin
         except:

@@ -1,5 +1,9 @@
+# specific files
+ephys/ephysanalysis/c_deriv.c
+ephys/mini_analyses/clembek.c
+
 # Byte-compiled / optimized / DLL files
-_pycache__/
+__pycache__/
 *.py[cod]
 *$py.class
 
@@ -15,6 +19,7 @@ _pycache__/
 
 # Distribution / packaging
 .Python
+ephys_venv/
 build/
 develop-eggs/
 dist/

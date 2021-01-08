@@ -1,6 +1,6 @@
 from __future__ import print_function
 """
-Run unit tests for cnmodel
+Run unit tests for minis
 """
 
 import os, sys
@@ -13,11 +13,11 @@ def main():
     sys.path.insert(0, str(path))
 
     # Allow user to audit tests with --audit flag
-    import ephys
+    import ephys.ephysanalysis
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
-        ephys.mini_analyses.AUDIT_TESTS = True
+        minis.AUDIT_TESTS = True
 
     # generate test flags
     flags = sys.argv[1:]
@@ -33,8 +33,7 @@ def main():
             add_path = False
             break
     if add_path:
-        flags.append('ephys/')
-        flags.append('ephys/mini_analyses')
+        flags.append('mini_analyses')
 
     # ignore the an cache
     # flags.append('--ignore=minis/somedir')

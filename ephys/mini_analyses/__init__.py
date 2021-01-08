@@ -6,7 +6,7 @@ init for minis
 # Use Semantic Versioning, http://semver.org/
 version_info = (0, 3, 0, '')
 __version__ = '%d.%d.%d%s' % version_info
-
+AUDIT_TESTS=False
 from . import clements_bekkers
 from . import digital_filters
 from . import make_table

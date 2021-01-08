@@ -147,13 +147,21 @@ class MakeClamps():
                     dinfo = df['runInfo']
                 except:
                     raise ValueError ("Cannot read the file in v0 mode?")
+            run_protocol = df['Params']['runProtocol']
             if isinstance(dinfo, Params):
                 dinfo = dinfo.todict()
             dur = dinfo['stimDur']
             delay = dinfo['stimDelay']
             mode = dinfo['postMode'].upper()
             ntr = len(df['Results'])
-            self.rate = df['Params'].dt
+            # print(df.keys())
+            # print('runinfo: ', df['runInfo'])
+            # print('Params: ', df['Params'].keys())
+            # print('dinfo: ', dinfo)
+            if 'dt' in df['Params'].keys():
+                self.rate = df['Params']['dt']
+            else:
+                self.rate = df['Params'].dt
             V = [[]]*ntr
             I = [[]]*ntr
             for i in range(len(df['Results'])):
@@ -164,39 +172,78 @@ class MakeClamps():
                 I[i] = dfx['i_stim0']*iscale
         else:
             dinfo = df['runInfo']
+            x = dir(dinfo)
+            if 'stimVC' not in x:  # create fields for missing values from older versions of files.
+                dinfo.stimVC = None
             # print('rpfile v0: dinfo: ', dinfo)
             mode = dinfo.postMode.upper()
             dur = dinfo.stimDur
             delay = dinfo.stimDelay
             mode = dinfo.postMode
-            print(df.keys())
+            # print(df.keys())
+            # print('Mode: ', mode)
             try:
-                self.rate = df['Params'].dt
+                self.rate = df['Params'].dt  # old version, now separated IC and VC
             except:
-                self.rate = df['self.Params'].dt
-            ntr = len(df['Results'])
-            V = [[]]*ntr
-            I = [[]]*ntr
-            if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
+                if mode == 'VC':
+                    self.rate = df['Params'].dtVC
+                elif mode == "CC":
+                    self.rate = df['Params'].dtIC
+                else:
+                    raise ValueError("Cannot find rate for data mode: ", mode)
 
+            run_protocol = dinfo.runProtocol
+            if dinfo.runProtocol in ['runIV', 'initIV', 'testIV']:
+                ntr = len(df['Results'])
+                V = [[]]*ntr
+                I = [[]]*ntr
                 for ii, i in enumerate(df['Results'].keys()):
                     dfx = df['Results'][i]['monitor']
                     timebase = dfx['time']
                     V[ii] = np.array(dfx['postsynapticV'])*vscale
                     I[ii] = np.array(dfx['i_stim0'])*iscale
-            elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO']:
-                # V = [[]]*ntr
-                # I = [[]]*ntr
-                for j in list(df['Results'].keys()):
-                    dfx = df['Results'][j]
+            elif dinfo.runProtocol in ['runVC', 'initVC', 'testVC']:
+                dur = dinfo.vstimDur # msec
+                delay = dinfo.vstimDelay # msec
+                ntr = len(df['Results'])
+                V = [[]]*ntr
+                I = [[]]*ntr
+                for ii, i in enumerate(df['Results'].keys()):
+                    dfx = df['Results'][i]['monitor']
                     timebase = dfx['time']
-                    V[j] = np.array(dfx['somaVoltage'])*vscale
-                    I[j] = np.zeros_like(V[j])
+                    V[ii] = np.array(dfx['postsynapticV'])*vscale
+                    I[ii] = np.array(dfx['postsynapticI'])*iscale
+                    
+            elif dinfo.runProtocol in ['initAN', 'runANPSTH', 'runANIO', 'runANSingles']:
+
+                # two ways data can be organized, so try both
+                try:  # cnmodel_models simulations
+                    ntr = len(df['Results'])
+                    V = [[]]*ntr
+                    I = [[]]*ntr
+                    for j in list(df['Results'].keys()):
+                        dfx = df['Results'][j]
+                        timebase = dfx['time']
+                        V[j] = np.array(dfx['somaVoltage'])*vscale
+                        I[j] = np.zeros_like(V[j])
+                except:  # vcnmodel simulatipns
+                    ntr = len(df["Results"]['somaVoltage'])
+                    V = [[]]*ntr
+                    I = [[]]*ntr
+                    for j in range(ntr):
+                        timebase = df['Results']['time']
+                        V[j] = np.array(df['Results']['somaVoltage'][j])*vscale
+                        I[j] = np.zeros_like(V[j])
+
         V = np.array(V)
         I = np.array(I)
         # print('V shape: ', V.shape, 'I shape: ', I.shape, ' timebase: ', timebase.shape, V.shape[1]*self.rate, np.max(timebase))
         # exit()
-        self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
+
+        if run_protocol in ['runVC', 'initVC', 'testVC']:
+            self.set_clamps(dmode=mode, time=timebase, data=I, cmddata=V, tstart_tdur=[delay, dur])
+        else:
+            self.set_clamps(dmode=mode, time=timebase, data=V, cmddata=I, tstart_tdur=[delay, dur])
         self.getClampData()
 
     def getClampData(self):

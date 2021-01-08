@@ -25,6 +25,7 @@ from typing import Type
 from ephys.ephysanalysis import metaarray as EM
 from pyqtgraph import configfile
 import pylibrary.tools.tifffile as tf
+import pylibrary.tools.cprint as CP
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -89,8 +90,10 @@ class Acq4Read:
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         self.importantFlag = (
-            True  # set to false to IGNORE the important flag for traces
+            False # set to false to IGNORE the important flag for traces
         )
+        CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
+        
 
     def setImportant(self, flag: bool = False) -> None:
         """
@@ -101,6 +104,8 @@ class Acq4Read:
             for each trace when returning data; if False, we ignore the flag
         """
         self.importantFlag = flag
+        CP.cprint('r', f"Important' flag was set: {flag:b}")
+        exit()
 
     def setProtocol(self, pathtoprotocol: Union[str, Path, None] = None) -> None:
         """
@@ -291,8 +296,10 @@ class Acq4Read:
                 "Directory '%s' is not managed or '.index' file not found"
                 % (str(indexFile))
             )
+
             return self._index
         self._index = configfile.readConfigFile(indexFile)
+
         return self._index
 
     def readDirIndex(self, currdir: Union[str, Path, None] = None):
@@ -480,12 +487,8 @@ class Acq4Read:
         info = None
         fn = Path(filename)
         if fn.is_file():
-            try:
-                tr = EM.MetaArray(file=fn, readAllData=False)
-            except:
-                return info
+            tr = EM.MetaArray(file=fn, readAllData=False)
             info = tr[0].infoCopy()
-            #            print ('info: ', info)
             self.parseClampInfo(info)
         return info
 
@@ -494,7 +497,28 @@ class Acq4Read:
         Get important information from the info[1] directory that we can use
         to determine the acquisition type
         """
-        self.mode = info[1]["ClampState"]["mode"]
+        try:  # old acq4 may not have this
+            self.mode = info[1]["ClampState"]["mode"]
+        except:
+            print("info 1: ")
+            for k in list(info[1].keys()):
+                print(k, '=', info[1][k])
+            print("info 0: ")
+            for k in list(info[0].keys()):
+                print(k, '=', info[0][k])
+            self.units = [info[1]['units'], 'V']
+            self.samp_rate = info[1]['rate']
+            if info[1]['units'] == 'V':
+                self.mode = 'IC'
+            if self.mode in ["IC", "I=0"]:
+                self.tracepos = 1
+                self.cmdpos = 0
+            elif self.mode in ["VC"]:
+                self.tracepos = 1
+                self.cmdpos = 0            
+            
+            return
+        
         self.units = [
             info[1]["ClampState"]["primaryUnits"],
             info[1]["ClampState"]["secondaryUnits"],
@@ -583,6 +607,7 @@ class Acq4Read:
             important = info["important"]
         else:
             important = False
+        # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
     def getData(self, pos: int = 1, check: bool = False):
@@ -592,6 +617,7 @@ class Acq4Read:
         True if it does and false if it does not
         """
         # non threaded
+        # CP.cprint('c', 'GETDATA ****')
         dirs = self.subDirs(self.protocol)
         index = self._readIndex()
         self.clampInfo["dirs"] = dirs
@@ -610,14 +636,27 @@ class Acq4Read:
         holdcheck = False
         holdvalue = 0.0
         if info is not None:
-            holdcheck = info["devices"][self.shortdname]["holdingCheck"]
-            holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+            try:
+                holdcheck = info["devices"][self.shortdname]["holdingCheck"]
+                holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+            except:
+                print("Getting holding with short dname: ", self.shortdname, "failed")
+                print("Trying a different name (Clamp1.ma)")
+                self.setDataName('Clamp1.ma')
+                try:
+                    holdcheck = info["devices"][self.shortdname]["holdingCheck"]
+                    holdvalue = info["devices"][self.shortdname]["holdingSpin"]
+                except:
+                    print('That also failed')
+                    raise()
+                
         self.holding = holdvalue
         trx = []
         cmd = []
         self.protocol_important = self._getImportant(
             info
         )  # save the protocol importance flag
+        # CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
         sequence_values = None
         self.sequence = []
         if index is not None and "sequenceParams" in index["."].keys():
@@ -667,7 +706,7 @@ class Acq4Read:
         if not any(important):
             important = [True for i in range(len(important))]  # set all true
         self.trace_important = important
-
+        
         j = 0
         # get traces.
         # if traces are not marked (or computed above) to be "important", then they
@@ -683,7 +722,7 @@ class Acq4Read:
                     continue
             if check:
                 return True
-            if not important[i]:  # only return traces marked "important"
+            if self.importantFlag and not important[i]:  # only return traces marked "important"
                 continue
             self.protoDirs.append(
                 Path(d).name
@@ -737,7 +776,6 @@ class Acq4Read:
             self.values = np.zeros(ntr)  # fake
         else:
             ntr = len(self.values)
-
         self.traces = EM.MetaArray(
             self.data_array,
             info=[

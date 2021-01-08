@@ -7,6 +7,7 @@ which includes cython and numba jit methods that are faster.
 """
 import numpy as np
 import scipy.signal
+from typing import Union, Dict, List
 import numpy.random
 import matplotlib.pyplot as mpl
 
@@ -14,7 +15,7 @@ class ClementsBekkers():
     def __init__(self):
         pass
     
-    def clements_bekkers(self, data, template):
+    def clements_bekkers(self, data:np.ndarray, template:np.ndarray) ->(np.ndarray, np.ndarray, np.ndarray):
         """
         Implements Clements-bekkers algorithm: slides template across data,
         returns array of points indicating goodness of fit.
@@ -91,7 +92,7 @@ class ClementsBekkers():
         DC = scale / error
         return DC, scale, offset
     
-    def cbTemplateMatch(self, data, template, threshold=3.0):
+    def cbTemplateMatch(self, data, template:Union[object, None]=None, threshold:float=3.0):
         dc, scale, crit = self.clementsBekkers(data, template)
         mask = crit > threshold
         diff = mask[1:] - mask[:-1]
