@@ -2,14 +2,25 @@
 # Used by make_env.sh
 
 black==19.10b0
-Cython==0.29.17
+flake8
+Pint==0.14
+isort==5.0.2
+mypy==0.782
+jupyterlab
+plotnine==0.7.1
+pypdf2
+pyperclip
+pytest==4.5.0
+rich
+
 lmfit==0.9.13
 h5py>=2.10.0
-matplotlib==3.2.0
+matplotlib==3.3.4
 matplotlib-scalebar==0.5.1
 nose==1.3.7
 numba==0.49.1
 numpy==1.17.3
+pandas>=1.0
 psutil==5.6.7
 pyparsing==2.4.0
 pytest==4.5.0
@@ -17,7 +28,7 @@ resampy==0.2.1
 scipy==1.3.0
 pyqt5==5.12.3
 pyqt5-sip==4.19.18
-
+pyqtgraph
 
 seaborn==0.10.1
 tifffile
@@ -28,10 +39,10 @@ xlrd>=1.0.0
 # required for 3d display in pyqtgraph
 PyOpenGL==3.1.5
 # required for mayavi in neuronvis
-vtk==8.1.2
+vtk==9.0.1
 
 
--e git+https://github.com/pbmanis/pyqtgraph.git@e3ac16b3a220f76b69bf26c295edf140e2e928b4#egg=pyqtgraph
+#-e git+https://github.com/pbmanis/pyqtgraph.git@e3ac16b3a220f76b69bf26c295edf140e2e928b4#egg=pyqtgraph
 #-e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
 -e /Users/pbmanis/Desktop/Python/pylibrary
 

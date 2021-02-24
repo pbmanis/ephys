@@ -712,6 +712,7 @@ class Acq4Read:
         # if traces are not marked (or computed above) to be "important", then they
         # are skipped
         self.nprotodirs = len(dirs)  # save this...
+        tr = None
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
@@ -754,6 +755,8 @@ class Acq4Read:
             sr = tr_info[1]["DAQ"]["primary"]["rate"]
             self.sample_rate.append(self.samp_rate)
             # print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
+        if tr is None:
+            return False
         if self.mode is None:
             units = "A"  # just fake it
             self.mode = "VC"
@@ -776,12 +779,18 @@ class Acq4Read:
             self.values = np.zeros(ntr)  # fake
         else:
             ntr = len(self.values)
+        # print('acq4_read: cmd: ', cmd)
+        if isinstance(cmd, list):
+            print('cmd is list: ', cmd)
+            uni = 'None'
+        else:
+            uni = cmd.axisUnits(-1)
         self.traces = EM.MetaArray(
             self.data_array,
             info=[
                 {
                     "name": "Command",
-                    "units": cmd.axisUnits(-1),
+                    "units": uni,
                     "values": np.array(self.values),
                 },
                 tr.infoCopy("Time"),

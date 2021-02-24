@@ -1042,6 +1042,8 @@ class MetaArray(object):
             val = root.attrs[k]
             if isinstance(val, basestring):  ## strings need to be re-evaluated to their original types
                 try:
+                    if val[-1] == 'L':
+                        val = val[:-1]
                     val = eval(val)
                 except:
                     raise Exception('Can not evaluate string: "%s"' % val)

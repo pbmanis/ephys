@@ -119,7 +119,7 @@ class MiniAnalyses:
         sign: int = 1,
         eventstartthr: Union[float, None] = None,
         risepower: float = 4.0,
-        min_event_amplitude: float = 2.0,
+        min_event_amplitude: float = 5.0e-12,
         threshold:float = 2.5,
         global_SD:Union[float, None] = None,
         analysis_window:[Union[float, None], Union[float, None]] = [None, None],
@@ -315,8 +315,7 @@ class MiniAnalyses:
             5  # int(1.0/self.dt)  # 5 point moving average window for peak detection
         )
 
-        mwin = int((0.050) / self.dt)
-
+        mwin = int((0.50) / self.dt)
         if self.sign > 0:
             nparg = np.greater
         else:
@@ -363,6 +362,7 @@ class MiniAnalyses:
                         nparg,
                         order=order,
                     )[0]
+                # print('len(p): ', len(p), svn, event_data)
                 if len(p) > 0:
                     i_end = i_decay_pts + onset # distance from peak to end
                     i_end = min(dataset.shape[0], i_end)  # keep within the array limits
@@ -383,8 +383,10 @@ class MiniAnalyses:
                         smpk = np.argmin(move_avg)
                         rawpk = np.argmin(windowed_data)
                     if self.sign*(move_avg[smpk] - windowed_data[0]) < self.min_event_amplitude:
+                        print('too small: ', self.sign*(move_avg[smpk] - windowed_data[0]), 'vs. ', self.min_event_amplitude)
                         continue  # filter out events smaller than the amplitude
                     else:
+                        # print('accept: ', j)
                         ev_accept.append(j)
                     # cprint('m', f"Extending for trial: {itrial:d}, {len(self.Summary.onsets[itrial]):d}, onset={onset}")
                     self.Summary.onsets[itrial].append(onset)
@@ -393,6 +395,7 @@ class MiniAnalyses:
                     self.Summary.smpkindex[itrial].append(onset + smpk)
                     self.Summary.smoothed_peaks[itrial].append(move_avg[smpk])
                     acceptlist_trial.append(j)
+
             self.onsets[itrial] = self.onsets[itrial][ev_accept]  # reduce to the accepted values only
         # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         # self.Summary.amplitudes = np.array(self.Summary.amplitudes)

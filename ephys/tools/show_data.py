@@ -3,13 +3,14 @@
 """
 
 
+
 Graphical interface
 Part of Ephysanalysis package
 
 Usage:
 notch
 """
-
+import importlib
 import os
 import sys
 import argparse
@@ -26,6 +27,17 @@ import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 import ephys.mapanalysistools.digital_filters as FILT
 from ..mini_analyses import minis_methods
+from ..mini_analyses import minis_methods_common
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
+
+all_modules = [
+    SpikeAnalysis,
+    acq4read,
+    RmTauAnalysis,
+    FILT,
+    minis_methods,
+    minis_methods_common
+]
 
 
 # or MultiClamp1.ma... etc
@@ -60,6 +72,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.scatter = []
         self.threshold_line = None
         self.lines = []
+        self.tstart = 0.
+        self.tend = 0.
         self.maxT = 0.6
         self.tau1 = 0.1
         self.tau2 = 0.4
@@ -131,6 +145,20 @@ class TraceAnalyzer(pg.QtGui.QWidget):
     def updateTraces(self):
         self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            # trim time window if needed
+            dt = 1./self.AR.sample_rate[0]
+            # trx = self.AR.data_array
+            print(self.AR.data_array.shape)
+            if self.tend == 0:
+                tend = self.AR.data_array.shape[1]*dt
+            else:
+                tend = self.tend
+            print(dt, self.tstart, tend)
+            istart = int(self.tstart/dt)
+            iend = int(tend/dt)
+            print(istart, iend)
+            self.AR.data_array = self.AR.data_array[:, istart:iend]
+            print(self.AR.data_array.shape)
             self.update_traces()
 
     def _getpars(self):
@@ -337,22 +365,24 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         if (self.current_trace >= self.AR.data_array.shape[0]):
             self.dataplot.setTitle(f'Trace > Max traces: {self.AR.data_array.shape[0]:d}')
             return
-        imax = int(self.maxT*self.AR.sample_rate[0])
+        # imax = int(self.maxT*self.AR.sample_rate[0])
+        imax = len(self.AR.data_array[self.current_trace])
         self.imax = imax
+        self.maxT = self.AR.sample_rate[0]*imax
         self.mod_data = self.AR.data_array[self.current_trace,:imax]
-        # if self.notch_frequency is not "None":
-        #     if self.notch_frequency == "60HzHarm":
-        #         notchfreqs = self.notch_60HzHarmonics
-        #     else:
-        #         notchfreqs = [self.notch_frequency]
-        #     CP.cprint('y', f"Notch Filtering at: {str(notchfreqs):s}")
-        #     self.mod_data =  FILT.NotchFilterZP(self.mod_data, notchf=notchfreqs, Q=self.notch_Q,
-        #                     QScale=False, samplefreq=self.AR.sample_rate[0])
-        #
-        # if self.LPF is not "None":
-        #     CP.cprint('y', f"LPF Filtering at: {self.LPF:.2f}")
-        #     self.mod_data = FILT.SignalFilter_LPFBessel(self.mod_data, self.LPF,
-        #                 samplefreq=self.AR.sample_rate[0], NPole=8)
+        if self.notch_frequency is not "None":
+            if self.notch_frequency == "60HzHarm":
+                notchfreqs = self.notch_60HzHarmonics
+            else:
+                notchfreqs = [self.notch_frequency]
+            CP.cprint('y', f"Notch Filtering at: {str(notchfreqs):s}")
+            self.mod_data =  FILT.NotchFilterZP(self.mod_data, notchf=notchfreqs, Q=self.notch_Q,
+                            QScale=False, samplefreq=self.AR.sample_rate[0])
+
+        if self.LPF is not "None":
+            CP.cprint('y', f"LPF Filtering at: {self.LPF:.2f}")
+            self.mod_data = FILT.SignalFilter_LPFBessel(self.mod_data, self.LPF,
+                        samplefreq=self.AR.sample_rate[0], NPole=8)
 
         self.curves.append(self.dataplot.plot(self.AR.time_base[:imax]*1e3,
                             # self.AR.traces[i,:],
@@ -450,22 +480,19 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             else:
                 print('analysis pars not in dateset: ', self.compare_data[self.data_set].keys())
 
-
-    def reload(self, ):
-        pass
-
-
     def build_ptree(self):
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
             {"name": "Get Protocol", "type": "action"},
+            {"name": "Set Start", "type": "float", 'value': 0., 'limits': (0, 30.), 'default': 0.},
+            {"name": "Set End", "type": "float", 'value': 0., 'limits': (0, 30.), 'default': 0.},
+            
             {"name": "Notch Frequency", "type": "list",
                 "values": ["None", "60HzHarm", 30., 60., 120., 180., 240.], "value": None},
             {"name": "LPF", "type": "list",
                 "values": ["None", 500., 1000., 1200., 1500., 1800., 2000., 2500., 3000., 4000., 5000.],
                 "value": 5000., "renamable": True},
             {"name": "Apply Filters", "type": "action"},
-            
             {"name": "Method", "type": "list",
                 "values": ["CB", "AJ", "RS", "ZC"], "value": "CB"},
             {"name": "Sign", "type": "list",
@@ -474,11 +501,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 'value': 0.15, 'step': 0.05, 'limits': (0.05, 10.0), 'default': 0.15},
             {"name": "Fall Tau", "type": "float",
                 'value': 1.0, 'step': 0.1, 'limits': (0.15, 10.0), 'default': 1.0},
-            {"name": "Apply Analysis", "type": "action"},
-            
             {"name": "Threshold", "type": "float",
                 'value': 3.0, 'step': 0.1, 'limits': (-1e-6, 50.0), 'default': 2.5},
-
+            {"name": "Apply Analysis", "type": "action"},
 
             {'name': "Channel Name", "type": "list",
                 "values": ['Clamp1.ma', 'MultiClamp1.ma', 'Clamp2.ma', 'MultiClamp2.ma'],
@@ -520,6 +545,13 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 self.compare_flag = data
                 print('compare flg: ', self.compare_flag)
                 self.compareEvents()
+            elif path[0] == "Set Start":
+                self.tstart = data
+            elif path[0] == "Set End":
+                if data > self.tstart:
+                    self.tend = data
+                else:
+                    pass
 
             elif path[0] == "LPF":
                self.LPF = data
@@ -530,7 +562,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 # self.update_traces()
 
             elif path[0] == "Apply Filters":
-                self.update_traces(update_analysis=True)
+                self.update_traces(update_analysis=False)
 
             elif path[0] == "Rise Tau":
                 self.minis_risetau = data
@@ -559,22 +591,29 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                     self.RS()
                 else:
                     print('Not implemented: ', data)
-
+                        
             elif path[0] == "Apply Analysis":
                 self.update_traces(update_analysis=True)
 
             elif path[0] == "Channel Name":
                 self.ampdataname = data
+            elif path[0] == "Reload":
+                self.reload()
             else:
                 print(f"**** Command {path[0]:s} was not parsed in command dispatcher")
 
 
+    def reload(self):
+        print("reloading...")
+        for module in all_modules:
+            print("reloading: ", module)
+            importlib.reload(module)
         
     def set_window(self, parent=None):
         super(TraceAnalyzer, self).__init__(parent=parent)
         self.win = pg.GraphicsWindow(title="TraceAnalyzer")
         layout = pg.QtGui.QGridLayout()
-        layout.setSpacing(10)
+        layout.setSpacing(8)
         self.win.setLayout(layout)
         self.win.resize(1280, 800)
         self.win.setWindowTitle('No File')
@@ -603,7 +642,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.dataplot2.addItem(self.threshold_line)
         self.threshold_line.sigDragged.connect(self.update_threshold)
         
-        layout.addLayout(self.buttons,   0, 0, 7, 1)
+        layout.addLayout(self.buttons,   0, 0, 10, 1)
         layout.addWidget(self.dataplot,  0, 1, 1, 6)
         layout.addWidget(self.dataplot2, 6, 1, 4, 6)
         layout.addWidget(self.w1,        11, 1, 1, 6)
@@ -680,13 +719,9 @@ def main():
     TA = TraceAnalyzer(app)
     app.aboutToQuit.connect(TA.quit)  # prevent python exception when closing window with system control
     TA.set_window()
-    # TA.show()
     import sys
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         pg.QtGui.QApplication.instance().exec_()
-        
-    # if sys.flags.interactive == 0:
-    #  app.exec_()
 
 
 if __name__ == '__main__':

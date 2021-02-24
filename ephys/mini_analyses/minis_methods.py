@@ -94,7 +94,7 @@ class ClementsBekkers(MiniAnalyses):
         self.dt = None
         self.data = None
         self.template = None
-        self.engine = "numba"
+        self.engine = "cython"
         self.method = "cb"
 
     def set_cb_engine(self, engine: str) -> None:
@@ -233,11 +233,11 @@ class ClementsBekkers(MiniAnalyses):
         return scale, DetCrit
         
     def cbTemplateMatch(
-        self,
-        data: np.ndarray,
-        itrace: int = 0,
-        lpf: Union[float, None] = None,
-    ) -> None:
+            self,
+            data: np.ndarray,
+            itrace: int = 0,
+            lpf: Union[float, None] = None,
+        ) -> None:
         assert data.ndim == 1
         self.starttime = timeit.default_timer()        
         self.prepare_data(data) # also does timebase
@@ -348,6 +348,7 @@ class AndradeJonas(MiniAnalyses):
         self.Crit = np.real(self.quot)*llambda
         self.Crit = self.Crit.squeeze()
         self.Criterion[itrace] = self.Crit
+
         
         
     def identify_events(self,
@@ -386,7 +387,6 @@ class AndradeJonas(MiniAnalyses):
                 - 1
                 + self.idelay
             )
-
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
         endtime = timeit.default_timer() - self.starttime

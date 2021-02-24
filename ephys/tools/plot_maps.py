@@ -27,7 +27,7 @@ import numpy as np
 import seaborn as sns
 
 import matplotlib
-matplotlib.use('Qt5Agg')
+# matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as mpl
 from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB

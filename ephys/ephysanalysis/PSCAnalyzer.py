@@ -30,15 +30,15 @@ import numpy as np
 from . import acq4read
 from . import metaarray as EM  # need to use this version for Python 3
 from ..tools import cursor_plot as CP
-import pylibrary.plotting.plothelpers as PH
+
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import seaborn as sns
-
+import pylibrary.plotting.plothelpers as PH
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
-
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
 
 def make_key(pathname):
     """
@@ -234,7 +234,7 @@ class PSCAnalyzer():
         if self.db is not None:
             self.db.to_pickle(self.db_filename)
 
-    def measure_PSC(self, protocolName, plot=True, savetimes=False):
+    def measure_PSC(self, protocolName, plot=True, savetimes=False, ignore_important_flag=True):
         """
         Direct the analysis
         Uses the beginning of the protocol name to select which analysis to use
@@ -250,10 +250,11 @@ class PSCAnalyzer():
         dp_s = str(self.datapath)
         date, name, cellname, proto, sliceid = self.AR.file_cell_protocol(dp_s)
         dk = list(self.AR.getIndex(dp_s).keys())
-        if 'important' in dk:
-            print(str(Path(date, name, cellname, proto)), self.AR.getIndex(dp_s)['important'])
-        else:
-            return False
+        # if 'important' in dk:
+        #     print(str(Path(date, name, cellname, proto)), self.AR.getIndex(dp_s)['important'])
+        # else:
+        #     print('No important flag in dk')
+        #     return False
         
         
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
@@ -263,7 +264,7 @@ class PSCAnalyzer():
 
         if self.AR.getData():  # get that data.
             print('Protocol important: ', self.AR.protocol_important)
-            if not self.AR.protocol_important:
+            if not self.AR.protocol_important and not ignore_important_flag:
                 return False
             ok = False
             if protocolName.startswith('Stim_IO'):
@@ -271,6 +272,7 @@ class PSCAnalyzer():
             elif protocolName.startswith('VC-EPSC_3'):
                 ok = self.analyze_VDEP()
             elif protocolName.startswith('PPF'):
+                print('analyzing ppf')
                 ok = self.analyze_PPF()
             if not ok:
                 print('Failed on protocol in IV: ', self.datapath, protocolName)
@@ -382,10 +384,78 @@ class PSCAnalyzer():
         self.analysis_summary['window'] = [self.T0, self.T1]
         return True
 
-    def analyze_PPF(self, rmpregion=[0., 0.05], twidth=0.02, protocolName=None, device='Stim0'):
+    def _clean_array(self, rgn):
+        """
+        Just make sure that the rgn array is a list of two values
+        """
+        if isinstance(rgn[0], list) or isinstance(rgn[0], np.ndarray):
+            rgn = [x[0] for x in rgn]
+        return rgn
+
+    def _compute_interval(self, x0: float=0., artifact_delay: float=0.0,
+        index: int=0, stim_intvl=list, max_width:float=25.,
+        pre_time:float=1.0e-3, pflag=False):
+        """
+        Comptue the interval over which to measure an event. 
+        The interval cannot be longer than the interval to the next event.
+        
+        x0 : float
+            starting time for the interval
+        artifact_delay: float
+            duration to remove from the start of the trace as the stimulus
+            artifact
+        index: int 
+            index into the stim_intvl list
+        stim_intvl:
+            list of stimulus intervals, in order
+        max_width : float
+            width of the ttrace to retrun, starting at x0
+        pre_time : float
+            Time to clip at the end of the trace (in case the next stim is
+            not exactly where it is expected to be)
+        Returns
+            2 element list of times adjusted for the delays and widths.
+        --------
+        window as an np array of 2 elements, min and max time
+        """
+        num_intervals = len(stim_intvl)
+        if index < num_intervals-1:
+            nxt_intvl = stim_intvl[index+1] - stim_intvl[index] # check interval sequence
+            max_w = np.min((nxt_intvl, max_width-pre_time))
+            if nxt_intvl > 0:  # still ascending
+                t_stim = [x0+artifact_delay, x0+max_w-pre_time] # limit width if interval is 
+                if pflag:
+                    print('nxt>0: ', t_stim)
+            else:
+                t_stim = [x0+artifact_delay, x0+max_width-pre_time]
+                if pflag:
+                    print('nxt < 0: ', t_stim)
+        else:
+            t_stim = [x0+artifact_delay, x0+max_width - pre_time]
+            if pflag:
+                print('last index: ', t_stim)
+        t_stim = self._clean_array(t_stim)
+        return t_stim
+        
+        
+        
+        
+    def analyze_PPF(self, rmpregion:list=[0., 0.045], twidth:float=0.02, 
+            protocolName:str=None, device:str='Stim0', 
+            measure_func:object=np.min):
         """
         Analyze paired-pulse facilitiation
-
+        
+        Notes:
+        The PPF protocol always involves 2 pulses, the second of which varies in time.
+        Here, we compute the ratio between the 2 pulses for each time,
+        and also save clips of the data waveforms for plotting
+        stim dict in pulse_train will look like:
+            {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001], 
+            'amplitude': [0.00025, 0.00025], 
+            'npulses': [2], 'period': [0.05], 
+            'type': ['pulseTrain']}
+            
         Parameters
         ----------
         rmpregion : 2 element list (default: [0., 0.05])
@@ -397,37 +467,16 @@ class PSCAnalyzer():
             The name of the stimulus device
         """
         pulse_train = self.AR.getStim(device)
-        # stim dict in pulse_train will look like:
-        # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001], 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
+
         dd  = self.AR.getDeviceData(device=device, devicename='command')
         reps = self.AR.sequence[('protocol', 'repetitions')]
         
         stim_I = [pulse_train['amplitude'][0]]
 
         mode = 'PPF'
-        delay = 1.0*1e-3
-        width = 25.0*1e-3
-        ndelay = 1.0*1e-3
-
         filekey = make_key(self.datapath)
         # check the db to see if we have parameters already
         dfiles = self.db['date'].tolist()  # protocols matching our prefix
-        if filekey in dfiles:
-            delays = self.db.loc[self.db['date'] == filekey]['T0'].values
-            t1s    = self.db.loc[self.db['date'] == filekey]['T1'].values
-            if isinstance(delays, np.ndarray) and len(delays) > 1:
-                delay = delays[0]
-            else:
-                delay = delays
-            if isinstance(t1s, np.ndarray) and len(t1s) > 1:
-                t1 = t1s[0]
-            else:
-                t1 = t1s
-        else:
-            delay = 0.5*1e-3
-            t1 = width-ndelay
-            print('auto delay', delay, t1)
-        nwidth = width
         baseline = []
         meani = []
         stimamp = []
@@ -446,68 +495,54 @@ class PSCAnalyzer():
         self.analysis_summary[f'PPF'] = [[]]*len(stim_dt)
         self.analysis_summary['iHold'] = []
         self.analysis_summary['ppf_dt'] = [None]*len(stim_dt)
-        # print(pulse_train)
         self.i_mean = []
-        
-        rgn = [delay, width]
-        # print('rgn: ', rgn)
-        if self.update_regions:
-            rgn = self.set_region([pulse_train['start'][0], pulse_train['start'][0]+width], baseline=bl)
-        self.T0 = float(rgn[0])
-        self.T1 = float(rgn[1])
-        window = self.T1-self.T0
-        p1delay = pulse_train['start'][0] + self.T0 # first stim of pair
-        p1end = pulse_train['start'][0] + self.T1
-        pulse2 = pulse_train['start'][0] + stim_dt[0]
-        bl = self.mean_I_analysis(region=self.baseline, mode='baseline', reps=[0])
 
-        ppf_traces_T1 = OrderedDict([(k, []) for k in stim_dt])
-        ppf_traces_R1 = OrderedDict([(k, []) for k in stim_dt])
+        ppf_traces_T1 = OrderedDict([(k, []) for k in stim_dt])  # control response for each dt
+        ppf_traces_R1 = OrderedDict([(k, []) for k in stim_dt])  # Response to the second stimulus at dt
         ppf_traces_T2 = OrderedDict([(k, []) for k in stim_dt])
         ppf_traces_R2 = OrderedDict([(k, []) for k in stim_dt])
-        # ppftr2 = OrderedDict([(k, []) for k in stim_dt])
-        ppf_dat = OrderedDict([(k, []) for k in stim_dt])
 
+        ppf_dat = OrderedDict([(k, []) for k in stim_dt])  # calculated PPF for each trial.
+        num_intervals = len(Stim_Intvl)
+        dead_time =1.5e-3 # time before start of response measure
+        # f, axx = mpl.subplots(1,1)
         for j in range(len(self.AR.traces)):  # for all (accepted) traces
+
             mi = self.AR.trace_index[j]  # get index into marked/accepted traces then compute the min value minus the baseline
-            # print(pulse_train['start'][0])
-            # print('stimn_dt[i]: ', Stim_Intvl[mi], delay)
-            rgn = [pulse_train['start'][0]+delay, pulse_train['start'][0]+twidth]
-            # rgn = [pulse_train['start'][i]+delay, pulse_train['start'][i]+twidth]
-            self.T0 = rgn[0]  # kind of bogus
-            self.T1 = rgn[1]
-            region = np.array(rgn)+Stim_Intvl[mi]  # get region relative to start of this pulse
-            region0 = [pulse_train['start'][0]+delay, pulse_train['start'][0]+np.min((Stim_Intvl[mi], twidth))]
+            t_stim1 = self._compute_interval(x0=pulse_train['start'][0], artifact_delay=dead_time,
+                index=mi, stim_intvl=Stim_Intvl, max_width=twidth, pre_time=1e-3, pflag=False)
+            t_stim2 = self._compute_interval(x0=Stim_Intvl[mi] + pulse_train['start'][0], artifact_delay=dead_time,
+                    index=mi, stim_intvl=Stim_Intvl, max_width=twidth, pre_time=1e-3, pflag=False)
+
+            self.T0 = t_stim2[0]  # kind of bogus
+            self.T1 = t_stim2[1]
+
             bl = np.mean(self.Clamps.traces['Time': rmpregion[0]:rmpregion[1]][j])
-            i_pp2 = self.Clamps.traces['Time': region[0]:region[1]][j] - bl
-            tb_p2= self.Clamps.time_base[np.where((self.Clamps.time_base >= region[0]) & (self.Clamps.time_base < region[1]))]
-            i_pp1 = self.Clamps.traces['Time': region0[0]:region0[1]][j] - bl
-            tb_ref = self.Clamps.time_base[np.where((self.Clamps.time_base >= region0[0]) & (self.Clamps.time_base < region0[1]))]
-            # mpl.plot(self.Clamps.time_base*1e3, self.Clamps.traces[j]-bl, 'g-')
-            # mpl.plot(tb_p2*1e3, i_pp2, 'r-')
-            # mpl.plot(tb_ref*1e3, i_pp1, 'k-')
-            # mpl.show()
-            # exit()
-            da2 = np.min(i_pp2)
-            da1 = np.min(i_pp1)
+            i_pp1 = self.Clamps.traces['Time': t_stim1[0]:t_stim1[1]][j] - bl # first pulse trace
+            tb_ref = self.Clamps.time_base[np.where((self.Clamps.time_base >= t_stim1[0]) & (self.Clamps.time_base < t_stim1[1]))]
+            i_pp2 = self.Clamps.traces['Time': t_stim2[0]:t_stim2[1]][j] - bl  # second pulse trace
+            tb_p2= self.Clamps.time_base[np.where((self.Clamps.time_base >= t_stim2[0]) & (self.Clamps.time_base < t_stim2[1]))]
+
+            da1 = measure_func(i_pp1)
+            da2 = measure_func(i_pp2)
             ppf_tr = da2/da1  # get facilitation for this trace and interval
             ppf_dat[Stim_Intvl[mi]].append(ppf_tr)  # accumulate 
             ppf_traces_T1[Stim_Intvl[mi]].append(tb_ref)
             ppf_traces_R1[Stim_Intvl[mi]].append(i_pp1)
             ppf_traces_T2[Stim_Intvl[mi]].append(tb_p2)
             ppf_traces_R2[Stim_Intvl[mi]].append(i_pp2)
-            # self.analysis_summary[f'PPF'][i] = idat[i]
-            # print(self.analysis_summary.keys())
-            # self.analysis_summary['ppf_dt'][i] = 1e6*np.array([k for k in idat[i].keys()])[0]
-            # stimintvl.append(pulse_train['period'][0])
-            #
-            # cmdv.extend([self.V_cmd[i]])
-            # stimamp.extend(pulse_train['amplitude'])
-            # stimintvl.append(stim_dt[i])
-            # ppftr[stim_dt[i]].append({'TRef': tb_ref, 'IRef': i_pp1, 'TPP2': tb_p2, 'IPP2': i_pp2})
-        # print(self.analysis_summary)
-        # self.analysis_summary[f'PPF'] = [self.analysis_summary[f'PPF'][i]/self.analysis_summary[f'PPF'][i][0] for i in range(len(self.analysis_summary[f'PPF']))]
-            # print('iref, ip2: ', i, ppftr[stim_dt[i]]['IRef'][0]*1e9, ppftr[stim_dt[i]]['IPP2'][0]*1e9)
+            # print(np.min(tb_ref), np.max(tb_ref), np.min(tb_p2), np.max(tb_p2))
+            # plotWidget = pg.plot(title="traces")
+            # si = Stim_Intvl[mi]
+            # plotWidget.plot(ppf_traces_T1[si][-1], ppf_traces_R1[si][-1], pen='g')
+            # plotWidget.plot(ppf_traces_T2[si][-1], ppf_traces_R2[si][-1], pen='r')
+            # plotWidget.plot(tb_ref, np.ones_like(tb_ref)*da1, pen='b')
+            # plotWidget.plot(tb_p2, np.ones_like(tb_p2)*da2, pen='m')
+            # if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+            #     QtGui.QApplication.instance().exec_()
+
+            # axx.plot(tb_ref, i_pp1, 'k-')
+            # axx.plot(tb_p2, i_pp2, 'r-')
         self.analysis_summary[f'PPF'] = ppf_dat
         self.analysis_summary['PPF_traces_T1'] = ppf_traces_T1
         self.analysis_summary['PPF_traces_R1'] = ppf_traces_R1
@@ -517,12 +552,10 @@ class PSCAnalyzer():
         self.analysis_summary['psc_intervals'] = np.array(stim_dt)
         self.analysis_summary['stim_times'] = pulse_train['start']
         self.analysis_summary['window'] = [self.T0, self.T1]
-        # f, ax = mpl.subplots(1,1)
-        # ax = np.array(ax).ravel()
-        # for i in range(len(stim_dt)):
-        #     dt = stim_dt[i]
-        #     ax[0].plot(ppftr[dt]['TRef'], ppftr[dt]['IRef'], 'k')
-        #     ax[0].plot(ppftr[dt]['TPP2'], ppftr[dt]['IPP2'], 'k')
+
+        # fname = Path(self.datapath).parts
+        # fname = '/'.join(fname[-4:]).replace('_', '\_')
+        # f.suptitle(f"{fname:s}")
         # mpl.show()
         return True
 
@@ -742,7 +775,7 @@ class PSCAnalyzer():
         # for i in range(data1.shape[0]):
         newCP.plotData(x=tb, y=np.array([data1[i]-baseline[i] for i in range(data1.shape[0])])*1e12, setline=setline, slope=slope)
             # setline = False # only do on first plot
-    
+
         if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
             QtGui.QApplication.instance().exec_()
         print('done with cp') 
@@ -802,7 +835,7 @@ class PSCAnalyzer():
             region = slopewin
         
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
-        print('data shape: ', data1.shape)
+        # print('data shape: ', data1.shape)
         
         # data2 = self.Clamps.traces.view(np.ndarray)
         rgn = [int(region[i]/self.Clamps.sample_interval) for i in range(len(region))]
@@ -835,7 +868,7 @@ class PSCAnalyzer():
                 data1 = data1[dindx,:]
             else:
                 raise ValueError('Data must have 2 or 3 dimensions')
-        print(sh, data1.shape, nint)
+        # print(sh, data1.shape, nint)
         self.i_mean_index = None
         self.i_data = data1.mean(axis=0)
         self.i_tb = tb+region[0]

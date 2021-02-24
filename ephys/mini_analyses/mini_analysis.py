@@ -119,8 +119,11 @@ class MiniAnalysis():
 
         self.datasource = dataplan.datasource
         self.basedatadir = dataplan.datadir
+        self.shortdir = dataplan.shortdir
         self.datasets = dataplan.datasets
         self.dataplan_data = dataplan.data
+        self.clamp_name = 'Clamp1.ma'
+        self.protocol_name = 'minis'
         try:
             self.global_threshold = dataplan.data['global_threshold']
             self.override_threshold = True
@@ -145,6 +148,12 @@ class MiniAnalysis():
             self.min_event_amplitude = dataplan.data['min_event_amplitude']
         except:
             self.min_event_amplitude = 2.0
+    
+    def set_clamp_name(self, name):
+        self.clamp_name = name
+
+    def set_protocol_name(self, name):
+        self.protocol_name = name
         
     # from acq4 functions:
     def measure_baseline(self, data, threshold=2.0, iterations=2):
@@ -183,14 +192,16 @@ class MiniAnalysis():
         -------
         Nothing
         """
-        acqr = EP.acq4read.Acq4Read(dataname='Clamp1.ma')  # creates a new instance every time - probably should just create one.
+        acqr = EP.acq4read.Acq4Read(dataname=self.clamp_name)  # creates a new instance every time - probably should just create one.
         summarydata = {}
         with PdfPages(fofilename) as pdf:
-            for id, mouse in enumerate(sorted(self.datasets.keys())):
+            for index, mouse in enumerate(sorted(self.datasets.keys())):
                 self.analyze_one(mouse, pdf, maxprot=10, arreader=acqr, check=check, mode=mode, engine=engine,)
                 summarydata[mouse] = self.cell_summary
+                if index >= 0:
+                    break
         if not check:
-            fout = 'summarydata_{0:s}_{1:s}_{2:s}.p'.format(self.datasource, self.filterstring, mode)
+            fout = f"summarydata_{str(self.shortdir):s}_{str(self.filterstring):s}_{mode:s}.p"
             fh = open(fout, 'wb')
             pickle.dump(summarydata, fh)
             fh.close()
@@ -221,7 +232,7 @@ class MiniAnalysis():
             cell summary dictionary for the 'mouse' entry. 
         """
         if arreader is None:
-            acqr = EP.acq4read.Acq4Read(dataname='Clamp1.ma')  # only if we don't already have one
+            acqr = EP.acq4read.Acq4Read(dataname=self.clamp_name)  # only if we don't already have one
         else:
             acqr = arreader
         self.rasterize = True    # set True to rasterize traces to reduce size of final document
@@ -258,7 +269,9 @@ class MiniAnalysis():
         ntr = 0
         # for all of the protocols that are included for this cell (identified by mouse and a letter)
         print ('mousedata prots: ', mousedata['prots'])
-
+        if len(mousedata['prots']) == 0:
+            print(' No protocols, moving on')
+            return None
         for nprot, dprot in enumerate(mousedata['prots']):
             if nprot > maxprot:
                 return
@@ -283,7 +296,7 @@ class MiniAnalysis():
                 print('   sign: ', sign)
             if ext != '.mat':
                 try:
-                    fn = os.path.join(fn, ('minis_{0:03d}'.format(dprot)))
+                    fn = os.path.join(fn, (f'{self.protocol_name:s}_{dprot:03d}'))
                 except:
                     print('path failed to join')
                     print ('    ', dprot, nprot)
@@ -329,7 +342,6 @@ class MiniAnalysis():
                 DF = EP.MatdatacRead.DatacFile(fn)
                 self.acqr = EP.MatdatacRead.GetClamps(DF, self.basedatadir)
                 self.acqr.getClampData()
-                print('self.acq4: ', self.acqr)
                 time_base = self.acqr.time_base
                 data = self.acqr.traces
                 dt = self.acqr.sample_interval
@@ -361,27 +373,10 @@ class MiniAnalysis():
                     pdf=pdf)
 
     def analyze_block_traces(self, mode, data, time_base, maxt, dt, mousedata, exclude_traces, ntr):
-        if mode == 'aj':
-            aj = minis.AndradeJonas()
-            aj.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
-                    template_tmax=maxt, dt=dt, delay=0.0, sign=self.sign,
-                    risepower=1.0, min_event_amplitude=self.min_event_amplitude)
-        elif mode == 'cb':
-            cb = minis.ClementsBekkers()
-            cb.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
-                        template_tmax=3.0*mousedata['decay'], dt=dt, delay=0.0, sign=self.sign,
-                        risepower=1.0, min_event_amplitude=self.min_event_amplitude)
-            #aj.set_cb_engine('numba')
-            cb.set_cb_engine('cython')
-        else:
-            raise ValueError('Mode must be aj or cb for event detection')
-#        print('mousedata rt: ', mousedata['rt'], '   mousedata decay: ', mousedata['decay'])
-
         mwin = int(2*(4.)/dt)
         order = int(1.0/dt)
         ntraces = data.shape[0]
-        tracelist = range(ntraces)
-        print ('  tracelist: ', tracelist, ' exclude: ', exclude_traces)
+        tracelist = list(range(ntraces))
         self.ax0.set_xlim(-1500., np.max(self.acqr.time_base)*1000.)
         nused = 0
         # for all of the traces collected in this protocol run
@@ -394,12 +389,28 @@ class MiniAnalysis():
         workers = 1 if not parallel else 4
         tot_runs = len(tracelist)
 
+        if mode == 'aj':
+            aj = minis.AndradeJonas()
+            aj.setup(ntraces=ntraces,
+                     tau1=mousedata['rt'],
+                     tau2=mousedata['decay'],
+                     template_tmax=maxt,
+                     dt=dt,
+                     delay=0.0,
+                     sign=self.sign,
+                     risepower=1.0,
+                     min_event_amplitude=self.min_event_amplitude,
+                     threshold=float(mousedata['thr']),
+                     )
+        elif mode == 'cb':
+            cb = minis.ClementsBekkers()
+            cb.setup(tau1=mousedata['rt'], tau2=mousedata['decay'],
+                        template_tmax=3.0*mousedata['decay'], dt=dt, delay=0.0, sign=self.sign,
+                        risepower=1.0, min_event_amplitude=self.min_event_amplitude)
+            cb.set_cb_engine('cython')
+        else:
+            raise ValueError('Mode must be aj or cb for event detection')
 
-#         with mp.Parallelize(enumerate(tasks), results=results, progressDialog='Running parallel simulation..', workers=workers) as tasker:
-#             for i, task in tasker:
-#                 print("=== Start analysis %d (Workers=%d)===" % (i+1, workers))
-# #                tasker.results[(f, db, iteration)] = (stim, result)
-        
         for i in tracelist:
             yp = (ntr+i)*self.yspan
             ypq = (ntr*i)*self.ypqspan
@@ -418,75 +429,99 @@ class MiniAnalysis():
                 print('    >>>> Trace {0:d} excluded for holding {1:.3f}'.format(i, holding))
             nused = nused + 1
     
-           # frs, freqs = PU.pSpectrum(data[i], samplefreq=1000./dt)
-            if self.filter: # notch and HPF traxes
+            if self.filter: # notch and HPF traces
                 dfilt = DF.NotchFilter(data[i], [60., 120., 180., 240., 300., 360, 420.,
                                 480., 660., 780., 1020., 1140., 1380., 1500., 4000.], Q=20., samplefreq=1000./dt)
-                #dfilt = DF.SignalFilter_HPFButter(np.pad(dfilt, (len(dfilt), len(dfilt)), mode='median', ), 2.5, 1000./dt, NPole=4)
-                #data[i] = dfilt[len(data[i]):2*len(data[i])]  # remove padded segments
                 data[i] = dfilt
-        
-            # data[i] = DF.SignalFilter_LPFButter(data[i], 2800., 1000./dt, NPole=4) # LPF THE DATA
-#            frsfilt, freqsf = PU.pSpectrum(dfilt, samplefreq=1000./dt)
 
             if mode == 'aj':
-                aj.deconvolve(data[i], thresh=float(mousedata['thr']), llambda=10., order=order)
+                aj.deconvolve(data[i], itrace=i, llambda=10.) # , order=order) # threshold=float(mousedata['thr']),
             else:
                 cb.cbTemplateMatch(data[i],  threshold=float(mousedata['thr']), order=order)
 
-
-
-###
-     ###
-
-            intervals = np.diff(aj.timebase[aj.onsets])
-            self.cell_summary['intervals'].extend(intervals)
-            self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb, 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
-                'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
-                'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven,
-                'Qtotal': aj.Qtotal}])
-            #print('smooth peak index: ', aj.smpkindex)
-            self.cell_summary['amplitudes'].extend(aj.sign*data[i][aj.smpkindex])  # smoothed peak amplitudes
-            self.cell_summary['eventcounts'].append(len(intervals))
-            self.cell_summary['protocols'].append((self.nprot, i))
-            self.cell_summary['holding'].append(holding)
-            self.cell_summary['sign'].append(aj.sign)
-            self.cell_summary['threshold'].append(mousedata['thr'])
+        if mode == 'aj':
+            aj.identify_events(order=order)
+            aj.summarize(np.array(data))
+            # print(aj.Summary)
+            method = aj
+        elif mode == 'cb':
+            cb.identify_events(outlier_scale=3.0, order=101)
+            cb.summarize(np.array(data))
+            method = cb
         
-            aj.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
-            self.cell_summary['indiv_amp'].append(aj.ev_amp)
-            self.cell_summary['indiv_fitamp'].append(aj.ev_fitamp)
-            self.cell_summary['indiv_tau1'].append(aj.ev_tau1)
-            self.cell_summary['indiv_tau2'].append(aj.ev_tau2)
-            self.cell_summary['indiv_fiterr'].append(aj.fiterr)
-            self.cell_summary['fitted_events'].append(aj.fitted_events)
-            self.cell_summary['indiv_Qtotal'].append(aj.ev_Qtotal)
-            self.cell_summary['indiv_evok'].append(aj.events_ok)
-            self.cell_summary['indiv_notok'].append(aj.events_notok)
-            self.cell_summary['allevents'].append(np.array(aj.allevents))
-            self.cell_summary['best_fit'].append(np.array(aj.best_fit))
-            self.cell_summary['best_decay_fit'].append(np.array(aj.best_decay_fit))
-#            for jev in range(len(aj.allevents)):
-#                self.cell_summary['allevents'].append(aj.allevents[jev])
-#                self.cell_summary['best_fit'].append(aj.best_fit[jev])
-            self.cell_summary['indiv_tb'].append(aj.avgeventtb)        
-            self.ax0.plot(aj.timebase, odata + yp ,'c-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-            self.ax0.plot(aj.timebase, data[i] + yp, 'k-', linewidth=0.25, rasterized=self.rasterize)
-            self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp, 'ro', markersize=1.75, rasterized=self.rasterize)
-        
-            if 'A1' in self.P.axdict.keys():
-                self.axdec.plot(aj.timebase[:aj.Crit.shape[0]],  aj.Crit, label='Deconvolution') 
-                self.axdec.plot([aj.timebase[0],aj.timebase[-1]],  [aj.sdthr,  aj.sdthr],  'r--',  linewidth=0.75, 
-                        label='Threshold ({0:4.2f}) SD'.format(aj.sdthr))
-                self.axdec.plot(aj.timebase[aj.onsets]-aj.idelay,  ypq + aj.Crit[aj.onsets],  'y^', label='Deconv. Peaks')
-    #            axdec.plot(aj.timebase, aj.Crit+ypq, 'k', linewidth=0.5, rasterized=self.rasterize)
-            print('--- finished run %d/%d ---' % (i+1, tot_runs))
+                # print('aj onsets2: ', aj.onsets)
+            # intervals = np.diff(aj.timebase[aj.onsets[i]])
+            # self.cell_summary['intervals'].extend(intervals)
+            # self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb, 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
+            #     'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
+            #     'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven,
+            #     'Qtotal': aj.Qtotal}])
+            # #print('smooth peak index: ', aj.smpkindex)
+            # self.cell_summary['amplitudes'].extend(aj.sign*data[i][aj.smpkindex])  # smoothed peak amplitudes
+            # self.cell_summary['eventcounts'].append(len(intervals))
+            # self.cell_summary['protocols'].append((self.nprot, i))
+            # self.cell_summary['holding'].append(holding)
+            # self.cell_summary['sign'].append(aj.sign)
+            # self.cell_summary['threshold'].append(mousedata['thr'])
+            #
+            # aj.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+            # self.cell_summary['indiv_amp'].append(aj.ev_amp)
+            # self.cell_summary['indiv_fitamp'].append(aj.ev_fitamp)
+            # self.cell_summary['indiv_tau1'].append(aj.ev_tau1)
+            # self.cell_summary['indiv_tau2'].append(aj.ev_tau2)
+            # self.cell_summary['indiv_fiterr'].append(aj.fiterr)
+            # self.cell_summary['fitted_events'].append(aj.fitted_events)
+            # self.cell_summary['indiv_Qtotal'].append(aj.ev_Qtotal)
+            # self.cell_summary['indiv_evok'].append(aj.events_ok)
+            # self.cell_summary['indiv_notok'].append(aj.events_notok)
+            # self.cell_summary['allevents'].append(np.array(aj.allevents))
+            # self.cell_summary['best_fit'].append(np.array(aj.best_fit))
+            # self.cell_summary['best_decay_fit'].append(np.array(aj.best_decay_fit))
+            #
+            
+    #            for jev in range(len(aj.allevents)):
+    #                self.cell_summary['allevents'].append(aj.allevents[jev])
+    #                self.cell_summary['best_fit'].append(aj.best_fit[jev])
+            # self.cell_summary['indiv_tb'].append(aj.avgeventtb)
+
+        dyi = 0
+        for i, a in enumerate(tracelist):
+            yp = (ntr+i)*self.yspan
+            ypq = (ntr*i)*self.ypqspan
+            linefit= np.polyfit(time_base, data[i], 1)
+            refline = np.polyval(linefit, time_base)
+            jtr = method.Summary.event_trace_list[
+                i
+            ]  # get trace and event number in trace
+            if len(jtr) == 0:
+                continue
+            # print(dir(method.Summary))
+            
+            pk = method.Summary.smpkindex[jtr[0]][jtr[1]]
+            on = method.Summary.onsets[jtr[0]][jtr[1]]
+            onpk = (pk - on) * method.dt*1e3
+            
+            # self.ax0.plot(method.timebase, data[i] + yp ,'c-', linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
+            self.ax0.plot(method.timebase, data[i] + yp, 'k-', linewidth=0.25, rasterized=self.rasterize)
+            # self.ax0.plot(method.timebase[pkindex], data[i][pkindex] + yp, 'ro', markersize=1.75, rasterized=self.rasterize)
+            # self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp, 'ro', markersize=1.75, rasterized=self.rasterize)
+
+            self.ax0.plot(onpk, method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
+                'ro', markersize=1.75, rasterized=self.rasterize)
+    
+        if 'A1' in self.P.axdict.keys():
+            self.axdec.plot(aj.timebase[:aj.Crit.shape[0]],  aj.Crit, label='Deconvolution') 
+            self.axdec.plot([aj.timebase[0],aj.timebase[-1]],  [aj.sdthr,  aj.sdthr],  'r--',  linewidth=0.75, 
+                    label='Threshold ({0:4.2f}) SD'.format(aj.sdthr))
+            self.axdec.plot(aj.timebase[aj.onsets]-aj.idelay,  ypq + aj.Crit[aj.onsets],  'y^', label='Deconv. Peaks')
+#            axdec.plot(aj.timebase, aj.Crit+ypq, 'k', linewidth=0.5, rasterized=self.rasterize)
+        print('--- finished run %d/%d ---' % (i+1, tot_runs))
                 
         return tracelist, nused
         
 
     def plot_individual_events(self, fit_err_limit=1000., tau2_range=2.5, title='', pdf=None):
-        P = PH.regular_grid(3 , 3, order='columns', figsize=(8., 8.), showgrid=False,
+        P = PH.regular_grid(3 , 3, order='columnsfirst', figsize=(8., 8.), showgrid=False,
                         verticalspacing=0.1, horizontalspacing=0.12,
                         margins={'leftmargin': 0.12, 'rightmargin': 0.12, 'topmargin': 0.03, 'bottommargin': 0.1},
                         labelposition=(-0.12, 0.95))
@@ -589,6 +624,7 @@ class MiniAnalysis():
         mpl.show()
         
     def plot_hists(self):   # generate histogram of amplitudes for plots
+        return
         histBins = 50
         nsamp = 1
         nevents = len(self.cell_summary['amplitudes'])
