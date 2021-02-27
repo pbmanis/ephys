@@ -142,6 +142,7 @@ def generate_testdata(
     t_psc = np.arange(
         0.0, pars.tdur, pars.dt
     )  # time base for single event template in ms
+
     if baseclass is None and func is None:  # make double-exp event
         print('Using our template - which may make a different psc than you want')
         tau_1 = pars.taus[0]  # ms
@@ -151,17 +152,12 @@ def generate_testdata(
         gmax = np.max(g)
         g = pars.sign * g * pars.amp / gmax
     elif baseclass is not None:  # use template from the class
-        print('Using the baseclass template')
         baseclass._make_template()
         gmax = np.max(pars.sign*baseclass.template)
 
         g =  pars.amp * baseclass.template / gmax
     else:
         raise ValueError("Need base class or func definition")
-        
-    # mpl.plot(t_psc, g[:len(t_psc)])
-    # mpl.show()
-    
     testpsc = np.zeros((ntrials, timebase.shape[0]))
     testpscn = np.zeros((ntrials, timebase.shape[0]))
     i_events = [None] * ntrials
@@ -211,6 +207,12 @@ def generate_testdata(
                 )
         else:
             testpscn[i] = testpsc[i]
+    # print(t_events)
+    # print(i_events)
+    # print(testpscn[0][i_events])
+    # mpl.plot(timebase, testpscn[0])
+    # mpl.show()
+    # exit()
     return timebase, testpsc, testpscn, i_events, t_events
 
 
@@ -284,7 +286,7 @@ def run_ClementsBekkers(
         ntraces=pars.ntraces,
         tau1=5e-4, # pars.template_taus[0],
         tau2=2e-3, # pars.template_taus[1],
-        dt=pars.dt,
+        dt_seconds=pars.dt,
         delay=0.0,
         template_tmax=5.0 * pars.template_taus[1],
         sign=pars.sign,
@@ -353,7 +355,7 @@ def run_ClementsBekkers_multiscale(
             ntraces=pars.ntraces,
             tau1=pars.template_taus[0],
             tau2=pars.template_taus[1],
-            dt=pars.dt,
+            dt_seconds=pars.dt,
             delay=0.0,
             template_tmax=5.0 * pars.template_taus[1],
             sign=pars.sign,
@@ -409,6 +411,7 @@ def run_AndradeJonas(
     if pars is None:
         pars = EventParameters()
     pars.threshold = 5.5
+
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
     aj = MM.AndradeJonas()
@@ -420,7 +423,7 @@ def run_AndradeJonas(
         ntraces=pars.ntraces,
         tau1=pars.template_taus[0],
         tau2=pars.template_taus[1],
-        dt=pars.dt,
+        dt_seconds=pars.dt,
         delay=0.0,
         template_tmax=pars.maxt,  # taus are for template
         sign=pars.sign,
@@ -435,6 +438,8 @@ def run_AndradeJonas(
     tot_seeded = sum([len(x) for x in i_events])
     print("Total # of seeded events: ", tot_seeded)
     order = int(0.001 / pars.dt)
+    print('order: ', order, pars.dt)
+    
     for i in range(pars.ntraces):
         aj.deconvolve(
             testpscn[i], itrace=i, llambda=5.0,
@@ -474,7 +479,7 @@ def run_RSDeconvolve(
         ntraces=pars.ntraces,
         tau1=np.power(pars.template_taus[0], 1.0),
         tau2=pars.template_taus[1]/2.,  # pars.template_taus[1],
-        dt=pars.dt,
+        dt_seconds=pars.dt,
         delay=0.0,
         template_tmax=pars.maxt,  # taus are for template
         sign=pars.sign,
@@ -648,7 +653,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1., mpl=None):
         # print('sm, on', i, jtr, len(method.Summary.smpkindex[jtr[0]]), len(method.Summary.onsets[jtr[0]]))
         pk = method.Summary.smpkindex[jtr[0]][jtr[1]]
         on = method.Summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt
+        onpk = (pk - on) * method.dt_seconds
         mpl.plot(
             onpk,
             sf*method.Summary.smoothed_peaks[jtr[0]][jtr[1]]
@@ -658,7 +663,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1., mpl=None):
         )
         pk = method.Summary.peaks[jtr[0]][jtr[1]]
         on = method.Summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt
+        onpk = (pk - on) * method.dt_seconds
         mpl.plot(
             onpk,
             sf*method.Summary.amplitudes[jtr[0]][jtr[1]]

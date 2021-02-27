@@ -14,9 +14,10 @@ from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from .. import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 import pylibrary.tools.fileselector as FS
 import lmfit
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
 
 font = QtGui.QFont()
 font.setFamily('Arial')

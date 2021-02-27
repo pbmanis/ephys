@@ -78,6 +78,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.tau1 = 0.1
         self.tau2 = 0.4
         self.method = None
+        self.Order = 7
         self.minis_risetau = self.tau1
         self.minis_falltau= self.tau2
         self.thresh = 3.0
@@ -177,7 +178,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         jmax = int((2*self.tau1 + 3*self.tau2)/rate)
         cb.setup(
             ntraces = self.AR.data_array.shape[0],
-            tau1=self.tau1, tau2=self.tau2, dt=rate, delay=0.0, template_tmax=rate*(jmax-1),
+            tau1=self.tau1, tau2=self.tau2, dt_seconds=rate, delay=0.0, template_tmax=rate*(jmax-1),
             threshold=self.thresh, sign=self.sign, eventstartthr=None,
             lpf=self.LPF,
             hpf=self.HPF,
@@ -197,7 +198,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
     def CB_update(self):
         print('cbupdate')
         self.method.threshold = self.minis_threshold
-        self.method.identify_events(order=20)
+        self.method.identify_events(order=self.Order)
         self.method.summarize(self.AR.data_array[:,:self.imax])
         self.decorate(self.method)
 
@@ -210,7 +211,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         print('template len: ', jmax, 'template max t: ', rate*(jmax-1), rate)
         aj.setup(
             ntraces = self.AR.data_array.shape[0],
-            tau1=self.tau1, tau2=self.tau2, dt=rate,
+            tau1=self.tau1, tau2=self.tau2, dt_seconds=rate,
             delay=0.0, template_tmax=np.max(self.tb),
             threshold=self.thresh, sign=self.sign, eventstartthr=None,
             lpf=self.LPF,
@@ -218,8 +219,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         )
         self.imax = int(self.maxT*self.AR.sample_rate[0])
         meandata = np.mean(self.AR.data_array[:,:self.imax])
-        self.AJorder = int(1e-3/rate)
-        print('AJ.: Order, rate, taus: ', self.AJorder, rate, self.tau1, self.tau2)
+        # self.AJorder = int(1e-3/rate)
+        print('AJ.: Order, rate, taus: ', self.Order, rate, self.tau1, self.tau2)
         for i in range(self.AR.data_array.shape[0]):
             aj.deconvolve(self.AR.data_array[i,:self.imax]-meandata, 
                 itrace = i,
@@ -235,7 +236,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
     def AJ_update(self):
         print('ajupdate')
         self.method.threshold = self.minis_threshold
-        self.method.identify_events(order=self.AJorder)
+        self.method.identify_events(order=self.Order)
         self.method.summarize(self.AR.data_array[:,:self.imax])
         tot_events = sum([len(x) for x in self.method.onsets])
         self.decorate(self.method)
@@ -248,7 +249,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             ntraces = self.AR.data_array.shape[0],
             tau1=self.tau1,
             tau2=self.tau2,
-            dt=rate,
+            dt_seconds=rate,
             delay=0.0,
             template_tmax = np.max(self.tb),  # taus are for template
             sign=self.sign,
@@ -265,7 +266,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 self.AR.data_array[i,:self.imax],
                 itrace = i,
         )
-        rs.identify_events(order=20)
+        rs.identify_events(order=self.Order)
         rs.summarize(self.AR.data_array[:,:self.imax])
         self.decorate(rs)
         self.method = rs
@@ -275,7 +276,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
     def RS_update(self):
         print('rsupdate')
         self.method.threshold = self.minis_threshold
-        self.method.identify_events(order=20)
+        self.method.identify_events(order=self.Order)
         self.method.summarize(self.AR.data_array[:,:self.imax])
         self.decorate(self.method)
     
@@ -290,7 +291,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         zc.setup(
             tau1=self.tau1,
             tau2=self.tau2,
-            dt=rate,
+            dt_seconds=rate,
             delay=0.0,
             template_tmax= np.max(self.tb),
             sign=self.sign,
@@ -503,6 +504,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 'value': 1.0, 'step': 0.1, 'limits': (0.15, 10.0), 'default': 1.0},
             {"name": "Threshold", "type": "float",
                 'value': 3.0, 'step': 0.1, 'limits': (-1e-6, 50.0), 'default': 2.5},
+            {"name": "Order", "type": "float",
+                'value': 7, 'step': 1, 'limits': (1, 100), 'default': 7},
             {"name": "Apply Analysis", "type": "action"},
 
             {'name': "Channel Name", "type": "list",
@@ -571,7 +574,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             elif path[0] == "Fall Tau":
                 self.minis_falltau = data
                 # self.update_traces(update_analysis=True)
-
+            elif path[0] == "Order":
+                self.Order = data
+                
             elif path[0] == "sign":
                 self.minis_sign = data
                 # self.update_traces(update_analysis=True)

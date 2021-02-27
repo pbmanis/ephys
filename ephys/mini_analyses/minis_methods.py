@@ -91,11 +91,12 @@ class ClementsBekkers(MiniAnalyses):
 
     def __init__(self):
         super().__init__()
-        self.dt = None
+        self.dt_seconds = None
         self.data = None
         self.template = None
         self.engine = "cython"
         self.method = "cb"
+        self.onsets = None
 
     def set_cb_engine(self, engine: str) -> None:
         """
@@ -129,7 +130,7 @@ class ClementsBekkers(MiniAnalyses):
             self._make_template()
         T = self.template.view(np.ndarray)      
         
-        self.timebase = np.arange(0.0, data.shape[0] * self.dt, self.dt)
+        self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
         if self.engine == "numba":
             self.Scale, self.Crit = nb_clementsbekkers(D, T)
             # print('numba')
@@ -309,7 +310,7 @@ class AndradeJonas(MiniAnalyses):
         self.template = None
         self.onsets = None
         self.timebase = None
-        self.dt = None
+        self.dt_seconds = None
         self.maxlpf = None
         self.sign = 1
         self.taus = None
@@ -401,7 +402,7 @@ class RSDeconvolve(MiniAnalyses):
         self.template = None
         self.onsets = None
         self.timebase = None
-        self.dt = None
+        self.dt_seconds = None
         self.sign = 1
         self.taus = None
         self.template_max = None
@@ -427,7 +428,7 @@ class RSDeconvolve(MiniAnalyses):
 
         # print('RS Tau: ', self.taus[1], self.dt)
         self.Crit = self.expDeconvolve(
-            self.sign*self.data, tau=self.taus[1], dt=self.dt, # use decay value for deconvolve tau
+            self.sign*self.data, tau=self.taus[1], dt=self.dt_seconds, # use decay value for deconvolve tau
         )
         self.Crit = self.Crit.squeeze()
         self.Criterion[itrace] = self.Crit
@@ -532,7 +533,7 @@ class ZCFinder(MiniAnalyses):
         self.template = None
         self.onsets = None
         self.timebase = None
-        self.dt = None
+        self.dt_seconds = None
         self.sign = 1
         self.taus = None
         self.template_max = None
