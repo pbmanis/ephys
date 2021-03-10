@@ -59,6 +59,8 @@ class AverageEvent:
     fitted_tau2 :float = np.nan
     Amplitude :float = np.nan
     avg_fiterr :float = np.nan
+    risetenninety:float = np.nan
+    decaythirtyseven:float = np.nan
        
 
 @dataclass
@@ -98,7 +100,6 @@ class MiniAnalyses:
         self.verbose = False
         self.ntraces = 1
         self.filtering = Filtering()
-        print(self.filtering)
         self.risepower = 4.0
         self.min_event_amplitude = 5.0e-12  # pA default
         self.Criterion = [None]

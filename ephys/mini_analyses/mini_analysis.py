@@ -182,8 +182,8 @@ class MiniAnalysis:
                     engine=engine,
                 )
                 summarydata[mouse] = self.cell_summary
-                if index >= 0:
-                    break
+                # if index >= 0:
+                #     break
         if not check:
             fout = f"summarydata_{str(self.shortdir):s}_{str(self.filterstring):s}_{mode:s}.p"
             fh = open(fout, "wb")
@@ -298,12 +298,12 @@ class MiniAnalysis:
             self.nprot = nprot
             self.dprot = dprot
             exclude_traces = []
-            print(mousedata["exclist"])
+            # print('exclusion list: ', mousedata["exclist"])
             if dprot in mousedata["exclist"].keys():
                 # print (mousedata['exclist'], dprot, nprot)
                 exclude_traces = mousedata["exclist"][dprot]
-            print('dprot: ', dprot)
-            print('exc: ', exclude_traces)
+            # print('dprot: ', dprot)
+            # print('exc: ', exclude_traces)
             sign = self.dataplan_data["sign"]
 
             fn = Path(self.basedatadir, mousedata["dir"])
@@ -326,7 +326,7 @@ class MiniAnalysis:
             else:
                 result = acqr.getData(check=True)
                 if result is False:
-                    CP('r', f"******* Get data failed to find a file : {str(f):s}")
+                    CP('r', f"******* Get data failed to find a file : {str(fn):s}")
                     CP('r', f"        dataname: {dataname:s}")
                 continue
             acqr.getData()
@@ -512,40 +512,47 @@ class MiniAnalysis:
             cb.summarize(np.array(data))
             method = cb
 
-            # print('aj onsets2: ', aj.onsets)
-            # intervals = np.diff(aj.timebase[aj.onsets[i]])
-            # self.cell_summary['intervals'].extend(intervals)
-            # self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb,
-            # 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
-            #     'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
-            #     'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven,
-            #     'Qtotal': aj.Qtotal}])
-            # #print('smooth peak index: ', aj.smpkindex)
-            # self.cell_summary['amplitudes'].extend(aj.sign*data[i][aj.smpkindex])  # smoothed peak amplitudes
-            # self.cell_summary['eventcounts'].append(len(intervals))
-            # self.cell_summary['protocols'].append((self.nprot, i))
-            # self.cell_summary['holding'].append(holding)
-            # self.cell_summary['sign'].append(aj.sign)
-            # self.cell_summary['threshold'].append(mousedata['thr'])
-            #
-            # aj.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
-            # self.cell_summary['indiv_amp'].append(aj.ev_amp)
-            # self.cell_summary['indiv_fitamp'].append(aj.ev_fitamp)
-            # self.cell_summary['indiv_tau1'].append(aj.ev_tau1)
-            # self.cell_summary['indiv_tau2'].append(aj.ev_tau2)
-            # self.cell_summary['indiv_fiterr'].append(aj.fiterr)
-            # self.cell_summary['fitted_events'].append(aj.fitted_events)
-            # self.cell_summary['indiv_Qtotal'].append(aj.ev_Qtotal)
-            # self.cell_summary['indiv_evok'].append(aj.events_ok)
-            # self.cell_summary['indiv_notok'].append(aj.events_notok)
-            # self.cell_summary['allevents'].append(np.array(aj.allevents))
-            # self.cell_summary['best_fit'].append(np.array(aj.best_fit))
-            # self.cell_summary['best_decay_fit'].append(np.array(aj.best_decay_fit))
-            #
+        # print('aj onsets2: ', method.onsets)
+        self.cell_summary['averaged'].extend([{'tb': method.Summary.average.avgeventtb,
+        'avg': method.Summary.average.avgevent,
+            'fit': {'amplitude': method.Amplitude,
+            'tau1': method.fitted_tau1,
+            'tau2': method.fitted_tau2, 
+            'risepower': method.risepower},
+            'best_fit': method.avg_best_fit,
+            'risetenninety': method.Summary.average.risetenninety, 
+            'decaythirtyseven': method.Summary.average.decaythirtyseven,
+            'Qtotal': method.Summary.Qtotal}])
 
-        #            for jev in range(len(aj.allevents)):
-        #                self.cell_summary['allevents'].append(aj.allevents[jev])
-        #                self.cell_summary['best_fit'].append(aj.best_fit[jev])
+        for i in tracelist:
+            intervals = np.diff(method.timebase[method.onsets[i]])
+            self.cell_summary['intervals'].extend(intervals)
+            self.cell_summary['amplitudes'].extend(method.sign*data[i][method.Summary.smpkindex[i]])  # smoothed peak amplitudes
+            self.cell_summary['protocols'].append((self.nprot, i))
+            
+        self.cell_summary['eventcounts'].append(len(intervals))
+        self.cell_summary['holding'].append(holding)
+        self.cell_summary['sign'].append(method.sign)
+        self.cell_summary['threshold'].append(mousedata['thr'])
+
+        # method.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+        # self.cell_summary['indiv_amp'].append(method.ev_amp)
+        # self.cell_summary['indiv_fitamp'].append(method.ev_fitamp)
+        # self.cell_summary['indiv_tau1'].append(method.ev_tau1)
+        # self.cell_summary['indiv_tau2'].append(method.ev_tau2)
+        # self.cell_summary['indiv_fiterr'].append(method.fiterr)
+        # self.cell_summary['fitted_events'].append(method.fitted_events)
+        # self.cell_summary['indiv_Qtotal'].append(method.ev_Qtotal)
+        # self.cell_summary['indiv_evok'].append(method.events_ok)
+        # self.cell_summary['indiv_notok'].append(method.events_notok)
+        # self.cell_summary['allevents'].append(np.array(method.allevents))
+        # self.cell_summary['best_fit'].append(np.array(method.best_fit))
+        # self.cell_summary['best_decay_fit'].append(np.array(method.best_decay_fit))
+        #
+        #
+        # for jev in range(len(method.allevents)):
+        #    self.cell_summary['allevents'].append(method.Summary.allevents[jev])
+        #    self.cell_summary['best_fit'].append(method.best_fit[jev])
         # self.cell_summary['indiv_tb'].append(aj.avgeventtb)
         scf = 1e12
         for i, a in enumerate(data):
