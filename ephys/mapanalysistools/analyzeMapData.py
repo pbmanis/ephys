@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Union, Dict, List
 
 import numpy as np
+import pandas as pd
 import scipy.signal
 import scipy.ndimage
 
@@ -921,14 +922,11 @@ class AnalyzeMap(object):
         if self.methodname == "aj":
             aj = minis_methods.AndradeJonas()
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / self.rate)
-            print(self.Pars.taus, self.rate, jmax, self.Pars.sign)
-
-            # print("sign: ", self.Pars.sign)
             aj.setup(
                 ntraces=data.shape[0],
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
-                dt=self.rate,
+                dt_seconds=self.rate,
                 delay=0.0,
                 template_tmax=self.rate * (idmax - 1),  # taus are for template
                 sign=self.Pars.sign,
@@ -957,7 +955,7 @@ class AnalyzeMap(object):
                 ntraces=data.shape[0],
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
-                dt=self.rate,
+                dt_seconds=self.rate,
                 delay=0.0,
                 template_tmax=5.0*self.Pars.taus[1], #rate * (jmax - 1),
                 sign=self.Pars.sign,
@@ -1030,23 +1028,21 @@ class AnalyzeMap(object):
                     continue
                 art_starts.append(s)
                 if isinstance(self.Pars.stimtimes["duration"], float):
-                    if self.Pars.stimdur is None:  # allow override
+                    if pd.isnull(self.Pars.stimdur):  # allow override
                         art_starts.append(s + self.Pars.stimtimes["duration"])
                     else:
                         art_starts.append(s + self.Pars.stimdur)
 
                 else:
-                    if self.Pars.stimdur is None:
+                    if pd.isnull(self.Pars.stimdur):
                         art_starts.append(s + self.Pars.stimtimes["duration"][si])
                     else:
                         art_starts.append(s + self.Pars.stimdur)
                 art_durs.append(2.0 * self.rate)
                 art_durs.append(2.0 * self.rate)
 
-        # if self.stimdur is not None:
-        #     print('used custom stimdur: ', self.stimdur)
         """
-        Initialzie the output arrays
+        Initialize the output arrays
         """
         eventlist = pars["eventlist"]
         tb = pars["tb"]
@@ -1072,7 +1068,6 @@ class AnalyzeMap(object):
         order = []
         
         event_trace_list = method.Summary.event_trace_list
-        print('ntraces: ', ntraces)
         nevents = 0
         for i in range(ntraces):
             npk0 = self.select_events(

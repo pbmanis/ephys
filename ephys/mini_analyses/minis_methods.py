@@ -81,10 +81,10 @@ class ClementsBekkers(MiniAnalyses):
     """
     Implements Clements-bekkers algorithm: slides template across data,
     returns array of points indicating goodness of fit.
-    Biophysical Journal,  73: 220-229,  1997.
+    Biophysical Journal,  73: 220-229,  1997.d
     We have 3 engines to use:
     numba (using a just-in-time compiler)
-    cython (pre-compiled during setup)
+    cython (pre-compiled during setups
     python (slow, direct implementation)
     
     """

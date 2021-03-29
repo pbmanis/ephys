@@ -330,7 +330,7 @@ class PlotMapData():
 
         """
 
-        assert not self.plotted_em['histogram']
+        # assert not self.plotted_em['histogram']
         self.plotted_em['histogram'] = True
         plotevents = True
         rotation = 0.0
@@ -399,7 +399,7 @@ class PlotMapData():
         trsel: Union[int, None] = None,
     ) -> None:
 
-        assert not self.plotted_em['stack']
+        # assert not self.plotted_em['stack']
         print("start stack plot")
         linewidth=0.35  # base linewidth
         self.plotted_em['stack'] = True
@@ -598,7 +598,7 @@ class PlotMapData():
     ) -> None:
         # ensure we don't plot more than once...
         CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
-        assert not self.plotted_em['avgevents']
+        # assert not self.plotted_em['avgevents']
         if self.plotted_em['avgax'][0] == 0:
             self.plotted_em['avgax'][1] = ax
         elif self.plotted_em['avgax'][0] == 1:
@@ -738,10 +738,13 @@ class PlotMapData():
         if self.Pars.sign < 0:
             maxev = -minev
         self.Pars.MA.set_sign(self.Pars.sign)
+        self.Pars.MA.set_dt_seconds(rate)
         avedat = np.mean(aved, axis=0)
         tb = tb[: len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
+        
+        CP.cprint('r', 'plotmapdata: Fitting average event')
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -750,6 +753,7 @@ class PlotMapData():
             inittaus=self.Pars.taus,
             initdelay=tpre,
         )
+        CP.cprint('r', 'Fit completed')
         Amplitude = self.Pars.MA.fitresult[0]
         tau1 = self.Pars.MA.fitresult[1]
         tau2 = self.Pars.MA.fitresult[2]
@@ -894,6 +898,7 @@ class PlotMapData():
 
         sf = 1.0  # could be 1e-6 ? data in Meters? scale to mm.
         cmrk = 50e-6 * sf  # size, microns
+        linewidth = 0.2
         npos = pos.shape[0]
         npos += 1  # need to count up one more to get all of the points in the data
         pos = pos[:npos, :] * 1e3  # clip unused positions
@@ -1088,7 +1093,7 @@ class PlotMapData():
                 em = data[im][i]
                 if measuretype == "ZScore" and em < 1.96:
                     spotcolors[i][3] = em / 1.96  # scale down
-                edgecolors[i] = matplotlib.colors.to_rgba([0.75, 0.75, 0.75, 1])
+                edgecolors[i] = matplotlib.colors.to_rgba([0.6, 0.6, 0.6, 0.5])
                 # edgecolors[i] = matplotlib.colors.to_rgba([0.2, 0.2, 0.2, 0.5])
                 #     print(' .. ', spotcolors[i])
             # print('spotcolors, edgecolors: ', spotcolors, edgecolors)

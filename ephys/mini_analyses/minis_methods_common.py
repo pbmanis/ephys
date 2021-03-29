@@ -156,6 +156,9 @@ class MiniAnalyses:
     def set_sign(self, sign: int = 1):
         self.sign = sign
 
+    def set_dt_seconds(self, dt_seconds:Union[None, float] = None):
+        self.dt_seconds = dt_seconds
+        
     def set_risepower(self, risepower: float = 4):
         if risepower > 0 and risepower <= 8:
             self.risepower = risepower
@@ -334,11 +337,11 @@ class MiniAnalyses:
         self.intervals = []
         self.timebase = np.arange(0., data.shape[1]*self.dt_seconds, self.dt_seconds)
 
+        nrejected_too_small = 0
         for itrial, dataset in enumerate(data):  # each trial/trace
-            print(len(self.onsets), itrial)
             if len(self.onsets[itrial]) == 0:  # original events
                 continue
-            cprint('c', f"Onsets found: {len(self.onsets[itrial]):d} in trial {itrial:d}")
+            # cprint('c', f"Onsets found: {len(self.onsets[itrial]):d} in trial {itrial:d}")
             acceptlist_trial = []
             self.intervals.append(np.diff(self.timebase[self.onsets[itrial]]))  # event intervals
             # cprint('y', f"Summarize: trial: {itrial:d} onsets: {len(self.onsets[itrial]):d}")
@@ -406,7 +409,8 @@ class MiniAnalyses:
                         smpk = np.argmin(move_avg)
                         rawpk = np.argmin(windowed_data)
                     if self.sign*(move_avg[smpk] - windowed_data[0]) < self.min_event_amplitude:
-                        print('too small: ', self.sign*(move_avg[smpk] - windowed_data[0]), 'vs. ', self.min_event_amplitude)
+                        nrejected_too_small += 1
+                        # print(f"Event too small: {1e12*self.sign*(move_avg[smpk] - windowed_data[0]):6.1f} vs. thresj: {1e12*self.min_event_amplitude:6.1f} pA")
                         continue  # filter out events smaller than the amplitude
                     else:
                         # print('accept: ', j)
@@ -422,7 +426,7 @@ class MiniAnalyses:
             self.onsets[itrial] = self.onsets[itrial][ev_accept]  # reduce to the accepted values only
         # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         # self.Summary.amplitudes = np.array(self.Summary.amplitudes)
-        
+        print(f"Rejected {nrejected_too_small:6d} events (threshold = {1e12*self.min_event_amplitude:6.1f} pA)")
         self.average_events(
             data,
         )
@@ -884,9 +888,12 @@ class MiniAnalyses:
         debug = False
         if debug:
             import matplotlib.pyplot as mpl
+        if initdelay in [0, None]:
+            init_delay = 1
+        else:
+            init_delay = int(initdelay / self.dt_seconds)
 
-
-        ev_bl = np.mean(event[: int(initdelay / self.dt_seconds)])  # just first point...
+        ev_bl = np.mean(event[: init_delay])  # just first point...
         evfit = self.sign * (event - ev_bl)
         maxev = np.max(evfit)
         if maxev == 0:
@@ -907,7 +914,8 @@ class MiniAnalyses:
         if fdelay > self.dt_seconds * peak_pos:
             fdelay = 0.2 * self.dt_seconds * peak_pos
         init_vals_rise = [0.9, self.dt_seconds * peak_pos, fdelay]
-
+        
+        cprint("r", "event_fitter: rise")
         try:
             res_rise = scipy.optimize.minimize(
                 self.risefit,
@@ -963,6 +971,7 @@ class MiniAnalyses:
             time_past_peak / self.dt_seconds
         )  # + int(res_rise.x[2]/self.dt_seconds)
         # print('decay start: ', decay_fit_start, decay_fit_start*self.dt_seconds, len(event[decay_fit_start:]))
+        cprint("r", "event_fitter: decay")
 
         res_decay = scipy.optimize.minimize(
             self.decayexp,
@@ -1002,7 +1011,7 @@ class MiniAnalyses:
             # ax[1].plot(decay_tb, y, 'bo', markersize=3)
             ax[1].plot(decay_tb, y, "g-")
         if res_rise.x[2] == 0.0:
-            res_rise.x[2] = 2.0*dt
+            res_rise.x[2] = 2.0*self.dt_seconds
         # now tune by fitting the whole trace, allowing some (but not too much) flexibility
         bounds_full = [
             [a * 10.0 for a in amp_bounds],  # overall amplitude
@@ -1021,6 +1030,7 @@ class MiniAnalyses:
         #     print('Label: ', label)
         #     print('bounds full: ', bounds_full)
         #     print('init_vals: ', init_vals)
+        cprint("r", "event_fitter: full")
         try:
             res = scipy.optimize.minimize(
             self.doubleexp,
