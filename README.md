@@ -6,6 +6,8 @@ The base package is set up to analyze data in the "acq4" format, but also has ro
 
 The package is broken up into 3 parts: ephysanalysis, minianalysis, and mapanalysis, plus a set of tools that make use of these packages.
 
+Requirements: Python3.8+, and modules specified in requirements_local.txt
+
 ephysanalysis
 -------------
 This module provides tools for reading the lab data formats, for doing basic analysis of IV prototocols, spike shapes and rate adaptation, some voltage-clamp analyses (incomplete), and measures of EPSPs/EPSCs from particular protocols
