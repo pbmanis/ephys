@@ -1,7 +1,7 @@
 Ephys
 =====
 
-This is an experimental suite of programs for analyzing electrophysiology data, written in Python. These are not considered appropriate for general use at this point, but may be a useful starting point. In my lab, these are used for various aspects of analysis, and so are under regular development. A recent refactoring of some of the code (May 2020) may have rendered certain parts non-functional. 
+This is an experimental suite of programs for analyzing electrophysiology data, written in Python. These are not considered appropriate for general use at this point, but may be a useful starting point. In my lab, these are used for various aspects of analysis, and so are actively used and under regular development. A recent refactoring of some of the code (May 2020) may have rendered certain parts non-functional. 
 The base package is set up to analyze data in the "acq4" format, but also has routines that translate from an older set of matlab and C-based formats specific to our lab. 
 
 The package is broken up into 3 parts: ephysanalysis, minianalysis, and mapanalysis, plus a set of tools that make use of these packages.
@@ -27,22 +27,20 @@ including setups, making measurements of the events, fitting them, curating them
 
 Clements Bekkers class can use a numba jit routine to speed things up (there is also a cython version
 floating around, but the numba one is easier to deal with). This is the classic sliding-template algorithm; it does not work well with overlapping events.
-
 The Pernia-Andrade et al. method uses numpy and scipy routines to implement a deconvolution approach; it works better with overlapping events.
+Two other algorithms are included (zero-crossing, Richardson-Silverberg), but have not been not fully tested. 
 
 There are some test routines that generate synthetic data, and which exercise the code. 
 
-Three other algorithms are included, but not fully tested. 
-
-The core code is in the mini_methods file, which has a MiniAnalysis class and separate classes for
+The core code is in the mini_methods file, which provides a MiniAnalysis class and separate classes for
 each of the methods. A set of test routines (some of which currently fail because of changes in the
 underlying datasets) are included. 
 
 Usage:
 
-mini_analysis.py
+mini_analysis.py  (rarely called this way).
 
-This module provides the MiniAnalysis class, which is a high-level wrapper that uses mini_methods to analyze events,
+This module provides the MiniAnalysis class, which is a high-level wrapper that uses mini_methods_command and mini_methods to analyze events,
 organize the results, and create various summary plots of event distributions.
 
 * Utilities
