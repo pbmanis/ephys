@@ -1416,7 +1416,7 @@ if __name__ == '__main__':
             ('Ax3Col2', 'mV', 'Axis3 Column2'),
             (('Ax3','Col3'), 'A', 'Axis3 Column3')]),
         {'name': 'Axis4', 'values': np.array([1.1, 1.2, 1.3, 1.4, 1.5]), 'units': 's'},
-        {'extra': 'info'}
+        {'extra': u'info'}
     ]
     
     ma = MetaArray(arr, info=info)
@@ -1504,8 +1504,8 @@ if __name__ == '__main__':
     print("\n  ma[:, array([True, True, False, True, False])]")
     print(ma[:, np.array([True, True, False, True, False])])
     
-    print("\n  ma['Axis4':array([True, False, False, False])]")
-    print(ma['Axis4':np.array([True, False, False, False])])
+    print("\n  ma['Axis4':array([True, False, False, False, True])]")
+    print(ma['Axis4':np.array([True, False, False, False, True])])
     
     
     
@@ -1524,43 +1524,46 @@ if __name__ == '__main__':
     
     print("\n================  File I/O Tests  ===================\n")
     import tempfile
-    tf = tempfile.mktemp()
-    tf = 'test.ma'
-    # write whole array
+    from pathlib import Path
+
     
+    # using NamedTemporaryFile to avoid security issues with mktmp
     print("\n  -- write/read test")
-    ma.write(tf)
-    ma2 = MetaArray(file=tf)
-    
-    #print ma2
-    print("\nArrays are equivalent:", (ma == ma2).all())
+    with tempfile.NamedTemporaryFile(mode="w", delete=True) as tf:
+        pass # just for a filename
+    ma.write(tf.name)
+    ma2 = MetaArray(file=tf.name)
+ 
+    print("\nArrays are equivalent:", all(ma == ma2))
     #print "Meta info is equivalent:", ma.infoCopy() == ma2.infoCopy()
-    os.remove(tf)
-    
+    if Path(tf.name).is_file():
+        Path(tf.name).unlink()
+    else:
+        print("File already deleted (you should not see this): ", tf.name)
     # CSV write
     
     # append mode
     
     
     print("\n================append test (%s)===============" % tf)
-    ma['Axis2':0:2].write(tf, appendAxis='Axis2')
+    ma['Axis2':0:2].write(tf.name, appendAxis='Axis2')
     for i in range(2,ma.shape[1]):
-        ma['Axis2':[i]].write(tf, appendAxis='Axis2')
+        ma['Axis2':[i]].write(tf.name, appendAxis='Axis2')
     
-    ma2 = MetaArray(file=tf)
+    ma2 = MetaArray(file=tf.name)
     
     #print ma2
-    print("\nArrays are equivalent:", (ma == ma2).all())
+    print("\nArrays are equivalent:", all(ma == ma2))
     #print "Meta info is equivalent:", ma.infoCopy() == ma2.infoCopy()
     
-    os.remove(tf)    
+    Path(tf.name).unlink()  
     
     
     
     ## memmap test
     print("\n==========Memmap test============")
-    ma.write(tf, mappable=True)
-    ma2 = MetaArray(file=tf, mmap=True)
-    print("\nArrays are equivalent:", (ma == ma2).all())
-    os.remove(tf)    
+    ma.write(tf.name, mappable=True)
+    ma2 = MetaArray(file=tf.name, mmap=True)
+    print("\nArrays are equivalent:", all(ma == ma2))
+    Path(tf.name).unlink()  
     
