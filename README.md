@@ -1,47 +1,59 @@
-# mini_analyses
-mEPSC/mIPSC analysis routines
+Ephys
+=====
 
-Here we provide a set of Python interfaces/code to two synaptic event detection algorithms:
+This is an experimental suite of programs for analyzing electrophysiology data, written in Python. These are not considered appropriate for general use at this point, but may be a useful starting point. In my lab, these are used for various aspects of analysis, and so are actively used and under regular development. A recent refactoring of some of the code (May 2020) may have rendered certain parts non-functional. 
+The base package is set up to analyze data in the "acq4" format, but also has routines that translate from an older set of matlab and C-based formats specific to our lab. 
+
+The package is broken up into 3 parts: ephysanalysis, minianalysis, and mapanalysis, plus a set of tools that make use of these packages.
+
+Requirements: Python3.8+, and modules specified in requirements_local.txt
+
+ephysanalysis
+-------------
+This module provides tools for reading the lab data formats, for doing basic analysis of IV prototocols, spike shapes and rate adaptation, some voltage-clamp analyses (incomplete), and measures of EPSPs/EPSCs from particular protocols
+It also provides a routine (dataSummary) that generates tables from the header/index files of a directory of recordings, to aid in creating semi-automated analysis of datasets.
+
+
+mini_analyses
+-------------
+
+The MiniAnalysis class provides overall services that are commonly needed for both of the event detectors, 
+including setups, making measurements of the events, fitting them, curating them, and plotting.
 
 1. Clements, J. D. & Bekkers, J. M. Detection of spontaneous synaptic events with an optimally
     scaled template. Biophys. J. 73, 220–229 (1997).
 
 2. Pernia-Andrade, A. J. et al. A deconvolution-based method with high sensitivity and temporal resolution
    for detection of spontaneous synaptic currents in vitro and in vivo. Biophys J 103, 1429–1439 (2012).
-   
-The core code is in the mini_methods file, which has a MiniAnalysis class and separate classes for
-each of the methods. 
 
-MiniMethods
------------
-mini_methods.py provides a MiniAnalysis class, along with classes for the two algorithms.
-
-The MiniAnalysis class provides overall services that are commonly needed for both of the event detectors, 
-including setups, making measurements of the events, fitting them, curating them, and plotting.
 
 Clements Bekkers class can use a numba jit routine to speed things up (there is also a cython version
-floating around, but the numba one is easier to deal with).
+floating around, but the numba one is easier to deal with). This is the classic sliding-template algorithm; it does not work well with overlapping events.
+The Pernia-Andrade et al. method uses numpy and scipy routines to implement a deconvolution approach; it works better with overlapping events.
+Two other algorithms are included (zero-crossing, Richardson-Silverberg), but have not been not fully tested. 
 
-The Pernia-Andrade et al. method just uses numpy and scipy routines to implement the deconvolution.
+There are some test routines that generate synthetic data, and which exercise the code. 
 
-Finally, there are some test routines that generate synthetic data, and which exercise the code. 
+The core code is in the mini_methods file, which provides a MiniAnalysis class and separate classes for
+each of the methods. A set of test routines (some of which currently fail because of changes in the
+underlying datasets) are included. 
 
+Usage:
 
-mini_analysis.py
-----------------
+mini_analysis.py  (rarely called this way).
 
-This module provides the MiniAnalysis class, which is a high-level wrapper that uses mini_methods to analyze events,
+This module provides the MiniAnalysis class, which is a high-level wrapper that uses mini_methods_command and mini_methods to analyze events,
 organize the results, and create various summary plots of event distributions.
 
-Utilities
----------
+* Utilities
+
 Several modules provide utilities. Best to inspect these; they are often special purpose.
 
 
 # mapanalysistools
 ================
 
-This is a small repository that provides some tools for analysis of laser-scanning photostimulation maps. 
+This is a small modulethat provides some tools for analysis of laser-scanning photostimulation maps. 
 
 getTable: a program that reads the datasummary table (see ephysanalysis), or can look for a protocol directory,
 displays the waveforms, and can use the Andreade-Jonas deconvolution algorithm to identify events. 
@@ -50,6 +62,7 @@ a histogram of event times across all trials.
 
 analyzeMapData: a program that is similar to getTable, without the GUI. Generates a matplotlib
 display of the map grid (color coded by amplitude), average waveforms, and the event histogram.
+It is designed to be called from a higher-level analysis program as well (that is current usage).
 
 plotMapData is the routine that was used in the Zhang et al 2017 paper for the TTX plots (similar to analyzeMapData).
 
@@ -85,4 +98,9 @@ optional arguments:
                         just do one map
   -c, --check           Check for files; no analysis
   -v, --view            Turn off pdf for single run
+  
+  
+  Installation
+  ------------
+  A requirements file for doing a local install is provided, along with a bash shell script to create an environment. 
   
