@@ -17,6 +17,7 @@ per acq4 standards...
 import numpy as np
 import scipy.signal
 from dataclasses import dataclass, field
+import traceback
 from typing import Union, List
 import timeit
 from scipy.optimize import curve_fit
@@ -124,7 +125,8 @@ class MiniAnalyses:
         global_SD:Union[float, None] = None,
         analysis_window:[Union[float, None], Union[float, None]] = [None, None],
         lpf:Union[float, None] = None,
-        hpf:Union[float, None] = None
+        hpf:Union[float, None] = None,
+        notch:Union[float, None] = None,
     ) -> None:
         """
         Just store the parameters - will compute when needed
@@ -152,6 +154,8 @@ class MiniAnalyses:
         self.analysis_window = analysis_window
         self.lpf = lpf
         self.hpf = hpf
+        self.notch = notch
+        self.reset_filtering()
 
     def set_sign(self, sign: int = 1):
         self.sign = sign
@@ -164,6 +168,18 @@ class MiniAnalyses:
             self.risepower = risepower
         else:
             raise ValueError("Risepower must be 0 < n <= 8")
+
+    # def set_notch(self, notches):
+    #     if isinstance(nothce, float):
+    #         notches = [notches]
+    #     elif isinstance(notches, None):
+    #         self.notch = None
+    #         self.Notch_applied = False
+    #         return
+    #     elif isinstance(notches, list):
+    #         self.notch = notches
+    #     else:
+    #         raise ValueError("set_notch: Notch must be list, float or None")
 
     def _make_template(self):
         """
@@ -197,6 +213,7 @@ class MiniAnalyses:
     def reset_filtering(self):
         self.filtering.LPF_applied = False
         self.filtering.HPF_applied = False
+        self.filtering.Notch_applied = False
         
     def LPFData(
         self, data: np.ndarray, lpf: Union[float, None] = None, NPole: int = 8
@@ -252,6 +269,27 @@ class MiniAnalyses:
         self.filtering.HPF_applied = True
 
         return data
+
+    # def NotchData(self, data:np.ndarray, notch: Union[list, None] = None) -> np.ndarray:
+    #     assert (not self.filtering.notch_applied)  # block repeated application of filtering
+    #     if notch is None or len(notch) == 0 :
+    #         return data
+    #     if len(data.shape) == 1:
+    #         ndata = data.shape[0]
+    #     else:
+    #         ndata = data.shape[1]
+    #
+    #     data[i] = dfilt.NotchFilter(
+    #                 data[i]-data[0],
+    #                 notch,
+    #                 Q=20.0,
+    #                 samplefreq=1.0 / self.dt_seconds,
+    #             )
+    #     self.filtering.notch = notch
+    #     self.filtering.Notch_applied = True
+    #
+    #     return data
+
     
     def prepare_data(self, data):
         """
@@ -284,6 +322,8 @@ class MiniAnalyses:
             data = self.LPFData(data, lpf=self.lpf)
         if isinstance(self.hpf, float):
             data = self.HPFData(data, hpf=self.hpf)
+        # if isinstance(self.notch, list):
+        #     data = self.HPFData(data, notch=self.notch)
         self.data = data
         self.timebase = self.timebase[jmin:jmax]
 
@@ -328,7 +368,6 @@ class MiniAnalyses:
         avgwin = (
             5  # int(1.0/self.dt_seconds)  # 5 point moving average window for peak detection
         )
-
         mwin = int((0.50) / self.dt_seconds)
         if self.sign > 0:
             nparg = np.greater
@@ -350,11 +389,14 @@ class MiniAnalyses:
             for j, onset in enumerate(self.onsets[itrial]):  # for all of the events in this trace
                 if self.sign > 0 and self.eventstartthr is not None:
                     if dataset[onset] < self.eventstartthr:
+                        # print('pos sign: data onset < eventstartthr')
                         continue
                 if self.sign < 0 and self.eventstartthr is not None:
                     if dataset[onset] > -self.eventstartthr:
+                        # print('neg sign: data onset > eventstartthr')
                         continue
                 event_data = dataset[onset : (onset + mwin)]  # get this event
+                # print('onset, mwin: ', onset, mwin)
                 svwinlen = event_data.shape[0]
                 if svwinlen > 11:
                     svn = 11
@@ -373,7 +415,6 @@ class MiniAnalyses:
                         order=order,
                     )[0]
                 else:  # skip filtering
-                    print('mmethods_common summarize order: ', order)
                     p = scipy.signal.argrelextrema(
                         event_data,
                         nparg,
@@ -430,6 +471,7 @@ class MiniAnalyses:
         self.average_events(
             data,
         )
+        # print(self.Summary.average.avgevent)
         if self.Summary.average.averaged:
             self.fit_average_event(
                 tb=self.Summary.average.avgeventtb,
@@ -521,24 +563,34 @@ class MiniAnalyses:
             # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
             for j, event_onset in enumerate(onsets):
                 ix = event_onset + pkt  # self.idelay
-                # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
+                # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
                 else:
+                    print("oops, nan events")
                     allevents[k, :] = np.nan*allevents[k,:]
                 event_trace[k] = [itrace, j]
                 k = k + 1
         # tr_incl = [u[0] for u in event_trace]
         # print(set(tr_incl), len(set(tr_incl)), len(event_trace))
         # exit()
+        # print('k: ', k)
         if k > 0:
             self.Summary.average.averaged = True
             self.Summary.average.avgnpts = avgnpts
             self.Summary.average.Nevents = k
             self.Summary.allevents = allevents
-            avgevent = allevents.mean(axis=0)
-            self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
             self.Summary.average.avgeventtb = avgeventtb
+            avgevent = np.nanmean(allevents, axis=0)
+            # print(allevents)
+            # import matplotlib.pyplot as mpl
+            # f, ax = mpl.subplots(1,1)
+            # ax.plot(allevents.T, 'k', alpha=0.3)
+            # ax.plot(avgevent, 'r', linewidth=3)
+            # mpl.show()
+            # print(avgevent)
+            # exit(1)
+            self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
             self.Summary.event_trace_list = event_trace
             return
         else:
@@ -632,13 +684,26 @@ class MiniAnalyses:
         p is in order: [amplitude, tau, delay]
         """
         assert mode in [-1, 0, 1]
+        # if np.isnan(p[0]):
+        #     try:
+        #         x = 1./p[0]
+        #     except Exception as e:
+        #         track = traceback.format_exc()
+        #         print(track)
+        #         exit(0)
+        # # assert not np.isnan(p[0])
         ix = np.argmin(np.fabs(x - p[2]))
         tm = np.zeros_like(x)
         expf = (x[ix:] - p[2]) / p[1]
         pclip = 1.0e3
         nclip = 0.0
-        expf[expf > pclip] = pclip
-        expf[expf < -nclip] = -nclip
+        try:
+            expf[expf > pclip] = pclip
+            expf[expf < -nclip] = -nclip
+        except:
+            print(pclip, nclip)
+            print(expf)
+            exit(1)
         tm[ix:] = p[0] * (1.0 - np.exp(-expf)) ** risepower
         if mode == 0:
             return tm - y
@@ -703,6 +768,7 @@ class MiniAnalyses:
         # init_vals = [self.sign*10.,  1.0,  4., 0.]
         # init_vals_exp = [20.,  5.0]
         # bounds_exp  = [(0., 0.5), (10000., 50.)]
+        cprint('m', 'Fitting average event')
 
         res, rdelay = self.event_fitter(
             tb,
@@ -713,7 +779,9 @@ class MiniAnalyses:
             label=label,
         )
         # print('rdelay: ', rdelay)
+
         if res is None:
+            cprint('r', 'average fit result is None')
             self.fitted = False
             return
         self.fitresult = res.x
@@ -885,6 +953,12 @@ class MiniAnalyses:
         variation that is present in terms of rise-fall tau tradeoffs.
         
         """
+        if len(event) == 0:  # just check against emtpy event
+            cprint('m', 'Event length is 0? ')
+            # assert 1 == 0
+            return None, None
+        else:
+            cprint('c', f'event length is {len(event):d}')
         debug = False
         if debug:
             import matplotlib.pyplot as mpl
@@ -892,9 +966,12 @@ class MiniAnalyses:
             init_delay = 1
         else:
             init_delay = int(initdelay / self.dt_seconds)
-
         ev_bl = np.mean(event[: init_delay])  # just first point...
+        # print("sign, event, bl: ", self.sign, len(event), init_delay)
+        # print('event: ', event)
+        # print('bl: ', ev_bl)
         evfit = self.sign * (event - ev_bl)
+        # print('evfit0: ', evfit)
         maxev = np.max(evfit)
         if maxev == 0:
             maxev = 1
@@ -902,6 +979,8 @@ class MiniAnalyses:
         #     peak_pos = int(0.001/self.dt_seconds) # move to 1 msec later
         evfit = evfit / maxev  # scale to max of 1
         peak_pos = np.argmax(evfit) + 1
+        if peak_pos == 1:
+            peak_pos = 5
         amp_bounds = [0.0, 1.0]
         # set reasonable, but wide bounds, and make sure init values are within bounds
         # (and off center, but not at extremes)
@@ -916,6 +995,11 @@ class MiniAnalyses:
         init_vals_rise = [0.9, self.dt_seconds * peak_pos, fdelay]
         
         cprint("r", "event_fitter: rise")
+        # print('    initvals: ', init_vals_rise)
+        # print('    bounds: ', bounds_rise)
+        # print('    peak_pos: ', peak_pos)
+        # print('   evfit: ', evfit[:peak_pos])
+        # print('maxev: ', maxev)
         try:
             res_rise = scipy.optimize.minimize(
                 self.risefit,
@@ -930,12 +1014,13 @@ class MiniAnalyses:
                 ),  # risepower, mode
             )
         except:
-            # mpl.plot(self.timebase[:peak_pos], evfit[:peak_pos], 'k-')
-  #           mpl.show()
-  #           print('risefit: ', self.risefit)
-  #           print('init_vals_rise: ', init_vals_rise)
-  #           print('bounds rise: ', bounds_rise)
-  #           print('peak_pos: ', peak_pos)
+            import matplotlib.pyplot as mpl
+            mpl.plot(self.timebase[:peak_pos], evfit[:peak_pos], 'k-')
+            mpl.show()
+            print('risefit: ', self.risefit)
+            print('init_vals_rise: ', init_vals_rise)
+            print('bounds rise: ', bounds_rise)
+            print('peak_pos: ', peak_pos)
             return None, None
             # raise ValueError()
             
@@ -958,7 +1043,7 @@ class MiniAnalyses:
             ax[0].plot(rise_tb, rise_yfit, "r-")
             ax[1].plot(rise_tb, rise_yfit, "r-")
             # mpl.show()
-
+        # cprint('c', f"Res_rise: {str(res_rise):s}")
         self.res_rise = res_rise
         # fit decay exponential next:
         bounds_decay = [

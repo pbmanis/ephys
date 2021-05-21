@@ -420,7 +420,6 @@ class RSDeconvolve(MiniAnalyses):
     ) -> None:
         self.starttime = timeit.default_timer()        
         self.prepare_data(data) # windowing, filtering and timebase
-        starttime = timeit.default_timer()
                 # if data_nostim is None:
         #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
         # else:  # clip to max of crit array, and be sure index array is integer, not float
@@ -469,7 +468,6 @@ class RSDeconvolve(MiniAnalyses):
         dtti = 1. - dtt
         for i in range(1, len(d)):
             d[i] = dtti * d[i-1] + dtt * data[i-1]
-    
         if (hasattr(data, 'implements') and data.implements('MetaArray')):
             info = data.infoCopy()
             #if 'values' in info[0]:
@@ -478,7 +476,6 @@ class RSDeconvolve(MiniAnalyses):
             return MetaArray(d, info=info)
         else:
             return d
-
 
     def identify_events(self,
              data_nostim: Union[list, np.ndarray, None] = None,
@@ -538,30 +535,23 @@ class ZCFinder(MiniAnalyses):
         self.taus = None
         self.template_max = None
         self.idelay = 0
-        self.threshold=2.5
+        self.threshold=2.5  # x SD
         self.method = "zc"
         super().__init__()
 
-    def find_events(
+    def deconvolve(
         self,
         data: np.ndarray,
         data_nostim: Union[list, np.ndarray, None] = None,
+        itrace: int = 0,
         minPeak: float = 0.0,
         minSum: float = 0.0,
         minLength: int = 3,
         verbose: bool = False,
-    ) -> None:
+        ) -> None:
         
         self.prepare_data(data) # windowing, filtering and timebase
         starttime = timeit.default_timer()
-        self.sdthr = self.threshold*np.std(self.data)
-        self.Crit = np.zeros_like(self.data)
-        print('zc sdthr: ', self.sdthr)
-        # if data_nostim is None:
-        #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
-        # else:  # clip to max of crit array, and be sure index array is integer, not float
-        #     data_nostim = [int(x) for x in data_nostim if x < self.Crit.shape[0]]
-        # data = FN.lowPass(data,cutoff=3000.,dt = 1/20000.)
 
         events = FN.zeroCrossingEvents(
             self.data,
@@ -571,8 +561,26 @@ class ZCFinder(MiniAnalyses):
             noiseThreshold=self.threshold,
             sign=self.sign,
         )
-        self.onsets = np.array([x[0] for x in events]).astype(int)
+        self.Criterion[itrace] = np.zeros_like(self.data)
+        self.events = events
 
+    def identify_events(self, 
+            data_nostim: Union[list, np.ndarray, None] = None,
+            outlier_scale: float = 3.0,
+            verbose: bool = False,
+        ):
+        starttime = timeit.default_timer()
+        self.sdthr = self.threshold*np.std(self.data)
+        if data_nostim is not None:
+            # clip to max of crit array, and be sure index array is integer, not float
+            for i in range(criterion.shape[0]):
+                criterion[i,:] = criterion[i, [int(x) for x in data_nostim if x < criterion.shape[1]]]
+                
+        print(f"ZC thr:  {self.threshold:.3f}  SDxthr: {self.sdthr:.3e}")
+
+        print(self.events[0])
+        self.onsets = np.array([x['index'] for x in self.events if self.sign*x['peak'] > self.sdthr]).astype(int)
+        print('zc onsets: ', self.onsets)
         # self.summarize(self.data)
         endtime = timeit.default_timer() - starttime
         if verbose:

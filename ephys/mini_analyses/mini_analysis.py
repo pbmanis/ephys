@@ -88,6 +88,8 @@ class MiniAnalysis:
         self.datasource = dataplan.datasource
         self.basedatadir = dataplan.datadir
         self.shortdir = dataplan.shortdir
+        self.dataset = dataplan.dataset
+        self.outputpath = dataplan.outputpath
         self.dataplan_params = dataplan.dataplan_params
         self.dataplan_data = dataplan.data
         self.min_time = dataplan.min_time
@@ -166,6 +168,7 @@ class MiniAnalysis:
         -------
         Nothing
         """
+        print('analyze_all')
         acqr = EP.acq4read.Acq4Read(
             dataname=self.clamp_name
         )  # creates a new instance every time - probably should just create one.
@@ -185,20 +188,24 @@ class MiniAnalysis:
                 # if index >= 0:
                 #     break
         if not check:
-            fout = f"summarydata_{str(self.shortdir):s}_{str(self.filterstring):s}_{mode:s}.p"
+            print("output file: ", self.shortdir, self.dataset, self.filterstring, mode)
+            ofile = Path(self.outputpath, f"{self.dataset:s}_{str(self.filterstring):s}_{mode:s}.p")
+            fout = str(ofile)
+            print("outfile: ", ofile)
             fh = open(fout, "wb")
             pickle.dump(summarydata, fh)
             fh.close()
         else:
             print("All files found (an exception would be raised if one was not found)")
 
-    def build_summary_dict(self, genotype:Union[str, None] = None, mouse:Union[str, int, None]=None):
+    def build_summary_dict(self, genotype:Union[str, None] = None, eyfp:str = "ND", mouse:Union[str, int, None]=None):
         self.cell_summary = {
             "intervals": [],
             "amplitudes": [],
             "protocols": [],
             "eventcounts": [],
             "genotype": genotype,
+            "EYFP": eyfp,
             "mouse": mouse,
             "amplitude_midpoint": 0.0,
             "holding": [],
@@ -254,6 +261,7 @@ class MiniAnalysis:
         -------
             cell summary dictionary for the 'mouse' entry.
         """
+        print('analyze one cell')
         if arreader is None:
             acqr = EP.acq4read.Acq4Read(
                 dataname=self.clamp_name
@@ -277,7 +285,8 @@ class MiniAnalysis:
             self.sign = int(self.dataplan_data["sign"])
 
         print("\nMouse: ", mouse)
-        self.build_summary_dict(genotype=mousedata["G"], mouse=mouse)
+
+        self.build_summary_dict(genotype=mousedata["G"], eyfp=mousedata['EYFP'], mouse=mouse)
 
         if not check:
             self.plot_setup()
@@ -286,19 +295,19 @@ class MiniAnalysis:
         self.ypqspan = 2000.0
         ntr = 0
         # for all of the protocols that are included for this cell (identified by number and maybe letters)
-        print('mousedata: ', mousedata)
-        print("mousedata prots: ", mousedata["prots"])
+        print('    mousedata: ', mousedata)
+        print("    mousedata prots: ", mousedata["prots"])
         if len(mousedata["prots"]) == 0:
-            print(" No protocols, moving on")
+            print("  No protocols, moving on")
             return None
-        print('prots: ', mousedata['prots'])
+        print('    prots: ', mousedata['prots'])
         for nprot, dprot in enumerate(mousedata["prots"]):
             if nprot > maxprot:
                 return
             self.nprot = nprot
             self.dprot = dprot
             exclude_traces = []
-            # print('exclusion list: ', mousedata["exclist"])
+            print('    exclusion list: ', mousedata["exclist"])
             if dprot in mousedata["exclist"].keys():
                 # print (mousedata['exclist'], dprot, nprot)
                 exclude_traces = mousedata["exclist"][dprot]
@@ -310,26 +319,31 @@ class MiniAnalysis:
             fx = fn.name
             ext = fn.suffix
             if not check:
-                print("Protocol file: ", fn)
-                print("   sign: ", sign)
-            fn = Path(fn, f"{self.protocol_name:s}_{dprot:03d}")
+                print("   Protocol file: ", fn)
+                print("      sign: ", sign)
+            fn = Path(fn, f"{mousedata['protocol_name']:s}_{dprot:03d}")
+            print("    fn: ", fn)
             split = fn.parts[-4:-1]
-            dataname = ""
-            for i in range(len(split)):
-                dataname = Path(dataname, split[i])
-            print('dataname: ', dataname)
+            # dataname = ""
+            # for i in range(len(split)):
+            #     dataname = Path(dataname, split[i])
+            # print('dataname: ', fn)
             acqr.setProtocol(fn)
-
+            # print(check)
             if not check:
-                print("  Protocol dataname: ", dataname)
+                print("  Protocol dataname: ", fn)
                 print("  exclude traces: ", exclude_traces)
             else:
                 result = acqr.getData(check=True)
                 if result is False:
                     CP('r', f"******* Get data failed to find a file : {str(fn):s}")
-                    CP('r', f"        dataname: {dataname:s}")
+                    CP('r', f"        dataname: {fn:s}")
                 continue
             acqr.getData()
+            # print(len(acqr.data_array))
+            # if isinstance(acqr.data_array, list):
+            #     acqr.data_array = np.ndarray(acqr.data_array)
+            # print(acqr.data_array.shape)
             oktraces = [x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces]
             data = np.array(acqr.data_array[oktraces])
             # clip data to time window NOW
@@ -346,9 +360,9 @@ class MiniAnalysis:
             time_base = acqr.time_base[min_index:max_index]
             time_base = time_base - self.min_time
             if not datanameposted and not check:
-                self.P.figure_handle.suptitle(f"{mouse:s}  {str(dataname):s} : {self.cell_summary['genotype']:s}",
-                    fontsize=9,
-                    weight="bold",
+                self.P.figure_handle.suptitle(f"{mouse:s}\n{str(mousedata):s}\n{self.cell_summary['genotype']:s}",
+                    fontsize=8,
+                    weight="normal",
                 )
                 datanameposted = True
             # data = data * 1e12  # convert to pA
@@ -379,7 +393,7 @@ class MiniAnalysis:
             mpl.close()
         self.plot_individual_events(
             fit_err_limit=50.0,
-            title=f"{str(dataname):s} {self.cell_summary['mouse']:s} {self.cell_summary['genotype']:s}",
+            title=f"{str(mousedata):s} {self.cell_summary['mouse']:s} {self.cell_summary['genotype']:s}",
             pdf=pdf,
         )
 
