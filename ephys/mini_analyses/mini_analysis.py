@@ -96,7 +96,7 @@ class MiniAnalysis:
         self.max_time = dataplan.max_time
         self.clamp_name = "Clamp1.ma"
         self.protocol_name = "minis"
-        print('dataplan: ', dataplan.data.keys())
+        print('mini_analysis dataplan: ', self.dataplan_params)
         try:
             self.global_threshold = dataplan.data["global_threshold"]
             self.override_threshold = True
@@ -111,14 +111,14 @@ class MiniAnalysis:
         print('override decay: ', self.override_decay, self.override_threshold)
 
         self.filter = False
-        self.filterstring = "notfiltered"
+        self.filterstring = "no_notch_filter"
         try:
-            self.filter = dataplan.data["notch_and_hpf_filter"]
+            self.filter = dataplan.data["notch_filter"]
             if self.filter:
-                self.filterstring = "filtered"
+                self.filterstring = "notch_filtered"
         except KeyError:
             self.filter = False
-            self.filterstring = "notfiltered"
+            self.filterstring = "no_notch_filter"
         try:
             self.min_event_amplitude = dataplan.data["min_event_amplitude"]
         except KeyError:
@@ -295,12 +295,11 @@ class MiniAnalysis:
         self.ypqspan = 2000.0
         ntr = 0
         # for all of the protocols that are included for this cell (identified by number and maybe letters)
-        print('    mousedata: ', mousedata)
+        CP("g", f"    mousedata: {str(mousedata):s}")
         print("    mousedata prots: ", mousedata["prots"])
         if len(mousedata["prots"]) == 0:
             print("  No protocols, moving on")
             return None
-        print('    prots: ', mousedata['prots'])
         for nprot, dprot in enumerate(mousedata["prots"]):
             if nprot > maxprot:
                 return
@@ -318,11 +317,9 @@ class MiniAnalysis:
             fn = Path(self.basedatadir, mousedata["dir"])
             fx = fn.name
             ext = fn.suffix
-            if not check:
-                print("   Protocol file: ", fn)
-                print("      sign: ", sign)
+            print("    sign: ", sign)
             fn = Path(fn, f"{mousedata['protocol_name']:s}_{dprot:03d}")
-            print("    fn: ", fn)
+            print("    Protocol file: ", fn)
             split = fn.parts[-4:-1]
             # dataname = ""
             # for i in range(len(split)):
@@ -332,7 +329,10 @@ class MiniAnalysis:
             # print(check)
             if not check:
                 print("  Protocol dataname: ", fn)
-                print("  exclude traces: ", exclude_traces)
+                if len(exclude_traces) > 0:
+                    CP("c", f"  Excluding traces: {str(exclude_traces):s}")
+                else:
+                    print("  No traces excluded")
             else:
                 result = acqr.getData(check=True)
                 if result is False:
@@ -481,8 +481,7 @@ class MiniAnalysis:
                     )
                 )
             nused = nused + 1
-
-            if self.filter:  # notch and HPF traces
+            if self.filter:  # apply notch filter to traces
                 dfilt = DF.NotchFilter(
                     data[i],
                     [
@@ -505,7 +504,16 @@ class MiniAnalysis:
                     Q=20.0,
                     samplefreq=1.0 / dt_seconds,
                 )
+                if i == 0:
+                    print('Notch filtering applied')
                 data[i] = dfilt
+            if mousedata['lpf'] is not None:
+                dfilt = DF.SignalFilter_LPFBessel(data[i], mousedata['lpf'], 1./dt_seconds, NPole=8)
+                data[i] = dfilt
+                if i == 0: 
+                    print('Bessel LPF iltering applied at ', mousedata['lpf'])
+            else:
+                CP("r", "NO Low Pass Filtering applied")
 
             if mode == "aj":
                 aj.deconvolve(

@@ -219,7 +219,7 @@ class MiniAnalyses:
         self, data: np.ndarray, lpf: Union[float, None] = None, NPole: int = 8
     ) -> np.ndarray:
         assert (not self.filtering.LPF_applied)  # block repeated application of filtering
-        # cprint('y', f"minis_methods_common, LPF data:  {lpf:f}")
+        cprint('y', f"minis_methods_common, LPF data:  {lpf:f}")
         # old_data = data.copy()
         if lpf is not None : 
             # cprint('y', f"     ... lpf at {lpf:f}")
@@ -546,12 +546,13 @@ class MiniAnalyses:
         # cprint('r', 'AVERAGE EVENTS')
         self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
-        tpre = 0.0  # self.taus[0]*10.
+        tpre = 1e-3  # self.taus[0]*10.
         avgeventdur = tdur
         self.tpre = tpre
         avgnpts = int((tpre + tdur) / self.dt_seconds)  # points for the average
         npre = int(tpre / self.dt_seconds)  # points for the pre time
         npost = int(tdur / self.dt_seconds)
+        print('npre, npost avgnpts: ', npre, npost, avgnpts)
         avg = np.zeros(avgnpts)
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in self.Summary.onsets])
@@ -559,6 +560,7 @@ class MiniAnalyses:
         event_trace = [[]]*n_events
         k = 0
         pkt = 0
+        n_incomplete_events = 0
         for itrace, onsets in enumerate(self.Summary.onsets):
             # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
             for j, event_onset in enumerate(onsets):
@@ -566,11 +568,14 @@ class MiniAnalyses:
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
+                    allevents[k, :] -= np.mean(allevents[k, 0:npre])
                 else:
-                    print("oops, nan events")
                     allevents[k, :] = np.nan*allevents[k,:]
+                    n_incomplete_events += 1
                 event_trace[k] = [itrace, j]
                 k = k + 1
+        if n_incomplete_events > 0:
+            cprint("y", f"{n_incomplete_events:d} were excluded because they were incomplete (too close to end of trace)")
         # tr_incl = [u[0] for u in event_trace]
         # print(set(tr_incl), len(set(tr_incl)), len(event_trace))
         # exit()
@@ -590,7 +595,7 @@ class MiniAnalyses:
             # mpl.show()
             # print(avgevent)
             # exit(1)
-            self.Summary.average.avgevent = avgevent - np.mean(avgevent[:3])
+            self.Summary.average.avgevent = avgevent# - np.mean(avgevent[:3])
             self.Summary.event_trace_list = event_trace
             return
         else:
@@ -966,7 +971,7 @@ class MiniAnalyses:
             init_delay = 1
         else:
             init_delay = int(initdelay / self.dt_seconds)
-        ev_bl = np.mean(event[: init_delay])  # just first point...
+        ev_bl = 0. # np.mean(event[: init_delay])  # just first point...
         # print("sign, event, bl: ", self.sign, len(event), init_delay)
         # print('event: ', event)
         # print('bl: ', ev_bl)
