@@ -172,6 +172,8 @@ class AnalyzeMap(object):
         
         self.MA = minis.minis_methods.MiniAnalyses()  # get a minianalysis instance
         self.Pars.MA = self.MA  # instance may be needed for plotting
+        self.reset_filtering()
+        
 
     def set_analysis_window(self, t0: float = 0.0, t1: Union[float, None] = None):
         assert t1 is not None  # force usage of t1
@@ -194,7 +196,8 @@ class AnalyzeMap(object):
     def reset_filtering(self):
         self.Pars.LPF_applied = False
         self.Pars.HPF_applied = False
-
+        self.Pars.notch_applied = False
+        
     def set_baseline(self, bl):
         self.pars.baseline_flag = bl
 
@@ -565,6 +568,7 @@ class AnalyzeMap(object):
         return result
         
     def preprocess_data(self, tb: np.ndarray, data: np.ndarray) -> np.ndarray:
+        CP.cprint('y', 'Preprocessing data')
         filtfunc = scipy.signal.filtfilt
         samplefreq = 1.0 / self.rate
         nyquistfreq = samplefreq / 1.95
@@ -617,12 +621,13 @@ class AnalyzeMap(object):
             # Now get some stats:
             self.Pars.global_SD = np.std(data)
             self.Pars.global_mean = np.mean(data)
-            print("Global SD and mean: ", self.Pars.global_SD, self.Pars.global_mean)
+            print(f"Global mean (SD):  {1e12*self.Pars.global_mean:7.1f} ({1e12*self.Pars.global_SD:7.1f}) pA")
     
             trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
             self.Pars.global_trimmed_SD = np.std(trimdata)
             self.Pars.global_trimmed_median  = np.median(trimdata)
-            print("Global Trimmed SD and mean: ", self.Pars.global_trimmed_SD, self.Pars.global_trimmed_median)
+            print(f"Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
+            print(f" {1e12*self.Pars.global_trimmed_SD:7.1f} pA")
     
              
         elif data.ndim == 2:
@@ -888,11 +893,14 @@ class AnalyzeMap(object):
             method.Summary.average.avgeventtb,
             method.Summary.average.avgevent,
             inittaus = self.Pars.taus)
-        results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
-        print('Summarized....')
-        if self.verbose:
-            print("trial analyzed")
-        return results
+        if method.fitted:
+            results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
+            print('Summarized....')
+            if self.verbose:
+                print("trial analyzed")
+            return results
+        else:
+            return None
 
     def analyze_traces_in_trial(
         self, data: np.ndarray,  pars: dict = None
@@ -967,7 +975,7 @@ class AnalyzeMap(object):
             cb.set_cb_engine(engine=self.engine)
             cb._make_template()
             idata = data.view(np.ndarray)  # [jtrial, itarget, :]
-            print(data.shape)
+
             for i in range(data.shape[0]):
                 cb.cbTemplateMatch(idata[i][:idmax], itrace=i, lpf=lpf)
             return cb

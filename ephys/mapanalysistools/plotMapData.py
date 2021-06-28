@@ -339,6 +339,8 @@ class PlotMapData():
         self.newvmax = None
         eventtimes = []
         events = results["events"]
+        if events[0] == None:
+            return
         rate = results["rate"]
         tb0 = events[0]["aveventtb"]  # get from first trace in first trial
         # rate = np.mean(np.diff(tb0))
@@ -443,11 +445,14 @@ class PlotMapData():
             self.plot_timemarker(ax)
             ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
             return
+        
+        crflag = [False for i in range(mdata.shape[0])]
 
         for itrial in range(mdata.shape[0]):
+            if events[itrial] is None:
+                continue
             evtr = events[itrial]['event_trace_list']  # of course it is the same for every entry.
             for itrace in range(mdata.shape[1]):
-                crflag = False  # indicates detected evoked response on a trace - used to increase salience in the plot
                 smpki = events[itrial]["smpksindex"][itrace]
                 pktimes = events[itrial]["peaktimes"][itrace]
                 # print(itrace, smpki)
@@ -491,7 +496,7 @@ class PlotMapData():
                             mdata[itrial, itrace, tri]
                         ).ravel()  # response in window
                         if len(mr) > 0:
-                            crflag = True  # flag traces with detected responses
+                            crflag[itrial] = True  # flag traces with detected responses
                         ms2 = np.array(
                             mdata[itrial, itrace, ts2i]
                         ).ravel()  # events not in spont and outside window
@@ -532,8 +537,10 @@ class PlotMapData():
                             zorder=0,
                             rasterized=self.rasterized,
                         )
+        for itrial in range(mdata.shape[0]):
+            for itrace in range(mdata.shape[1]):            
                 if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
-                    if crflag:
+                    if crflag[itrial]:
                         alpha = 1.0
                         lw = linewidth
                     else:
@@ -642,6 +649,8 @@ class PlotMapData():
         for trial in range(mdata.shape[0]):
             if self.verbose:
                 print("plotting: trial: ", trial)
+            if events[trial] is None:
+                continue
             tb0 = events[trial]["aveventtb"]  # get from first trace
             rate = np.mean(np.diff(tb0))
             tpre = 0.1 * np.max(tb0)
