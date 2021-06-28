@@ -16,6 +16,7 @@ from . import SpikeAnalysis
 from . import dataSummary
 from . import IVSummary
 from . import VCSummary
+from . import VCTraceplot
 # from . import PSCAnalyzer
 from . import boundrect
 from . import poisson_score

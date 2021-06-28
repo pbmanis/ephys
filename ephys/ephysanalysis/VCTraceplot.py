@@ -18,6 +18,8 @@ from ..tools import digital_filters as DF
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 import matplotlib
+import matplotlib.patches as mpatches
+from matplotlib.collections import PatchCollection
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.utility as U
 
@@ -28,10 +30,18 @@ colormap = 'snshelix'
 class VCTraceplot():
     def __init__(self, datapath, plot=True):
         self.datapath = datapath
-        self.pre_process_filters = {"LPF": None, "Notch": []}
-        self.pre_process_flag = False
         self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
         self.plot = plot
+        self.reset()
+
+    def reset(self):
+        self.pre_process_filters = {"LPF": None, "Notch": []}
+        self.pre_process_flag = False
+        self.stim_times = None
+        self.stim_dur = None
+
+    def set_datapath(self, datapath):
+        self.datapath = datapath
 
     def setup(self, clamps=None, baseline=[0, 0.001], taumbounds = [0.002, 0.050]):
         """
@@ -65,16 +75,10 @@ class VCTraceplot():
         self.pre_process_filters['Notch'] = Notch
 
     def pre_process(self):
-        print("pre processing")
-        print(self.pre_process_flag)
-        print(self.pre_process_filters)
+
         if self.pre_process_flag:
             raise ValueError("VCTraceplot: Already applited pre-processing (filtering) to this data set")
         if self.pre_process_filters['LPF'] is not None:
-            # print("shape: ", self.AR.traces.view(np.ndarray).shape)
-   #          print(dir(self.AR.traces))
-   #          print(self.AR.traces[:, 'current'])
-            print(self.AR.traces.view(np.ndarray).shape)
             self.AR.data_array = DF.SignalFilter_LPFBessel(
                     self.AR.data_array,
                     LPF=self.pre_process_filters['LPF'],
@@ -83,7 +87,7 @@ class VCTraceplot():
                 )
             self.pre_process_flag = True
         if self.pre_process_filters['Notch'] is not None:
-            print("notching")
+
             self.AR.data_array = DF.NotchFilter(
                  self.AR.data_array,
                  notchf=self.pre_process_filters['Notch'],
@@ -91,6 +95,10 @@ class VCTraceplot():
                  samplefreq = self.AR.sample_rate[0],)
             self.pre_process_flag = True
 
+    def set_stim_mark(self, stim:Union[None, list]=None, dur:Union[None, list, float]= None):
+        self.stim_times = stim
+        self.stim_dur = dur
+        
         
     def plot_vc(self):
         """
@@ -103,8 +111,8 @@ class VCTraceplot():
         if self.AR.getData():  # get that data.
             self.pre_process()
             self.analyze()
-            self.plot_vc_stack()
-            return True
+            fh = self.plot_vc_stack()
+            return fh
         return False
 
     def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125]):
@@ -132,7 +140,6 @@ class VCTraceplot():
         """
         if region is None:
             raise ValueError("VCTraceplot, ihold_analysis requires a region beginning and end to measure the RMP")
-        print(dir(self.Clamps.traces))
         data1 = self.Clamps.traces['Time': region[0]:region[1]]
         data1 = data1.view(np.ndarray)
         self.vcbaseline = data1.mean(axis=1)  # all traces
@@ -178,8 +185,6 @@ class VCTraceplot():
             ylabel1 = "V (mV)"
             ylabel2 = "I (nA)"
         P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', '\_'), fontsize=12)
-        print(self.AR.traces.shape)
-        print(self.AR.data_array.shape)
         for i in range(self.AR.traces.shape[0]):
             P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.data_array[i,:]*sf1 + i*trstep, 'k-', linewidth=0.5)
             if self.LaserBlue:
@@ -188,7 +193,20 @@ class VCTraceplot():
         if self.AR.traces.shape[0] > 1:
             iavg = np.mean(self.AR.data_array, axis=0)
             P.axdict['A'].plot(self.AR.time_base*1e3, iavg*sf1 + -2*trstep, 'm-', linewidth=0.5)
-        
+        if self.stim_times is not None and self.stim_dur is not None:
+            stim_patch_collection = []
+            ylims = P.axdict['A'].get_ylim()
+            for stime in self.stim_times:
+                p = mpatches.Rectangle(
+                    [stime, ylims[0]], # anchor
+                    width=self.stim_dur,
+                    height=ylims[1]-ylims[0],
+                    ec=None, color='skyblue')
+                stim_patch_collection.append(p)
+            collection = PatchCollection(stim_patch_collection, alpha=0.3)
+            #collection.set_array(colors)
+            P.axdict['A'].add_collection(collection)
+ 
         PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         P.axdict['A'].set_xlabel('T (ms)')
         P.axdict['A'].set_ylabel(ylabel1)
@@ -210,6 +228,7 @@ class VCTraceplot():
     
         if self.plot:
              mpl.show()
+        return P.figure_handle
 
     def file_cell_protocol(self, filename):
         """

@@ -89,6 +89,8 @@ class Acq4Read:
         self.values = []
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
+        self.pre_process_filters = {"LPF": None, "Notch": []}
+        
         self.importantFlag = (
             False # set to false to IGNORE the important flag for traces
         )
@@ -119,6 +121,10 @@ class Acq4Read:
         Nothing
         """
         self.protocol = pathtoprotocol
+        
+    def set_pre_process(self, LPF:Union[None, float]=None, Notch:Union[None, list]=None):
+        self.pre_process_filters['LPF'] = LPF
+        self.pre_process_filters['Notch'] = Notch
 
     def setDataName(self, dataname: Union[str, Path]) -> None:
         """
@@ -781,7 +787,6 @@ class Acq4Read:
             ntr = len(self.values)
         # print('acq4_read: cmd: ', cmd)
         if isinstance(cmd, list):
-            print('cmd is list: ', cmd)
             uni = 'None'
         else:
             uni = cmd.axisUnits(-1)

@@ -29,6 +29,7 @@ objlist = {4: '4x 0.1na ACHROPLAN',
 
 
 bp = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
+bp = '/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/HK_collab_ICinj'
 
 # fn = '2019.11.15_000/slice_001/cell_001'
 # changelist = {'image_001.tif': [4, 10], 'image_002.tif': [4, 10], 'video_000.ma': [4, 10]}
@@ -39,8 +40,8 @@ bp = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
 
 changelist_type = 'new'  # construct from minimal information
 fromto = [4, 20]
-cl_videos = range(2, 18)  # last number must be 1 greater than last in the list you want to chane...
-cl_images = range(2, 19)
+cl_videos = range(1, 2)  # last number must be 1 greater than last in the list you want to chane...
+cl_images = range(2, 5)
 changelist = OrderedDict()
 # fn = '2019.12.09_001/slice_001'
 # for v in cl_videos:
@@ -49,9 +50,9 @@ changelist = OrderedDict()
 #     changelist[f"image_{i:03d}.tif"] = fromto
 #
 
-fn = '2019.12.09_001/slice_000'
-fromto = [4, 20]
-cl_videos = range(1, 7)  # last number must be 1 greater than last in the list you want to chane...
+fn = '2021.04.09_000/slice_002/cell_001'
+fromto = [10, 20]
+cl_videos = range(1, 2)  # last number must be 1 greater than last in the list you want to chane...
 cl_images = range(2, 4)
 for v in cl_videos:
     changelist[f"video_{v:03d}.ma"] = fromto
@@ -72,8 +73,8 @@ def read_index(p, write=False):
             print('Index: ', k)
             print('Old objective: ', index[k]['objective']) # pp.pprint(index[k] )
             oldobj = index[k]['objective']
-            print('   Old trans: ', index[k]['transform'])
-            print('   Old devtrans: ', index[k]['deviceTransform'])
+            print('   Old transform: ', index[k]['transform'])
+            print('   Old device transfpr,: ', index[k]['deviceTransform'])
             binning = index[k]['binning']
             newobj = changelist[k][1]
             fnewobj = float(newobj)
@@ -82,8 +83,8 @@ def read_index(p, write=False):
             index[k]['objective'] = objlist[newobj]
             index[k]['note'] = f'Objective scale corrected from {oldobj:s} to {objlist[newobj]:s} on {dstr:s} by PBM'
             print('New objective: ', index[k]['objective']) # pp.pprint(index[k] )
-            print('   Newtrans: ', index[k]['transform'])
-            print('   Newdevtrans: ', index[k]['deviceTransform'])
+            print('   New transform: ', index[k]['transform'])
+            print('   New device transform: ', index[k]['deviceTransform'])
             print('   Added Note: ', index[k]['note'])
             print('----------------------------')
             
