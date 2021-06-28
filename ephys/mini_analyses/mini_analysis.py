@@ -507,8 +507,8 @@ class MiniAnalysis:
                 if i == 0:
                     print('Notch filtering applied')
                 data[i] = dfilt
-            if mousedata['lpf'] is not None:
-                dfilt = DF.SignalFilter_LPFBessel(data[i], mousedata['lpf'], 1./dt_seconds, NPole=8)
+            if mousedata['lpf'] is not None:  # bessell is not recommended... 
+                dfilt = DF.SignalFilter_LPFButter(data[i], mousedata['lpf'], 1./dt_seconds, NPole=8)
                 data[i] = dfilt
                 if i == 0: 
                     print('Bessel LPF iltering applied at ', mousedata['lpf'])
