@@ -375,7 +375,8 @@ class DataSummary():
                     print(k)
                     self.pddata = self.pddata.drop(index=k)  # remove the day and update it
             else:
-                print('Day to do: ', day)
+                pass
+                # print('Day to do: ', day)
             if self.verbose:
                 self.pstring = 'Processing day[%3d/%3d]: %s ' % (nd, len(days), day)
             self.AR.setProtocol(Path(self.basedir, day))
@@ -403,7 +404,7 @@ class DataSummary():
                 if k in 'sex':
                     if self.day_index[k] not in ['M', 'F', 'm', 'f', None, '', ' ']:
                         print('? sex: <'+self.day_index[k]+'>')
-                        exit()
+                        return
                 if k in 'age':
                     chrs = str.maketrans('pPdDmMyY', '        ')
                     self.day_index[k] = self.day_index[k].translate(chrs) # strip characters
@@ -438,7 +439,7 @@ class DataSummary():
         slicetype = re.compile(r"(slice\_)(\d{3,3})")
         slices = []
         for thisfile in list(allfiles):
-            print(slsp + 'slicefile: ', thisfile)
+            # print(slsp + 'slicefile: ', thisfile)
             thisfile = str(thisfile)
             m = slicetype.search(str(thisfile))
             if m is None:
@@ -488,7 +489,7 @@ class DataSummary():
         The result is stored in teh calss variable cell_index
         
         """
-        print(clsp + 'docells')
+        # print(clsp + 'docells')
         allfiles = Path(thisslice).glob('*')
         # print('in doCells, allfiles: ', list(allfiles))
         if not self.pairflag:
@@ -888,6 +889,7 @@ def main():
     
     if args.read:
         print('args.read')
+        print("Valid file: ", Path(args.basedir).is_dir())
         print('reading: ', args.basedir)
         df = pd.read_pickle(args.basedir)
 
@@ -912,10 +914,9 @@ def main():
             u = df2.iloc[day]['data_complete'].split(', ')
             prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
             for p in prox:
-               # print('    protocol: ', p)
-
                 c = date + '/' + df2.iloc[day]['slice_slice'] + '/' + df2.iloc[day]['cell_cell'] + '/' + p
                 ps = c.rstrip('_0123456789')  # remove sequence numbers
+                print("protocols: ", c)
                 if 'Map' in c:
                     maps.append(c)
                     if ps not in map_types:

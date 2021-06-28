@@ -50,11 +50,12 @@ class DataPlan():
             ext = '.py'
         if ext == '.py':
             h = open(fn+ext).read()
-            print('h: ', h)
+            # print('h: ', h)
             exec(open(fn+ext).read(), data)
             #execfile(fn + ext, data)  old python 2.7 version
             self.datasource = datadictname
-            self.datasets = data['datasets']  # convenience
+            print(data.keys())
+            # self.datasets = data['datasets']  # convenience
             self.datadir = data['basepath']
             self.outputpath = data['outputpath']
             self.data = data  # just save the dict for anything else
