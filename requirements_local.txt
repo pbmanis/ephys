@@ -12,34 +12,47 @@ pypdf2
 pyperclip
 pytest==4.5.0
 rich
+llvmlite>=0.36
 
 lmfit==0.9.13
-h5py>=2.10.0
+#h5py>=2.10.0
+h5py<3.0.0,>=2.10   # allensdk requires: 
 matplotlib==3.3.4
 matplotlib-scalebar==0.5.1
 nose==1.3.7
-numba==0.49.1
-numpy==1.17.3
+numba # ==0.50.1
+numpy<1.21,>=1.16
 pandas>=1.0
 psutil==5.6.7
 pyparsing==2.4.0
 pytest==4.5.0
 resampy==0.2.1
-scipy==1.3.0
+scipy>=1.7.0
 pyqt5==5.12.3
-pyqt5-sip==4.19.18
+pyqt5-sip==12.9.0 # 4.19.18
 pyqtgraph
 
 seaborn==0.10.1
 tifffile
 toml==0.10.0
 
+
+# specific for Allen SDK:
+ruamel.yaml<1,>=0.15
+imageio>=2.3.0  # scikit image
+networkx>=2.0  # scikit image
+PyWavelets>=0.4.0  # scikit image
+nest_asyncio==1.2.0  # allensdk 2.11.2
+jinja2<2.12.0,>=2.7.3  # allensdk2.11.2
+hdmf==2.5.6
+#========================
+
 dill==0.3.1.1
 xlrd>=1.0.0
 # required for 3d display in pyqtgraph
-PyOpenGL==3.1.5
+PyOpenGL>=3.1.5
 # required for mayavi in neuronvis
-vtk==9.0.1
+# vtk>=9
 
 
 #-e git+https://github.com/pbmanis/pyqtgraph.git@e3ac16b3a220f76b69bf26c295edf140e2e928b4#egg=pyqtgraph
@@ -47,8 +60,9 @@ vtk==9.0.1
 -e /Users/pbmanis/Desktop/Python/pylibrary
 
 # # to support montager dependency in ephys package
-Shapely==1.7.0
+Shapely==1.7.1
 imreg_dft>=2.0
 descartes
 mahotas
--e git+https://github.com/pbmanis/montager.git@578ba75af12bb2321e377451f35921977656041a#egg=montage
+#-e git+https://github.com/pbmanis/montager.git@578ba75af12bb2321e377451f35921977656041a#egg=montage
+-e /Users/pbmanis/Desktop/Python/montage
