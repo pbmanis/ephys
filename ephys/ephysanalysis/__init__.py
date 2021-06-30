@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+# init for ephys
 # Use Semantic Versioning, http://semver.org/
 version_info = (0, 2, 2, 'a')
 __version__ = "%d.%d.%d%s" % version_info

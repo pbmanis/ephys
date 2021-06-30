@@ -11,4 +11,4 @@ from . import getTable
 from . import analyzeMapData
 #import mapanalysistoolsplotMapData  # removed - is an old unstructured version for source information
 from . import functions
-from . import digital_filters
+from ..tools import digital_filters
