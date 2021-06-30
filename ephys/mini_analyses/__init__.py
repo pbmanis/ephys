@@ -14,6 +14,4 @@ from . import mini_analysis
 from . import mini_summary
 from . import mini_summary_plots
 from . import clembek
-#from . import functions
-from ..tools import functions
-from ..tools import digital_filters
+

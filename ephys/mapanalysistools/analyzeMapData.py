@@ -28,17 +28,12 @@ import timeit
 import pyqtgraph.multiprocess as mp
 
 import ephys.ephysanalysis as EP
-
 import ephys.mini_analyses as minis
-from ephys.mapanalysistools import functions
-from ephys.mapanalysistools import digital_filters as FILT
+from ..tools import digital_filters as FILT
+from ..tools import functions
 from ephys.mapanalysistools import plotMapData as PMD
-
 from ephys.mini_analyses import minis_methods
-
 import pylibrary.tools.cprint as CP
-
-
 
 basedir = "/Users/pbmanis/Desktop/Python/mapAnalysisTools"
 

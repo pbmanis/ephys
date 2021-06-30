@@ -33,9 +33,10 @@ import functools
 import numpy as np
 import scipy
 import pyqtgraph as pg
-from . import Fitting
 import pprint
 import time
+
+from ..tools import Fitting
 
 class RmTauAnalysis():
     """

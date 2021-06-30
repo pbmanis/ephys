@@ -12,7 +12,7 @@ from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ephys.mapanalysistools import digital_filters as FILT
+from . import digital_filters as FILT
 
 from ..ephysanalysis import RmTauAnalysis, SpikeAnalysis, acq4read
 from ..mini_analyses import minis_methods, minis_methods_common

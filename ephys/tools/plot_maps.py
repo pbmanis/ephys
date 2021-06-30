@@ -44,8 +44,8 @@ from pylibrary.plotting import picker
 import pylibrary.tools.tifffile as tf
 from .. ephysanalysis import acq4read as ARC
 from .. ephysanalysis import metaarray as EM
-from .. ephysanalysis import boundrect as BR
-from .. mapanalysistools import digital_filters as FILT
+from . import boundrect as BR
+from . import digital_filters as FILT
 import montage
 import mahotas as MH
 

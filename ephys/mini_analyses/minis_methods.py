@@ -31,7 +31,7 @@ import scipy as sp
 
 import pylibrary.tools.digital_filters as dfilt
 from pylibrary.tools.cprint import cprint
-import ephys.mini_analyses.functions as FN  # Luke's misc. function library
+import ephys.tools.functions as FN  # Luke's misc. function library
 from ephys.mini_analyses import clembek  # cythonized... pyx file
 from ephys.mini_analyses.minis_methods_common import MiniAnalyses
 

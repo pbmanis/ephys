@@ -33,10 +33,11 @@ import itertools
 import functools
 import numpy as np
 import scipy
-from . import Utility # pbm's utilities...
-from . import Fitting # pbm's fitting stuff...
 import pprint
 import time
+
+from ..tools import Utility # pbm's utilities...
+from ..tools import Fitting # pbm's fitting stuff...
 
 this_source_file = 'ephysanalysis.SpikeAnalysisrc'
 
