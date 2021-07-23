@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import os.path
 from collections import OrderedDict
-
+from typing import Union
 import matplotlib.colors
 import pylibrary.plotting.plothelpers as PH
 from . import acq4read
@@ -43,7 +43,8 @@ class IVSummary():
                 return True
         return False
 
-    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, pubmode=False, plotiv=True):
+    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, pubmode=False, plotiv=True,
+        full_spike_analysis=True):
         """
         Simple plot of spikes, FI and subthreshold IV
         
@@ -52,24 +53,32 @@ class IVSummary():
         if self.AR.getData():  # get that data.
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(clamps=self.AR, threshold=threshold, 
-                    refractory=0.0001, peakwidth=0.001, interpolate=True, verify=False, mode='peak')
+                    refractory=0.0001, peakwidth=0.001, interpolate=True, verify=False, mode='schmitt')
             self.SP.analyzeSpikes()
-            self.SP.analyzeSpikeShape()
-            self.SP.analyzeSpikes_brief(mode='baseline')
-            self.SP.analyzeSpikes_brief(mode='poststimulus')
-            self.SP.fitOne(function='fitOneOriginal')
+            if full_spike_analysis:
+                self.SP.analyzeSpikeShape()
+                self.SP.analyzeSpikes_brief(mode='baseline')
+                self.SP.analyzeSpikes_brief(mode='poststimulus')
+            # self.SP.fitOne(function='fitOneOriginal')
             self.RM.analyze(rmpregion=[0., self.AR.tstart-0.001],
                             tauregion=[self.AR.tstart,
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.],
                             to_peak=True, tgap=tgap)
             if plotiv:
-                fh = self.plot_iv(pubmode=pubmode)
+                if self.plotting_mode == "normal":
+                    fh = self.plot_iv(pubmode=pubmode)
+                elif self.plotting_mode == "traces_only":
+                    fh = self.plot_fig()
                 return fh
             return True
         else:
             print('IVSummary::compute_iv: acq4reader.getData found no data to return from: \n  >  ', self.datapath)
             return False
 
+    def plot_mode(self, mode:Union[str, None]=None, alternate:int=1):
+        self.plotting_mode = mode
+        self.plotting_alternation = alternate
+        
     def plot_iv(self, pubmode=False):
         x = -0.08
         y = 1.02
@@ -197,6 +206,45 @@ class IVSummary():
         P.axdict['D'].set_ylabel('ISI (ms)')
         P.axdict['D'].text(0.05, 0.05, 'Adapt Ratio: {0:.3f}'.format(self.SP.analysis_summary['AdaptRatio']), fontsize=9,
             transform=P.axdict['D'].transAxes, horizontalalignment='left', verticalalignment='bottom')
+        self.IVFigure = P.figure_handle
+    
+        if self.plot:
+             import matplotlib.pyplot as mpl
+             mpl.show()
+        return P.figure_handle
+
+    def plot_fig(self, pubmode=True):
+        x = -0.08
+        y = 1.02
+        sizer = {'A':  {'pos': [0.08, 0.82, 0.23, 0.7], 'labelpos': (x,y), 'noaxes': False},
+                 'A1': {'pos': [0.08, 0.82, 0.08, 0.1], 'labelpos': (x,y), 'noaxes': False},
+                }
+        # dict pos elements are [left, width, bottom, height] for the axes in the plot.
+        gr = [(a, a+1, 0, 1) for a in range(0, len(sizer))]   # just generate subplots - shape does not matter
+        axmap = OrderedDict(zip(sizer.keys(), gr))
+        P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(7., 5.))
+        # PH.show_figure_grid(P.figure_handle)
+        P.resize(sizer)  # perform positioning magic
+        P.figure_handle.suptitle(self.datapath, fontsize=8)
+        dv = 0.
+        jsp = 0
+        for i in range(self.AR.traces.shape[0]):
+            if i in list(self.SP.spikeShape.keys()):
+                idv = float(jsp)*dv
+                jsp += 1
+            else:
+                idv = 0.
+            P.axdict['A'].plot(self.AR.time_base*1e3, idv + self.AR.traces[i,:].view(np.ndarray)*1e3, '-', linewidth=0.35)
+            P.axdict['A1'].plot(self.AR.time_base*1e3, self.AR.cmd_wave[i,:].view(np.ndarray)*1e9, '-', linewidth=0.35)
+        for k in self.RM.taum_fitted.keys():
+            P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
+        for k in self.RM.tauh_fitted.keys():
+            P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
+        if pubmode:
+            PH.calbar(P.axdict['A'], calbar=[0., -50., 50., 50.], axesoff=True, 
+                orient='left', unitNames={'x': 'ms', 'y': 'mV'}, fontsize=10, weight='normal', font='Arial')
+            PH.calbar(P.axdict['A1'], calbar=[0., 0.05, 50., 0.1], axesoff=True, 
+                orient='left', unitNames={'x': 'ms', 'y': 'nA'}, fontsize=10, weight='normal', font='Arial')
         self.IVFigure = P.figure_handle
     
         if self.plot:
