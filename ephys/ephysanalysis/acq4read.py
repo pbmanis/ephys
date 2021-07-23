@@ -51,7 +51,6 @@ class Acq4Read:
         -------
         Nothing
         """
-
         self.protocol = None
         if pathtoprotocol is not None:
             self.setProtocol(pathtoprotocol)
@@ -94,7 +93,7 @@ class Acq4Read:
         self.importantFlag = (
             False # set to false to IGNORE the important flag for traces
         )
-        CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
+        # CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
         
 
     def setImportant(self, flag: bool = False) -> None:
@@ -172,8 +171,8 @@ class Acq4Read:
             return False
         info = info["."]
         if "devices" not in info.keys():  # just safety...
-            print("acq4read.checkProtocol: No devices in the protocol")
-            print(info.keys())
+            CP.cprint("r", "acq4read.checkProtocol: No devices in the protocol")
+            CP.print("r", "      info keys: {str(list(info.keys())):s")
             return False
         devices = info["devices"].keys()
         clampDevices = []
@@ -181,7 +180,7 @@ class Acq4Read:
             if d in self.clampdevices:
                 clampDevices.append(d)
         if len(clampDevices) == 0:
-            print("acq4read.checkProtocol: No clamp devices found?")
+            CP.cprint("r", "acq4read.checkProtocol: No clamp devices found?")
             return False
         mainDevice = clampDevices[0]
 
@@ -222,7 +221,7 @@ class Acq4Read:
         modes = []
         info = self.readDirIndex(protocolpath)  # top level info dict
         if info is None:
-            print(
+            CP,cprint("r",
                 "acq4read.checkProtocol: Protocol is not managed (no .index file found): {0:s}".format(
                     protocolpath
                 )
@@ -230,8 +229,8 @@ class Acq4Read:
             return False
         info = info["."]
         if "devices" not in info.keys():  # just safety...
-            print("acq4read.checkProtocol: No devices in the protocol")
-            print("  Here are the keys: \n", info.keys())
+            CP.cprint("acq4read.checkProtocol: No devices in the protocol")
+            CP.cprint("  Here are the keys: \n", info.keys())
             return False
         devices = info["devices"].keys()
         clampDevices = []
@@ -274,7 +273,7 @@ class Acq4Read:
             return dh.info()["sequenceParams"]
         except KeyError:
             if len(dh.info()) == 0:
-                print(
+                CP.cprint("r",
                     "****************** Error: Missing .index file? (fails to detect protocol sequence)"
                 )
                 raise Exception(
@@ -298,7 +297,7 @@ class Acq4Read:
         else:
             indexFile = Path(currdir, ".index")
         if not indexFile.is_file():
-            print(
+            CP.cprint("r",
                 "Directory '%s' is not managed or '.index' file not found"
                 % (str(indexFile))
             )
@@ -313,8 +312,8 @@ class Acq4Read:
         indexFile = Path(currdir, ".index")
         # print (indexFile)
         if not indexFile.is_file():
-            print(
-                "Directory '%s' is not managed or '.index' file not found" % (currdir)
+            CP.cprint("r",
+                f"Directory '{currdir:s}' is not managed or '.index' file not found"
             )
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)
@@ -323,8 +322,8 @@ class Acq4Read:
         try:
             self._dirindex = configfile.readConfigFile(str(indexFile))
         except:
-            print("Failed to read index file for %s" % currdir)
-            print("Probably bad formatting or broken .index file")
+            CP.cprint("r", f"Failed to read index file for {currdir:s}")
+            CP.cprint("r", "Probably bad formatting or broken .index file")
             return self._dirindex
         return self._dirindex
 
