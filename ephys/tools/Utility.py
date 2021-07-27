@@ -1213,7 +1213,7 @@ class Utility:
             raise ScriptError(str(e))
         return fileList
 
-    def seqparse(self, sequence):
+    def seqparse(self, sequence:str, mode:str='nd'):
         """ parse the list of the format:
          12;23/10 etc... like nxtrec in datac
          now also parses matlab functions and array formats, using eval
@@ -1245,23 +1245,23 @@ class Utility:
         sequence.replace(
             " ", ""
         )  # remove all spaces - nice to read, not needed to calculate
-        sequence = str(sequence)  # make sure we have a nice string
         (seq2, sep, remain) = sequence.partition(
             "&"
-        )  # find  and returnnested sequences
+        )  # find  and return nested sequences
+        # print("seq: ", seq2, 'sep: ', sep, 'remain: ', remain)
         while len(seq2) != 0:
             try:
-                (oneseq, onetarget) = recparse(seq2)
+                (oneseq, onetarget) = self.recparse(seq2)
                 seq.append(oneseq)
                 target.append(onetarget)
             except:
-                pass
-            (seq2, sep, remain) = remain.partition(
-                "&"
-            )  # find  and returnnested sequences
-        return (seq, target)
+                raise ValueError("recparse failed on : ", seq2)
+            seq2, sep, remain = remain.partition("&")  # find  and returnnested sequences
+        if mode == 'sequential':
+            seq = [[x for y in seq for x in y], None]
+        return seq, target
 
-    def recparse(self, cmdstr):
+    def recparse(self, cmdstr:str):
         """ function to parse basic word unit of the list - a;b/c or the like
         syntax is:
         [target:]a;b[/c][*n]
@@ -1283,33 +1283,40 @@ class Utility:
         if rest == "":
             rest = target  # no : found, so no target designated.
             target = ""
+        rest = rest.replace(' ', ',')
+        if ',' in rest:
+            recs = eval(f"[{rest:s}]")  # evaluate as a list
+            return recs, target
         (sfn, sep, rest1) = rest.partition(";")
         (sln, sep, rest2) = rest1.partition("/")
         (sskip, sep, mo) = rest2.partition("*")  # look for mode
+        
         fn = float(sfn)
         ln = float(sln)
-        skip = float(sskip)
+        if sskip != '':
+            skip = float(sskip)
+        else:
+            skip = 1.0
         ln = ln + 0.01 * skip
-        #    print "mo: %s" % (mo)
         if mo == "":  # linear spacing; skip is size of step
-            recs = eval("arange(%f,%f,%f)" % (fn, ln, skip))
+            recs = np.arange(fn, ln, skip)
 
         if mo.find("l") >= 0:  # log spacing; skip is length of result
-            recs = eval("logspace(log10(%f),log10(%f),%f)" % (fn, ln, skip))
+            recs = np.logspace(log10(fn),log10(ln),skip)
 
         if mo.find("t") >= 0:  # just repeat the first value
-            recs = eval("%f*[1]" % (fn))
+            recs = [fn]
 
         if mo.find("n") >= 0:  # use the number of steps, not the step size
             if skip == 1.0:
                 sk = ln - fn
             else:
-                sk = eval("(%f-%f)/(%f-1.0)" % (ln, fn, skip))
-            recs = eval("arange(%f,%f,%f)" % (fn, ln, sk))
+                sk = (ln-fn)/(skip-1.0)
+            recs = np.arange(fn, ln, sk)
 
         if mo.find("r") >= 0:  # randomize the result
             if recs == []:
-                recs = eval("arange(%f,%f,%f)" % (fn, ln, skip))
+                recs = np.arange(fn, ln, skip)
             recs = sample(recs, len(recs))
 
         if mo.find("a") >= 0:  # alternation - also test for a value after that
@@ -1318,8 +1325,7 @@ class Utility:
                 value = 0.0
             else:
                 value = float(value)
-            val = eval("%f" % (value))
-            c = [val] * len(recs) * 2  # double the length of the sequence
+            c = [value] * len(recs) * 2  # double the length of the sequence
             c[0 : len(c) : 2] = recs  # fill the alternate positions with the sequence
             recs = c  # copy back
         return (recs, target)
@@ -1350,7 +1356,32 @@ class Utility:
 
 # If this file is called direclty, then provide tests of some of the routines.
 if __name__ == "__main__":
-    pass
+    # test sequence parser
+    
+    U = Utility()
+    seq1 = "1;5"
+    r, n = U.seqparse(seq1)
+    print("test1: semicolon sequence: \n", 'seq1: ', seq1, 'r: ', r, " n: ", n)
+    assert np.allclose(r[0], [1,2,3,4,5])
+    
+    seq1 = "1,2,3,4,5"
+    r, n = U.seqparse(seq1)
+    print("test2: comma sequence: \n", 'seq1: ', seq1, 'r: ', r, " n: ", n)
+    assert np.allclose(r[0], [1,2,3,4,5])
+
+    seq1 = "1 2 3 4 5"
+    r, n = U.seqparse(seq1)
+    print("test3: space sequence: \n", 'seq1: ', seq1, 'r: ', r, " n: ", n)
+    assert np.allclose(r[0], [1,2,3,4,5])
+    
+    seq1 = "1,2&3;5"
+    r, n = U.seqparse(seq1, mode='sequential')
+    print("test4: mixed sequence: \n", 'seq1: ', seq1, 'r: ', r, " n: ", n)
+    
+    assert np.allclose(r[0], [1,2,3,4,5])
+    
+    
+    #all(r[0]) == all([1,2,3,4,5])
 
     # from optparse import OptionParser
     # import matplotlib.pylab as MP
