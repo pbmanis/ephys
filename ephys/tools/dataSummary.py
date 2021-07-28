@@ -650,8 +650,9 @@ class DataSummary():
         else:
             self.compprotstring = ', '.join([str(cp) for cp in self.completeprotocols])
         self.allprotocols = ', '.join(self.allprotocols)
+        # Printer(f"Non prots: {str(nonprotocols):s}", color="cyan")
         for thisfile in nonprotocols:
-            thisfile = str(thisfile)
+            thisfile = str(thisfile.name)
             x = self.img_re.search(thisfile)  # look for image files
             if x is not None:
                 images.append(thisfile)
@@ -673,6 +674,7 @@ class DataSummary():
             self.imagestring += ', 2pImages: %3d' % len(images2p)
         if len(videos) > 0:
             self.imagestring += ', Videos: %3d' % len(videos)
+        # Printer(f"imagestring:  {self.imagestring:s}", color="red")
         if len(images) + len(stacks2p) + len(images2p) + len(videos) == 0:
             self.imagestring = 'No Images or Videos'
 

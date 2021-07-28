@@ -313,7 +313,7 @@ class Acq4Read:
         # print (indexFile)
         if not indexFile.is_file():
             CP.cprint("r",
-                f"Directory '{currdir:s}' is not managed or '.index' file not found"
+                f"Directory '{str(currdir):s}' is not managed or '.index' file not found"
             )
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)

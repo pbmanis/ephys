@@ -29,6 +29,7 @@ class IVSummary():
         self.SP = SpikeAnalysis.SpikeAnalysis()
         self.RM = RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
+        self.decorate = True
 
     def iv_check(self, duration=0.):
         """
@@ -43,7 +44,13 @@ class IVSummary():
                 return True
         return False
 
-    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, pubmode=False, plotiv=True,
+    def plot_mode(self, mode:Union[str, None]=None, alternate:int=1, decorate:bool=True):
+        assert mode in ["pubmode", "traces_only", "normal"]
+        self.plotting_mode = mode
+        self.plotting_alternation = alternate
+        self.decorate = decorate
+        
+    def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, plotiv=True,
         full_spike_analysis=True):
         """
         Simple plot of spikes, FI and subthreshold IV
@@ -66,24 +73,25 @@ class IVSummary():
                             to_peak=True, tgap=tgap)
             if plotiv:
                 if self.plotting_mode == "normal":
-                    fh = self.plot_iv(pubmode=pubmode)
+                    fh = self.plot_iv()
+                elif self.plotting_mode == "pubmode":
+                    fh = self.plot_iv(pubmode=True)
                 elif self.plotting_mode == "traces_only":
                     fh = self.plot_fig()
-                return fh
-            return True
+                else:
+                    raise ValueError("Plotting mode not recognized: ", self.plotting_mode)
+                return fh 
         else:
             print('IVSummary::compute_iv: acq4reader.getData found no data to return from: \n  >  ', self.datapath)
             return False
 
-    def plot_mode(self, mode:Union[str, None]=None, alternate:int=1):
-        self.plotting_mode = mode
-        self.plotting_alternation = alternate
+
         
     def plot_iv(self, pubmode=False):
         x = -0.08
         y = 1.02
-        sizer = {'A': {'pos': [0.05, 0.50, 0.23, 0.63], 'labelpos': (x,y), 'noaxes': False},
-                 'A1': {'pos': [0.05, 0.50, 0.08, 0.1], 'labelpos': (x,y), 'noaxes': False},
+        sizer = {'A': {'pos': [0.05, 0.50, 0.2, 0.63], 'labelpos': (x,y), 'noaxes': False},
+                 'A1': {'pos': [0.05, 0.50, 0.08, 0.05], 'labelpos': (x,y), 'noaxes': False},
                  'B': {'pos': [0.62, 0.30, 0.64, 0.22], 'labelpos': (x,y), 'noaxes': False},
                  'C': {'pos': [0.62, 0.30, 0.34, 0.22], 'labelpos': (x,y)},
                  'D': {'pos': [0.62, 0.30, 0.08, 0.22], 'labelpos': (x,y)}, 
@@ -98,6 +106,9 @@ class IVSummary():
         dv = 50.
         jsp = 0
         for i in range(self.AR.traces.shape[0]):
+            if self.plotting_alternation > 1:
+                if i % self.plotting_alternation != 0:
+                    continue
             if i in list(self.SP.spikeShape.keys()):
                 idv = float(jsp)*dv
                 jsp += 1
@@ -107,24 +118,26 @@ class IVSummary():
             P.axdict['A1'].plot(self.AR.time_base*1e3, self.AR.cmd_wave[i,:].view(np.ndarray)*1e9, '-', linewidth=0.35)
             ptps = np.array([])
             paps = np.array([])
-            if i in list(self.SP.spikeShape.keys()):
+            if i in list(self.SP.spikeShape.keys()) and self.decorate:
                 for j in list(self.SP.spikeShape[i].keys()):
                     paps = np.append(paps, self.SP.spikeShape[i][j]['peak_V']*1e3)
                     ptps = np.append(ptps, self.SP.spikeShape[i][j]['peak_T']*1e3)
                 P.axdict['A'].plot(ptps, idv+paps, 'ro', markersize=0.5)
             
             # mark spikes outside the stimlulus window
-            ptps = np.array([])
-            paps = np.array([])
-            for window in ['baseline', 'poststimulus']:
-                ptps = np.array(self.SP.analysis_summary[window+'_spikes'][i])
-                uindx = [int(u/self.AR.sample_interval)+1 for u in ptps]
-                paps = np.array(self.AR.traces[i, uindx])
-                P.axdict['A'].plot(ptps*1e3, idv+paps*1e3, 'bo', markersize=0.5)
-        for k in self.RM.taum_fitted.keys():
-            P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
-        for k in self.RM.tauh_fitted.keys():
-            P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
+            if self.decorate:
+                ptps = np.array([])
+                paps = np.array([])
+                for window in ['baseline', 'poststimulus']:
+                    ptps = np.array(self.SP.analysis_summary[window+'_spikes'][i])
+                    uindx = [int(u/self.AR.sample_interval)+1 for u in ptps]
+                    paps = np.array(self.AR.traces[i, uindx])
+                    P.axdict['A'].plot(ptps*1e3, idv+paps*1e3, 'bo', markersize=0.5)
+        if not pubmode:
+            for k in self.RM.taum_fitted.keys():
+                P.axdict['A'].plot(self.RM.taum_fitted[k][0]*1e3, self.RM.taum_fitted[k][1]*1e3, '--k', linewidth=0.30)
+            for k in self.RM.tauh_fitted.keys():
+                P.axdict['A'].plot(self.RM.tauh_fitted[k][0]*1e3, self.RM.tauh_fitted[k][1]*1e3, '--r', linewidth=0.50)
         if pubmode:
             PH.calbar(P.axdict['A'], calbar=[0., -90., 25., 25.], axesoff=True, 
                 orient='left', unitNames={'x': 'ms', 'y': 'mV'}, fontsize=10, weight='normal', font='Arial')
@@ -229,6 +242,9 @@ class IVSummary():
         dv = 0.
         jsp = 0
         for i in range(self.AR.traces.shape[0]):
+            if self.plotting_alternation > 1:
+                if i % self.plotting_alternation != 0:
+                    continue
             if i in list(self.SP.spikeShape.keys()):
                 idv = float(jsp)*dv
                 jsp += 1
