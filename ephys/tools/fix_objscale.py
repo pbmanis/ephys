@@ -147,9 +147,9 @@ class FixObjective(pg.QtGui.QWidget):
     def get_original_objective(self):
         pass
 
-    def view_proposed_changes(self):
+    def view_proposed_changes(self, write=False):
         print(self.objdata)
-        self.change_scale(self.objdata, write=False)
+        self.change_scale(self.objdata, write=write)
 
     def get_imagefilenames(self, objective: object) -> str:
         imagefiles = []
@@ -158,9 +158,9 @@ class FixObjective(pg.QtGui.QWidget):
             images = SQP(objective.images)[0]
             for img in images:
                 print("img: ", img)
-                imagefiles.append(f"image_{int(img):03d}.tif")
+                imagefiles.append(f"image_{int(img[0]):03d}.tif")
         elif objective.images[1] is not None:
-            videos = SQP(objective.images[1])[0]
+            videos = SQP(objective.images)[1]
             for vid in videos:
                 imagefiles.append(f"img_{int(vid):03d}.tif")
         else:
@@ -243,7 +243,8 @@ class FixObjective(pg.QtGui.QWidget):
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
             {"name": "Set Directory/Protocol", "type": "action"},
             {"name": "Reload Last Protocol", "type": "action"},
-            {"name": "View .index", "type": "action"},
+            {"name": "Images", "type": "str", "value": ""},
+            {"name": "Videos", "type": "str", "value": ""},
             {
                 "name": "Original Objective",
                 "type": "list",
@@ -258,9 +259,9 @@ class FixObjective(pg.QtGui.QWidget):
                 "value": self.objdata.to_objective,
                 "renamable": False,
             },
-            {"name": "Images", "type": "str", "value": ""},
-            {"name": "Videos", "type": "str", "value": ""},
+            {"name": "View .index", "type": "action"},
             {"name": "View proposed changes", "type": "action"},
+            {"name": "Apply changes", "type": "action"},
             {"name": "Quit", "type": "action"},
         ]
         self.ptree = ParameterTree()
@@ -289,19 +290,20 @@ class FixObjective(pg.QtGui.QWidget):
                 self.show_index()
             elif path[0] == "Set Directory/Protocol":
                 self.getProtocolDir()
-
-            elif path[0] == "Original Objective":
-                self.objdata.from_objective = data
-            elif path[0] == "New Objective":
-                self.objdata.to_objective = data
-            elif path[0] == "View proposed changes":
-                self.view_proposed_changes()
             elif path[0] == "Videos":
                 self.objdata.videos = data
             elif path[0] == "Images":
                 self.objdata.images = data
                 print(self.objdata.images)
+            elif path[0] == "Original Objective":
+                self.objdata.from_objective = data
+            elif path[0] == "New Objective":
+                self.objdata.to_objective = data
                 self.update_from_objective()
+            elif path[0] == "View proposed changes":
+                self.view_proposed_changes(write=False)
+            elif path[0] == "Apply changes":
+                self.view_proposed_changes(write=True)
 
             elif path[0] == "Quit":
                 self.quit()
