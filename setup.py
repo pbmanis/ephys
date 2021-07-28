@@ -20,7 +20,7 @@ setup(name='ephys',
       entry_points={
           'console_scripts': [
                'dataSummary=ephys.tools.dataSummary:main',
-               'ma2tiff=ephys.toolss.ma2tiff:convertfiles',
+               'ma2tiff=ephys.tools.ma2tiff:convertfiles',
                'bridge=ephys.tools.bridge:main',
                'dataview=ephys.tools.show_data:main',
                'measure=ephys.tools.cursor_plot:main',
