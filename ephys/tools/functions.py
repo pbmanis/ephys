@@ -14,15 +14,10 @@ makeDispMap / matchDistortImg - for measuring and correcting motion/distortion b
 """
 import sys
 import os, re, math, time, threading, decimal
-#from acq4.util.metaarray import *
 from pyqtgraph.metaarray import *
-#from scipy import *
-#from scipy.optimize import leastsq
-#from scipy.ndimage import gaussian_filter, generic_filter, median_filter
 from scipy import stats
 import scipy.signal, scipy.ndimage, scipy.optimize
 import numpy.ma
-#from acq4.util.debug import *
 import numpy as np
 
 try:
@@ -1840,7 +1835,7 @@ def adaptiveDetrend(data, x=None, threshold=3.0):
     if x is None:
         x = data.xvals(0)
     
-    d = data.view(ndarray)
+    d = data.view(np.ndarray)
     
     d2 = scipy.signal.detrend(d)
     
