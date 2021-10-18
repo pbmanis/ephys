@@ -97,6 +97,7 @@ class ClementsBekkers(MiniAnalyses):
         self.engine = "cython"
         self.method = "cb"
         self.onsets = None
+        self.Crit = None
 
     def set_cb_engine(self, engine: str) -> None:
         """
@@ -245,7 +246,8 @@ class ClementsBekkers(MiniAnalyses):
         self.clements_bekkers(self.data)  # flip data sign if necessary
         if self.Crit.ndim > 1:
             self.Crit = self.Crit.squeeze()
-        self.Criterion[itrace] = self.Crit
+        self.Criterion[itrace] = self.Crit.copy()
+        print('criterion trace: min/max/sd: ', itrace, np.min(self.Criterion[itrace]), np.max(self.Criterion[itrace]), np.std(self.Criterion[itrace]))
         
     
     def identify_events(self,
@@ -270,7 +272,7 @@ class ClementsBekkers(MiniAnalyses):
         for i in range(criterion.shape[0]):
             valid_data[i,:] = self.remove_outliers(criterion[i], outlier_scale)
         sd = np.nanstd(valid_data)
-
+        print('criterion min/max/sd: ', np.min(criterion), np.max(criterion), sd)
         self.sdthr = sd * self.threshold  # set the threshold to multiple SD
         self.onsets = [None]*criterion.shape[0]
         for i in range(criterion.shape[0]):
@@ -317,6 +319,7 @@ class AndradeJonas(MiniAnalyses):
         self.template_max = None
         self.idelay = 0
         self.method = "aj"
+        self.Crit = None
         super().__init__()
         
     def deconvolve(
@@ -348,7 +351,7 @@ class AndradeJonas(MiniAnalyses):
         )
         self.Crit = np.real(self.quot)*llambda
         self.Crit = self.Crit.squeeze()
-        self.Criterion[itrace] = self.Crit
+        self.Criterion[itrace] = self.Crit.copy()
 
         
         
