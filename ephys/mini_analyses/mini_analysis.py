@@ -96,7 +96,7 @@ class MiniAnalysis:
         self.max_time = dataplan.max_time
         self.clamp_name = "Clamp1.ma"
         self.protocol_name = "minis"
-        print('mini_analysis dataplan: ', self.dataplan_params)
+        print('mini_analysis dataplan parameters: ', self.dataplan_params)
         try:
             self.global_threshold = dataplan.data["global_threshold"]
             self.override_threshold = True
@@ -116,13 +116,22 @@ class MiniAnalysis:
             self.filter = dataplan.data["notch_filter"]
             if self.filter:
                 self.filterstring = "notch_filtered"
+                CP("r", "*** NOTCH FILTER ENABLED ***")
         except KeyError:
-            self.filter = False
-            self.filterstring = "no_notch_filter"
-        try:
-            self.min_event_amplitude = dataplan.data["min_event_amplitude"]
-        except KeyError:
-            self.min_event_amplitude = 2.0e-12
+            raise ValueError("No Notch filter specified")
+            # self.filter = False
+            # self.filterstring = "no_notch_filter"
+        # moved this to mousedata (e.g., per mouse).
+        # defined in ank2_datasets.py, in MINID dataclass instead of in main 
+        # dataplan
+        # try:
+        #     CP('r', dataplan.dataplan_params)
+        #     print(dataplan.dataplan_params.keys())
+        #     mouse = dataplan
+        #     self.min_event_amplitude = dataplan[mouse].dataplan_params["min_event_amplitude"]
+        # except KeyError:
+        #     raise ValueError("Data plan has no minimum event amplitude")
+        #     # self.min_event_amplitude = 2.0e-12
 
     def set_clamp_name(self, name):
         self.clamp_name = name
@@ -300,6 +309,7 @@ class MiniAnalysis:
         if len(mousedata["prots"]) == 0:
             print("  No protocols, moving on")
             return None
+        
         for nprot, dprot in enumerate(mousedata["prots"]):
             if nprot > maxprot:
                 return
@@ -340,17 +350,9 @@ class MiniAnalysis:
                     CP('r', f"        dataname: {fn:s}")
                 continue
             acqr.getData()
-            # print(len(acqr.data_array))
-            # if isinstance(acqr.data_array, list):
-            #     acqr.data_array = np.ndarray(acqr.data_array)
-            # print(acqr.data_array.shape)
             oktraces = [x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces]
             data = np.array(acqr.data_array[oktraces])
-            # clip data to time window NOW
-            # dt = 1000.0 * acqr.sample_interval
             dt_seconds = acqr.sample_interval
- 
-            
             min_index = int(self.min_time / dt_seconds)
             if self.max_time > 0.0:
                 max_index = int(self.max_time / dt_seconds)
@@ -368,7 +370,7 @@ class MiniAnalysis:
             # data = data * 1e12  # convert to pA
 
             maxt = np.max(time_base)
-            
+
             tracelist, nused = self.analyze_protocol_traces(
                 mode=mode, data=data, time_base=time_base,
                 maxt=maxt, dt_seconds=dt_seconds, 
@@ -427,6 +429,7 @@ class MiniAnalysis:
         print("*** Mode: ", mode)
         if mode == "aj":
             aj = minis.AndradeJonas()
+            print("calling aj setup: ")
             aj.setup(
                 ntraces=ntraces,
                 tau1=mousedata["rt"],
@@ -436,8 +439,12 @@ class MiniAnalysis:
                 delay=0.0,
                 sign=self.sign,
                 risepower=1.0,
-                min_event_amplitude=self.min_event_amplitude,
+                min_event_amplitude=float(mousedata["min_event_amplitude"]), # self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
+                lpf=mousedata["lpf"],
+                hpf=mousedata["hpf"],
+                notch=mousedata["notch"],
+                notch_Q=mousedata["notch_Q"]
             )
         elif mode == "cb":
             cb = minis.ClementsBekkers()
@@ -452,84 +459,37 @@ class MiniAnalysis:
                 risepower=1.0,
                 min_event_amplitude=self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
+                lpf=mousedata["lpf"],
+                hpf=mousedata["hpf"],
+                notch=mousedata["notch"],
+                notch_Q=mousedata["notch_Q"]
             )
             cb.set_cb_engine("cython")
         else:
             raise ValueError("Mode must be aj or cb for event detection")
 
-        for i in tracelist:
-            yp = (ntr + i) * self.yspan
-            ypq = (ntr * i) * self.ypqspan
-            linefit = np.polyfit(time_base, data[i], 1)
-            refline = np.polyval(linefit, time_base)
-            holding = self.measure_baseline(data[i])
-            data[i] = data[i] - refline  # linear correction
-            self.ax0.text(
-                -1.2, yp, "%03d %d" % (self.dprot, i), fontsize=8
-            )  # label the trace
-            # if i in exclude_traces:  # plot the excluded traces, but do not analyze them
-            #     print("    **** Trace {0:d} excluded in list".format(i))
-            #     # self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'y-',
-            #     # linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-            #     continue
-            if holding < self.dataplan_data["holding"]:
-                #  self.ax0.plot(self.acqr.time_base*1000., odata + yp ,'m-',
-                # linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
-                print(
-                    "    >>>> Trace {0:d} excluded for holding {1:.3f}".format(
-                        i, holding
-                    )
-                )
-            nused = nused + 1
-            if self.filter:  # apply notch filter to traces
-                dfilt = DF.NotchFilter(
-                    data[i],
-                    [
-                        60.0,
-                        120.0,
-                        180.0,
-                        240.0,
-                        300.0,
-                        360.0,
-                        420.0,
-                        480.0,
-                        660.0,
-                        780.0,
-                        1020.0,
-                        1140.0,
-                        1380.0,
-                        1500.0,
-                        4000.0,
-                    ],
-                    Q=20.0,
-                    samplefreq=1.0 / dt_seconds,
-                )
-                if i == 0:
-                    print('Notch filtering applied')
-                data[i] = dfilt
-            if mousedata['lpf'] is not None:  # bessell is not recommended... 
-                dfilt = DF.SignalFilter_LPFButter(data[i], mousedata['lpf'], 1./dt_seconds, NPole=8)
-                data[i] = dfilt
-                if i == 0: 
-                    print('Bessel LPF iltering applied at ', mousedata['lpf'])
-            else:
-                CP("r", "NO Low Pass Filtering applied")
 
-            if mode == "aj":
+        # now detect events...
+        if mode == "aj":
+            for i in tracelist:
+                aj.reset_filtering()
                 aj.deconvolve(
                     data[i], itrace=i, llambda=10.0
                 )  # , order=order) # threshold=float(mousedata['thr']),
-            else:
-                cb.cbTemplateMatch(
-                    data[i], itrace=i, # order=order, #  threshold=float(mousedata["thr"]),
-                )
-
-        if mode == "aj":
+                data[i] = aj.data.copy()
             aj.identify_events(order=order)
             aj.summarize(np.array(data))
+
             # print(aj.Summary)
             method = aj
         elif mode == "cb":
+            for i in tracelist:
+                cb.reset_filtering()
+                cb.cbTemplateMatch(
+                    data[i], itrace=i, # order=order, #  threshold=float(mousedata["thr"]),
+                )
+                data[i] = cb.data.copy()
+
             cb.identify_events(outlier_scale=3.0, order=101)
             cb.summarize(np.array(data))
             method = cb
@@ -551,9 +511,9 @@ class MiniAnalysis:
             self.cell_summary['intervals'].extend(intervals)
             self.cell_summary['amplitudes'].extend(method.sign*data[i][method.Summary.smpkindex[i]])  # smoothed peak amplitudes
             self.cell_summary['protocols'].append((self.nprot, i))
-            
+            holding = self.measure_baseline(data[i])
+            self.cell_summary['holding'].append(holding)
         self.cell_summary['eventcounts'].append(len(intervals))
-        self.cell_summary['holding'].append(holding)
         self.cell_summary['sign'].append(method.sign)
         self.cell_summary['threshold'].append(mousedata['thr'])
 
@@ -577,12 +537,10 @@ class MiniAnalysis:
         #    self.cell_summary['best_fit'].append(method.best_fit[jev])
         # self.cell_summary['indiv_tb'].append(aj.avgeventtb)
         scf = 1e12
-        for i, a in enumerate(data):
-            method.reset_filtering()
-            method.prepare_data(data[i])
+        for i, dat in enumerate(data):  # this copy of data is lpf/hpf/notch filtered as requested
             yp = (ntr + i) * self.yspan
             ypq = (ntr * i) * self.ypqspan
-            linefit = np.polyfit(time_base, data[i], 1)
+            linefit = np.polyfit(time_base, dat, 1)
             refline = np.polyval(linefit, time_base)
             jtr = method.Summary.event_trace_list[
                 i
@@ -591,13 +549,10 @@ class MiniAnalysis:
                 continue
             peaks = method.Summary.smpkindex[i]
             onsets = method.Summary.onsets[i]
-            # print('pk, on, dt: ', pk, on, method.dt_seconds)
             onset_times = np.array(onsets) * method.dt_seconds
             peak_times = np.array(peaks) * method.dt_seconds
-            # self.ax0.plot(method.timebase, data[i] + yp ,'c-',
-            # linewidth=0.25, alpha=0.25, rasterized=self.rasterize)
             self.ax0.plot(
-                method.timebase, scf*method.data + yp, "k-", linewidth=0.25, rasterized=self.rasterize
+                method.timebase, scf*(dat-refline) + yp, "k-", linewidth=0.25, rasterized=self.rasterize
             )
             # self.ax0.plot(method.timebase[pkindex], data[i][pkindex] + yp,
             # 'ro', markersize=1.75, rasterized=self.rasterize)
@@ -605,7 +560,7 @@ class MiniAnalysis:
             # 'ro', markersize=1.75, rasterized=self.rasterize)
             self.ax0.plot(
                 peak_times,
-                scf*method.data[peaks] + yp, # method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
+                scf*(dat[peaks]- refline[peaks]) + yp , # method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
                 "ro",
                 markersize=1.,
                 rasterized=self.rasterize,
