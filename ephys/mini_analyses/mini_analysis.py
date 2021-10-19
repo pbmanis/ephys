@@ -2,8 +2,8 @@ import argparse
 import os
 import pickle
 import sys
-from pathlib import Path
 from collections import OrderedDict
+from pathlib import Path
 from typing import Union
 
 import numpy as np
@@ -15,6 +15,7 @@ from matplotlib import rc
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
+
 CP = cprint.cprint
 
 from .. import ephysanalysis as EP
@@ -96,7 +97,7 @@ class MiniAnalysis:
         self.max_time = dataplan.max_time
         self.clamp_name = "Clamp1.ma"
         self.protocol_name = "minis"
-        print('mini_analysis dataplan parameters: ', self.dataplan_params)
+        print("mini_analysis dataplan parameters: ", self.dataplan_params)
         try:
             self.global_threshold = dataplan.data["global_threshold"]
             self.override_threshold = True
@@ -108,7 +109,7 @@ class MiniAnalysis:
             self.override_decay = True
         else:
             self.override_decay = False
-        print('override decay: ', self.override_decay, self.override_threshold)
+        print("override decay: ", self.override_decay, self.override_threshold)
 
         self.filter = False
         self.filterstring = "no_notch_filter"
@@ -122,7 +123,7 @@ class MiniAnalysis:
             # self.filter = False
             # self.filterstring = "no_notch_filter"
         # moved this to mousedata (e.g., per mouse).
-        # defined in ank2_datasets.py, in MINID dataclass instead of in main 
+        # defined in ank2_datasets.py, in MINID dataclass instead of in main
         # dataplan
         # try:
         #     CP('r', dataplan.dataplan_params)
@@ -177,7 +178,7 @@ class MiniAnalysis:
         -------
         Nothing
         """
-        print('analyze_all')
+        print("analyze_all")
         acqr = EP.acq4read.Acq4Read(
             dataname=self.clamp_name
         )  # creates a new instance every time - probably should just create one.
@@ -198,7 +199,10 @@ class MiniAnalysis:
                 #     break
         if not check:
             print("output file: ", self.shortdir, self.dataset, self.filterstring, mode)
-            ofile = Path(self.outputpath, f"{self.dataset:s}_{str(self.filterstring):s}_{mode:s}.p")
+            ofile = Path(
+                self.outputpath,
+                f"{self.dataset:s}_{str(self.filterstring):s}_{mode:s}.p",
+            )
             fout = str(ofile)
             print("outfile: ", ofile)
             fh = open(fout, "wb")
@@ -207,7 +211,12 @@ class MiniAnalysis:
         else:
             print("All files found (an exception would be raised if one was not found)")
 
-    def build_summary_dict(self, genotype:Union[str, None] = None, eyfp:str = "ND", mouse:Union[str, int, None]=None):
+    def build_summary_dict(
+        self,
+        genotype: Union[str, None] = None,
+        eyfp: str = "ND",
+        mouse: Union[str, int, None] = None,
+    ):
         self.cell_summary = {
             "intervals": [],
             "amplitudes": [],
@@ -235,7 +244,6 @@ class MiniAnalysis:
             "best_fit": [],
             "best_decay_fit": [],
         }
-
 
     def analyze_one_cell(
         self,
@@ -270,16 +278,14 @@ class MiniAnalysis:
         -------
             cell summary dictionary for the 'mouse' entry.
         """
-        print('analyze one cell')
+        print("analyze one cell")
         if arreader is None:
             acqr = EP.acq4read.Acq4Read(
                 dataname=self.clamp_name
             )  # only if we don't already have one
         else:
             acqr = arreader
-        self.rasterize = (
-            True  # set True to rasterize traces to reduce size of final document
-        ) # set false for pub-quality output (but large size)
+        self.rasterize = True  # set True to rasterize traces to reduce size of final document  # set false for pub-quality output (but large size)
         self.acqr = acqr
         dt = 0.1
         mousedata = self.dataplan_params[mouse]
@@ -295,7 +301,9 @@ class MiniAnalysis:
 
         print("\nMouse: ", mouse)
 
-        self.build_summary_dict(genotype=mousedata["G"], eyfp=mousedata['EYFP'], mouse=mouse)
+        self.build_summary_dict(
+            genotype=mousedata["G"], eyfp=mousedata["EYFP"], mouse=mouse
+        )
 
         if not check:
             self.plot_setup()
@@ -303,54 +311,47 @@ class MiniAnalysis:
         self.yspan = 40.0
         self.ypqspan = 2000.0
         ntr = 0
-        # for all of the protocols that are included for this cell (identified by number and maybe letters)
+        # for all of the protocols that are included for this cell (identified by number and tpypvp; ms,r)
         CP("g", f"    mousedata: {str(mousedata):s}")
-        print("    mousedata prots: ", mousedata["prots"])
         if len(mousedata["prots"]) == 0:
             print("  No protocols, moving on")
             return None
-        
+
         for nprot, dprot in enumerate(mousedata["prots"]):
             if nprot > maxprot:
                 return
             self.nprot = nprot
             self.dprot = dprot
+            
             exclude_traces = []
-            print('    exclusion list: ', mousedata["exclist"])
-            if dprot in mousedata["exclist"].keys():
-                # print (mousedata['exclist'], dprot, nprot)
-                exclude_traces = mousedata["exclist"][dprot]
-            # print('dprot: ', dprot)
-            # print('exc: ', exclude_traces)
+            print("    Exclusion list: ", mousedata["exclist"][nprot])
+            exclude_traces = mousedata["exclist"][nprot]
             sign = self.dataplan_data["sign"]
 
             fn = Path(self.basedatadir, mousedata["dir"])
             fx = fn.name
             ext = fn.suffix
             print("    sign: ", sign)
-            fn = Path(fn, f"{mousedata['protocol_name']:s}_{dprot:03d}")
+            fn = Path(fn, f"{mousedata['protocol_names'][nprot]:s}_{dprot:03d}")
             print("    Protocol file: ", fn)
             split = fn.parts[-4:-1]
-            # dataname = ""
-            # for i in range(len(split)):
-            #     dataname = Path(dataname, split[i])
-            # print('dataname: ', fn)
             acqr.setProtocol(fn)
-            # print(check)
             if not check:
-                print("  Protocol dataname: ", fn)
+                print("   Protocol dataname: ", fn)
                 if len(exclude_traces) > 0:
-                    CP("c", f"  Excluding traces: {str(exclude_traces):s}")
+                    CP("c", f"   Excluding traces: {str(exclude_traces):s}")
                 else:
-                    print("  No traces excluded")
+                    print("   No traces excluded")
             else:
                 result = acqr.getData(check=True)
                 if result is False:
-                    CP('r', f"******* Get data failed to find a file : {str(fn):s}")
-                    CP('r', f"        dataname: {fn:s}")
+                    CP("r", f"******* Get data failed to find a file : {str(fn):s}")
+                    CP("r", f"        dataname: {fn:s}")
                 continue
             acqr.getData()
-            oktraces = [x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces]
+            oktraces = [
+                x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces
+            ]
             data = np.array(acqr.data_array[oktraces])
             dt_seconds = acqr.sample_interval
             min_index = int(self.min_time / dt_seconds)
@@ -362,19 +363,23 @@ class MiniAnalysis:
             time_base = acqr.time_base[min_index:max_index]
             time_base = time_base - self.min_time
             if not datanameposted and not check:
-                self.P.figure_handle.suptitle(f"{mouse:s}\n{str(mousedata):s}\n{self.cell_summary['genotype']:s}",
+                self.P.figure_handle.suptitle(
+                    f"{mouse:s}\n{str(mousedata):s}\n{self.cell_summary['genotype']:s}",
                     fontsize=8,
                     weight="normal",
                 )
                 datanameposted = True
-            # data = data * 1e12  # convert to pA
 
             maxt = np.max(time_base)
 
             tracelist, nused = self.analyze_protocol_traces(
-                mode=mode, data=data, time_base=time_base,
-                maxt=maxt, dt_seconds=dt_seconds, 
-                mousedata=mousedata, ntr=ntr
+                mode=mode,
+                data=data,
+                time_base=time_base,
+                maxt=maxt,
+                dt_seconds=dt_seconds,
+                mousedata=mousedata,
+                ntr=ntr,
             )
             ntr = ntr + len(tracelist)  # - len(exclude_traces)
             if nused == 0:
@@ -384,28 +389,41 @@ class MiniAnalysis:
             return None  # no processing
 
         # summarize the event and amplitude distributions
-        # For the amplitude, the data are fit against normal, 
+        # For the amplitude, the data are fit against normal,
         # skewed normal and gamma distributions.
+        print('plot hists: ')
         self.plot_hists()
         # show to sceen or save plots to a file
         if pdf is None:
             mpl.show()
         else:
             pdf.savefig(dpi=300)  # rasterized to 300 dpi is ok for documentation.
-            mpl.close()
+            # mpl.close()
+
+        print('plot individ events: ')
         self.plot_individual_events(
             fit_err_limit=50.0,
             title=f"{str(mousedata):s} {self.cell_summary['mouse']:s} {self.cell_summary['genotype']:s}",
             pdf=pdf,
         )
+        # show to sceen or save plots to a file
+        if pdf is None:
+            mpl.show()
+        else:
+            pdf.savefig(dpi=300)  # rasterized to 300 dpi is ok for documentation.
+            mpl.close()        
+
 
     def analyze_protocol_traces(
-        self, mode:str='cb', data:Union[object, None]=None, 
-            time_base:Union[np.ndarray, None]=None, 
-            maxt:float=0., dt_seconds:Union[float, None] = None,
-            mousedata:Union[dict, None] = None, 
-            ntr:int=0
-        ):
+        self,
+        mode: str = "cb",
+        data: Union[object, None] = None,
+        time_base: Union[np.ndarray, None] = None,
+        maxt: float = 0.0,
+        dt_seconds: Union[float, None] = None,
+        mousedata: Union[dict, None] = None,
+        ntr: int = 0,
+    ):
         """
         perform mini analyzis on all the traces in one protocol
         
@@ -420,8 +438,8 @@ class MiniAnalysis:
         tracelist = list(range(ntraces))
         self.ax0.set_xlim(-1.0, np.max(time_base))
         nused = 0
-        # for all of the traces collected in this protocol that 
-        # are accepted (not excluded) 
+        # for all of the traces collected in this protocol that
+        # are accepted (not excluded)
 
         tasks = []
         for i in tracelist:
@@ -439,12 +457,14 @@ class MiniAnalysis:
                 delay=0.0,
                 sign=self.sign,
                 risepower=1.0,
-                min_event_amplitude=float(mousedata["min_event_amplitude"]), # self.min_event_amplitude,
+                min_event_amplitude=float(
+                    mousedata["min_event_amplitude"]
+                ),  # self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
                 lpf=mousedata["lpf"],
                 hpf=mousedata["hpf"],
                 notch=mousedata["notch"],
-                notch_Q=mousedata["notch_Q"]
+                notch_Q=mousedata["notch_Q"],
             )
         elif mode == "cb":
             cb = minis.ClementsBekkers()
@@ -462,12 +482,11 @@ class MiniAnalysis:
                 lpf=mousedata["lpf"],
                 hpf=mousedata["hpf"],
                 notch=mousedata["notch"],
-                notch_Q=mousedata["notch_Q"]
+                notch_Q=mousedata["notch_Q"],
             )
             cb.set_cb_engine("cython")
         else:
             raise ValueError("Mode must be aj or cb for event detection")
-
 
         # now detect events...
         if mode == "aj":
@@ -486,47 +505,59 @@ class MiniAnalysis:
             for i in tracelist:
                 cb.reset_filtering()
                 cb.cbTemplateMatch(
-                    data[i], itrace=i, # order=order, #  threshold=float(mousedata["thr"]),
+                    data[i],
+                    itrace=i,  # order=order, #  threshold=float(mousedata["thr"]),
                 )
                 data[i] = cb.data.copy()
 
             cb.identify_events(outlier_scale=3.0, order=101)
             cb.summarize(np.array(data))
             method = cb
-
-        # print('aj onsets2: ', method.onsets)
-        self.cell_summary['averaged'].extend([{'tb': method.Summary.average.avgeventtb,
-        'avg': method.Summary.average.avgevent,
-            'fit': {'amplitude': method.Amplitude,
-            'tau1': method.fitted_tau1,
-            'tau2': method.fitted_tau2, 
-            'risepower': method.risepower},
-            'best_fit': method.avg_best_fit,
-            'risetenninety': method.Summary.average.risetenninety, 
-            'decaythirtyseven': method.Summary.average.decaythirtyseven,
-            'Qtotal': method.Summary.Qtotal}])
+        self.cell_summary["averaged"].extend(
+            [
+                {
+                    "tb": method.Summary.average.avgeventtb,
+                    "avg": method.Summary.average.avgevent,
+                    "fit": {
+                        "amplitude": method.Summary.average.Amplitude,
+                        "tau1": method.Summary.average.fitted_tau1,
+                        "tau2": method.Summary.average.fitted_tau2,
+                        "risepower": method.risepower,
+                    },
+                    "best_fit": method.avg_best_fit,
+                    "risetenninety": method.Summary.average.risetenninety,
+                    "decaythirtyseven": method.Summary.average.decaythirtyseven,
+                    "Qtotal": method.Summary.Qtotal,
+                }
+            ]
+        )
 
         for i in tracelist:
             intervals = np.diff(method.timebase[method.onsets[i]])
-            self.cell_summary['intervals'].extend(intervals)
-            self.cell_summary['amplitudes'].extend(method.sign*data[i][method.Summary.smpkindex[i]])  # smoothed peak amplitudes
-            self.cell_summary['protocols'].append((self.nprot, i))
+            self.cell_summary["intervals"].extend(intervals)
+            self.cell_summary["amplitudes"].extend(
+                method.sign * data[i][method.Summary.smpkindex[i]]
+            )  # smoothed peak amplitudes
+            self.cell_summary["protocols"].append((self.nprot, i))
             holding = self.measure_baseline(data[i])
-            self.cell_summary['holding'].append(holding)
-        self.cell_summary['eventcounts'].append(len(intervals))
-        self.cell_summary['sign'].append(method.sign)
-        self.cell_summary['threshold'].append(mousedata['thr'])
+            self.cell_summary["holding"].append(holding)
+        self.cell_summary["eventcounts"].append(len(intervals))
+        self.cell_summary["sign"].append(method.sign)
+        self.cell_summary["threshold"].append(mousedata["thr"])
 
-        # method.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
-        # self.cell_summary['indiv_amp'].append(method.ev_amp)
-        # self.cell_summary['indiv_fitamp'].append(method.ev_fitamp)
-        # self.cell_summary['indiv_tau1'].append(method.ev_tau1)
-        # self.cell_summary['indiv_tau2'].append(method.ev_tau2)
-        # self.cell_summary['indiv_fiterr'].append(method.fiterr)
-        # self.cell_summary['fitted_events'].append(method.fitted_events)
-        # self.cell_summary['indiv_Qtotal'].append(method.ev_Qtotal)
-        # self.cell_summary['indiv_evok'].append(method.events_ok)
-        # self.cell_summary['indiv_notok'].append(method.events_notok)
+        method.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+        # print(dir(method))
+        # print(dir(method.individual_events))
+        self.cell_summary['indiv_amp'].append(method.ev_amp)
+        self.cell_summary['indiv_fitamp'].append(method.ev_fitamp)
+        self.cell_summary['indiv_tau1'].append(method.ev_tau1)
+        self.cell_summary['indiv_tau2'].append(method.ev_tau2)
+        self.cell_summary['indiv_fiterr'].append(method.fiterr)
+        self.cell_summary['fitted_events'].append(method.fitted_events)
+        self.cell_summary['indiv_Qtotal'].append(method.ev_Qtotal)
+        self.cell_summary['indiv_evok'].append(method.events_ok)
+        self.cell_summary['indiv_notok'].append(method.events_notok)
+        self.cell_summary['indiv_tb'].append(method.Summary.average.avgeventtb)
         # self.cell_summary['allevents'].append(np.array(method.allevents))
         # self.cell_summary['best_fit'].append(np.array(method.best_fit))
         # self.cell_summary['best_decay_fit'].append(np.array(method.best_decay_fit))
@@ -535,9 +566,10 @@ class MiniAnalysis:
         # for jev in range(len(method.allevents)):
         #    self.cell_summary['allevents'].append(method.Summary.allevents[jev])
         #    self.cell_summary['best_fit'].append(method.best_fit[jev])
-        # self.cell_summary['indiv_tb'].append(aj.avgeventtb)
         scf = 1e12
-        for i, dat in enumerate(data):  # this copy of data is lpf/hpf/notch filtered as requested
+        for i, dat in enumerate(
+            data
+        ):  # this copy of data is lpf/hpf/notch filtered as requested
             yp = (ntr + i) * self.yspan
             ypq = (ntr * i) * self.ypqspan
             linefit = np.polyfit(time_base, dat, 1)
@@ -552,17 +584,24 @@ class MiniAnalysis:
             onset_times = np.array(onsets) * method.dt_seconds
             peak_times = np.array(peaks) * method.dt_seconds
             self.ax0.plot(
-                method.timebase, scf*(dat-refline) + yp, "k-", linewidth=0.25, rasterized=self.rasterize
+                method.timebase,
+                scf * (dat - refline) + yp,
+                "k-",
+                linewidth=0.25,
+                rasterized=self.rasterize,
             )
+            self.ax0.annotate(f"{i:3d}", (-0.015, yp), xycoords='data', horizontalalignment="right",
+                verticalalignment="center", fontsize=9)
             # self.ax0.plot(method.timebase[pkindex], data[i][pkindex] + yp,
             # 'ro', markersize=1.75, rasterized=self.rasterize)
             # self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp,
             # 'ro', markersize=1.75, rasterized=self.rasterize)
             self.ax0.plot(
                 peak_times,
-                scf*(dat[peaks]- refline[peaks]) + yp , # method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
+                scf * (dat[peaks] - refline[peaks])
+                + yp,  # method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
                 "ro",
-                markersize=1.,
+                markersize=1.0,
                 rasterized=self.rasterize,
                 alpha=0.5,
             )
@@ -620,108 +659,119 @@ class MiniAnalysis:
             "indiv_evok"
         ]  # this is the list of ok events - a 2d list by
         all_notok = self.cell_summary["indiv_notok"]
-        # print('all evok: ', all_evok)
-        # print('len allevok: ', len(all_evok))
-        #
-        # # print('all_notok: ', all_notok)
-        # # print('indiv tau1: ', self.cell_summary['indiv_tau1'])
-        # exit(1)
         trdat = []
         trfit = []
         trdecfit = []
-        for itr in range(len(all_evok)):  # for each trace
-            for evok in all_evok[itr]:  # for each ok event in that trace
+        scf = 1e12
+        csym = ['ko', 'rs', 'bx', 'c^', 'm*', 'yD']
+        facecolorlist = ["xkcd:black", "None", "xkcd:blue", "None", "xkcd:magenta", "xkcd:yellow"]
+        msize = 2
+        alpha = 0.45
+        for i in range(len(all_evok)):
+            cs = csym[i]
+            facecolor = facecolorlist[i]
+            for evok in all_evok[i]:  # for each ok event in that trace
                 P.axdict["A"].plot(
-                    self.cell_summary["indiv_tau1"][itr][evok],
-                    self.cell_summary["indiv_amp"][itr][evok],
-                    "ko",
-                    markersize=3,
+                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
+                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    cs,
+                    markersize=msize,
+                    alpha=alpha,
+                    markerfacecolor=facecolor,
                 )
                 P.axdict["B"].plot(
-                    self.cell_summary["indiv_tau2"][itr][evok],
-                    self.cell_summary["indiv_amp"][itr][evok],
-                    "ko",
-                    markersize=3,
+                    self.cell_summary["indiv_tau2"][i][evok]*1e3,
+                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    cs,
+                    markersize=msize,
+                    alpha=alpha,
+                    markerfacecolor=facecolor,
                 )
                 P.axdict["C"].plot(
-                    self.cell_summary["indiv_tau1"][itr][evok],
-                    self.cell_summary["indiv_tau2"][itr][evok],
-                    "ko",
-                    markersize=3,
+                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
+                    self.cell_summary["indiv_tau2"][i][evok]*1e3,
+                    cs,
+                    markersize=msize,
+                    alpha=alpha,
+                    markerfacecolor=facecolor,
                 )
                 P.axdict["D"].plot(
-                    self.cell_summary["indiv_amp"][itr][evok],
-                    self.cell_summary["indiv_fiterr"][itr][evok],
-                    "ko",
-                    markersize=3,
+                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    self.cell_summary["indiv_fiterr"][i][evok],
+                    cs,
+                    markersize=msize,
+                    alpha=alpha,
+                    markerfacecolor=facecolor,
                 )
                 P.axdict["H"].plot(
-                    self.cell_summary["indiv_tau1"][itr][evok],
-                    self.cell_summary["indiv_Qtotal"][itr][evok],
-                    "ko",
-                    markersize=3,
+                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
+                    self.cell_summary["indiv_Qtotal"][i][evok]*1e3*scf,
+                    cs,
+                    markersize=msize,
+                    alpha=alpha,
+                    markerfacecolor=facecolor,
                 )
-                trdat.append(
-                    np.column_stack(
-                        [
-                            self.cell_summary["indiv_tb"][itr],
-                            self.cell_summary["allevents"][itr][evok],
-                        ]
-                    )
-                )
-                # idl = len(self.cell_summary['best_decay_fit'][itr][evok])
-                trfit.append(
-                    np.column_stack(
-                        [
-                            self.cell_summary["indiv_tb"][itr],
-                            -self.cell_summary["best_fit"][itr][evok],
-                        ]
-                    )
-                )
-                trdecfit.append(
-                    np.column_stack(
-                        [
-                            self.cell_summary["indiv_tb"][itr],
-                            -self.cell_summary["best_decay_fit"][itr][evok],
-                        ]
-                    )
-                )
-        dat_coll = collections.LineCollection(trdat, colors="k", linewidths=0.5)
-        fit_coll = collections.LineCollection(trfit, colors="r", linewidths=0.25)
-        #        decay_fit_coll = collections.LineCollection(trdecfit, colors='c', linewidths=0.3)
-        P.axdict["G"].add_collection(dat_coll)
-        P.axdict["G"].add_collection(fit_coll)
-        #        P.axdict['G'].add_collection(decay_fit_coll)
-        n_trdat = []
-        n_trfit = []
-        for itr in range(len(all_notok)):
-            for notok in all_notok[itr]:
-                n_trdat.append(
-                    np.column_stack(
-                        [
-                            self.cell_summary["indiv_tb"][itr],
-                            self.cell_summary["allevents"][itr][notok],
-                        ]
-                    )
-                )
-                n_trfit.append(
-                    np.column_stack(
-                        [
-                            self.cell_summary["indiv_tb"][itr],
-                            -self.cell_summary["best_fit"][itr][notok],
-                        ]
-                    )
-                )
-                P.axdict["D"].plot(
-                    self.cell_summary["indiv_amp"][itr][notok],
-                    self.cell_summary["indiv_fiterr"][itr][notok],
-                    "ro",
-                    markersize=3,
-                )
-        n_dat_coll = collections.LineCollection(n_trdat, colors="b", linewidths=0.35)
-        n_fit_coll = collections.LineCollection(n_trfit, colors="y", linewidths=0.25)
-        P.axdict["E"].add_collection(n_dat_coll)
-        P.axdict["E"].add_collection(n_fit_coll)
+            #     trdat.append(
+            #         np.column_stack(
+            #             [
+            #                 self.cell_summary["indiv_tb"],
+            #                 self.cell_summary["allevents"][evok],
+            #             ]
+            #         )
+            #     )
+            #     # idl = len(self.cell_summary['best_decay_fit'][itr][0][evok])
+            #     trfit.append(
+            #         np.column_stack(
+            #             [
+            #                 self.cell_summary["indiv_tb"],
+            #                 -self.cell_summary["best_fit"][0][evok],
+            #             ]
+            #         )
+            #     )
+            #     trdecfit.append(
+            #         np.column_stack(
+            #             [
+            #                 self.cell_summary["indiv_tb"],
+            #                 -self.cell_summary["best_decay_fit"][0][evok],
+            #             ]
+            #         )
+            #     )
+            # dat_coll = collections.LineCollection(trdat, colors="k", linewidths=0.5)
+            # fit_coll = collections.LineCollection(trfit, colors="r", linewidths=0.25)
+            # #        decay_fit_coll = collections.LineCollection(trdecfit, colors='c', linewidths=0.3)
+            # P.axdict["G"].add_collection(dat_coll)
+            # P.axdict["G"].add_collection(fit_coll)
+            #        P.axdict['G'].add_collection(decay_fit_coll)
+            # n_trdat = []
+            # n_trfit = []
+            # for itr in range(len(all_notok)):
+            #     for notok in all_notok[itr]:
+            #         n_trdat.append(
+            #             np.column_stack(
+            #                 [
+            #                     self.cell_summary["indiv_tb"][itr],
+            #                     self.cell_summary["allevents"][itr][notok],
+            #                 ]
+            #             )
+            #         )
+            #         n_trfit.append(
+            #             np.column_stack(
+            #                 [
+            #                     self.cell_summary["indiv_tb"][itr],
+            #                     -self.cell_summary["best_fit"][itr][notok],
+            #                 ]
+            #             )
+            #         )
+            #         P.axdict["D"].plot(
+            #             self.cell_summary["indiv_amp"][itr][notok],
+            #             self.cell_summary["indiv_fiterr"][itr][notok],
+            #             "ro",
+            #             markersize=3,
+            #         )
+            # n_dat_coll = collections.LineCollection(n_trdat, colors="b", linewidths=0.35)
+            # n_fit_coll = collections.LineCollection(n_trfit, colors="y", linewidths=0.25)
+            # P.axdict["E"].add_collection(n_dat_coll)
+            # P.axdict["E"].add_collection(n_fit_coll)
 
         P.axdict["A"].set_xlabel(r"$tau_1$ (ms)")
         P.axdict["A"].set_ylabel(r"Amp (pA)")
@@ -750,9 +800,9 @@ class MiniAnalysis:
 
         if pdf is None:
             mpl.show()
-        else:
-            pdf.savefig(dpi=300)
-            mpl.close()
+        # else:
+        #     pdf.savefig(dpi=300)
+        #     mpl.close()
 
     def plot_all_events_and_fits(self):
         P3 = PH.regular_grid(
@@ -808,14 +858,16 @@ class MiniAnalysis:
         mpl.show()
 
     def plot_hists(self):  # generate histogram of amplitudes for plots
-        return
+
         histBins = 50
-        nevents = len(self.cell_summary["amplitudes"])
+        scf = 1e12
+        ampls = np.array(self.cell_summary["amplitudes"])*scf
+        nevents = len(ampls)
         amp, ampbins, amppa = self.axAmps.hist(
-            self.cell_summary["amplitudes"], histBins, alpha=0.5, density=True
+            ampls, histBins, alpha=0.5, density=True
         )
         # fit to normal distribution
-        ampnorm = scipy.stats.norm.fit(self.cell_summary["amplitudes"])  #
+        ampnorm = scipy.stats.norm.fit(ampls)  #
         print(
             "    Amplitude (N={0:d} events) Normfit: mean {1:.3f}   sigma: {2:.3f}".format(
                 nevents, ampnorm[0], ampnorm[1]
@@ -834,12 +886,12 @@ class MiniAnalysis:
             alpha=0.6,
             label="Norm: u={0:.3f} s={1:.3f}".format(ampnorm[0], ampnorm[1]),
         )
-        k2, p = scipy.stats.normaltest(self.cell_summary["amplitudes"])
+        k2, p = scipy.stats.normaltest(ampls)
         print("    p (amplitude is Gaussian) = {:g}".format(1 - p))
         print("    Z-score for skew and kurtosis = {:g} ".format(k2))
 
         # fit to skewed normal distriubution
-        ampskew = scipy.stats.skewnorm.fit(self.cell_summary["amplitudes"])
+        ampskew = scipy.stats.skewnorm.fit(ampls)
         print(
             "    ampskew: mean: {0:.4f} skew:{1:4f}  scale/sigma: {2:4f} ".format(
                 ampskew[1], ampskew[0], 2 * ampskew[2]
@@ -866,7 +918,7 @@ class MiniAnalysis:
         )
 
         # fit to gamma distriubution
-        ampgamma = scipy.stats.gamma.fit(self.cell_summary["amplitudes"], loc=0.0)
+        ampgamma = scipy.stats.gamma.fit(ampls, loc=0.0)
         gamma_midpoint = scipy.stats.gamma.ppf(
             0.5, a=ampgamma[0], loc=ampgamma[1], scale=ampgamma[2]
         )  # midpoint of distribution
@@ -956,8 +1008,8 @@ class MiniAnalysis:
         )
         print(
             "    Amplitude: {0:7.1f} pA SD = {1:.1f}".format(
-                np.mean(self.cell_summary["amplitudes"]),
-                np.std(self.cell_summary["amplitudes"]),
+                np.mean(ampls),
+                np.std(ampls),
             )
         )
 
@@ -977,8 +1029,8 @@ class MiniAnalysis:
             expDis,
             "norm",
             args=(
-                np.mean(self.cell_summary["amplitudes"]),
-                np.std(self.cell_summary["amplitudes"]),
+                np.mean(ampls),
+                np.std(ampls),
             ),
             alternative="two-sided",
         )
@@ -1049,7 +1101,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
     dataplan = EP.DataPlan.DataPlan(args.datadict)
 
     MI = MiniAnalysis(dataplan)
