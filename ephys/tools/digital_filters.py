@@ -67,7 +67,7 @@ def SignalFilter_HPFButter(signal, HPF, samplefreq, NPole=8):
     out, zo = spSignal.lfilter(b, a, signal, zi=zi*signal[0])
     return out
         
-def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, reduce=False):
+def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", reduce=False):
     """Low pass filter a signal with a Bessel filter
 
         Digitally low-pass filter a signal using a multipole Bessel filter
@@ -94,7 +94,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, reduce=False):
         w : array
             Filtered version of the input signal
     """
-
+    assert filtertype in ["low", "high"]
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
@@ -104,7 +104,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, reduce=False):
     filter_b,filter_a=spSignal.bessel(
             NPole,
             wn,
-            btype = 'low',
+            btype = filtertype,
             output = 'ba')
     if signal.ndim == 1:
         sm = np.mean(signal)

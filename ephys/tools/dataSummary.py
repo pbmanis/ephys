@@ -110,9 +110,9 @@ class Printer():
         sys.stdout.write(u"\r\u001b[2K%s"%ansi_colors(color)+data.__str__())
         sys.stdout.flush()
 
-slsp = '   '
-clsp = '        '
-prsp = '             '
+slsp = '   '  # slice leading indent
+clsp = '        '  # cell within slice leading indent
+prsp = '             '  # protocol within cell leading indent
 
 class DataSummary():
 

@@ -43,7 +43,7 @@ class DataPlan():
         """
         
         self.sheet = sheet # for excel files
-        self.orderedkeys = ['subject', 'dir', 'G', 'prots', 'thr', 'rt', 'decay', 'exclist']  # default set
+        self.orderedkeys = ['subject', 'dir', 'G', 'prots', 'thr', 'rt', 'decay', 'exclist', 'EYFP', 'GT']  # default set
         data = {}
         fn, ext = os.path.splitext(datadictname)
         if ext == '':

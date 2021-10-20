@@ -13,9 +13,10 @@ from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from . import digital_filters as FILT
-
+from . import functions as FN
 from ..ephysanalysis import RmTauAnalysis, SpikeAnalysis, acq4read
 from ..mini_analyses import minis_methods, minis_methods_common
+import ephys.tools.minicalcs as minicalcs
 
 """
 Graphical interface to view data sets
@@ -31,26 +32,15 @@ all_modules = [
     FILT,
     minis_methods,
     minis_methods_common,
+    minicalcs,
 ]
 
 
-# or MultiClamp1.ma... etc
-# datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
-# dbfile = 'NF107Ai32Het_bcorr2.pkl'
-# all_modules = [
-#     table_manager,
-#     plot_sims,
-#     vcnmodel.correlation_calcs,
-#     vcnmodel.spikestatistics,
-#     vcnmodel.analysis,
-# ]
-
-
-class TraceAnalyzer(pg.QtGui.QWidget):
+class MiniViewer(pg.QtGui.QWidget):
     keyPressed = pg.QtCore.pyqtSignal(pg.QtCore.QEvent)
 
     def __init__(self, app=None):
-        super(TraceAnalyzer, self).__init__()
+        super(MiniViewer, self).__init__()
         self.app = app
         self.datadir = "/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het"
         self.AR = (
@@ -60,17 +50,24 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.RM = RmTauAnalysis.RmTauAnalysis()
         self.ampdataname = "MultiClamp1.ma"
         self.LPF = 5000.0
-        self.HPF = 0.0
+        self.HPF = 1.0  # high pass filtering
         self.tb = None
         self.notch_60HzHarmonics = [60.0, 120.0, 180.0, 240.0]
+        self.notch_60HzHarmonics_4K = [60.0, 120.0, 180.0, 240.0, 300., 360., 420., 480.02, 
+                    660., 720.2, 780., 900., 960.4, 1020.03, 1140.04, 1260.5, 1380.5, 1500.6, 1620.6, 1740.6, 1860.6,
+                    1980.6, 2100.8, 2220.8, 2340.8, 2460.8, 2581.0, 2701.0, 2821.0, 2941.0, 3061.2,
+                    
+                    4000.]
         self.notch_frequency = "None"
-        self.notch_Q = 30.0
+        self.notch_Q = 90.0
+        
         self.curves = []
         self.crits = []
         self.scatter = []
         self.threshold_line = None
         self.lines = []
-        self.tstart = 0.0
+        self.fitlines = []
+        self.tstart = 0.1
         self.tend = 0.0
         self.maxT = 0.6
         self.tau1 = 0.1
@@ -87,7 +84,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.scalar = 1
         self.n_adjusted = 0
         self.curve_set = False
-        self.last_method = "CB"
+        self.last_method = "AJ"
         self.compare_flag = False
         self.compare_data = None
         self.data_set = None
@@ -95,6 +92,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.filelistpath = Path(currentpath, "ephys/tools/data/files.toml")
         self.maxPreviousFiles = 10  # limit of # of files held in history of filenames
         self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+        self.MINC = minicalcs.MiniCalcs(parent=self)
 
     def getProtocolDir(self, reload_last=False):
         current_filename = None
@@ -181,17 +179,15 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             # trim time window if needed
             dt = 1.0 / self.AR.sample_rate[0]
             # trx = self.AR.data_array
-            print(self.AR.data_array.shape)
             if self.tend == 0:
                 tend = self.AR.data_array.shape[1] * dt
             else:
                 tend = self.tend
-            print(dt, self.tstart, tend)
             istart = int(self.tstart / dt)
             iend = int(tend / dt)
-            print(istart, iend)
             self.AR.data_array = self.AR.data_array[:, istart:iend]
-            print(self.AR.data_array.shape)
+            self.mod_data = self.AR.data_array.copy()
+            self.w1.slider.setValue(0)
             self.update_traces()
 
     def _getpars(self):
@@ -202,227 +198,20 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         self.sign = signdict[sign]
         # print(self.tau1, self.tau2, self.thresh, self.sign)
 
-    def CB(self):
-        self._getpars()
-        self.method = minis_methods.ClementsBekkers()
-        rate = np.mean(np.diff(self.tb))
-        jmax = int((2 * self.tau1 + 3 * self.tau2) / rate)
-        CP.cprint("r", f"showdata CB threshold: {self.thresh_reSD:8.2f}")
-        self.method.setup(
-            ntraces=self.AR.data_array.shape[0],
-            tau1=self.tau1,
-            tau2=self.tau2,
-            dt_seconds=rate,
-            delay=0.0,
-            template_tmax=rate * (jmax - 1),
-            threshold=self.thresh_reSD,
-            sign=self.sign,
-            eventstartthr=None,
-            lpf=self.LPF,
-            hpf=self.HPF,
-        )
-        self.imax = int(self.maxT * self.AR.sample_rate[0])
-
-        # meandata = np.mean(self.AR.data_array[:, : self.imax])
-        self.method._make_template()
-        for i in range(self.AR.data_array.shape[0]):
-            self.method.cbTemplateMatch(
-                self.AR.data_array[i, : self.imax], itrace=i, lpf=self.LPF
-            )
-            self.AR.data_array[i, : self.imax] = self.method.data  # # get filtered data
-            self.method.reset_filtering()
-        self.last_method = "CB"
-        self.CB_update()
-
-    def CB_update(self):
-        if self.method is None:
-            return
-        self.method.threshold = self.thresh_reSD
-        self.method.identify_events(order=self.Order)
-        self.method.summarize(self.AR.data_array[:, : self.imax])
-        self.decorate(self.method)
-
-    def AJ(self):
-        self._getpars()
-        self.method = minis_methods.AndradeJonas()
-        rate = np.mean(np.diff(self.tb))
-        jmax = int((2 * self.tau1 + 3 * self.tau2) / rate)
-        CP.cprint("g", f"showdata AJ threshold: {self.thresh_reSD:8.2f}")
-        print("template len: ", jmax, "template max t: ", rate * (jmax - 1), rate)
-        self.method.setup(
-            ntraces=self.AR.data_array.shape[0],
-            tau1=self.tau1,
-            tau2=self.tau2,
-            dt_seconds=rate,
-            delay=0.0,
-            template_tmax=np.max(self.tb),
-            threshold=self.thresh_reSD,
-            sign=self.sign,
-            eventstartthr=None,
-            lpf=self.LPF,
-            hpf=self.HPF,
-        )
-        self.imax = int(self.maxT * self.AR.sample_rate[0])
-        meandata = np.mean(self.AR.data_array[:, : self.imax])
-        # self.AJorder = int(1e-3/rate)
-        print("AJ.: Order, rate, taus: ", self.Order, rate, self.tau1, self.tau2)
-        for i in range(self.AR.data_array.shape[0]):
-            self.method.deconvolve(
-                self.AR.data_array[i, : self.imax] - meandata,
-                itrace=i,
-                # data_nostim=None,
-                llambda=5.0,
-            )  # assumes times are all in same units of msec
-            self.AR.data_array[i, : self.imax] = self.method.data  # # get filtered data
-            self.method.reset_filtering()
-
-        self.last_method = "AJ"
-        self.AJ_update()
-
-    def AJ_update(self):
-        if self.method is None:
-            return
-        self.method.threshold = self.thresh_reSD
-        self.method.identify_events(order=self.Order)
-        self.method.summarize(self.AR.data_array[:, : self.imax])
-        # tot_events = sum([len(x) for x in self.method.onsets])
-        self.decorate(self.method)
-
-    def RS(self):
-        self._getpars()
-        self.method = minis_methods.RSDeconvolve()
-        rate = np.mean(np.diff(self.tb))
-
-        self.method.setup(
-            ntraces=self.AR.data_array.shape[0],
-            tau1=self.tau1,
-            tau2=self.tau2,
-            dt_seconds=rate,
-            delay=0.0,
-            template_tmax=np.max(self.tb),  # taus are for template
-            sign=self.sign,
-            risepower=4.0,
-            threshold=self.thresh_reSD,
-            lpf=self.LPF,
-            hpf=self.HPF,
-        )
-        CP.cprint("c", f"showdata RS threshold: {self.thresh_reSD:8.2f}")
-        # generate test data
-        self.imax = int(self.maxT * self.AR.sample_rate[0])
-        # meandata = np.mean(self.AR.data_array[:, : self.imax])
-        with pg.ProgressDialog("RS Processing", 0, self.AR.data_array.shape[0]) as dlg:
-            for i in range(self.AR.data_array.shape[0]):
-                self.method.deconvolve(
-                    self.AR.data_array[i, : self.imax], itrace=i,
-                )
-                self.AR.data_array[i, : self.imax] = self.method.data  # # get filtered data
-                self.method.reset_filtering()
-            self.last_method = "RS"
-            self.RS_update()
-            dlg.setValue(i)
-            if dlg.wasCanceled():
-                raise Exception("Processing canceled by user")
-
-    def RS_update(self):
-        if self.method is None:
-            return
-        self.method.threshold = self.thresh_reSD
-        self.method.identify_events(order=self.Order)
-        self.method.summarize(self.AR.data_array[:, : self.imax])
-        self.decorate(self.method)
-
-    def ZC(self):
-        self._getpars()
-        self.method = minis_methods.ZCFinder()
-        rate = np.mean(np.diff(self.tb))
-        minlen = int(self.ZC_mindur / rate)
-        self.method.setup(
-            ntraces=self.AR.data_array.shape[0],
-            tau1=self.tau1,
-            tau2=self.tau2,
-            dt_seconds=rate,
-            delay=0.0,
-            template_tmax=np.max(self.tb),
-            sign=self.sign,
-            threshold=self.thresh_reSD,
-            lpf=self.LPF,
-            hpf=self.HPF,
-        )
-        CP.cprint("y", f"showdata ZC threshold: {self.thresh_reSD:8.2f}")
-
-        for i in range(self.AR.data_array.shape[0]):
-            self.method.deconvolve(
-                self.AR.data_array[i, : self.imax], itrace=i,
-            )
-            self.AR.data_array[i, : self.imax] = self.method.data  # # get filtered data
-            self.method.reset_filtering()
-        self.last_method = "ZC"
-        self.ZC_update()
-
-    def ZC_update(self):
-        if self.method is None:
-            return
-        self.method.threshold = self.thresh_reSD
-        self.method.identify_events(data_nostim=None)
-        self.method.summarize(self.AR.data_array[:, : self.imax])
-        self.decorate(self.method)
-
-    def decorate(self, minimethod):
-        if not self.curve_set:
-            return
-        # print('decorating', )
-        for s in self.scatter:
-            s.clear()
-        for c in self.crits:
-            c.clear()
-        # for line in self.threshold_line:
-        #     line.clear()
-        self.scatter = []
-        self.crits = []
-
-        if minimethod.Summary.onsets is not None and len(minimethod.Summary.onsets) > 0:
-            self.scatter.append(
-                self.dataplot.plot(
-                    self.tb[minimethod.Summary.peaks[self.current_trace]] * 1e3,
-                    self.current_data[minimethod.Summary.peaks[self.current_trace]],
-                    pen=None,
-                    symbol="o",
-                    symbolPen=None,
-                    symbolSize=10,
-                    symbolBrush=(255, 0, 0, 255),
-                )
-            )
-            # self.scatter.append(self.dataplot.plot(self.tb[minimethod.peaks]*1e3,
-            # np.array(minimethod.amplitudes),
-            #           pen = None, symbol='o', symbolPen=None, symbolSize=5,
-            # symbolBrush=(255, 0, 0, 255)))
-
-        self.crits.append(
-            self.dataplot2.plot(
-                self.tb[: len(minimethod.Criterion[self.current_trace])] * 1e3,
-                minimethod.Criterion[self.current_trace],
-                pen="r",
-            )
-        )
-        self.threshold_line.setValue(minimethod.sdthr)
-        # self.threshold_line.setLabel(f"SD thr: {self.thresh_reSD:.2f}  Abs: {self.minimethod.sdthr:.3e}")
-        # print(' ... decorated')
-
     def update_threshold(self):
         self.threshold_line.setPos(self.thresh_reSD)
         trmap1 = {
-            "CB": self.CB_update,
-            "AJ": self.AJ_update,
-            "ZC": self.ZC_update,
-            "RS": self.RS_update,
+            "CB": self.MINC.CB_update,
+            "AJ": self.MINC.AJ_update,
+            "ZC": self.MINC.ZC_update,
+            "RS": self.MINC.RS_update,
         }
         trmap1[self.last_method]()  # threshold/scroll, just update
 
     def update_traces(self, value=None, update_analysis=False):
         if isinstance(value, int):
             self.current_trace = value
-        print("update_traces, analysis update = ", update_analysis)
-        trmap2 = {"CB": self.CB, "AJ": self.AJ, "ZC": self.ZC, "RS": self.RS}
+        trmap2 = {"CB": self.MINC.CB, "AJ": self.MINC.AJ, "ZC": self.MINC.ZC, "RS": self.MINC.RS}
         if len(self.AR.traces) == 0:
             return
         self.current_trace = int(self.w1.x)
@@ -433,7 +222,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             s.clear()
         for line in self.lines:
             self.dataplot.removeItem(line)
-
+        self.clear_fit_lines()
         self.scatter = []
         self.curves = []
         self.lines = []
@@ -447,43 +236,52 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         imax = len(self.AR.data_array[self.current_trace])
         self.imax = imax
         self.maxT = self.AR.sample_rate[0] * imax
-        self.mod_data = self.AR.data_array[self.current_trace, :imax]
+        self.mod_data[self.current_trace] = self.AR.data_array[self.current_trace, :imax]
+        # detrend traces
+        self.mod_data[self.current_trace]  = FN.adaptiveDetrend(self.mod_data[self.current_trace] , x=self.AR.time_base[:imax], threshold=3.0)
+
         if self.notch_frequency != "None":
             if self.notch_frequency == "60HzHarm":
                 notchfreqs = self.notch_60HzHarmonics
+            elif self.notch_frequency == "60HzHarm+4K":
+                notchfreqs = self.notch_60HzHarmonics_4K
             else:
                 notchfreqs = [self.notch_frequency]
-            CP.cprint("y", f"Notch Filtering at: {str(notchfreqs):s}")
-            self.mod_data = FILT.NotchFilterZP(
-                self.mod_data,
+            CP.cprint("y", f"Notch Filtering")
+            self.mod_data[self.current_trace]  = FILT.NotchFilterZP(
+                self.mod_data[self.current_trace] ,
                 notchf=notchfreqs,
                 Q=self.notch_Q,
                 QScale=False,
                 samplefreq=self.AR.sample_rate[0],
             )
-
         if self.LPF != "None":
             CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
-            self.mod_data = FILT.SignalFilter_LPFBessel(
-                self.mod_data, self.LPF, samplefreq=self.AR.sample_rate[0], NPole=8
+            self.mod_data[self.current_trace]  = FILT.SignalFilter_LPFBessel(
+                self.mod_data[self.current_trace] , self.LPF, samplefreq=self.AR.sample_rate[0], NPole=8
             )
+        # self.mod_data = FILT.SignalFilter_LPFBessel(
+        #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
+        #     )
+        
 
         self.curves.append(
             self.dataplot.plot(
                 self.AR.time_base[:imax] * 1e3,
                 # self.AR.traces[i,:],
-                self.mod_data,
+                self.mod_data[self.current_trace] ,
                 pen=pg.intColor(1),
             )
         )
-        self.current_data = self.mod_data
+        self.current_data = self.mod_data[self.current_trace]
         self.tb = self.AR.time_base[:imax]
         # print(self.tb.shape, imax)
         self.curve_set = True
         if update_analysis:
             trmap2[self.last_method]()  # recompute from scratch
         elif self.method is not None:
-            self.decorate(self.method)
+            self.MINC.decorate(self.method)
+        self.MINC.show_fitting_pars()
         # if self.method is not None:
         #     self.decorate(self.method)
         # self.compareEvents()
@@ -492,7 +290,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         exit(0)
 
     def keyPressEvent(self, event):
-        super(TraceAnalyzer, self).keyPressEvent(event)
+        super(MiniViewer, self).keyPressEvent(event)
         print("key pressed, event=", event)
         self.keyPressed.emit(event)
 
@@ -583,6 +381,22 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                     "analysis pars not in dateset: ",
                     self.compare_data[self.data_set].keys(),
                 )
+    def clear_fit_lines(self):
+        if len(self.fitlines) > 0:
+            for l in self.fitlines:
+                self.fitplot.removeItem(l)
+            self.fitlines = []
+    
+    def copy_fits(self):
+        if not self.method.Summary.average.averaged:
+            CP.cprint("r", "Fit not yet run")
+            return
+        self.minis_risetau = self.method.Summary.average.fitted_tau1
+        self.minis_falltau = self.method.Summary.average.fitted_tau2
+        
+    def write_dataset(self):
+        pass
+        
 
     def build_ptree(self):
         self.params = [
@@ -592,7 +406,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             {
                 "name": "Set Start (s)",
                 "type": "float",
-                "value": 0.0,
+                "value": 0.1,
                 "limits": (0, 30.0),
                 "default": 0.0,
             },
@@ -606,8 +420,8 @@ class TraceAnalyzer(pg.QtGui.QWidget):
             {
                 "name": "Notch Frequency",
                 "type": "list",
-                "values": ["None", "60HzHarm", 30.0, 60.0, 120.0, 180.0, 240.0],
-                "value": None,
+                "values": ["None", "60HzHarm", "60HzHarm+4K", 30.0, 60.0, 120.0, 180.0, 240.0],
+                "value": "None",
             },
             {
                 "name": "LPF",
@@ -625,15 +439,22 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                     4000.0,
                     5000.0,
                 ],
-                "value": 5000.0,
+                "value": None,
                 "renamable": True,
+            },
+            {
+                "name": "Notch Q",
+                "type": "float",
+                "value": 60.,
+                "limits": (1, 300.),
+                "default": 60.,
             },
             {"name": "Apply Filters", "type": "action"},
             {
                 "name": "Method",
                 "type": "list",
-                "values": ["CB", "AJ", "RS", "ZC"],
-                "value": "CB",
+                "values": ["AJ", "CB", "RS", "ZC"],
+                "value": "AJ",
             },
             {"name": "Sign", "type": "list", "values": ["+", "-"], "value": "-"},
             {
@@ -641,7 +462,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 "type": "float",
                 "value": 0.15,
                 "step": 0.05,
-                "limits": (0.05, 10.0),
+                "limits": (0.05, 20.0),
                 "default": 0.15,
             },
             {
@@ -649,7 +470,7 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 "type": "float",
                 "value": 1.0,
                 "step": 0.1,
-                "limits": (0.15, 10.0),
+                "limits": (0.15, 50.0),
                 "default": 1.0,
             },
             {
@@ -686,7 +507,9 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 "value": False,
                 "tip": "Try to compare with events previously analyzed",
             },
-            {"name": "Show Data Pars", "type": "action"},
+            {"name": "Show Fitting Pars", "type": "action"},
+            {"name": "Copy Fit to template", "type": "action"},
+            {"name": "Write Dataset text", "type": "action"},
             {"name": "Reload", "type": "action"},
             {"name": "Quit", "type": "action"},
         ]
@@ -715,8 +538,12 @@ class TraceAnalyzer(pg.QtGui.QWidget):
                 self.getProtocolDir()
             elif path[0] == "Reload Last Protocol":
                 self.getProtocolDir(reload_last=True)
-            elif path[0] == "Show Data Pars":
-                self.show_data_pars()
+            elif path[0] == "Show Fitting Pars":
+                self.MINC.show_fitting_pars()
+            elif path[0] == "Copy Fit to template":
+                self.copy_fits()
+            elif path[0] == "Write Dataset text":
+                self.write_dataset()
             elif path[0] == "Reload":
                 self.reload()
             elif path[0] == "Compare Events":
@@ -733,22 +560,18 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
             elif path[0] == "LPF":
                 self.LPF = data
-                # self.update_traces()
-
             elif path[0] == "Notch Frequency":
                 self.notch_frequency = data
-                # self.update_traces()
-
+            elif path[0] == "Notch Q":
+                self.notch_Q = data
             elif path[0] == "Apply Filters":
                 self.update_traces(update_analysis=False)
 
             elif path[0] == "Rise Tau":
                 self.minis_risetau = data
-                # self.update_traces(update_analysis=True)
-
             elif path[0] == "Fall Tau":
                 self.minis_falltau = data
-                # self.update_traces(update_analysis=True)
+
             elif path[0] == "Order":
                 self.Order = data
 
@@ -762,17 +585,6 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
             elif path[0] == "Method":
                 self.last_method = data
-                # if data == "CB":
-                #     self.CB()
-                # elif data == "AJ":
-                #     self.AJ()
-                # elif data == "ZC":
-                #     self.ZC()
-                # elif data == "RS":
-                #     self.RS()
-                # else:
-                #     print("Not implemented: ", data)
-                # print(data)
 
             elif path[0] == "Apply Analysis":
                 self.update_traces(update_analysis=True)
@@ -786,13 +598,16 @@ class TraceAnalyzer(pg.QtGui.QWidget):
 
     def reload(self):
         print("reloading...")
+        importlib.invalidate_caches()
         for module in all_modules:
             print("reloading: ", module)
-            importlib.reload(module)
+            module = importlib.reload(module)
+        # self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+        self.MINC = minicalcs.MiniCalcs(parent=self)
 
     def set_window(self, parent=None):
-        super(TraceAnalyzer, self).__init__(parent=parent)
-        self.win = pg.GraphicsWindow(title="TraceAnalyzer")
+        super(MiniViewer, self).__init__(parent=parent)
+        self.win = pg.GraphicsWindow(title="MiniViewer")
         layout = pg.QtGui.QGridLayout()
         layout.setSpacing(8)
         self.win.setLayout(layout)
@@ -831,13 +646,27 @@ class TraceAnalyzer(pg.QtGui.QWidget):
         )
         self.dataplot2.addItem(self.threshold_line)
         self.threshold_line.sigDragged.connect(self.update_threshold)
-
+        self.fitplot = pg.PlotWidget()
+        self.histplot = pg.PlotWidget()
+        self.xplot = pg.PlotWidget()
+        # row, column, rowspan, colspan)
         layout.addLayout(self.buttons, 0, 0, 10, 1)
-        layout.addWidget(self.dataplot, 0, 1, 1, 6)
-        layout.addWidget(self.dataplot2, 6, 1, 4, 6)
-        layout.addWidget(self.w1, 11, 1, 1, 6)
-        layout.setColumnStretch(0, 1)  # reduce width of LHS column of buttons
-        layout.setColumnStretch(1, 7)  # and stretch out the data dispaly
+        self.dlayout = pg.QtGui.QGridLayout()
+        self.dataplot.setMinimumHeight(500)
+        self.dlayout.addWidget(self.dataplot, 0, 0, 3, 8)
+        self.dlayout.addWidget(self.dataplot2, 3, 0, 1, 8)
+        self.dlayout.addWidget(self.w1, 4, 0, 1, 8)
+        self.dlayout.setColumnMinimumWidth(0, 650)
+        layout.addLayout(self.dlayout, 0, 1, 1, 1)
+        self.dsumlayout = pg.QtGui.QGridLayout()
+        self.dsumlayout.addWidget(self.fitplot) #, 0, 0)
+        self.dsumlayout.addWidget(self.histplot) #, 1, 0)
+        self.dsumlayout.addWidget(self.xplot) #, 2, 0)
+        layout.addLayout(self.dsumlayout, 0, 9, 10, 1)
+        # self.dsumlayout.setColumnMinimumWidth(0, 200)
+        layout.setColumnStretch(0, 0)  # reduce width of LHS column of buttons
+        layout.setColumnStretch(1, 20)  # and stretch out the data dispaly
+        layout.setColumnStretch(2, 0)  # and stretch out the data dispaly
 
         self.keyPressed.connect(self.on_key)
 
@@ -916,11 +745,11 @@ class Slider(pg.QtGui.QWidget):
 def main():
 
     app = pg.QtGui.QApplication([])
-    TA = TraceAnalyzer(app)
+    MV = MiniViewer(app)
     app.aboutToQuit.connect(
-        TA.quit
+        MV.quit
     )  # prevent python exception when closing window with system control
-    TA.set_window()
+    MV.set_window()
 
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
         pg.QtGui.QApplication.instance().exec_()
