@@ -600,7 +600,7 @@ class MiniAnalyses:
         k = 0
         pkt = 0
         n_incomplete_events = 0
-
+        print(allevents.shape)
         for itrace, onsets in enumerate(self.Summary.onsets):
             # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
             for j, event_onset in enumerate(onsets):
@@ -608,8 +608,8 @@ class MiniAnalyses:
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
                     pad = allevents.shape[1] - ((ix-npre) - (ix + npost))
-                    print("pad: ", pad) 
-                    allevents[k, :] = data[itrace, (ix - npre) : (ix + npost + pad)]
+                    # print("pad: ", pad)
+                    allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
                     allevents[k, :] -= np.mean(allevents[k, 0:npre])
                 else:
                     allevents[k, :] = np.nan*allevents[k,:]  # "no event in available window"
