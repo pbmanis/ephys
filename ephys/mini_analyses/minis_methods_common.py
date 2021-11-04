@@ -607,7 +607,9 @@ class MiniAnalyses:
                 ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
-                    allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
+                    pad = allevents.shape[1] - ((ix-npre) - (ix + npost))
+                    print("pad: ", pad) 
+                    allevents[k, :] = data[itrace, (ix - npre) : (ix + npost + pad)]
                     allevents[k, :] -= np.mean(allevents[k, 0:npre])
                 else:
                     allevents[k, :] = np.nan*allevents[k,:]  # "no event in available window"

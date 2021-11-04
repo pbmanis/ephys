@@ -131,6 +131,9 @@ class MiniViewer(pg.QtGui.QWidget):
         # first attempt to read the current recent files file
         if self.filelistpath.is_file():  # read the old file
             file_dict = toml.load(self.filelistpath)
+            print(file_dict)
+            if "Previous" not in list(file_dict.keys()):
+                file_dict["Previous"] = []
             file_dict['MostRecent'] = str(self.fileName)
             if self.fileName not in file_dict['Previous']:
                 file_dict['Previous'].insert(0, str(self.fileName))
