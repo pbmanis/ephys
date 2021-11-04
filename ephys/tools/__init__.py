@@ -6,5 +6,6 @@ from . import plot_maps
 from . import miniviewer
 from . import minicalcs
 from . import digital_filters
+from . import check_rs
 
 

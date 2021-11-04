@@ -18,6 +18,8 @@ from pathlib import Path
 import os  #legacy
 import scipy.signal
 import pandas as pd
+import typing
+from typing import Union
 
 from cycler import cycler
 from itertools import cycle
@@ -79,9 +81,11 @@ class PSCAnalyzer():
         self.NMDA_voltage = 0.050 # in V  positive
         self.AMPA_voltage = -0.0741 # in V  - this is the Cl eq potential to minize GABA interference
         self.NMDA_delay = 0.050 # delay in s to make measurement
+        self.NGlist = None
+        print('psc setup')
         
 
-    def setup(self, clamps=None, spikes=None, baseline=[0, 0.001]):
+    def setup(self, clamps:Union[str, None]=None, spikes=None, baseline:list=[0, 0.001], NGlist:Union[list, None]=None):
         """
         Set up for the fitting
         
@@ -100,10 +104,11 @@ class PSCAnalyzer():
         """
         
         if clamps is None:
-            raise ValueError("VC analysis requires defined clamps ")
+            raise ValueError("PSC Analysis requires defined clamps ['Clamp1', or 'Multiclamp1', for example]")
         self.Clamps = clamps
         self.spikes = spikes
         self.set_baseline_times(baseline)
+        self.NGlist = NGlist  # list of "not good" traces within a protocol
 
         self.analysis_summary = {}  # init the result structure
 
@@ -715,14 +720,14 @@ class PSCAnalyzer():
             dindx = range(intno, sh[0], nint)
             data1 = data1[dindx,:,:]
 
-        self.i_mean_index = None
-        # print('imean data shape: ', data1.shape)
-        self.i_data = data1.mean(axis=0)
         self.i_tb = tb+region[0]
+        print(data1.shape)
+        exit()
+        self.i_data = data1.mean(axis=0)
         
         nx = int(sh[0]/len(reps))
         
-        if mode in ['mean', 'baseline']:
+        if mode in ['mean', 'baseline'] and self.NGlist is None:
             # print('calc mean: ')
             # print('    data1.shape: ', data1.shape)
             i_mean = data1.mean(axis=1)  # all traces, average over specified time window
@@ -744,29 +749,22 @@ class PSCAnalyzer():
             dfilt = scipy.signal.savgol_filter(data1, 5, 2, axis=1, mode='nearest')
             ist = int((analysis_region[0]-t0)/self.Clamps.sample_interval)
             ien = int((analysis_region[1]-t0)/self.Clamps.sample_interval)
-            # print(ist, ien)
 
-            dfw = [[]]*nreps
-            nvs = int(sh[0]/nreps)
-            for i in range(nreps):
-                dfw[i] = dfilt[i*nvs:i*nvs + nvs,: ]
-            dfw = np.array(dfw)
-            # dfw = dfw.reshape((nreps, -1, int(sh[0]/nreps)))
-            dfw = dfw.mean(axis=0)
-            # for i in range(dfw.shape[0]):
-            #     mpl.plot(dfw[i])
-            # mpl.show()
-            
-            # print(dfw.shape, ist, ien)
-            i_mean = dfw[:, ist:ien].min(axis=1)  # all traces, average over specified time window
-            # self.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
-            # print('imean shape: ', i_mean.shape)
-            # print('mean values: ', i_mean)
-            # print('iargmin: ', self.i_argmin)
-
+            if self.NGlist is None:  # all data , do fast way
+                dfw = [[]]*nreps
+                nvs = int(sh[0]/nreps)
+                for i in range(nreps):
+                    dfw[i] = dfilt[i*nvs:i*nvs + nvs,: ]
+                dfw = np.array(dfw)
+                dfw = dfw.mean(axis=0)
+                i_mean = dfw[:, ist:ien].min(axis=1)  # all traces, average over specified time window
+            else:
+                for i in sh[0]:
+                    
             return(i_mean)
             # except:
             #     return None
+            
         # elif mode == 'getmintime':
         #     cmds = np.array(self.V_cmd)+self.AR.holding+self.JunctionPotential
         #     ind = np.where((cmds >= -0.12) & (cmds <= -0.07))
