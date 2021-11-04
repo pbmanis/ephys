@@ -103,6 +103,7 @@ class MiniAnalyses:
         self.filtering = Filtering()
         self.risepower = 4.0
         self.min_event_amplitude = 5.0e-12  # pA default
+        self.eventstartthr = None
         self.Criterion = [None]
         self.template = None
         self.template_tmax = 0.
@@ -119,7 +120,7 @@ class MiniAnalyses:
         delay: float = 0.0,
         sign: int = 1,
         eventstartthr: Union[float, None] = None,
-        risepower: float = 4.0,
+        risepower: Union[float, None] = None,
         min_event_amplitude: float = 5.0e-12,
         threshold:float = 2.5,
         global_SD:Union[float, None] = None,
@@ -146,10 +147,13 @@ class MiniAnalyses:
         self.taus = [tau1, tau2]
         self.dt_seconds = dt_seconds
         self.template_tmax = template_tmax
+        self.fdelay = delay  # floating point delay time in msec
         self.idelay = int(delay / self.dt_seconds)  # points delay in template with zeros
         self.template = None  # reset the template if needed.
-        self.eventstartthr = eventstartthr
-        self.risepower = risepower
+        if eventstartthr is not None:
+            self.eventstartthr = eventstartthr
+        if risepower is not None:
+            self.risepower = risepower
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
         self.sdthr = self.threshold # for starters
@@ -242,7 +246,7 @@ class MiniAnalyses:
         # mpl.plot(tb, data, 'k-')
         # mpl.show()
         # exit()
-        return data
+        return data.copy()
 
     def HPFData(self, data:np.ndarray, hpf: Union[float, None] = None, NPole: int = 8) -> np.ndarray:
         assert (not self.filtering.HPF_applied)  # block repeated application of filtering
@@ -271,7 +275,7 @@ class MiniAnalyses:
         self.filtering.HPF = hpf
         self.filtering.HPF_applied = True
 
-        return data
+        return data.copy()
 
     def NotchData(self, data:np.ndarray, notch: Union[list, None] = None, notch_Q = 30.) -> np.ndarray:
         if notch is None:
@@ -289,7 +293,7 @@ class MiniAnalyses:
             )
         self.filtering.notch = notch
         self.filtering.Notch_applied = True
-        return data
+        return data.copy()
 
 
     # OLD
@@ -376,7 +380,7 @@ class MiniAnalyses:
         filter out events that are less than min_event_amplitude
         """
         cprint("c", "Summarizing data")
-        print(self.taus, self.dt_seconds)
+        # print(self.taus, self.dt_seconds)
         i_decay_pts = int(2.0 * self.taus[1] / self.dt_seconds)  # decay window time (points) Units all seconds
         assert i_decay_pts > 5
         
@@ -876,7 +880,7 @@ class MiniAnalyses:
             print("Require fit of averaged events prior to fitting individual events")
             raise (ValueError)
         onsets = self.Summary.onsets
-        time_past_peak = 0.75  # msec - time after peak to start fitting
+        time_past_peak = 0.1  # msec - time after peak to start fitting
 
         # allocate arrays for results. Arrays have space for ALL events
         # okevents, notok, and evok are indices
@@ -1242,6 +1246,7 @@ class MiniAnalyses:
         self.peak_val = maxev
         self.evfit = evfit
         return res, res_rise.x[2]
+        # return res, res.x[2]
 
     def individual_event_screen(
         self, fit_err_limit: float = 2000.0, tau2_range: float = 2.5, verbose:bool = False
@@ -1445,16 +1450,15 @@ class MiniAnalyses:
         # raw traces, marked with onsets and peaks
         ax[0].set_ylabel("I (pA)")
         ax[0].set_xlabel("T (s)")
-        ax[0].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        # ax[0].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
         ax[1].set_ylabel("Deconvolution")
         ax[1].set_xlabel("T (s)")
-        ax[1].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        # ax[1].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
         ax[2].set_ylabel("Averaged I (pA)")
         ax[2].set_xlabel("T (s)")
-        ax[2].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
+        # ax[2].legend(fontsize=8, loc=2, bbox_to_anchor=(1.0, 1.0))
         if title is not None:
             P.figure_handle.suptitle(title)
-        print(self.P.axarr)
         for i, d in enumerate(data):
             self.plot_trial(self.P.axarr.ravel(), i, d, events, index=index)
 
@@ -1548,7 +1552,7 @@ class MiniAnalyses:
             ax[2].plot(
                 self.Summary.average.avgeventtb[: evlen],
                 scf * self.Summary.average.avgevent,
-                "k",
+                "k-",
                 label=label,
             )
             maxa = np.max(self.sign * self.Summary.average.avgevent)
@@ -1563,9 +1567,9 @@ class MiniAnalyses:
                 else:
                     label = ''
                 ax[2].plot(
-                    self.Summary.average.avgeventtb[:maxl],
+                    self.Summary.average.avgeventtb[:maxl]+self.bfdelay,
                     scf * self.sign * self.template[:maxl] * maxa / self.template_amax,
-                    "r-",
+                    "m-",
                     label=label,
                 )
            
