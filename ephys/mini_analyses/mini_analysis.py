@@ -214,7 +214,7 @@ class MiniAnalysis:
     def build_summary_dict(
         self,
         genotype: Union[str, None] = None,
-        eyfp: str = "ND",
+        EGFP: str = "ND",
         mouse: Union[str, int, None] = None,
     ):
         self.cell_summary = {
@@ -223,7 +223,7 @@ class MiniAnalysis:
             "protocols": [],
             "eventcounts": [],
             "genotype": genotype,
-            "EYFP": eyfp,
+            "EGFP": EGFP,
             "mouse": mouse,
             "amplitude_midpoint": 0.0,
             "holding": [],
@@ -302,7 +302,7 @@ class MiniAnalysis:
         print("\nMouse: ", mouse)
 
         self.build_summary_dict(
-            genotype=mousedata["G"], eyfp=mousedata["EYFP"], mouse=mouse
+            genotype=mousedata["G"], EGFP=mousedata["EGFP"], mouse=mouse
         )
 
         if not check:
