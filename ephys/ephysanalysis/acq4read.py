@@ -553,6 +553,7 @@ class Acq4Read:
             d["WCEnabled"] = par["WholeCellCompEnable"]
             d["WCResistance"] = par["WholeCellCompResist"]
             d["WCCellCap"] = par["WholeCellCompCap"]
+            d["RsCompCorrection"] = par["RsCompCorrection"]
             d["CompEnabled"] = par["RsCompEnable"]
             d["CompCorrection"] = par["RsCompCorrection"]
             d["CompBW"] = par["RsCompBandwidth"]
@@ -566,6 +567,7 @@ class Acq4Read:
                 "CompEnable": 0,
                 "CompCorrection": 0.0,
                 "CompBW": 50000.0,
+                "RsCompCorrection": 0.0,
             }
 
     def parseClampCCCompSettings(self, info: list) -> dict:
