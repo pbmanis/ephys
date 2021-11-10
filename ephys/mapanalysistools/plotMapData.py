@@ -604,7 +604,7 @@ class PlotMapData():
         rasterized: bool = False,
     ) -> None:
         # ensure we don't plot more than once...
-        CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
+        # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
         if self.plotted_em['avgax'][0] == 0:
             self.plotted_em['avgax'][1] = ax
@@ -614,7 +614,7 @@ class PlotMapData():
             else:
                 self.plotted_em['avgax'][2] = ax
                 self.plotted_em['avgevents'] = True
-        CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
+        # CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
 
         # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
@@ -753,7 +753,7 @@ class PlotMapData():
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
         
-        CP.cprint('r', 'plotmapdata: Fitting average event')
+        CP.cprint('c', 'plotmapdata: Fitting average event')
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -762,7 +762,7 @@ class PlotMapData():
             inittaus=self.Pars.taus,
             initdelay=tpre,
         )
-        CP.cprint('r', 'Fit completed')
+        CP.cprint('c', 'Fit completed')
         Amplitude = self.Pars.MA.fitresult[0]
         tau1 = self.Pars.MA.fitresult[1]
         tau2 = self.Pars.MA.fitresult[2]
