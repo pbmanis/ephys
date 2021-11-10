@@ -51,7 +51,7 @@ class IVSummary():
         self.decorate = decorate
         
     def compute_iv(self, threshold=-0.010, bridge_offset=0.0, tgap=0.0005, plotiv=True,
-        full_spike_analysis=True):
+        full_spike_analysis=True) -> Union[None, object]:
         """
         Simple plot of spikes, FI and subthreshold IV
         
@@ -72,6 +72,7 @@ class IVSummary():
                                        self.AR.tstart + (self.AR.tend-self.AR.tstart)/5.],
                             to_peak=True, tgap=tgap)
             if plotiv:
+                fh = None
                 if self.plotting_mode == "normal":
                     fh = self.plot_iv()
                 elif self.plotting_mode == "pubmode":
@@ -83,7 +84,7 @@ class IVSummary():
                 return fh 
         else:
             print('IVSummary::compute_iv: acq4reader.getData found no data to return from: \n  >  ', self.datapath)
-            return False
+            return None
 
 
         
