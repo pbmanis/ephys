@@ -259,6 +259,8 @@ class MiniAnalyses:
         nyqf = 0.5 * ndata * self.dt_seconds
         # cprint('y', f"minis_methods: hpf at {hpf:f}")
         if hpf < 1.0 / nyqf:  # duration of a trace
+            print("unable to apply HPF, trace too short")
+            return data
             raise ValueError(
                 "hpf < Nyquist: ",
                 hpf,
@@ -269,7 +271,7 @@ class MiniAnalyses:
                 "dt in seconds",
                 self.dt_seconds,
                 "sampelrate",
-                1.0 / self.dt,
+                1.0 / self.dt_seconds,
             )
         data = dfilt.SignalFilter_HPFButter(data-data[0], hpf, 1.0 / self.dt_seconds, NPole=4)
         self.filtering.HPF = hpf
@@ -540,7 +542,7 @@ class MiniAnalyses:
         avgeventtb = np.arange(self.avgnpts) * self.dt_seconds
         # assert True == False
         allevents = np.zeros((len(eventlist), self.avgnpts))
-        allev_source = np.zeros()
+        # allev_source = np.zeros_like(allevents)
         k = 0
         pkt = 0  # np.argmax(self.template)  # accumulate
         meas = {"Q": [], "A": [], "HWup": [], "HWdown": [], "HW": []}
@@ -568,7 +570,7 @@ class MiniAnalyses:
                 meas["HW"].append(hw_up + hw_down)
             self.measured = True
             self.Summary.allevents = allevents
-            assert 1 == 0  # force trap here
+            # assert 1 == 0  # force trap here
         else:
             self.measured = False
             self.Summary.allevents = None
@@ -607,8 +609,8 @@ class MiniAnalyses:
                 ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
-                    pad = allevents.shape[1] - ((ix-npre) - (ix + npost))
-                    # print("pad: ", pad)
+                     # padding sometimes needed to fit output array shape
+                    pad = allevents.shape[1] - ((ix-npre) - (ix + npost)) 
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
                     allevents[k, :] -= np.mean(allevents[k, 0:npre])
                 else:
