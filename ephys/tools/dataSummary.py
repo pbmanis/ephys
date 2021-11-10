@@ -771,7 +771,7 @@ class DataSummary():
         if self.outputMode == 'pandas' and not self.append:
             print('\nOUTPUTTING DIRECTLY VIA PANDAS')
           #  self.colprint()
-            print('pandstring: ', self.panda_string)
+            print('panda string: ', self.panda_string)
             df = pd.read_csv(StringIO(self.panda_string), delimiter='\t')
            # print('Head write: \n', df.head(5), '\n')
             df.to_pickle(self.outFilename)
