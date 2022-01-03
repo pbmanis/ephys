@@ -46,6 +46,7 @@ def nb_clementsbekkers(data, template: Union[List, np.ndarray]):
     """
     ## Prepare a bunch of arrays we'll need later
     n_template = len(template)
+    template = np.array(template)
     # if n_template <= 1:
     #     raise ValueError("nb_clementsbekkers: Length of template must be useful, and > 1")
     n_data = data.shape[0]
