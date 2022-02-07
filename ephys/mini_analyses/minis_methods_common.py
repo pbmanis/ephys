@@ -44,10 +44,10 @@ def def_empty_list2():
 @dataclass
 class AverageEvent:
     """
-        The AverageEvent class holds the averaged events from all
-        traces/trials
+        The AverageEvent class holds the averaged events
+        from all traces and trials
     """
-    
+
     averaged : bool= False  # set flags in case of no events found
     avgeventtb:Union[List, np.ndarray] = field(
         default_factory=def_empty_list)
@@ -62,7 +62,7 @@ class AverageEvent:
     avg_fiterr :float = np.nan
     risetenninety:float = np.nan
     decaythirtyseven:float = np.nan
-       
+
 
 @dataclass
 class Summaries:
@@ -502,9 +502,8 @@ class MiniAnalyses:
         # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         # self.Summary.amplitudes = np.array(self.Summary.amplitudes)
         print(f"Rejected {nrejected_too_small:6d} events smaller than threshold of: {1e12*self.min_event_amplitude:6.1f} pA)")
-        self.average_events(
-            data,
-        )
+        self.average_events(traces = range(len(data)),
+            eventlist = self.Summary.onsets, data=data)
         # print(self.Summary.average.avgevent)
         if self.Summary.average.averaged:
             cprint('c', "Fitting averaged event")
@@ -576,15 +575,21 @@ class MiniAnalyses:
             self.Summary.allevents = None
         return meas
 
-    def average_events(self, data: np.ndarray) -> tuple:
+    def average_events(self, traces: list, eventlist:Union[list, None] = None, data:Union[list, object, None]=None) -> tuple:
         """
         compute average event with length of template
         Parameters
         ----------
+        traces:
+            list of traces to go thorugh when computing average.
+                may be a single trace or a group
         eventlist : list
             List of event onset indices into the arrays
             Expect a 2-d list (traces x onsets)
+        data : expect 2d list matching the eventlist.
         """ 
+        if eventlist is None and data is None:
+            raise ValueError("minis_methods_common.average_events requires an eventlist and the original data")
         # cprint('r', 'AVERAGE EVENTS')
         self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
@@ -602,10 +607,13 @@ class MiniAnalyses:
         k = 0
         pkt = 0
         n_incomplete_events = 0
-        print(allevents.shape)
-        for itrace, onsets in enumerate(self.Summary.onsets):
-            # cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsets):d}")
-            for j, event_onset in enumerate(onsets):
+        # print(len(self.Summary.onsets))
+        # print(len(eventlist))
+        onsetlist = self.Summary.onsets
+
+        for itrace in traces:
+#            cprint('c', f"Trace: {itrace: d}, # onsets: {len(onsetlist[itrace]):d}")
+            for j, event_onset in enumerate(onsetlist[itrace]):
                 ix = event_onset + pkt  # self.idelay
                 # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost, data[itrace].shape[0])
                 if (ix + npost) < data[itrace].shape[0] and (ix - npre) >= 0:
@@ -621,33 +629,34 @@ class MiniAnalyses:
         if n_incomplete_events > 0:
             cprint("y", f"{n_incomplete_events:d} were excluded because they were incomplete (too close to end of trace)")
 
+        self.avgevent = np.nanmean(allevents, axis=0)
+        self.avgeventtb = avgeventtb
+        
         if k > 0:
             self.Summary.average.averaged = True
             self.Summary.average.avgnpts = avgnpts
             self.Summary.average.Nevents = k
             self.Summary.allevents = allevents
             self.Summary.average.avgeventtb = avgeventtb
-            avgevent = np.nanmean(allevents, axis=0)
-            self.Summary.average.avgevent = avgevent# - np.mean(avgevent[:3])
+            self.Summary.average.avgevent = self.avgevent  # - np.mean(avgevent[:3])
             self.Summary.event_trace_list = event_trace
-            return
         else:
+            self.Summary.average.averaged = False
             self.Summary.average.avgnpts = 0
             self.Summary.average.avgevent = []
             self.Summary.average.allevents = []
             self.Summary.average.avgeventtb = []
-            self.Summary.average.averaged = False
+            self.Summary.average.avgevent = self.avgevent
             self.Summary.event_trace_list = []
-            return
 
-    def average_events_subset(self, data: np.ndarray, eventlist:list) -> tuple:
+    def average_events_subset(self, eventlist:list, data: np.ndarray) -> tuple:
         """
         compute average event with length of template
         Parameters
         ----------
         data:
-            1-d numpy array of the data
             eventlist : list
+            1-d numpy array of the data
             List of event onset indices into the arrays
             Expect a 1-d list (traces x onsets)
         """ 

@@ -477,9 +477,9 @@ class AnalyzeMap(object):
         smpks = np.array(method.Summary.smpkindex[itrace])
         # events[trial]['aveventtb']
         rate = np.mean(np.diff(tb))
-        tb_event = method.Summary.average.avgeventtb  # event time base
+        tb_event = method.avgeventtb # method.Summary.average.avgeventtb  # event time base
         tpre = 0.002  # 0.1*np.max(tb0)
-        tpost = np.max(method.Summary.average.avgeventtb) - tpre
+        tpost = np.max(tb_event) - tpre
         ipre = int(tpre / self.rate)
         ipost = int(tpost / self.rate)
         # tb = np.arange(-tpre, tpost+rate, rate) + tpre
@@ -668,8 +668,6 @@ class AnalyzeMap(object):
     """
     Analyze one map calls:
         Analyze protocol; calls
-            Analyze one map; calls
-                Analyze one trace
     """
 
     def analyze_one_map(
@@ -714,11 +712,11 @@ class AnalyzeMap(object):
         if self.verbose:
             CP.cprint('c', f"      Data shape going into analyze_protocol: str(elf.data_clean.shape:s)")
         results = self.analyze_protocol(
-            self.Data.data_clean,
-            self.Data.tb,
-            info,
-            eventhist=True,
-            dataset=dataset,
+            data = self.Data.data_clean,
+            tb = self.Data.tb,
+            info = info,
+            eventhist = True,
+            dataset = dataset,
             data_nostim=data_nostim,
         )
         self.last_results = results
@@ -738,6 +736,8 @@ class AnalyzeMap(object):
         data_nostim: Union[list, np.ndarray, None] = None,
     ):
         """
+        analyze_protocol calls:
+            analyze_one_trial (repetition)
         data_nostim is a list of points where the stimulus/response DOES NOT occur, so we can compute the SD
         for the threshold in a consistent manner if there are evoked responses in the trace.
         """
@@ -850,6 +850,10 @@ class AnalyzeMap(object):
 
     def analyze_one_trial(self, data: np.ndarray, pars: dict = None) -> dict:
         """
+        analyze_one_trial calls:
+            analyze_traces_in_trial
+            with returns "method" (the class that analyzed the data in a trial)
+        Analyze one trial in a protocol (one map; maps may have been repeated)
         data: numpy array (2D): no default
              data, should be [target, tracelen]; e.g. already points to the trial
         pars: dict
@@ -902,17 +906,24 @@ class AnalyzeMap(object):
     ) -> dict:
         """
         Analyze the block of traces
+        Calls the methods in minis_methods that are avalable for
+        detecting events.
 
         Parameters
         ----------
         data : 1D array length of trace
-            The trace for just one target
+            The trace is for just one target, one trial
     
         itarget : int
             Target site for the trace to be analyzed
     
         pars : 
 
+        Returns
+        -------
+        The method class that was used (and which holds the
+        various results)
+    
         """
         if self.verbose:
             print("      analyze one trace")
@@ -1082,7 +1093,7 @@ class AnalyzeMap(object):
             npk = list(
                 set(npk0).intersection(set(npk4))
             )  # only all peaks that pass all tests
-            # if not self.artifact_suppress:
+            #  if not self.artifact_suppress:
             #     npk = npk4  # only suppress shutter artifacts  .. exception
             if len(npk) == 0:
                 # CP.cprint('r', f"trace {i:d} has no events")
@@ -1099,7 +1110,13 @@ class AnalyzeMap(object):
                 )
                 spont_ev.append(
                     [np.array([]), np.array([])]
-                )             
+                )
+                fit_tau1.append(np.nan) # nothing to measure
+                fit_tau2.append(np.nan)
+                fit_amp.append(np.nan)
+                avg_evoked.append(np.array([]))
+                measures.append([np.array([]), np.array([])])
+                
                 continue
             else:
                 nevents += len(np.array(method.Summary.onsets[i])[npk])
@@ -1109,14 +1126,36 @@ class AnalyzeMap(object):
                 smpks.append(np.array(method.Summary.smoothed_peaks[i])[npk])
                 smpksindex.append(np.array(method.Summary.smpkindex[i])[npk])
                 spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
-
-                # define:
-                # spont is not in evoked window, and no sooner than 10 msec before a stimulus,
-                # at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
-                # evoked is after the stimulus, in a window (usually ~ 5 msec)
-                # data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
-                # stimtimes: dict_keys(['start', 'duration', 'amplitude', 'npulses', 'period', 'type'])
+                method.Summary.onsets[i] = np.array(method.Summary.onsets[i])
+                method.Summary.smpkindex[i] = np.array(method.Summary.smpkindex[i])
+                # Define:
+                # spontaneous events are those that are:
+                #   a: not in evoked window, and,
+                #   b: no sooner than 10 msec before a stimulus,
+                # Also, events must be at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
+                # Evoked events are those that occur after the stimulus with in a window (usually ~ 5 msec)
+                # All data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
+                #
                 st_times = np.array(self.Pars.stimtimes["start"])
+                 # process spontaneous events first
+                npk_sp = self.select_events(
+                    method.Summary.onsets[i],
+                    [0.0],
+                    st_times[0] - (0.010),
+                    self.rate,
+                    mode="accept",
+                )
+                if len(npk_sp) > 0:
+                    sp_onsets = method.Summary.onsets[i][npk_sp]
+
+                    avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(data[i], sp_onsets)
+                    avg_spont.append(avg_spont_one)
+                    spont_ev.append(
+                        [method.Summary.onsets[i][npk_sp], method.Summary.smpkindex[i][npk_sp]]
+                    )
+                else:
+                    spont_ev.append([[], []])
+                
                 ok_events = np.array(method.Summary.smpkindex[i])[npk]
                 # print(ok_events*rate)
 
@@ -1128,37 +1167,20 @@ class AnalyzeMap(object):
                     mode="accept",
                     first_only=True,
                 )
-                ev_onsets = np.array(method.Summary.onsets[i])[npk_ev]
+                method.Summary.onsets[i] = method.Summary.onsets[i][npk_ev]
+                method.Summary.smpkindex[i] = method.Summary.smpkindex[i][npk_ev]
                 evoked_ev.append(
-                    [np.array(method.Summary.onsets[i])[npk_ev], np.array(method.Summary.smpkindex[i])[npk_ev]]
+                    [method.Summary.onsets[i], method.Summary.smpkindex[i]]
                 )
-
-            # avg_evoked_one, avg_evokedtb, allev_evoked = method.average_events(ev_onsets)
-            # fit_tau1.append(
-            #     method.fitted_tau1
-            # )  # these are the average fitted values for the i'th trace
-            # fit_tau2.append(method.fitted_tau2)
-            # fit_amp.append(method.Amplitude)
-            # avg_evoked.append(avg_evoked_one)
-            measures.append(method.measure_events(data[i], ev_onsets))
+            method.average_events(traces=[i], eventlist = method.Summary.onsets, data=data)
+            # these are the average fitted values for the i'th trace
+            fit_tau1.append(method.fitted_tau1)
+            fit_tau2.append(method.fitted_tau2)
+            fit_amp.append(method.Amplitude)
+            avg_evoked.append(method.avgevent)
+            measures.append(method.measure_events(data[i], method.Summary.onsets[i]))
             txb = method.Summary.average.avgeventtb  # only need one of these.
-            if not np.isnan(method.fitted_tau1):
-                npk_sp = self.select_events(
-                    ok_events,
-                    [0.0],
-                    st_times[0] - (method.fitted_tau1 * 5.0),
-                    self.rate,
-                    mode="accept",
-                )
-                sp_onsets = np.array(method.Summary.onsets[i])[npk_sp]
-  
-                avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(data[i], sp_onsets)
-                avg_spont.append(avg_spont_one)
-                spont_ev.append(
-                    [np.array(method.Summary.onsets[i])[npk_sp], np.array(method.Summary.smpkindex[i])[npk_sp]]
-                )
-            else:
-                spont_ev.append([])
+            
         if method.Summary.average.averaged:  # grand average, calculated after deconvolution
             avgev.append(method.Summary.average.avgevent)
             avgtb.append(method.Summary.average.avgeventtb)

@@ -25,7 +25,7 @@ from typing import Union, List
 import timeit
 import pyximport
 from scipy.optimize import curve_fit
-from numba import jit
+import numba as nb
 import lmfit
 import scipy as sp
 
@@ -39,14 +39,14 @@ from ephys.mini_analyses.minis_methods_common import MiniAnalyses
 pyximport.install()
 
 
-@jit(nopython=False, parallel=False, cache=True)
+@nb.njit(parallel=False, cache=True)
 def nb_clementsbekkers(data, template: Union[List, np.ndarray]):
     """
     cb algorithm for numba jit.
     """
     ## Prepare a bunch of arrays we'll need later
     n_template = len(template)
-    template = np.array(template)
+    #template = np.ndarray(template, dtype=np.float64)  # throws error so not needed?
     # if n_template <= 1:
     #     raise ValueError("nb_clementsbekkers: Length of template must be useful, and > 1")
     n_data = data.shape[0]
