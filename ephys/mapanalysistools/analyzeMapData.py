@@ -616,13 +616,14 @@ class AnalyzeMap(object):
             # Now get some stats:
             self.Pars.global_SD = np.std(data)
             self.Pars.global_mean = np.mean(data)
-            print(f"Global mean (SD):  {1e12*self.Pars.global_mean:7.1f} ({1e12*self.Pars.global_SD:7.1f}) pA")
+            print(f"Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
+            print(f" ({1e12*self.Pars.global_SD:7.1f}) pA")
     
             trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
             self.Pars.global_trimmed_SD = np.std(trimdata)
             self.Pars.global_trimmed_median  = np.median(trimdata)
             print(f"Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
-            print(f" {1e12*self.Pars.global_trimmed_SD:7.1f} pA")
+            print(f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
     
              
         elif data.ndim == 2:
@@ -812,6 +813,7 @@ class AnalyzeMap(object):
 
         tmaxev = np.max(tb)  # msec
         for jtrial in range(data.shape[0]):  # all trials
+            CP.cprint('m', f"Analyzing Trial # {jtrial:4d}")
             res = self.analyze_one_trial(
                 data[jtrial],
                 pars={
@@ -861,7 +863,7 @@ class AnalyzeMap(object):
                 rate, jtrial, tmaxev, evenstartthr, data-nostim, eventlist, nevents, tb, testplots
         """
         if self.verbose:
-            print("   analyzeone trial")
+            print("   analyze one trial")
         nworkers = 7
         tasks = range(
             data.shape[0]
@@ -886,8 +888,8 @@ class AnalyzeMap(object):
         #         )
             # print('Result keys no parallel: ', results.keys())
         method = self.analyze_traces_in_trial(data, pars=pars)
-        method.identify_events()# order=order)
-        method.summarize(data)
+        method.identify_events(verbose=True) # order=order)
+        method.summarize(data, verbose=True)
         method.fit_average_event(
             method.Summary.average.avgeventtb,
             method.Summary.average.avgevent,
@@ -896,7 +898,7 @@ class AnalyzeMap(object):
             results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
             print('Summarized....')
             if self.verbose:
-                print("trial analyzed")
+                print("Trial analyzed")
             return results
         else:
             return None
@@ -926,7 +928,8 @@ class AnalyzeMap(object):
     
         """
         if self.verbose:
-            print("      analyze one trace")
+            print("      analyze traces")
+        CP.cprint("m", f"     Analyzing {data.shape[0]:4d} traces")
         idmax = int(self.Pars.analysis_window[1] / self.rate)
 
         # get the lpf and HPF settings - if they were used
@@ -937,6 +940,7 @@ class AnalyzeMap(object):
             aj = minis_methods.AndradeJonas()
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / self.rate)
             aj.setup(
+                datasource=self.protocol,
                 ntraces=data.shape[0],
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
@@ -966,6 +970,7 @@ class AnalyzeMap(object):
             cb = minis_methods.ClementsBekkers()
             jmax = int((2 * self.Pars.taus[0] + 3 * self.Pars.taus[1]) / self.rate)
             cb.setup(
+                datasource=self.protocol,
                 ntraces=data.shape[0],
                 tau1=self.Pars.taus[0],
                 tau2=self.Pars.taus[1],
@@ -1024,11 +1029,13 @@ class AnalyzeMap(object):
     def clean_and_gather_trial_events(self, method:object, data:object, pars: dict = None):
         """
         After the traces have been analyzed, we next
-        filter out events at times of stimulus artifacts
+        filter out events at times of stimulus artifacts and
+        then collect the data
         """
         # build array of artifact times first
         assert data.ndim == 2
         ntraces = data.shape[0]
+        # set up parameters for artifact exclusion
         art_starts = []
         art_durs = []
         art_starts = [
@@ -1061,41 +1068,44 @@ class AnalyzeMap(object):
         eventlist = pars["eventlist"]
         tb = pars["tb"]
         # nevents = pars["nevents"]
-        onsets = []  # list of onsete times in this trace
+        onsets = []  # list of event onset times in this trace
         crit = []  # criteria from CB
         scale = []  # scale from CB
         tpks = []  # time for peaks
         smpks = []  # boxcar smoothed peak values
-        smpksindex = []  # matching array indices into smoothed peaks
-        avgev = []  # average of events
-        avgtb = []  # time base for average events
-        avgnpts = []  # numbeer of points in averaged events
-        avg_spont = []  # average
-        avg_evoked = []  # average evoked events
+        smpksindex = []  # array matching smpks for indices into smoothed peaks
+        avgev = []  # average of detected events
+        avgtb = []  # time base for average events (for avgev)
+        avgnpts = []  # number of points in averaged events
+        avg_spont = []  # average of spontaneous evetns
+        avg_evoked = []  # average of evoked events
         measures = []  # simple measures, q, amp, half-width
-        fit_tau1 = []  # fit ties to
-        fit_tau2 = []
-        fit_amp = []
-        spont_dur = []
-        evoked_ev = []  # subsets that pass criteria, onset values stored
-        spont_ev = []
+        fit_tau1 = []  # fit time constants rise
+        fit_tau2 = []  # fall
+        fit_amp = []  # amplitude of fit to event
+        spont_dur = []  # time window for spontaneous detection
+        evoked_ev = []  # subset of onsets events falling into evoked window
+        spont_ev = []  # subset of onsets events falling into spontaneous window
         order = []
+
+        # get a time base for the average event
         
         event_trace_list = method.Summary.event_trace_list
         nevents = 0
         for i in range(ntraces):
+            # CP.cprint("r", f"analyzing trace: {i:d}")
             npk0 = self.select_events(
                 method.Summary.smpkindex[i], art_starts, art_durs, self.rate, mode="reject"
             )
             npk4 = self.select_by_sign(
                 method, itrace=i, npks=npk0, data=data[i], min_event=5e-12
-            )  # events must also be of correct sign and min magnitude
+            )  # events must have correct sign and a minimum amplitude
             npk = list(
                 set(npk0).intersection(set(npk4))
-            )  # only all peaks that pass all tests
+            )  # make a list of all peaks that pass all tests (logical AND)
             #  if not self.artifact_suppress:
             #     npk = npk4  # only suppress shutter artifacts  .. exception
-            if len(npk) == 0:
+            if len(npk) == 0:  # if there are no events that survive, then fill with empties
                 # CP.cprint('r', f"trace {i:d} has no events")
                 onsets.append(np.array([]))
                 eventlist.append(np.array([]))
@@ -1116,9 +1126,10 @@ class AnalyzeMap(object):
                 fit_amp.append(np.nan)
                 avg_evoked.append(np.array([]))
                 measures.append([np.array([]), np.array([])])
-                
-                continue
-            else:
+                npk = []
+                npk_sp = []
+
+            else:  # store the events (all events first, then subsets)
                 nevents += len(np.array(method.Summary.onsets[i])[npk])
                 onsets.append(np.array(method.Summary.onsets[i])[npk])
                 eventlist.append(tb[np.array(method.Summary.onsets[i])[npk]])
@@ -1172,6 +1183,8 @@ class AnalyzeMap(object):
                 evoked_ev.append(
                     [method.Summary.onsets[i], method.Summary.smpkindex[i]]
                 )
+            # CP.cprint("r", f"     Nevents (cumul): {nevents:d}, trial: ev_events ={len(npk_ev):d}  sp_events = {len(npk_sp):d}")
+            # CP.cprint("r", f"        ev>1 : {str(method.Summary.onsets[i]):s}")
             method.average_events(traces=[i], eventlist = method.Summary.onsets, data=data)
             # these are the average fitted values for the i'th trace
             fit_tau1.append(method.fitted_tau1)
@@ -1179,7 +1192,8 @@ class AnalyzeMap(object):
             fit_amp.append(method.Amplitude)
             avg_evoked.append(method.avgevent)
             measures.append(method.measure_events(data[i], method.Summary.onsets[i]))
-            txb = method.Summary.average.avgeventtb  # only need one of these.
+            # if len(method.Summary.average.avgeventtb) > 0:
+            #     txb = method.Summary.average.avgeventtb  # only need one of these.
             
         if method.Summary.average.averaged:  # grand average, calculated after deconvolution
             avgev.append(method.Summary.average.avgevent)
@@ -1187,10 +1201,11 @@ class AnalyzeMap(object):
             avgnpts.append(method.Summary.average.avgnpts)
         else:
             avgev.append([])
-            avgtb.append([])
+            avgtb.append(method.Summary.average.avgeventtb)
             avgnpts.append(0)
         # if testplots:
         #     method.plots(title='%d' % i, events=None)
+        CP.cprint("r", f"   ********** avgtb: {len(avgtb):d}    aveventtb: {len(method.Summary.average.avgeventtb):d}")
         res = {
             "criteria": crit,
             "onsets": onsets,
@@ -1202,7 +1217,7 @@ class AnalyzeMap(object):
             "avgnpts": avgnpts,
             "avgevoked": avg_evoked,
             "avgspont": avg_spont,
-            "aveventtb": method.Summary.average.avgeventtb ,
+            "aveventtb": avgtb,
             "fit_tau1": fit_tau1,
             "fit_tau2": fit_tau2,
             "fit_amp": fit_amp,

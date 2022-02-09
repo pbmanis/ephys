@@ -21,6 +21,7 @@ import traceback
 from typing import Union, List
 import timeit
 from scipy.optimize import curve_fit
+import scipy.special
 import lmfit
 
 import ephys.tools.digital_filters as dfilt
@@ -99,6 +100,7 @@ class MiniAnalyses:
         Allows use of common methods between different algorithms
         """
         self.verbose = False
+        self.datasource = ""
         self.ntraces = 1
         self.filtering = Filtering()
         self.risepower = 4.0
@@ -112,6 +114,7 @@ class MiniAnalyses:
         
     def setup(
         self,
+        datasource: str = "",
         ntraces: int = 1,
         tau1: Union[float, None] = None,
         tau2: Union[float, None] = None,
@@ -139,8 +142,9 @@ class MiniAnalyses:
         If global SD has a value, then we use that rather than the 
         current trace SD for threshold determinations
         """
-        cprint('c', 'SETUP***')
+        cprint('c', 'MiniAnalysis SETUP')
         assert sign in [-1, 1]  # must be selective, positive or negative events only
+        self.datasource = datasource
         self.ntraces = ntraces
         self.Criterion = [[None] for x in range(ntraces)]
         self.sign = sign
@@ -153,7 +157,7 @@ class MiniAnalyses:
         if eventstartthr is not None:
             self.eventstartthr = eventstartthr
         if risepower is not None:
-            self.risepower = risepower
+            self.risepower = risepower.deepcopy()
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
         self.sdthr = self.threshold # for starters
@@ -501,7 +505,7 @@ class MiniAnalyses:
             self.onsets[itrial] = self.onsets[itrial][ev_accept]  # reduce to the accepted values only
         # self.Summary.smoothed_peaks = np.array(self.Summary.smoothed_peaks)
         # self.Summary.amplitudes = np.array(self.Summary.amplitudes)
-        print(f"Rejected {nrejected_too_small:6d} events smaller than threshold of: {1e12*self.min_event_amplitude:6.1f} pA)")
+        cprint("y", f"   Rejected {nrejected_too_small:6d} events smaller than threshold of: {1e12*self.min_event_amplitude:6.1f} pA)")
         self.average_events(traces = range(len(data)),
             eventlist = self.Summary.onsets, data=data)
         # print(self.Summary.average.avgevent)
@@ -510,7 +514,7 @@ class MiniAnalyses:
             self.fit_average_event(
                 tb=self.Summary.average.avgeventtb,
                 avgevent=self.Summary.average.avgevent,
-                initdelay=0.,
+                initdelay=1e-3,
                 debug=False)
             self.Summary.average.fitted_tau1 = self.fitted_tau1
             self.Summary.average.fitted_tau2 = self.fitted_tau2
@@ -627,26 +631,23 @@ class MiniAnalyses:
                 event_trace[k] = [itrace, j]
                 k = k + 1
         if n_incomplete_events > 0:
-            cprint("y", f"{n_incomplete_events:d} were excluded because they were incomplete (too close to end of trace)")
+            cprint("y", f"   {n_incomplete_events:d} events excluded because they were too close to the end of the trace")
 
         self.avgevent = np.nanmean(allevents, axis=0)
         self.avgeventtb = avgeventtb
+        self.Summary.average.avgeventtb = avgeventtb
+        self.Summary.average.avgnpts = avgnpts
+        self.Summary.average.avgevent = self.avgevent  # - np.mean(avgevent[:3])
         
         if k > 0:
             self.Summary.average.averaged = True
-            self.Summary.average.avgnpts = avgnpts
             self.Summary.average.Nevents = k
             self.Summary.allevents = allevents
-            self.Summary.average.avgeventtb = avgeventtb
-            self.Summary.average.avgevent = self.avgevent  # - np.mean(avgevent[:3])
             self.Summary.event_trace_list = event_trace
         else:
             self.Summary.average.averaged = False
-            self.Summary.average.avgnpts = 0
             self.Summary.average.avgevent = []
             self.Summary.average.allevents = []
-            self.Summary.average.avgeventtb = []
-            self.Summary.average.avgevent = self.avgevent
             self.Summary.event_trace_list = []
 
     def average_events_subset(self, eventlist:list, data: np.ndarray) -> tuple:
@@ -686,105 +687,114 @@ class MiniAnalyses:
         return np.mean(allevents, axis=0), avgeventtb, allevents
 
 
-    def doubleexp(
-        self,
-        p: list,
-        x: np.ndarray,
-        y: Union[None, np.ndarray],
-        risepower: float,
-        fixed_delay: float = 0.0,
-        mode: int = 0,
-    ) -> np.ndarray:
-        """
-        Calculate a double expoential EPSC-like waveform with the rise to a power
-        to make it sigmoidal
-        """
-        # fixed_delay = p[3]  # allow to adjust; ignore input value
-        ix = np.argmin(np.fabs(x - fixed_delay))
-        tm = np.zeros_like(x)
-        tm[ix:] = p[0] * (1.0 - np.exp(-(x[ix:] - fixed_delay) / p[1])) ** risepower
-        tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / p[2])
-
-        if mode == 0:
-            return tm - y
-        elif mode == 1:
-            return np.linalg.norm(tm - y)
-        elif mode == -1:
-            return tm
-        else:
-            raise ValueError(
-                "doubleexp: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
-            )
-
-    def risefit(
-        self,
-        p: list,
-        x: np.ndarray,
-        y: Union[None, np.ndarray],
-        risepower: float,
-        mode: int = 0,
-    ) -> np.ndarray:
-        """
-        Calculate a delayed EPSC-like waveform rise shape with the rise to a power
-        to make it sigmoidal, and an adjustable delay
-        input data should only be the rising phase.
-        p is in order: [amplitude, tau, delay]
-        """
-        assert mode in [-1, 0, 1]
-        # if np.isnan(p[0]):
-        #     try:
-        #         x = 1./p[0]
-        #     except Exception as e:
-        #         track = traceback.format_exc()
-        #         print(track)
-        #         exit(0)
-        # # assert not np.isnan(p[0])
-        ix = np.argmin(np.fabs(x - p[2]))
-        tm = np.zeros_like(x)
-        expf = (x[ix:] - p[2]) / p[1]
-        pclip = 1.0e3
-        nclip = 0.0
-        try:
-            expf[expf > pclip] = pclip
-            expf[expf < -nclip] = -nclip
-        except:
-            print(pclip, nclip)
-            print(expf)
-            exit(1)
-        tm[ix:] = p[0] * (1.0 - np.exp(-expf)) ** risepower
-        if mode == 0:
-            return tm - y
-        elif mode == 1:
-            return np.linalg.norm(tm - y)
-        elif mode == -1:
-            return tm
-        else:
-            raise ValueError(
-                "doubleexp: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
-            )
-
-    def decayexp(
-        self,
-        p: list,
-        x: np.ndarray,
-        y: Union[None, np.ndarray],
-        fixed_delay: float = 0.0,
-        mode: int = 0,
-    ):
-        """
-        Calculate an exponential decay (falling phase fit)
-        """
-        tm = p[0] * np.exp(-(x - fixed_delay) / p[1])
-        if mode == 0:
-            return tm - y
-        elif mode == 1:
-            return np.linalg.norm(tm - y)
-        elif mode == -1:
-            return tm
-        else:
-            raise ValueError(
-                "doubleexp: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
-            )
+    # def doubleexp_ng(
+    #     self,
+    #     x: np.ndarray,
+    #     amp: float,
+    #     tau_1: float,
+    #     tau_2: float,
+    #     risepower: float,
+    #     fixed_delay: float = 0.0,
+    #     mode: int = -1,
+    #     y: Union[None, np.ndarray] = None,
+    # ) -> np.ndarray:
+    #     """
+    #     Calculate a double exponential EPSC-like waveform. The rising phase
+    #     is taken to a power to make it sigmoidal
+    #     Note that the parameters p[1] and p[2] are multiplied, rather
+    #     than divided here, so the values must be inverted in the caller
+    #     from the "time constants"
+    #     """
+    #     # fixed_delay = p[3]  # allow to adjust; ignore input value
+    #     ix = np.argmin(np.fabs(x - fixed_delay))
+    #     tm = np.zeros_like(x)
+    #     tm[ix:] = amp * (1.0 - np.exp(-(x[ix:] - fixed_delay) * tau1)) ** risepower
+    #     try:
+    #         tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) * tau2)
+    #     except:
+    #         print(ix, len(x), x[ix:])
+    #         print(x[ix], fixed_delay, tau2)
+    #         raise ValueError("error in doubleexp computation")
+    #     if mode == 0:
+    #         return tm - y
+    #     elif mode == 1:
+    #         return np.linalg.norm(tm - y)
+    #     elif mode == -1:
+    #         return tm
+    #     else:
+    #         raise ValueError(
+    #             "doubleexp: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
+    #         )
+    #
+    # def risefit(
+    #     self,
+    #     p: list,
+    #     x: np.ndarray,
+    #     y: Union[None, np.ndarray],
+    #     risepower: float,
+    #     mode: int = 0,
+    # ) -> np.ndarray:
+    #     """
+    #     Calculate a delayed EPSC-like waveform rise shape with the rise to a power
+    #     to make it sigmoidal, and an adjustable delay
+    #     input data should only be the rising phase.
+    #     p is in order: [amplitude, tau, delay]
+    #     """
+    #     assert mode in [-1, 0, 1]
+    #     # if np.isnan(p[0]):
+    #     #     try:
+    #     #         x = 1./p[0]
+    #     #     except Exception as e:
+    #     #         track = traceback.format_exc()
+    #     #         print(track)
+    #     #         exit(0)
+    #     # # assert not np.isnan(p[0])
+    #     ix = np.argmin(np.fabs(x - p[2]))
+    #     tm = np.zeros_like(x)
+    #     expf = (x[ix:] - p[2]) * p[1]
+    #     pclip = 1.0e3
+    #     nclip = 0.0
+    #     try:
+    #         expf[expf > pclip] = pclip
+    #         expf[expf < -nclip] = -nclip
+    #     except:
+    #         print(pclip, nclip)
+    #         print(expf)
+    #         exit(1)
+    #     tm[ix:] = p[0] * (1.0 - np.exp(-expf)) ** risepower
+    #     if mode == 0:
+    #         return tm - y
+    #     elif mode == 1:
+    #         return np.linalg.norm(tm - y)
+    #     elif mode == -1:
+    #         return tm
+    #     else:
+    #         raise ValueError(
+    #             "risefit: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
+    #         )
+    #
+    # def decayexp(
+    #     self,
+    #     p: list,
+    #     x: np.ndarray,
+    #     y: Union[None, np.ndarray],
+    #     fixed_delay: float = 0.0,
+    #     mode: int = 0,
+    # ):
+    #     """
+    #     Calculate an exponential decay (falling phase fit)
+    #     """
+    #     tm = p[0] * np.exp(-(x - fixed_delay) * p[1])
+    #     if mode == 0:
+    #         return tm - y
+    #     elif mode == 1:
+    #         return np.linalg.norm(tm - y)
+    #     elif mode == -1:
+    #         return tm
+    #     else:
+    #         raise ValueError(
+    #             "decayexp: Mode must be 0 (diff), 1 (linalg.norm) or -1 (just value)"
+    #         )
 
     def fit_average_event(
         self,
@@ -793,12 +803,16 @@ class MiniAnalyses:
         debug: bool = False,
         label: str = "",
         inittaus: List = [0.001, 0.005],
-        initdelay: Union[float, None] = None,
+        initdelay: Union[float, None] = 0.0,
     ) -> None:
         """
         Fit the averaged event to a double exponential epsc-like function
         Operates on the AverageEvent data structure
         """
+        self.numpyerror = np.geterr()
+        np.seterr(all='raise')
+        self.scipyerror = scipy.special.geterr()
+        scipy.special.seterr(all='raise')
         # tsel = np.argwhere(self.avgeventtb > self.tpre)[0]  # only fit data in event,  not baseline
         tsel = 0  # use whole averaged trace
         self.tsel = tsel
@@ -810,14 +824,20 @@ class MiniAnalyses:
         self.fitted_tau1 = np.nan
         self.fitted_tau2 = np.nan
         self.Amplitude = np.nan
+        self.avg_fiterr = np.nan
+        self.bfdelay = np.nan
+        self.avg_best_fit = None
+        self.Qtotal = np.nan
+        self.risetenninety = np.nan
+        self.decaythirtyseven = np.nan
+        
         # peak_pos = np.argmax(self.sign*self.avgevent[self.tsel:])
         # decay_fit_start = peak_pos + int(time_past_peak/self.dt_seconds)
         # init_vals = [self.sign*10.,  1.0,  4., 0.]
         # init_vals_exp = [20.,  5.0]
         # bounds_exp  = [(0., 0.5), (10000., 50.)]
-        cprint('c', 'Fitting average event')
-
-        res, rdelay = self.event_fitter(
+        cprint('c', '            Fitting average event')
+        res = self.event_fitter_lm(
             tb,
             avgevent,
             time_past_peak=time_past_peak,
@@ -825,31 +845,40 @@ class MiniAnalyses:
             debug=debug,
             label=label,
         )
-        # print('rdelay: ', rdelay)
+        # res, rdelay = self.event_fitter(
+        #     tb,
+        #     avgevent,
+        #     time_past_peak=time_past_peak,
+        #     initdelay=initdelay,
+        #     debug=debug,
+        #     label=label,
+        # )
 
         if res is None:
-            cprint('r', 'average fit result is None')
+            cprint('r', f"**** Average event fit result is None [data source = {str(self.datasource):s}]")
             self.fitted = False
+            np.seterr(**self.numpyerror)  # reset error detection
+            scipy.special.seterr(**self.scipyerror)
             return
-        self.fitresult = res.x
-        self.Amplitude = self.fitresult[0]
-        self.fitted_tau1 = self.fitresult[1]
-        self.fitted_tau2 = self.fitresult[2]
-        self.bfdelay = rdelay
-        self.avg_best_fit = self.doubleexp(
-            self.fitresult,
-            tb[self.tsel :],
-            np.zeros_like(tb[self.tsel :]),
-            risepower=self.risepower,
-            mode=0,
-            fixed_delay=self.bfdelay,
-        )
+        self.Amplitude = res.values['amp'] # self.fitresult[0]
+        self.fitted_tau1 = res.values['tau_1'] # self.fitresult[1]
+        self.fitted_tau2 = res.values['tau_2'] # self.fitresult[2]
+        self.bfdelay = res.values['fixed_delay'] # rdelay
+        self.avg_best_fit = self.fitresult.best_fit
+        # self.doubleexp(
+        #     self.fitresult,
+        #     tb[self.tsel :],
+        #     np.zeros_like(tb[self.tsel :]),
+        #     risepower=self.risepower,
+        #     mode=0,
+        #     fixed_delay=self.bfdelay,
+        # )
         self.avg_best_fit = self.sign * self.avg_best_fit
         fiterr = np.linalg.norm(self.avg_best_fit - 
             avgevent[self.tsel :])
         self.avg_fiterr = fiterr
         ave = self.sign * avgevent
-        move_avg, n = self.moving_average(  # apply 3 point moving average
+        move_avg, n = self.moving_average(  # apply 5 point moving average
             ave,
             n=min(5, len(ave)),
         )
@@ -864,9 +893,21 @@ class MiniAnalyses:
             self.risetenninety = np.nan
         else:
             i10 = i10[-1]  # get the last point where this condition was met
-            i90 = np.nonzero(move_avg[:ipk] >= p90)[0]
-            i90 = i90[0]  # get the first point where this condition was met
-            self.risetenninety = self.dt_seconds * (i90 - i10)
+            ix10 = np.interp(p10, move_avg[i10:i10+2], [0, self.dt_seconds])
+            i90 = np.nonzero(move_avg[:ipk+1] >= p90)[0]
+            ix90 = np.interp(p90, move_avg[ipk-2:ipk], [0, self.dt_seconds])
+            it10 = ix10+i10*self.dt_seconds
+            it90 = ix90+(ipk-2)*self.dt_seconds
+            # print("ix10, ix90: ", it10, it90)
+            try:
+                i90 = i90[0]  # get the first point where this condition was met
+            except:
+                cprint("r", "THERE WAS AN ERROR in FIT_AVERAGE")
+                print(move_avg[:ipk], p90)
+                print(i90, ix90, ix90+ipk-2)
+                print(i10, ix10, ix10+i10)
+                exit()
+            self.risetenninety = it90 - it10
 
         i37 = np.nonzero(move_avg[ipk:] >= p37)[-1]
         if len(i37) == 0:
@@ -876,6 +917,9 @@ class MiniAnalyses:
             self.decaythirtyseven = self.dt_seconds * i37
         self.Qtotal = self.dt_seconds * np.sum(avgevent[self.tsel :])
         self.fitted = True
+        np.seterr(**self.numpyerror)
+        scipy.special.seterr(**self.scipyerror)
+        
 
     def fit_individual_events(self) -> None:
         """
@@ -954,21 +998,22 @@ class MiniAnalyses:
                 print("allev: ", self.Summary.allevents)
                 print("len allev: ", len(self.Summary.allevents), len(onsets))
                 raise ValueError('Fit failed)')
-            res, rdelay = self.event_fitter(
-                self.Summary.average.avgeventtb, self.Summary.allevents[j, :], time_past_peak=time_past_peak
+            res = self.event_fitter_lm(
+                self.Summary.average.avgeventtb,
+                self.Summary.allevents[j, :],
+                time_past_peak=time_past_peak,
+                fixed_delay=1e-3,
             )
             if res is None:   # skip events that won't fit
                 continue
-            self.fitresult = res.x
+            # self.fitresult = res.x
 
-            # lmfit version - fails for odd reason
-            # dexpmodel = Model(self.doubleexp)
-            # params = dexpmodel.make_params(A=-10.,  tau_1=0.5,  tau_2=4.0,  dc=0.)
-            # self.fitresult = dexpmodel.fit(self.avgevent[tsel:],  params,  x=self.avgeventtb[tsel:])
-            self.ev_A_fitamp[j] = self.fitresult[0]
-            self.ev_tau1[j] = self.fitresult[1]
-            self.ev_tau2[j] = self.fitresult[2]
-            self.bfdelay[j] = rdelay
+            self.bfdelay = res.values['fixed_delay'] # rdelay
+            self.avg_best_fit = res.best_fit
+            self.ev_A_fitamp[j] = res.values['amp'] # self.fitresult[0]
+            self.ev_tau1[j] = res.values['tau_1'] # 1./self.fitresult[1]
+            self.ev_tau2[j] = res.values['tau_1'] # 1./self.fitresult[2]
+            self.bfdelay[j] = res.values['tau_1'] # rdelay
             self.fiterr[j] = self.doubleexp(
                 self.fitresult,
                 self.Summary.average.avgeventtb,
@@ -977,14 +1022,14 @@ class MiniAnalyses:
                 fixed_delay=self.bfdelay[j],
                 mode=1,
             )
-            self.best_fit[j] = self.doubleexp(
-                self.fitresult,
-                self.Summary.average.avgeventtb,
-                np.zeros_like(self.Summary.average.avgeventtb),
-                risepower=self.risepower,
-                fixed_delay=self.bfdelay[j],
-                mode=0,
-            )
+            self.best_fit[j] = res.best_fit #self.doubleexp(
+            #     self.fitresult,
+            #     self.Summary.average.avgeventtb,
+            #     np.zeros_like(self.Summary.average.avgeventtb),
+            #     risepower=self.risepower,
+            #     fixed_delay=self.bfdelay[j],
+            #     mode=0,
+            # )
             self.best_decay_fit[j] = self.decay_fit  # from event_fitter
             self.ev_fitamp[j] = np.max(self.best_fit[j])
             self.ev_Qtotal[j] = self.dt_seconds * np.sum(self.sign * self.Summary.allevents[j, :])
@@ -993,41 +1038,75 @@ class MiniAnalyses:
         self.individual_event_screen(fit_err_limit=2000.0, tau2_range=10.0, verbose=False)
         self.individual_events = True  # we did this step
 
-    def event_fitter(
+    def event_fitter_lm(
         self,
         timebase: np.ndarray,
         event: np.ndarray,
-        time_past_peak: float = 0.0001,
-        initdelay: Union[float, None] = None,
+        time_past_peak: float = 1e-4,
+        initdelay: Union[float, None] = 1e-3,
         debug: bool = False,
         label: str = "",
     ) -> (dict, float):
         """
-        Fit the event
-        Procedure:
-        First we fit the rising phase (to the peak) with (1-exp(t)^n), allowing
-        the onset of the function to slide in time. This onset time is locked after this step
-        to minimize trading in the error surface between the onset and the tau values.
-        Second, we fit the decay phase, starting just past the peak (and accouting for the fixed delay)
-        Finally, we combine the parameters and do a final optimization with somewhat narrow
-        bounds.
-        Fits are good on noiseless test data. 
-        Fits are affected by noise on the events (of course), but there is no "systematic"
-        variation that is present in terms of rise-fall tau tradeoffs.
+        Fit the event using lmfit and LevenbergMarquardt
+        This should be a more disciplined approach than just using scipy.optimize
         
         """
+        def doubleexp_lm(
+            x: np.ndarray,
+            amp: float,
+            tau_1: float,
+            tau_2: float,
+            risepower: float,
+            fixed_delay: float = 0.0,
+        ) -> np.ndarray:
+            """
+            Calculate a double exponential EPSC-like waveform. The rising phase
+            is taken to a power to make it sigmoidal
+            Note that the parameters p[1] and p[2] are multiplied, rather
+            than divided here, so the values must be inverted in the caller
+            from the "time constants"
+            """
+            debug = True
+            # fixed_delay = p[3]  # allow to adjust; ignore input value
+            ix = np.argmin(np.fabs(x - fixed_delay))
+            tm = np.zeros_like(x)
+            tm[ix:] = amp * (1.0 - np.exp(-(x[ix:] - fixed_delay) / tau_1)) ** risepower
+            try:
+                tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / tau_2)
+            except:
+                print(ix, len(x), x[ix:])
+                print(x[ix], fixed_delay, tau_2)
+                raise ValueError("error in doubleexp computation")
+            return tm
+ 
+        evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=initdelay)
         
-        if len(event) == 0:  # just check against emtpy event
-            cprint('m', 'Event length is 0? ')
-            # assert 1 == 0
-            return None, None
-        # else:
-        #     cprint('c', f'event length is {len(event):d}')
-        debug = False
+        dexpmodel = lmfit.Model(doubleexp_lm)
+        params = lmfit.Parameters()
+        params['amp'] = lmfit.Parameter(name='amp', value=1.0e-9, min= 0, max=50e-9, vary=True)
+        params['tau_1'] = lmfit.Parameter(name='tau_1', value=self.tau1, min=self.tau1/10.0, max = self.tau1*5.0, vary=True)
+        params['tau_2'] = lmfit.Parameter(name='tau_2', value=self.tau2, min=self.tau2/20.0, max = self.tau2*5.0, vary=True)
+        params['fixed_delay'] = lmfit.Parameter(name='fixed_delay', value=initdelay, vary=True)
+        params['risepower'] = lmfit.Parameter(name='risepower', value=self.risepower, vary=False)
+
+        self.fitresult = dexpmodel.fit(evfit,  params,  x=timebase)
+        self.peak_val = maxev
+        self.evfit = self.fitresult.best_fit  # handy right out of the result
         if debug:
             import matplotlib.pyplot as mpl
+            mpl.figure()
+            mpl.plot(timebase, evfit, 'k-')
+            mpl.plot(timebase, self.fitresult.best_fit, 'r--')
+            print(self.fitresult.fit_report())
+
+            mpl.show()
+            exit()
+        return self.fitresult
+
+    def set_fit_delay(self, event, initdelay: Union[float, None] = None):
         if initdelay in [0, None]:
-            init_delay = 1
+            init_delay = 1e-3  # in seconds
         else:
             init_delay = int(initdelay / self.dt_seconds)
         ev_bl = 0. # np.mean(event[: init_delay])  # just first point...
@@ -1041,225 +1120,287 @@ class MiniAnalyses:
             maxev = 1
         # if peak_pos == 0:
         #     peak_pos = int(0.001/self.dt_seconds) # move to 1 msec later
-        evfit = evfit / maxev  # scale to max of 1
+        #evfit = evfit / maxev  # scale to max of 1
         peak_pos = np.argmax(evfit) + 1
         if peak_pos <= 1:
             peak_pos = 5
-        amp_bounds = [0.0, 1.0]
-        # set reasonable, but wide bounds, and make sure init values are within bounds
-        # (and off center, but not at extremes)
-
-        bounds_rise = [amp_bounds, (self.dt_seconds, 4.0 * self.dt_seconds * peak_pos), (0.0, len(event)*self.dt_seconds/2.0)]
-        if initdelay is None or initdelay < self.dt_seconds:
-            fdelay = 0.2 * np.mean(bounds_rise[2])
-        else:
-            fdelay = initdelay
-        if fdelay > self.dt_seconds * peak_pos:
-            fdelay = 0.2 * self.dt_seconds * peak_pos
-        init_vals_rise = [0.75, self.dt_seconds * peak_pos, fdelay]
-        
-        # cprint("r", "event_fitter: rise")
-        # print('    initvals: ', init_vals_rise)
-        # print('    bounds: ', bounds_rise)
-        # print('    peak_pos: ', peak_pos)
-        # print('   evfit: ', evfit[:peak_pos])
-        # print('maxev: ', maxev)
-        try:
-            res_rise = scipy.optimize.minimize(
-                self.risefit,
-                init_vals_rise,
-                bounds=bounds_rise,
-                method="SLSQP",  # x_scale=[1e-12, 1e-3, 1e-3],
-                args=(
-                    timebase[:peak_pos],  # x
-                    evfit[:peak_pos],  # 'y
-                    self.risepower,
-                    1,
-                ),  # risepower, mode
-            )
-            if debug:
-                cprint("m", "rise fit ok")
-                print('risefit: ', self.risefit)
-                print('init_vals_rise: ', init_vals_rise)
-                print('bounds rise: ', bounds_rise)
-                print('peak_pos: ', peak_pos)
-                print('results: ', res_rise)
+        return evfit, peak_pos, maxev
             
-        except:
-            cprint('r', 'rise fit threw exception; this plot shows the event')
-            import matplotlib.pyplot as mpl
-            print('risefit: ', self.risefit)
-            print('init_vals_rise: ', init_vals_rise)
-            print('bounds rise: ', bounds_rise)
-            print('peak_pos: ', peak_pos)
-            mpl.plot(self.timebase[:peak_pos], evfit[:peak_pos], 'k-')
-            mpl.show()
-            return None, None
-            # raise ValueError()
-            
-        if debug: # debug:
-            import matplotlib.pyplot as mpl
-
-            f, ax = mpl.subplots(2, 1)
-            ax[0].plot(timebase, evfit, "-k")
-            ax[1].plot(timebase[:peak_pos], evfit[:peak_pos], "-k")
-            print("\nrise fit:")
-            ax[1].set_title('To peak (black), to end (red)')
-            print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
-            print("bounds: ", bounds_rise)
-            print("init values: ", init_vals_rise)
-            print("result: ", res_rise.x)
-            rise_tb = timebase[:peak_pos]
-            rise_yfit = self.risefit(
-                res_rise.x, rise_tb, np.zeros_like(rise_tb), self.risepower, -1
-            )
-            ax[0].plot(rise_tb, rise_yfit, "r-")
-            ax[1].plot(rise_tb, rise_yfit, "r-")
-            
-            mpl.show()
-        self.res_rise = res_rise
-        # fit decay exponential next:
-        bounds_decay = [
-            amp_bounds,
-            (self.dt_seconds, self.tau2 * 20.0),
-        ]  # be sure init values are inside bounds
-        init_vals_decay = [0.9 * np.mean(amp_bounds), self.tau2]
-        decay_fit_start = peak_pos + int(
-            time_past_peak / self.dt_seconds
-        )
-        # cprint("r", "event_fitter: decay")
-
-        res_decay = scipy.optimize.minimize(
-            self.decayexp,
-            init_vals_decay,
-            bounds=bounds_decay,
-            method="L-BFGS-B",
-            #  bounds=bounds_decay, method='L-BFGS-B',
-            args=(
-                timebase[decay_fit_start:] - decay_fit_start * self.dt_seconds,
-                evfit[decay_fit_start:],
-                res_rise.x[2],
-                1,
-            ),
-        )  # res_rise.x[2], 1))
-        self.res_decay = res_decay
-
-        if debug:
-            decay_tb = timebase[decay_fit_start:]
-            decay_ev = evfit[decay_fit_start:]
-            # f, ax = mpl.subplots(2, 1)
-            # ax[0].plot(timebase, evfit)
-            ax[1].plot(decay_tb, decay_ev, "g-")
-            ax[1].set_title('Decay fit (green)')
-            print("\ndecay fit:")
-            print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
-            print("bounds: ", bounds_decay)
-            print("init values: ", init_vals_decay)
-            print("result: ", res_decay.x)
-            y = self.decayexp(
-                res_decay.x,
-                decay_tb,
-                np.zeros_like(decay_tb),
-                fixed_delay=decay_fit_start * self.dt_seconds,
-                mode=-1,
-            )
-            # print(y)
-            # ax[1].plot(decay_tb, y, 'bo', markersize=3)
-            ax[1].plot(decay_tb, y, "g-")
-        if res_rise.x[2] == 0.0:
-            res_rise.x[2] = 2.0*self.dt_seconds
-        # now tune by fitting the whole trace, allowing some (but not too much) flexibility
-        bounds_full = [
-            [a * 10.0 for a in amp_bounds],  # overall amplitude
-            (0.2 * res_rise.x[1], 5.0 * res_rise.x[1]),  # rise tau
-            (0.2 * res_decay.x[1], 50.0 * res_decay.x[1]),  # decay tau
-            (0.3 * res_rise.x[2], 20.0 * res_rise.x[2]),  # delay
-            # (0, 1), # amplitude of decay component
-        ]
-        init_vals = [
-            amp_bounds[1],
-            res_rise.x[1],
-            res_decay.x[1],
-            res_rise.x[2],
-        ]  # be sure init values are inside bounds
-        # if len(label) > 0:
-        #     print('Label: ', label)
-        #     print('bounds full: ', bounds_full)
-        #     print('init_vals: ', init_vals)
-        # cprint("r", "event_fitter: full")
-        try:
-            res = scipy.optimize.minimize(
-            self.doubleexp,
-            init_vals,
-            method="L-BFGS-B",
-            # method="Nelder-Mead",
-            args=(timebase, evfit, self.risepower, res_rise.x[2], 1),
-            bounds=bounds_full,
-            options={"maxiter": 100000},
-        )
-        except:
-            print('Fitting failed in event fitter')
-            print('evfit: ', evfit)
-            return None, None
-            # print('timebase: ', timebase)
-            # import matplotlib.pyplot as mpl
-            # mpl.plot(timebase, evfit)
-            # mpl.show()
-            # print('risepower: ', self.risepower, res_rise.x[2], bounds_full)
-            # raise ValueError()
-            
-        if debug:
-            print("\nFull fit:")
-            print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
-            print("bounds: ", bounds_full)
-            print("init values: ", init_vals)
-            print("result: ", res.x, res_rise.x[2])
-            import matplotlib.pyplot as mpl
-            f, ax = mpl.subplots(2, 1)
-            ax[0].plot(timebase, evfit, "k-")
-            ax[1].plot(timebase, evfit, "k-")
-            y = self.doubleexp(
-                res.x,
-                timebase,
-                event,
-                risepower=self.risepower,
-                fixed_delay=res_rise.x[2],
-                mode=-1,
-            )
-            ax[1].plot(timebase, y, "bo", markersize=3)
-            f.suptitle("Full fit")
-            mpl.show()
-
-        self.rise_fit = self.risefit(
-            res_rise.x, timebase, np.zeros_like(timebase), self.risepower, mode=0
-        )
-        self.rise_fit[peak_pos:] = 0
-        self.rise_fit = self.rise_fit * maxev
-
-        self.decay_fit = self.decayexp(
-            self.res_decay.x,
-            timebase,
-            np.zeros_like(timebase),
-            fixed_delay=self.res_rise.x[2],
-            mode=0,
-        )
-        self.decay_fit[:decay_fit_start] = 0  # clip the initial part
-        self.decay_fit = self.decay_fit * maxev
-
-        self.bferr = self.doubleexp(
-            res.x,
-            timebase,
-            event,
-            risepower=self.risepower,
-            fixed_delay=decay_fit_start * self.dt_seconds,
-            mode=1,
-        )
-        # print('fit result: ', res.x, res_rise.x[2])
-        res.x[0] = res.x[0] * maxev  # correct for factor
-        self.peak_val = maxev
-        self.evfit = evfit
-        return res, res_rise.x[2]
-        # return res, res.x[2]
+    # def event_fitter(
+    #     self,
+    #     timebase: np.ndarray,
+    #     event: np.ndarray,
+    #     time_past_peak: float = 0.0001,
+    #     initdelay: Union[float, None] = None,
+    #     debug: bool = False,
+    #     label: str = "",
+    # ) -> (dict, float):
+    #     """
+    #     Fit the event
+    #     Procedure:
+    #     First we fit the rising phase (to the peak) with (1-exp(t)^n), allowing
+    #     the onset of the function to slide in time. This onset time is locked after this step
+    #     to minimize trading in the error surface between the onset and the tau values.
+    #     Second, we fit the decay phase, starting just past the peak (and accouting for the fixed delay)
+    #     Finally, we combine the parameters and do a final optimization with somewhat narrow
+    #     bounds.
+    #     Fits are good on noiseless test data.
+    #     Fits are affected by noise on the events (of course), but there is no "systematic"
+    #     variation that is present in terms of rise-fall tau tradeoffs.
+    #
+    #     """
+    #
+    #     if len(event) == 0:  # just check against emtpy event
+    #         cprint('m', 'Event length is 0? ')
+    #         # assert 1 == 0
+    #         return None, None
+    #     # else:
+    #     #     cprint('c', f'event length is {len(event):d}')
+    #     debug = False
+    #     if debug:
+    #         import matplotlib.pyplot as mpl
+    #
+    #     evfit, peak_pos = self.set_fit_delay(event, initdelay=initdelay)
+    #
+    #     # set reasonable, but wide bounds, and make sure init values are within bounds
+    #     # (and off center, but not at extremes)
+    #     amp_bounds = [0.0, 1.0]
+    #     bounds_rise = [amp_bounds, (1./self.dt_seconds, 1./(4.0 * self.dt_seconds * peak_pos)), (0.0, len(event)*self.dt_seconds/2.0)]
+    #     if initdelay is None or initdelay < self.dt_seconds:
+    #         fdelay = 0.2 * np.mean(bounds_rise[2])
+    #     else:
+    #         fdelay = initdelay
+    #     if fdelay > self.dt_seconds * peak_pos:
+    #         fdelay = 0.5 * self.dt_seconds * peak_pos
+    #     init_vals_rise = [0.5, 1./(self.dt_seconds * peak_pos), fdelay]
+    #
+    #     # cprint("r", "event_fitter: rise")
+    #     # print('    initvals: ', init_vals_rise)
+    #     # print('    bounds: ', bounds_rise)
+    #     # print('    peak_pos: ', peak_pos)
+    #     # print('   evfit: ', evfit[:peak_pos])
+    #     # print('maxev: ', maxev)
+    #     try:
+    #         cprint('r', "event_fitter 1090")
+    #         print('   initvalsrise: ', init_vals_rise)
+    #         print('   boundsrise: ', bounds_rise)
+    #         print('   timebase min-max: ', np.min(timebase[:peak_pos]), np.max(timebase[:peak_pos]))
+    #         print('   peak_pos: ', peak_pos)
+    #         res_rise = scipy.optimize.minimize(
+    #             self.risefit,
+    #             init_vals_rise,
+    #             bounds=bounds_rise,
+    #             method="SLSQP",  # x_scale=[1e-12, 1e-3, 1e-3],
+    #             args=(
+    #                 timebase[:peak_pos],  # x
+    #                 evfit[:peak_pos],  # 'y
+    #                 self.risepower,
+    #                 1,
+    #             ),  # risepower, mode
+    #         )
+    #         cprint('r', "event_fitter 1103")
+    #         if debug:
+    #             cprint("m", "rise fit ok")
+    #             print('risefit: ', self.risefit)
+    #             print('init_vals_rise: ', init_vals_rise)
+    #             print('bounds rise: ', bounds_rise)
+    #             print('peak_pos: ', peak_pos)
+    #             print('results: ', res_rise)
+    #
+    #     except:
+    #         cprint('r', 'rise fit threw exception; this plot shows the event')
+    #         import matplotlib.pyplot as mpl
+    #         print('risefit: ', self.risefit)
+    #         print('init_vals_rise: ', init_vals_rise)
+    #         print('bounds rise: ', bounds_rise)
+    #         print('peak_pos: ', peak_pos)
+    #         mpl.figure()
+    #         mpl.plot(self.timebase[:peak_pos], evfit[:peak_pos], 'k-')
+    #         mpl.show()
+    #         return None, None
+    #         # raise ValueError()
+    #
+    #     if debug: # debug:
+    #         import matplotlib.pyplot as mpl
+    #
+    #         f, ax = mpl.subplots(2, 1)
+    #         ax[0].plot(timebase, evfit, "-k")
+    #         ax[1].plot(timebase[:peak_pos], evfit[:peak_pos], "-k")
+    #         print("\nrise fit:")
+    #         ax[1].set_title('To peak (black), to end (red)')
+    #         print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
+    #         print("bounds: ", bounds_rise)
+    #         print("init values: ", init_vals_rise)
+    #         print("result: ", res_rise.x)
+    #         rise_tb = timebase[:peak_pos]
+    #         rise_yfit = self.risefit(
+    #             res_rise.x, rise_tb, np.zeros_like(rise_tb), self.risepower, -1
+    #         )
+    #         ax[0].plot(rise_tb, rise_yfit, "r-")
+    #         ax[1].plot(rise_tb, rise_yfit, "r-")
+    #
+    #         mpl.show()
+    #     self.res_rise = res_rise
+    #     # fit decay exponential next:
+    #     bounds_decay = [
+    #         amp_bounds,
+    #         (1./(self.dt_seconds*2.0), 1./(self.tau2 * 20.0)),
+    #     ]  # be sure init values are inside bounds
+    #     init_vals_decay = [0.9 * np.mean(amp_bounds), 1./np.mean((self.dt_seconds*2.0, self.tau2 * 20.0))]
+    #     decay_fit_start = peak_pos + int(
+    #         time_past_peak / self.dt_seconds
+    #     )
+    #     # cprint("r", "event_fitter: decay")
+    #     cprint('r', "event_fitter 1155")
+    #
+    #     res_decay = scipy.optimize.minimize(
+    #         self.decayexp,
+    #         init_vals_decay,
+    #         bounds=bounds_decay,
+    #         method="L-BFGS-B",
+    #         args=(
+    #             timebase[decay_fit_start:] - decay_fit_start * self.dt_seconds,
+    #             evfit[decay_fit_start:],
+    #             res_rise.x[2],
+    #             1,
+    #         ),
+    #     )  # res_rise.x[2], 1))
+    #     self.res_decay = res_decay
+    #     print('decay length: ', len(evfit[decay_fit_start:]))
+    #     cprint('c', self.res_decay)
+    #     if debug:
+    #         decay_tb = timebase[decay_fit_start:]
+    #         decay_ev = evfit[decay_fit_start:]
+    #         # f, ax = mpl.subplots(2, 1)
+    #         # ax[0].plot(timebase, evfit)
+    #         ax[1].plot(decay_tb, decay_ev, "g-")
+    #         ax[1].set_title('Decay fit (green)')
+    #         print("\ndecay fit:")
+    #         print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
+    #         print("bounds: ", bounds_decay)
+    #         print("init values: ", init_vals_decay)
+    #         print("result: ", res_decay.x)
+    #         y = self.decayexp(
+    #             res_decay.x,
+    #             decay_tb,
+    #             np.zeros_like(decay_tb),
+    #             fixed_delay=decay_fit_start * self.dt_seconds,
+    #             mode=-1,
+    #         )
+    #         # print(y)
+    #         # ax[1].plot(decay_tb, y, 'bo', markersize=3)
+    #         ax[1].plot(decay_tb, y, "g-")
+    #     if res_rise.x[2] == 0.0:
+    #         res_rise.x[2] = 1./(2.0*self.dt_seconds)
+    #     # now tune by fitting the whole trace, allowing some (but not too much) flexibility
+    #     lbtau = np.max((0.3*res_decay.x[1], 3*self.dt_seconds))
+    #     ubtau = np.max((0.3*self.dt_seconds, 50*res_decay.x[1]))
+    #     bounds_full = [
+    #         [a * 2.0 for a in amp_bounds],  # overall amplitude
+    #         (0.2 * res_rise.x[1], 5.0 * res_rise.x[1]),  # rise tau
+    #         (lbtau, ubtau),  # decay tau
+    #         (0.3 * res_rise.x[2], 20.0 * res_rise.x[2]),  # delay
+    #         # (0, 1), # amplitude of decay component
+    #     ]
+    #     print('bounds full: ', bounds_full)
+    #     init_vals = [
+    #         amp_bounds[1],
+    #         res_rise.x[1],
+    #         res_decay.x[1],
+    #         res_rise.x[2],
+    #     ]  # be sure init values are inside bounds
+    #     # if len(label) > 0:
+    #     #     print('Label: ', label)
+    #     #     print('bounds full: ', bounds_full)
+    #     #     print('init_vals: ', init_vals)
+    #     # cprint("r", "event_fitter: full")
+    #     try:
+    #         cprint('r', "event_fitter 1216")
+    #         res = scipy.optimize.minimize(
+    #             self.doubleexp,
+    #             init_vals,
+    #             method="L-BFGS-B",
+    #             # method="Nelder-Mead",
+    #             args=(timebase, evfit, self.risepower, res_rise.x[2], 1),
+    #             bounds=bounds_full,
+    #             options={"maxiter": 100000},
+    #         )
+    #     except:
+    #         print('Fitting failed in event fitter')
+    #         print('evfit: ', evfit)
+    #         print('initvals: ', init_vals)
+    #         print('res_rise delay: ', res_rise.x[2])
+    #         print('res: ', res)
+    #         yest = self.doubleexp(
+    #             res.x,
+    #             timebase,
+    #             evfit,
+    #             risepower=self.risepower,
+    #             fixed_delay=res_rise.x[2],
+    #             mode=-1,
+    #         )
+    #         import matplotlib.pyplot as mpl
+    #         mpl.figure()
+    #         mpl.plot(timebase, evfit)
+    #         mpl.plot(timebase, yest, "r--")
+    #         f.suptitle("Full fit")
+    #         mpl.show()
+    #         # print('risepower: ', self.risepower, res_rise.x[2], bounds_full)
+    #         # raise ValueError()
+    #         return None, None
+    #
+    #     if debug:
+    #         print("\nFull fit:")
+    #         print("dt: ", self.dt_seconds, " maxev: ", maxev, " peak_pos: ", peak_pos)
+    #         print("bounds: ", bounds_full)
+    #         print("init values: ", init_vals)
+    #         print("result: ", res.x, res_rise.x[2])
+    #         import matplotlib.pyplot as mpl
+    #         f, ax = mpl.subplots(2, 1)
+    #         ax[0].plot(timebase, evfit, "k-")
+    #         ax[1].plot(timebase, evfit, "k-")
+    #         y = self.doubleexp(
+    #             res.x,
+    #             timebase,
+    #             event,
+    #             risepower=self.risepower,
+    #             fixed_delay=res_rise.x[2],
+    #             mode=-1,
+    #         )
+    #         ax[1].plot(timebase, y, "bo", markersize=3)
+    #         f.suptitle("Full fit")
+    #         mpl.show()
+    #
+    #     self.rise_fit = self.risefit(
+    #         res_rise.x, timebase, np.zeros_like(timebase), self.risepower, mode=0
+    #     )
+    #     self.rise_fit[peak_pos:] = 0
+    #     self.rise_fit = self.rise_fit * maxev
+    #
+    #     self.decay_fit = self.decayexp(
+    #         self.res_decay.x,
+    #         timebase,
+    #         np.zeros_like(timebase),
+    #         fixed_delay=self.res_rise.x[2],
+    #         mode=0,
+    #     )
+    #     self.decay_fit[:decay_fit_start] = 0  # clip the initial part
+    #     self.decay_fit = self.decay_fit * maxev
+    #
+    #     self.bferr = self.doubleexp(
+    #         res.x,
+    #         timebase,
+    #         event,
+    #         risepower=self.risepower,
+    #         fixed_delay=decay_fit_start * self.dt_seconds,
+    #         mode=1,
+    #     )
+    #     # print('fit result: ', res.x, res_rise.x[2])
+    #     res.x[0] = res.x[0] * maxev  # correct for factor
+    #     self.peak_val = maxev
+    #     self.evfit = evfit
+    #     return res, res_rise.x[2]
+    #     # return res, res.x[2]
 
     def individual_event_screen(
         self, fit_err_limit: float = 2000.0, tau2_range: float = 2.5, verbose:bool = False
