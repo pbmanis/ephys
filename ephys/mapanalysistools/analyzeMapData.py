@@ -482,24 +482,8 @@ class AnalyzeMap(object):
         tpost = np.max(tb_event) - tpre
         ipre = int(tpre / self.rate)
         ipost = int(tpost / self.rate)
-        # tb = np.arange(-tpre, tpost+rate, rate) + tpre
         pt_fivems = int(0.0005 / self.rate)
         pk_width = int(0.0005 / self.rate / 2.0)
-
-        # from pyqtgraph.Qt import QtGui, QtCore
-        # import pyqtgraph as pg
-        # pg.setConfigOption('leftButtonPan', False)
-        # app = QtGui.QApplication([])
-        # win = pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
-        # win.resize(1000,600)
-        # win.setWindowTitle('pyqtgraph example: Plotting')
-        # # Enable antialiasing for prettier plots
-        # pg.setConfigOptions(antialias=True)
-        # p0 = win.addPlot(0, 0)
-        # p1 = win.addPlot(1, 0)
-        # p1.plot(tb, data[:len(tb)]) # whole trace
-        # p1s = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 255, 255, 255))
-        # p0s = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 255, 255))
 
         for npk, jevent in enumerate(np.array(method.Summary.onsets[itrace])[npks]):
             jstart = jevent - ipre
@@ -507,45 +491,31 @@ class AnalyzeMap(object):
             jend = jevent + ipost + 1
             evdata = data[jstart:jend].copy()
             l_expect = jend - jstart
-            # print('data shape: ', evdata.shape[0], 'expected: ', l_expect)
-
             if evdata.shape[0] == 0 or evdata.shape[0] < l_expect:
                 # print('nodata', evdata.shape[0], l_expect)
                 continue
             bl = np.mean(evdata[:pt_fivems])
             evdata -= bl
-            # p0.plot(tb_event, evdata)  # plot every event we consider
-            # p1s.addPoints(x=[tb[jpeak]], y=[data[jpeak]])
+
             # next we make a window over which the data will be averaged to test the ampltiude
             left = jpeak - pk_width
             right = jpeak + pk_width
             left = max(0, left)
             right = min(right, len(data))
             if right - left == 0:  # peak and onset cannot be the same
-                # p0s.addPoints(x=[tb_event[jpeak-jstart]], y=[evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
                 # print('r - l = 0')
                 continue
-            if (self.Pars.sign < 0) and (
-                np.mean(data[left:right]) > self.Pars.sign * min_event
-            ):  # filter events by amplitude near peak
-                # p0s.addPoints(x=[tb_event[jpeak-jstart]], y=[evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
-                #  print('data pos, sign neg', np.mean(data[left:right]))
-                continue
-            if (self.Pars.sign >= 0) and (
-                np.mean(data[left:right]) < self.Pars.sign * min_event
-            ):
-                # p0s.addPoints([tb_event[jpeak-jstart]], [evdata[jpeak-jstart]], pen=pg.mkPen('y'), symbolBrush=pg.mkBrush('y'), symbol='o', size=6)
-                # print('data neg, sign pos', np.mean(data[left:right]))
-                continue
-            # print('dataok: ', jpeak)
+            # if (self.Pars.sign < 0) and (
+            #     np.mean(data[left:right]-zero) > (self.Pars.sign * min_event)
+            # ):  # filter events by amplitude near peak
+            #      print('data pos, sign neg', np.mean(data[left:right]))
+            #      continue
+            # if (self.Pars.sign >= 0) and (
+            #     np.mean(data[left:right]-zero) < (self.Pars.sign * min_event)
+            # ):
+            #     print('data neg, sign pos', np.mean(data[left:right]))
+            #     continue
             pkt.append(npk)  # build array through acceptance.
-        #     p0s.addPoints([tb_event[jpeak-jstart]], [evdata[jpeak-jstart]], pen=pg.mkPen('b'), symbolBrush=pg.mkBrush('b'), symbol='o', size=4)
-        # p1s.addPoints(tb[smpks[pkt]], data[smpks[pkt]], pen=pg.mkPen('r'), symbolBrush=pg.mkBrush('r'), symbol='o', size=4)
-        # p1.addItem(p1s)
-        # p0.addItem(p0s)
-        # if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-        #     QtGui.QApplication.instance().exec_()
-
         return pkt
 
     def _remove_outliers(self, x:np.ndarray, scale:float=3.0) -> np.ndarray:
@@ -616,13 +586,13 @@ class AnalyzeMap(object):
             # Now get some stats:
             self.Pars.global_SD = np.std(data)
             self.Pars.global_mean = np.mean(data)
-            print(f"Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
+            print(f"    Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
             print(f" ({1e12*self.Pars.global_SD:7.1f}) pA")
     
             trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
             self.Pars.global_trimmed_SD = np.std(trimdata)
             self.Pars.global_trimmed_median  = np.median(trimdata)
-            print(f"Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
+            print(f"    Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
             print(f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
     
              
@@ -890,6 +860,8 @@ class AnalyzeMap(object):
         method = self.analyze_traces_in_trial(data, pars=pars)
         method.identify_events(verbose=True) # order=order)
         method.summarize(data, verbose=True)
+        if len(method.Summary.average.avgevent) == 0:
+            return None
         method.fit_average_event(
             method.Summary.average.avgeventtb,
             method.Summary.average.avgevent,
@@ -1185,13 +1157,14 @@ class AnalyzeMap(object):
                 )
             # CP.cprint("r", f"     Nevents (cumul): {nevents:d}, trial: ev_events ={len(npk_ev):d}  sp_events = {len(npk_sp):d}")
             # CP.cprint("r", f"        ev>1 : {str(method.Summary.onsets[i]):s}")
-            method.average_events(traces=[i], eventlist = method.Summary.onsets, data=data)
+            if len(npk) > 0:  # only do this
+                method.average_events(traces=[i], eventlist = method.Summary.onsets, data=data)
             # these are the average fitted values for the i'th trace
-            fit_tau1.append(method.fitted_tau1)
-            fit_tau2.append(method.fitted_tau2)
-            fit_amp.append(method.Amplitude)
-            avg_evoked.append(method.avgevent)
-            measures.append(method.measure_events(data[i], method.Summary.onsets[i]))
+                fit_tau1.append(method.fitted_tau1)
+                fit_tau2.append(method.fitted_tau2)
+                fit_amp.append(method.Amplitude)
+                avg_evoked.append(method.avgevent)
+                measures.append(method.measure_events(data[i], method.Summary.onsets[i]))
             # if len(method.Summary.average.avgeventtb) > 0:
             #     txb = method.Summary.average.avgeventtb  # only need one of these.
             
@@ -1205,7 +1178,7 @@ class AnalyzeMap(object):
             avgnpts.append(0)
         # if testplots:
         #     method.plots(title='%d' % i, events=None)
-        CP.cprint("r", f"   ********** avgtb: {len(avgtb):d}    aveventtb: {len(method.Summary.average.avgeventtb):d}")
+        # CP.cprint("r", f"   ********** avgtb: {len(avgtb):d}    aveventtb: {len(method.Summary.average.avgeventtb):d}")
         res = {
             "criteria": crit,
             "onsets": onsets,

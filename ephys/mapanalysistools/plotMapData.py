@@ -329,6 +329,7 @@ class PlotMapData():
         hist goes into axh
 
         """
+        CP.cprint("r", "Plot_hist")
 
         # assert not self.plotted_em['histogram']
         self.plotted_em['histogram'] = True
@@ -340,6 +341,7 @@ class PlotMapData():
         eventtimes = []
         events = results["events"]
         if events[0] == None:
+            CP.cprint("r", "plot_hist: no events were found")
             return
         rate = results["rate"]
         tb0 = events[0]["aveventtb"]  # get from first trace in first trial
@@ -395,7 +397,7 @@ class PlotMapData():
     ) -> None:
 
         # assert not self.plotted_em['stack']
-        print("Start stack plot")
+        print("Starting stack plot")
         linewidth=0.35  # base linewidth
         self.plotted_em['stack'] = True
         if ax is None:
@@ -548,7 +550,7 @@ class PlotMapData():
                         zorder=10,
                         alpha=alpha,
                     )
-        print(f"      SPONTANEOUS Event Count: {spont_ev_count:d}")
+        print(f"        Spontaneous Event Count: {spont_ev_count:d}")
 
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
@@ -611,7 +613,7 @@ class PlotMapData():
 
         # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
-            print("[plot_avgevent_traces]:: evtype:  no events, no axis, or no time base", evtype)
+            CP.cprint("r", f"[plot_avgevent_traces]:: evtype: {evtype:s}. No events, no axis, or no time base")
             return
         nevtimes = 0
         line = {"avgevoked": "k-", "avgspont": "k-"}
@@ -643,11 +645,11 @@ class PlotMapData():
             if self.verbose:
                 print("plotting events for trial: ", trial)
             if events[trial] is None or len(events[trial]['aveventtb']) == 0:
-                # print(events[trial][result_names[evtype]][0])
-                # print(trial, evtype, result_names[evtype])
-                # print(len(events[trial]['aveventtb']))
-                # print(len(events[trial]['avgtb'][0]))
-                # print("no events.... ?????????")
+                print(events[trial][result_names[evtype]][0])
+                print(trial, evtype, result_names[evtype])
+                print(len(events[trial]['aveventtb']))
+                print(len(events[trial]['avgtb'][0]))
+                print("no events.... ?????????")
                 continue
             tb0 = events[trial]["aveventtb"]  # get from first trace
             
@@ -1281,9 +1283,10 @@ class PlotMapData():
         trsel=None,
         plotmode="document",
     ) -> bool:
-
         if results is None or self.Pars.datatype is None:
+            CPcprint("r", f"NO Results in the call, from {str(dataset.name):s}")
             return
+
         if (
             "_IC" in str(dataset.name)
             or "_CC" in str(dataset.name)

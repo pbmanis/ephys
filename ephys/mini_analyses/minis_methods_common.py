@@ -749,6 +749,7 @@ class MiniAnalyses:
         self.tsel = tsel
         self.tau1 = inittaus[0]
         self.tau2 = inittaus[1]
+        self.tau_ratio = self.tau2/self.tau1
         self.tau2_range = 10.0
         self.tau1_minimum_factor = 5.0
         time_past_peak = 2.5e-4
@@ -783,6 +784,7 @@ class MiniAnalyses:
         self.Amplitude = res.values["amp"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
+        self.fitted_tau_ratio = res.values["tau_2"]/res.values["tau_1"] # res.values["tau_ratio"]
         self.bfdelay = res.values["fixed_delay"]
         self.avg_best_fit = self.fitresult.best_fit
         self.avg_best_fit = self.sign * self.avg_best_fit
@@ -926,8 +928,8 @@ class MiniAnalyses:
             self.avg_best_fit = res.best_fit
             self.ev_A_fitamp[j] = res.values["amp"]
             self.ev_tau1[j] = res.values["tau_1"]
-            self.ev_tau2[j] = res.values["tau_1"]
-            self.bfdelay[j] = res.values["tau_1"]
+            self.ev_tau2[j] = res.values["tau_2"]
+            self.bfdelay[j] = res.values["fixed_delay"]
             self.fiterr[j] = self.doubleexp(
                 self.fitresult,
                 self.Summary.average.avgeventtb,
@@ -979,17 +981,14 @@ class MiniAnalyses:
             than divided here, so the values must be inverted in the caller
             from the "time constants"
             """
-            debug = True
             # fixed_delay = p[3]  # allow to adjust; ignore input value
             ix = np.argmin(np.fabs(x - fixed_delay))
             tm = np.zeros_like(x)
-            tm[ix:] = amp * (1.0 - np.exp(-(x[ix:] - fixed_delay) / tau_1)) ** risepower
-            try:
-                tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / tau_2)
-            except:
-                print(ix, len(x), x[ix:])
-                print(x[ix], fixed_delay, tau_2)
-                raise ValueError("error in doubleexp computation")
+            # tau_2 = tau_1*tau_ratio
+            exp_arg = (x[ix:] - fixed_delay)/tau_1
+            # exp_arg[exp_arg > 10] = 10 # limit values
+            tm[ix:] = amp * (1.0 - np.exp(-exp_arg)) ** risepower
+            tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / tau_2)
             return tm
 
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=initdelay)
@@ -1006,26 +1005,30 @@ class MiniAnalyses:
             max=self.tau1 * 5.0,
             vary=True,
         )
+        # params["tau_ratio"] = lmfit.Parameter(
+        #     name="tau_ratio",
+        #     value = self.tau2/self.tau1,
+        #     min = 1.0,
+        #     max = 50.0,
+        #     vary = True,
+        # )
         params["tau_2"] = lmfit.Parameter(
             name="tau_2",
+            # expr="tau_1*tau_ratio"
             value=self.tau2,
             min=self.tau2 / 20.0,
             max=self.tau2 * 5.0,
             vary=True,
         )
         params["fixed_delay"] = lmfit.Parameter(
-            name="fixed_delay", value=initdelay, vary=True
+            name="fixed_delay", value=initdelay, vary=True,
+            min=initdelay-2e-3, max=initdelay+2e-3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
 
-        try:
-            self.fitresult = dexpmodel.fit(evfit, params, x=timebase)
-        except:
-            print("evfit: ", evfit)
-            print("params: ", params)
-            print("timebase: ", timebase)
+        self.fitresult = dexpmodel.fit(evfit, params, x=timebase, nan_policy="raise")
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
