@@ -9,45 +9,34 @@ Takes advantage of acq4read code to access all data and attributes.
 
 
 """
-import os
-import re
 import itertools
 import argparse
 import json
 from collections import OrderedDict
 from pathlib import Path
-import datetime
-import pprint
-import textwrap as WR
-import collections
 import pandas as pd
 import scipy.ndimage
 import scipy.signal
 import numpy as np
 import seaborn as sns
 
-import matplotlib
-# matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as mpl
 from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
 import scipy.ndimage as SND
 import shapely as SH
-import shapely.affinity as SHA
 import shapely.geometry as SG
 # import descartes
 
 from pylibrary.plotting import plothelpers as PH
 import pylibrary.tools.utility as PU
-from pyqtgraph import configfile
 from pylibrary.plotting import picker
-import pylibrary.tools.tifffile as tf
 from .. ephysanalysis import acq4read as ARC
 from .. ephysanalysis import metaarray as EM
 from . import boundrect as BR
 from . import digital_filters as FILT
 import montage
-import mahotas as MH
+#import mahotas as MH
 
 
 class ScannerInfo(object):

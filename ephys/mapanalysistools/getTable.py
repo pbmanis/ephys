@@ -3,8 +3,8 @@ from __future__ import absolute_import
 
 import pandas as pd
 import sip
-sip.setapi('QString', 2)
-sip.setapi('QVariant', 2);
+# sip.setapi('QString', 2)
+# sip.setapi('QVariant', 2);
 
 import os
 import sys
