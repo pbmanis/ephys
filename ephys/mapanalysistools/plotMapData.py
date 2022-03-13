@@ -329,6 +329,7 @@ class PlotMapData():
         hist goes into axh
 
         """
+        CP.cprint("r", "Plot_hist")
 
         # assert not self.plotted_em['histogram']
         self.plotted_em['histogram'] = True
@@ -340,6 +341,7 @@ class PlotMapData():
         eventtimes = []
         events = results["events"]
         if events[0] == None:
+            CP.cprint("r", "plot_hist: no events were found")
             return
         rate = results["rate"]
         tb0 = events[0]["aveventtb"]  # get from first trace in first trial
@@ -356,14 +358,7 @@ class PlotMapData():
                 eventtimes[iev : iev + ntrialev] = onsets
                 iev += ntrialev
         print(
-            "total events: ",
-            iev,
-            " # event times: ",
-            len(eventtimes),
-            plotevents,
-            "rate: ",
-            rate,
-        )
+            f"plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d} Plot Events: {str(plotevents):s}  Sample Rate: {1e6*rate:6.1f} usec")
 
         if plotevents and len(eventtimes) > 0:
             nevents = 0
@@ -402,7 +397,7 @@ class PlotMapData():
     ) -> None:
 
         # assert not self.plotted_em['stack']
-        print("start stack plot")
+        print("Starting stack plot")
         linewidth=0.35  # base linewidth
         self.plotted_em['stack'] = True
         if ax is None:
@@ -555,7 +550,7 @@ class PlotMapData():
                         zorder=10,
                         alpha=alpha,
                     )
-        print(f"      SPONTANEOUS Event Count: {spont_ev_count:d}")
+        print(f"        Spontaneous Event Count: {spont_ev_count:d}")
 
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
@@ -618,7 +613,7 @@ class PlotMapData():
 
         # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
-            print("evtype:  no events, no axis, or no time base", evtype)
+            CP.cprint("r", f"[plot_avgevent_traces]:: evtype: {evtype:s}. No events, no axis, or no time base")
             return
         nevtimes = 0
         line = {"avgevoked": "k-", "avgspont": "k-"}
@@ -648,10 +643,16 @@ class PlotMapData():
         # print("plotting # trials = ", mdata.shape[0])
         for trial in range(mdata.shape[0]):
             if self.verbose:
-                print("plotting: trial: ", trial)
-            if events[trial] is None:
+                print("plotting events for trial: ", trial)
+            if events[trial] is None or len(events[trial]['aveventtb']) == 0:
+                print(events[trial][result_names[evtype]][0])
+                print(trial, evtype, result_names[evtype])
+                print(len(events[trial]['aveventtb']))
+                print(len(events[trial]['avgtb'][0]))
+                print("no events.... ?????????")
                 continue
             tb0 = events[trial]["aveventtb"]  # get from first trace
+            
             rate = np.mean(np.diff(tb0))
             tpre = 0.1 * np.max(tb0)
             tpost = np.max(tb0)
@@ -753,7 +754,7 @@ class PlotMapData():
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
         
-        CP.cprint('c', 'plotmapdata: Fitting average event')
+        CP.cprint('c', '        plotmapdata: Fitting average event')
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -762,11 +763,11 @@ class PlotMapData():
             inittaus=self.Pars.taus,
             initdelay=tpre,
         )
-        CP.cprint('c', 'Fit completed')
-        Amplitude = self.Pars.MA.fitresult[0]
-        tau1 = self.Pars.MA.fitresult[1]
-        tau2 = self.Pars.MA.fitresult[2]
-        bfdelay = self.Pars.MA.fitresult[3]
+        CP.cprint('c', '        Event fitting completed')
+        Amplitude = self.Pars.MA.fitresult.values['amp']
+        tau1 = self.Pars.MA.fitresult.values['tau_1']
+        tau2 = self.Pars.MA.fitresult.values['tau_2']
+        bfdelay = self.Pars.MA.fitresult.values['fixed_delay']
         bfit = self.Pars.MA.avg_best_fit
         if self.Pars.sign == -1:
             amp = np.min(bfit)
@@ -1282,9 +1283,10 @@ class PlotMapData():
         trsel=None,
         plotmode="document",
     ) -> bool:
-
         if results is None or self.Pars.datatype is None:
+            CPcprint("r", f"NO Results in the call, from {str(dataset.name):s}")
             return
+
         if (
             "_IC" in str(dataset.name)
             or "_CC" in str(dataset.name)
