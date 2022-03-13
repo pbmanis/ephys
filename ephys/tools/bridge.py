@@ -32,6 +32,10 @@ cprint = CP.cprint
 
 
 class Bridge(pg.QtGui.QMainWindow):
+    """
+    Visual adjustment of bridge balance on acq4 data sets. 
+    Writes out to the database
+    """
     def __init__(self, args):
         super().__init__()
         self.setWindowTitle("Bridge Balance")
@@ -193,6 +197,7 @@ class Bridge(pg.QtGui.QMainWindow):
                     self.df.at[i, "cell_cell"],
                 )
             )
+            print("Date: ", date)
             if self.day != "all":  # if all, just do it; otherwise, select
                 if not self._date_compare(self.day, date):
                     continue  # keep looking
@@ -202,7 +207,9 @@ class Bridge(pg.QtGui.QMainWindow):
         self.validivs = []  # list of valid IVs for this cell at the dataframe index
         self.currentiv = 0  # number for the current IV we are doing in the list (bumped up in next())
         i = index
+        print('index: ', index)
         ivdata = self.df.at[i, "IV"]  # get the IV
+        print("ivdata: ", ivdata)
         if len(ivdata) == 0:
             print("no ivdata for: ", i, self.df.at[i, "date"])
             self.this_cell = i+1
