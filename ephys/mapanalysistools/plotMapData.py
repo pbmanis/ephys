@@ -329,7 +329,7 @@ class PlotMapData():
         hist goes into axh
 
         """
-        CP.cprint("r", "Plot_hist")
+        CP.cprint("c", "    Plot_hist")
 
         # assert not self.plotted_em['histogram']
         self.plotted_em['histogram'] = True
@@ -341,7 +341,7 @@ class PlotMapData():
         eventtimes = []
         events = results["events"]
         if events[0] == None:
-            CP.cprint("r", "plot_hist: no events were found")
+            CP.cprint("r", "**** plot_hist: no events were found")
             return
         rate = results["rate"]
         tb0 = events[0]["aveventtb"]  # get from first trace in first trial
@@ -357,8 +357,8 @@ class PlotMapData():
                 ntrialev = len(onsets)
                 eventtimes[iev : iev + ntrialev] = onsets
                 iev += ntrialev
-        print(
-            f"plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d} Plot Events: {str(plotevents):s}  Sample Rate: {1e6*rate:6.1f} usec")
+        CP.cprint("c", 
+            f"    plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec")
 
         if plotevents and len(eventtimes) > 0:
             nevents = 0
@@ -397,7 +397,7 @@ class PlotMapData():
     ) -> None:
 
         # assert not self.plotted_em['stack']
-        print("Starting stack plot")
+        CP.cprint("c", "    Starting stack plot")
         linewidth=0.35  # base linewidth
         self.plotted_em['stack'] = True
         if ax is None:
@@ -550,7 +550,7 @@ class PlotMapData():
                         zorder=10,
                         alpha=alpha,
                     )
-        print(f"        Spontaneous Event Count: {spont_ev_count:d}")
+        CP.cprint("c", f"        Spontaneous Event Count: {spont_ev_count:d}")
 
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
@@ -645,11 +645,8 @@ class PlotMapData():
             if self.verbose:
                 print("plotting events for trial: ", trial)
             if events[trial] is None or len(events[trial]['aveventtb']) == 0:
-                print(events[trial][result_names[evtype]][0])
-                print(trial, evtype, result_names[evtype])
-                print(len(events[trial]['aveventtb']))
-                print(len(events[trial]['avgtb'][0]))
-                print("no events.... ?????????")
+                # print(trial, evtype, result_names[evtype])
+                CP.cprint("r", "**** plot_avgevent_traces: no events....")
                 continue
             tb0 = events[trial]["aveventtb"]  # get from first trace
             
@@ -754,7 +751,7 @@ class PlotMapData():
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
         
-        CP.cprint('c', '        plotmapdata: Fitting average event')
+        CP.cprint('c', '    plotmapdata: Fitting average event')
         self.Pars.MA.fit_average_event(
             tb,
             avedat,

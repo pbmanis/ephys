@@ -257,10 +257,10 @@ class AnalyzeMap(object):
     ):
         starttime = timeit.default_timer()
         self.protocol = protocolFilename
-        print("Reading Protocol: ", protocolFilename)
+        CP.cprint("g", f"Reading Protocol: {str(protocolFilename):s}")
         self.AR.setProtocol(protocolFilename)
         if not protocolFilename.is_dir() or not self.AR.getData():
-            print("  >>No data found in protocol: %s" % protocolFilename)
+            CP.cprint("r", f"**** No data found in protocol: {str(protocolFilename):s}")
             return None, None, None, None
         # print('Protocol: ', protocolFilename)
         self.Pars.datatype = self.AR.mode[0].upper()  # get mode and simplify to I or V
@@ -290,7 +290,7 @@ class AnalyzeMap(object):
             self.Data.photodiode = self.AR.Photodiode
             self.Data.photodiode_timebase = self.AR.Photodiode_time_base
         else:
-            CP.cprint('r', 'Could not get photodiode traces')
+            CP.cprint("r", '**** Could not get photodiode traces')
 
         self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
         self.AR.getScannerPositions()
@@ -308,7 +308,7 @@ class AnalyzeMap(object):
         )
         endtime = timeit.default_timer()
 
-        print(
+        CP.cprint("g",
             "    Reading protocol {0:s} took {1:6.1f} s".format(
                 protocolFilename.name, endtime - starttime
             )
@@ -533,7 +533,7 @@ class AnalyzeMap(object):
         return result
         
     def preprocess_data(self, tb: np.ndarray, data: np.ndarray) -> np.ndarray:
-        CP.cprint('y', 'Preprocessing data')
+        CP.cprint('g', '    Preprocessing data')
         filtfunc = scipy.signal.filtfilt
         samplefreq = 1.0 / self.rate
         nyquistfreq = samplefreq / 1.95
@@ -548,7 +548,7 @@ class AnalyzeMap(object):
         bl = 0.
         if data.ndim == 3:
             if self.Pars.notch_flag:
-                CP.cprint("y", f"analyzeMapData (3dim): Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
+                CP.cprint("g", f"    analyzeMapData (3dim): Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
             data2 = data.copy()
             for r in range(data2.shape[0]):
                 for t in range(data2.shape[1]):
@@ -558,14 +558,14 @@ class AnalyzeMap(object):
                         data2[r, t, :imax] = filtfunc(
                             b, a, data2[r, t, :imax]
                         )
-                        CP.cprint('y', f"LPF applied at {self.Pars.LPF:.1f}")
+                        CP.cprint('g', f"    LPF applied at {self.Pars.LPF:.1f}")
                         self.Pars.LPF_applied = True
                     if self.Pars.HPF_flag and not self.Pars.HPF_applied:
                         data2[r, t, :imax] = filtfunc(
                             bh, ah, data2[r, t, :imax]
                         )
                         self.Pars.HPF_applied = True
-                        CP.cprint('y', f"HPF applied at {self.Pars.HPF:.1f}")
+                        CP.cprint('g', f"    HPF applied at {self.Pars.HPF:.1f}")
                     if self.Pars.notch_flag and not self.Pars.notch_applied:
                         data2[r, t, :imax] = FILT.NotchFilterZP(
                             data2[r, t, :imax],
@@ -586,14 +586,14 @@ class AnalyzeMap(object):
             # Now get some stats:
             self.Pars.global_SD = np.std(data)
             self.Pars.global_mean = np.mean(data)
-            print(f"    Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
-            print(f" ({1e12*self.Pars.global_SD:7.1f}) pA")
+            CP.cprint("g", f"    Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
+            CP.cprint("g", f" ({1e12*self.Pars.global_SD:7.1f}) pA")
     
             trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
             self.Pars.global_trimmed_SD = np.std(trimdata)
             self.Pars.global_trimmed_median  = np.median(trimdata)
-            print(f"    Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
-            print(f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
+            CP.cprint("g", f"    Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
+            CP.cprint("g", f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
     
              
         elif data.ndim == 2:
@@ -659,7 +659,7 @@ class AnalyzeMap(object):
         if self.Pars.fix_artifact_flag:
             self.Data.data_clean, self.avgdata = self.fix_artifacts(self.data)
             if self.verbose:
-                CP.cprint("c", "      Fixing Artifacts")
+                CP.cprint("c", "        Fixing Artifacts")
         else:
             self.Data.data_clean = self.data
         # if self.Pars.LPF_flag or self.Pars.notch_flag or self.Pars.HPF_flag:
@@ -681,7 +681,7 @@ class AnalyzeMap(object):
         data_nostim.append(list(range(lastd, endindx)))
         data_nostim = list(np.hstack(np.array(data_nostim, dtype=object)))
         if self.verbose:
-            CP.cprint('c', f"      Data shape going into analyze_protocol: str(elf.data_clean.shape:s)")
+            CP.cprint('c', f"        Data shape going into analyze_protocol: str(elf.data_clean.shape:s)")
         results = self.analyze_protocol(
             data = self.Data.data_clean,
             tb = self.Data.tb,
@@ -712,8 +712,7 @@ class AnalyzeMap(object):
         data_nostim is a list of points where the stimulus/response DOES NOT occur, so we can compute the SD
         for the threshold in a consistent manner if there are evoked responses in the trace.
         """
-        if self.verbose:
-            print("analyze protocol")
+        CP.cprint("g", "    Analyzing protocol")
         rate = self.rate
         mdata = np.mean(data, axis=0)  # mean across ALL reps
         #        rate = rate*1e3  # convert rate to msec
@@ -758,7 +757,7 @@ class AnalyzeMap(object):
             except:
                 CP.cprint(
                     "r",
-                    "Failed to establish position for t=%d, ix=%d of max values %d,  protocol: %s"
+                    "**** Failed to establish position for t=%d, ix=%d of max values %d,  protocol: %s"
                     % (t, ix, pmax, self.protocol),
                 )
                 raise ValueError()
@@ -868,7 +867,7 @@ class AnalyzeMap(object):
             inittaus = self.Pars.taus)
         if method.fitted:
             results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
-            print('Summarized....')
+            CP.cprint("c", 'Summarized....')
             if self.verbose:
                 print("Trial analyzed")
             return results

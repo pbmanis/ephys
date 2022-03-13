@@ -170,7 +170,8 @@ class PoissonScore:
             try:
                 pi = 1.0 / pi0
             except:
-                print("pi: ", pi)
+                print("pi: ", pi0)
+                pi = 1
             ## apply extra score for uncommonly large amplitudes
             ## (note: by default this has no effect; see amplitudeScore)
             ampScore = cls.amplitudeScore(events, **kwds)

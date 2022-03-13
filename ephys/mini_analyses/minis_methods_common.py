@@ -178,7 +178,7 @@ class MiniAnalyses:
         if eventstartthr is not None:
             self.eventstartthr = eventstartthr
         if risepower is not None:
-            self.risepower = risepower.deepcopy()
+            self.risepower = risepower
         self.min_event_amplitude = min_event_amplitude
         self.threshold = threshold
         self.sdthr = self.threshold  # for starters
@@ -399,13 +399,13 @@ class MiniAnalyses:
                     "y", f"minis_methods_common, prepare_data: LPF: {self.lpf:.1f} Hz"
                 )
             else:
-                cprint("r", f"minis_methods_common, no LPF applied")
+                cprint("r", f"**** minis_methods_common, no LPF applied")
             if self.hpf is not None:
                 cprint(
-                    "y", f"minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz"
+                    "y", f"    minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz"
                 )
             else:
-                cprint("r", f"minis_methods_common, no HPF applied")
+                cprint("r", f"    minis_methods_common, no HPF applied")
         if isinstance(self.lpf, float):
             data = self.LPFData(data, lpf=self.lpf)
         if isinstance(self.hpf, float):
@@ -435,7 +435,7 @@ class MiniAnalyses:
         trace or a group of traces
         filter out events that are less than min_event_amplitude
         """
-        cprint("c", "Summarizing data")
+        cprint("c", "    Summarizing data")
         i_decay_pts = int(
             2.0 * self.taus[1] / self.dt_seconds
         )  # decay window time (points) Units all seconds
@@ -527,19 +527,20 @@ class MiniAnalyses:
                     else:
                         nrejected_too_small += 1
 
-                        cprint(
-                            "y",
-                            f"     Event too small: {1e12*(move_avg[smpk]-windowed_data[0]):6.1f} vs. hardthreshold: {1e12*self.min_event_amplitude:6.1f} pA",
-                        )
+                        # cprint(
+                        #     "y",
+                        #     f"     Event too small: {1e12*(move_avg[smpk]-windowed_data[0]):6.1f} vs. hardthreshold: {1e12*self.min_event_amplitude:6.1f} pA",
+                        # )
                         continue  # filter out events smaller than the amplitude
             self.onsets[itrial] = self.onsets[itrial][
                 ev_accept
             ]  # reduce to the accepted values
+        cprint("y", f"    {nrejected_too_small:5d} events were smaller than threshold of {1e12*self.min_event_amplitude:6.1f} pA")
         self.average_events(
             traces=range(len(data)), eventlist=self.Summary.onsets, data=data
         )
         if self.Summary.average.averaged:
-            cprint("c", "Fitting averaged event")
+            cprint("c", "    Fitting averaged event")
             self.fit_average_event(
                 tb=self.Summary.average.avgeventtb,
                 avgevent=self.Summary.average.avgevent,
@@ -554,14 +555,13 @@ class MiniAnalyses:
             self.Summary.average.decaythirtyseven = self.decaythirtyseven
         else:
             if verbose:
-                cprint("r", "No events found")
+                cprint("r", "**** No events found")
         return
 
     def measure_events(self, data: object, eventlist: list) -> dict:
         """
         compute simple measurements of events (area, amplitude, half-width)
         """
-        # cprint('r', 'MEASURE EVENTS')
         assert data.ndim == 1
         self.measured = False
         # treat like averaging
@@ -636,7 +636,6 @@ class MiniAnalyses:
             raise ValueError(
                 "minis_methods_common.average_events requires an eventlist and the original data"
             )
-        # cprint('r', 'AVERAGE EVENTS')
         self.Summary.average.averaged = False
         tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = 1e-3  # self.taus[0]*10.
@@ -673,7 +672,7 @@ class MiniAnalyses:
         if n_incomplete_events > 0:
             cprint(
                 "y",
-                f"   {n_incomplete_events:d} events excluded because they were too close to the end of the trace",
+                f"    {n_incomplete_events:d} event(s) excluded because they were too close to the end of the trace"
             )
 
         self.avgevent = np.nanmean(allevents, axis=0)
@@ -763,7 +762,7 @@ class MiniAnalyses:
         self.risetenninety = np.nan
         self.decaythirtyseven = np.nan
 
-        cprint("c", "            Fitting average event")
+        # cprint("c", "        Fitting average event")
         res = self.event_fitter_lm(
             tb,
             avgevent,
@@ -813,7 +812,7 @@ class MiniAnalyses:
             try:
                 i90 = i90[0]  # get the first point where this condition was met
             except:
-                cprint("r", "Error in fit_average computing 10-90 RT")
+                cprint("r", "**** Error in fit_average computing 10-90 RT")
                 print(move_avg[:ipk], p90)
                 print(i90, ix90, ix90 + ipk - 2)
                 print(i10, ix10, ix10 + i10)
