@@ -500,9 +500,9 @@ class Utility:
     def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75,
         data_time_units='s'):
         """
-        FInd spikes using a box method:
-        Must be > threshol, and have slope values related
-        Units must be consistent: x, dt, d2 (s or ms)
+        Find spikes using a box method:
+        Must be > threshold, and be above the rising/falling values in the window dt2
+        Units must be consistent: x, dt, dt2 (s or ms)
         Unist must be consistent: y, thr, C1, C2 (V or mV)
         Note: probably works best with mV and ms, given the constants above.
         to C1, C2 and the width dt2
