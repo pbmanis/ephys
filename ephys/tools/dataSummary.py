@@ -117,11 +117,12 @@ prsp = '             '  # protocol within cell leading indent
 class DataSummary():
 
     def __init__(self, basedir, outputMode='terminal', outputFile=None, daylistfile=None,
-                 after=None, before=None, day=None, dryrun=False, depth='all', inspect=True,
+                 after=None, before=None, day=None, dryrun=False, depth='all', 
+                 inspect=True, subdirs=False,
                  deep=False, append=False, verbose=False, update=False, pairflag=False,
                  device='MultiClamp1.ma'):
         """
-        Note that the init is just setup - you have to call getDay the object to do anything
+        Note that the init is just setup - you have to call getDay with the object to do anything
     
         Parameters
         ----------
@@ -169,6 +170,9 @@ class DataSummary():
         inspect : bool (default: True)
             perform inspection to find complete versus incomplete protocols
         
+        subdirs: bool (default: False)
+            look also for files in subdirectories that are not acq4 data files.
+
         deep: bool (default: False)
             do a "deep" inspection of the data files, actually reading the .ma files
                  to confirm the data existence. This is slow...
@@ -183,7 +187,7 @@ class DataSummary():
 
         self.setups()  # build some regex and wrappers
         # gather input parameters
-        self.basedir = basedir
+        self.basedir = Path(basedir)
         self.outputMode = outputMode  # terminal, tabfile, pandas
         self.outFilename = outputFile
         self.daylistfile = daylistfile
@@ -192,6 +196,7 @@ class DataSummary():
         self.before = before
         self.day = day
         self.depth = depth
+        self.subdirs = subdirs
         self.verbose = verbose
         self.update = update
         self.deep_check = deep
@@ -244,10 +249,10 @@ class DataSummary():
         self.AR.setDataName(device)
         if self.outputMode == 'tabfile':
             print('Tabfile output: Writing to {:<s}'.format(self.outFilename))
-            h = open(self.outFilename, 'w')  # write new file
-            h.write(self.basedir+'\n')
-            h.write(self.coldefs + '\n')
-            h.close()
+            with open(self.outFilename, 'w') as fh:  # write new file
+                fh.write(self.basedir + '\n')
+                fh.write(self.coldefs + '\n')
+
         elif self.outputMode == 'pandas':  # save output as a pandas data structure, pickled
             print('Pandas output: will write to {:<s}'.format(self.outFilename))
         else:
@@ -288,7 +293,6 @@ class DataSummary():
                 for line in f:
                     if line[0] != '#':
                         self.daylist.append(line[0:10])
-            f.close()  # silly - it dhould be closed.
         
     def setups(self):
         self.tw = {}  # for notes
@@ -311,14 +315,14 @@ class DataSummary():
         self.daytype = re.compile(r"(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
 #        daytype = re.compile(r"(2011).(06).(08)_(\d{3,3})")  # specify a day
 
-    def getDay(self):
+    def getDay(self, allfiles):
         """
         getDay is the entry point for scanning through all the data files in a given directory,
         returning information about those within the date range, with details as specified by the options
         
         Parameters
         ----------
-        None
+        allfiles : list of all of the files in the directory
         
         Returns 
         -------
@@ -327,22 +331,22 @@ class DataSummary():
         The result is stored in the class variable self.day_index
         
         """
-        allfiles = os.listdir(self.basedir)
         if self.append:
             print('reading for append: ', self.outFilename)
             self.pddata = pd.read_pickle(self.outFilename)  # get the current file
-        print('alldays: ', allfiles)
+        # print('alldays: ', allfiles)
         self.pstring = ''
         days = []
         #print('allfiles: ', allfiles)
         for thisfile in allfiles:
-            if thisfile.endswith('.sql'):
+            if not str(thisfile.name).startswith("20"):  # skip directories that are not data directories at this level
                 continue
-            if str(thisfile) in ['.DS_Store', '.index']:
+            str_file = str(thisfile.name)
+            if str_file.endswith('.sql'):
                 continue
-            m = self.daytype.search(thisfile)
-            if str(thisfile) in ['.DS_Store', '.index']:
+            if str_file in ['.DS_Store', '.index']:
                 continue
+            m = self.daytype.search(str_file)
             if m is None:
                 print('no match in daytype : ', thisfile)
                 continue  # no match
@@ -355,8 +359,8 @@ class DataSummary():
                     if id >= self.minday and id <= self.maxday:
                         days.append(thisfile)  # was [0:10]
                 else:
-                    if thisfile[0:10] in self.daylist:
-                        days.append(thisfile)
+                    if str_file[0:10] in self.daylist:
+                        days.append(str_file)
         #print('days: ', days)
         if self.verbose:
             print ('Days reported: ', days)
@@ -388,8 +392,8 @@ class DataSummary():
             self.day_index = self.day_index['.']
             # print('ind: ', ind)
            #  self.day_index = self.AR.readDirIndex(ind)
-            # print('day index: ', self.day_index)
-            self.day_index['date'] = day.strip()
+            # print('day index: ', self.day_index, "day: ", day)
+            self.day_index['date'] = str(day).strip()
             # print('\nday index: ', self.day_index.keys())
             # print('daydefs: ', self.day_defs)
             # now add the rest of the index information to the daystring
@@ -443,13 +447,13 @@ class DataSummary():
             thisfile = str(thisfile)
             m = slicetype.search(str(thisfile))
             if m is None:
-                print(slsp + 'm is none')
+                # print(slsp + 'm is none')
                 continue
             if len(m.groups()) == 2:
                 slices.append(''.join(m.groups(2))) # Path(thisfile).parts[-1])
         for slicen in slices:
             slicen = str(slicen)
-            self.sstring = day + ' ' + self.pstring + ' %s' % slicen
+            self.sstring = str(day) + ' ' + self.pstring + ' %s' % slicen
             Printer(self.sstring)
             self.slicestring = '%s\t' % (slicen)
             self.slice_index = self.AR.readDirIndex(Path(self.basedir, day, slicen))
@@ -834,6 +838,26 @@ class DataSummary():
         (p3, date) = os.path.split(p2)
         return (date, sliceid, cell, proto, p3)
 
+def dir_recurse(ds, current_dir, args, indent=0):
+    files = sorted(list(current_dir.glob("*")))
+    alldatadirs = [f for f in files if f.is_dir() and str(f.name).startswith("20")]
+    sp = " "*indent
+    for d in alldatadirs:
+        Printer(f"{sp:s}Data: {str(d.name):s}", "green")
+    ds.getDay(alldatadirs)
+    if args.output in ['pandas']:
+        ds.write_string()
+    allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20")]
+    indent += 2
+    sp = " "*indent
+    for d in allsubdirs:
+        print(f"\n{sp:s}Subdir: {str(d.name):s}", "cyan")
+        indent = dir_recurse(ds, d, args, indent)
+    indent -= 2
+    if indent <0:
+        indent = 0
+    return indent
+
 def main():
     parser = argparse.ArgumentParser(description='Generate Data Summaries from acq4 datasets')
     parser.add_argument('basedir', type=str,
@@ -875,20 +899,36 @@ def main():
                         help='update new/missing entries to specified output file')
     parser.add_argument('-p', '--pairs', action='store_true', dest='pairflag',
                         help='handle pairs')
+    parser.add_argument('--subdirs', action='store_true', dest='subdirs',
+                        help='Also get data from subdirs that are not acq4 data dirs.')
                     
     args = parser.parse_args()
     ds = DataSummary(basedir=args.basedir, daylistfile=args.daylist, outputMode=args.output, outputFile=args.outputFilename,
             after=args.after, before=args.before, day=args.day, dryrun=args.dryrun, depth=args.depth, inspect=args.noinspect,
-            deep=args.deep, append=args.append,
+            deep=args.deep, append=args.append, subdirs=args.subdirs,
             verbose=args.verbose, update=args.update, pairflag=args.pairflag,
             device=args.device)
 
     if args.write:
         print('Writing: ')
-        ds.getDay()
+        dir_recurse(ds, ds.basedir, args)
+        exit()
+        files = list(ds.basedir.glob("*"))
+        alldirs = [f for f in files if f.is_dir() and str(f.name).startswith("20")]
+        ds.getDay(alldirs)
         if args.output in ['pandas']:
             ds.write_string()
-    
+        # check for subdirectories: 2 levels deep
+        alldirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20")]
+        if len(alldirs) > 0:
+            for directory in alldirs:
+                newdir = Path(ds.basedir, directory).glob("*")
+                files = list(newdir.glob("*"))
+                allfiles = [f for f in files if f.is_file()]
+                ds.getDay(allfiles)
+                if args.output in ['pandas']:
+                    ds.write_string()
+            
     if args.read:
         print('args.read')
         print("Valid file: ", Path(args.basedir).is_dir())
