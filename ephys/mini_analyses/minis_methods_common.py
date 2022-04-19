@@ -18,18 +18,18 @@ multiple passes with scipy.optimize with various algorithms.
 
 """
 
-import numpy as np
-import scipy.signal
-from dataclasses import dataclass, field
-import traceback
-from typing import Union, List
 import timeit
-from scipy.optimize import curve_fit
-import scipy.special
-import lmfit
+import traceback
+from dataclasses import dataclass, field
+from typing import List, Union
 
 import ephys.tools.digital_filters as dfilt
+import lmfit
+import numpy as np
+import scipy.signal
+import scipy.special
 from pylibrary.tools.cprint import cprint
+from scipy.optimize import curve_fit
 
 
 @dataclass
@@ -51,8 +51,8 @@ def def_empty_list2():
 @dataclass
 class AverageEvent:
     """
-        The AverageEvent class holds the averaged events
-        from all traces and trials
+    The AverageEvent class holds the averaged events
+    from all traces and trials
     """
 
     averaged: bool = False  # set flags in case of no events found
@@ -76,10 +76,10 @@ class AverageEvent:
 @dataclass
 class Summaries:
     """
-        The Summaries dataclass holdes the results of the
-        individual events that were detected,
-        as well as the results of various fits
-        and the averge fit
+    The Summaries dataclass holdes the results of the
+    individual events that were detected,
+    as well as the results of various fits
+    and the averge fit
     """
 
     onsets: Union[List, np.ndarray] = field(  # onset times for detected events
@@ -155,10 +155,10 @@ class MiniAnalyses:
     ) -> None:
         """
         Just store the parameters - will compute when needed
-        Use of globalSD and threshold: 
+        Use of globalSD and threshold:
         if global SD is None, we use the threshold as it.
-    
-        If global SD has a value, then we use that rather than the 
+
+        If global SD has a value, then we use that rather than the
         current trace SD for threshold determinations
         """
         cprint("c", "MiniAnalysis SETUP")
@@ -259,7 +259,7 @@ class MiniAnalyses:
         data : the  array of data
         lpf: float : low pass filter frequency in Hz
         NPole : number of poles for designing the filter
-        
+
         Return
         ------
         data : the filtered data (as a copy)
@@ -297,7 +297,7 @@ class MiniAnalyses:
         data : the  array of data
         hpf: float : high pass filter frequency in Hz
         NPole : number of poles for designing the filter
-        
+
         Return
         ------
         data : the filtered data (as a copy)
@@ -339,13 +339,13 @@ class MiniAnalyses:
         """
         Notch filter the data
         This routine can apply multiple notch filters to the data at once.
-        
+
         Parameters
         ----------
         data : the  array of data
         notch: list : list of notch frequencies, in Hz
         notch_Q : the Q of the filter (higher is narrower)
-        
+
         Return
         ------
         data : the filtered data (as a copy)
@@ -373,17 +373,20 @@ class MiniAnalyses:
         This function prepares the incoming data for the mini analyses.
         1. Clip the data in time (remove sections with current or voltage steps)
         2. Filter the data (LPF, HPF)
-        
+
         Parameters
         ----------
         data : np array
-        
+
         Returns
         -------
         nothing. The result is held in the class variable "data", along with a
         corresponding timebase.
         """
         self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
+        print(
+            "preparedata timebase shape, data shape: ", self.timebase.shape, data.shape
+        )
         if self.analysis_window[1] is not None:
             jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
         else:
@@ -402,7 +405,8 @@ class MiniAnalyses:
                 cprint("r", f"**** minis_methods_common, no LPF applied")
             if self.hpf is not None:
                 cprint(
-                    "y", f"    minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz"
+                    "y",
+                    f"    minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz",
                 )
             else:
                 cprint("r", f"    minis_methods_common, no HPF applied")
@@ -457,6 +461,7 @@ class MiniAnalyses:
         else:
             nparg = np.less
         self.intervals = []
+        print("summarize data shape: ", data.shape)
         self.timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
 
         nrejected_too_small = 0
@@ -494,7 +499,11 @@ class MiniAnalyses:
                         order=order,
                     )[0]
                 else:  # skip filtering
-                    p = scipy.signal.argrelextrema(event_data, nparg, order=order,)[0]
+                    p = scipy.signal.argrelextrema(
+                        event_data,
+                        nparg,
+                        order=order,
+                    )[0]
                 if len(p) > 0:
                     i_end = i_decay_pts + onset  # distance from peak to end
                     i_end = min(dataset.shape[0], i_end)  # keep within the array limits
@@ -505,7 +514,8 @@ class MiniAnalyses:
                             )  # only go to next event start
                     windowed_data = dataset[onset:i_end]
                     move_avg, n = self.moving_average(
-                        windowed_data, n=min(avgwin, len(windowed_data)),
+                        windowed_data,
+                        n=min(avgwin, len(windowed_data)),
                     )
                     if self.sign > 0:
                         smpk = np.argmax(move_avg)  # find peak of smoothed data
@@ -535,7 +545,10 @@ class MiniAnalyses:
             self.onsets[itrial] = self.onsets[itrial][
                 ev_accept
             ]  # reduce to the accepted values
-        cprint("y", f"    {nrejected_too_small:5d} events were smaller than threshold of {1e12*self.min_event_amplitude:6.1f} pA")
+        cprint(
+            "y",
+            f"    {nrejected_too_small:5d} events were smaller than threshold of {1e12*self.min_event_amplitude:6.1f} pA",
+        )
         self.average_events(
             traces=range(len(data)), eventlist=self.Summary.onsets, data=data
         )
@@ -672,7 +685,7 @@ class MiniAnalyses:
         if n_incomplete_events > 0:
             cprint(
                 "y",
-                f"    {n_incomplete_events:d} event(s) excluded because they were too close to the end of the trace"
+                f"    {n_incomplete_events:d} event(s) excluded because they were too close to the end of the trace",
             )
 
         self.avgevent = np.nanmean(allevents, axis=0)
@@ -748,7 +761,7 @@ class MiniAnalyses:
         self.tsel = tsel
         self.tau1 = inittaus[0]
         self.tau2 = inittaus[1]
-        self.tau_ratio = self.tau2/self.tau1
+        self.tau_ratio = self.tau2 / self.tau1
         self.tau2_range = 10.0
         self.tau1_minimum_factor = 5.0
         time_past_peak = 2.5e-4
@@ -783,7 +796,9 @@ class MiniAnalyses:
         self.Amplitude = res.values["amp"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
-        self.fitted_tau_ratio = res.values["tau_2"]/res.values["tau_1"] # res.values["tau_ratio"]
+        self.fitted_tau_ratio = (
+            res.values["tau_2"] / res.values["tau_1"]
+        )  # res.values["tau_ratio"]
         self.bfdelay = res.values["fixed_delay"]
         self.avg_best_fit = self.fitresult.best_fit
         self.avg_best_fit = self.sign * self.avg_best_fit
@@ -791,7 +806,8 @@ class MiniAnalyses:
         self.avg_fiterr = fiterr
         ave = self.sign * avgevent
         move_avg, n = self.moving_average(  # apply 5 point moving average
-            ave, n=min(5, len(ave)),
+            ave,
+            n=min(5, len(ave)),
         )
         ipk = np.argmax(move_avg)
         pk = move_avg[ipk]
@@ -836,9 +852,9 @@ class MiniAnalyses:
         Events to be fit are selected from the entire event pool as:
         1. events that are completely within the trace, AND
         2. events that do not overlap other events
-        
+
         Fit events are further classified according to the fit error
-        
+
         """
         if (
             not self.Summary.average.averaged or not self.fitted
@@ -962,7 +978,7 @@ class MiniAnalyses:
         """
         Fit the event using lmfit and LevenbergMarquardt
         Using lmfit is a bit more disciplined approach than just using scipy.optimize
-        
+
         """
 
         def doubleexp_lm(
@@ -984,7 +1000,7 @@ class MiniAnalyses:
             ix = np.argmin(np.fabs(x - fixed_delay))
             tm = np.zeros_like(x)
             # tau_2 = tau_1*tau_ratio
-            exp_arg = (x[ix:] - fixed_delay)/tau_1
+            exp_arg = (x[ix:] - fixed_delay) / tau_1
             # exp_arg[exp_arg > 10] = 10 # limit values
             tm[ix:] = amp * (1.0 - np.exp(-exp_arg)) ** risepower
             tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / tau_2)
@@ -1020,8 +1036,11 @@ class MiniAnalyses:
             vary=True,
         )
         params["fixed_delay"] = lmfit.Parameter(
-            name="fixed_delay", value=initdelay, vary=True,
-            min=initdelay-2e-3, max=initdelay+2e-3,
+            name="fixed_delay",
+            value=initdelay,
+            vary=True,
+            min=initdelay - 2e-3,
+            max=initdelay + 2e-3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
@@ -1399,11 +1418,15 @@ class MiniAnalyses:
                 10, (1.0 / self.risepower) * np.log10(self.tau1 * sf)
             )  # correct for rise power
             tau2 = self.tau2 * sf
+            # print(dir(self.fitresult))
+            # print("fit: ", self.fitresult.fit())
+            # print("result: ", dir(self.fitresult.result))
+            
             if i == 0:
                 label = "Best Fit:\nRise Power={0:.2f}\nTau1={1:.3f} ms\nTau2={2:.3f} ms\ndelay: {3:.3f} ms".format(
                     self.risepower,
-                    self.res_rise.x[1] * sf,
-                    self.res_decay.x[1] * sf,
+                    self.tau1 * sf,
+                    self.tau2 * sf,
                     self.bfdelay * sf,
                 )
             else:

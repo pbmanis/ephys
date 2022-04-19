@@ -554,6 +554,7 @@ class ZCFinder(MiniAnalyses):
         verbose: bool = False,
         ) -> None:
         
+        print("Called DECONVOLVE")
         self.prepare_data(data) # windowing, filtering and timebase
         starttime = timeit.default_timer()
 
@@ -563,7 +564,7 @@ class ZCFinder(MiniAnalyses):
             minPeak=minPeak,
             minSum=minSum,
             noiseThreshold=self.threshold,
-            sign=self.sign,
+            #sign=self.sign,
         )
         self.Criterion[itrace] = np.zeros_like(self.data)
         self.events = events
