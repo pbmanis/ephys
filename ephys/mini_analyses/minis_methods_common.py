@@ -21,11 +21,13 @@ multiple passes with scipy.optimize with various algorithms.
 import timeit
 import traceback
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import ephys.tools.digital_filters as dfilt
 import lmfit
+import matplotlib.pyplot as mpl
 import numpy as np
+import pylibrary.plotting.plothelpers as PH
 import scipy.signal
 import scipy.special
 from pylibrary.tools.cprint import cprint
@@ -107,7 +109,7 @@ class Summaries:
     allevents: Union[List, np.ndarray] = field(  # list of all events
         default_factory=def_empty_list
     )
-    event_trace_list: Union[List] = field(  # list linking events to parent trace
+    event_trace_list: Union[List, None] = field(  # list linking events to parent trace
         default_factory=def_empty_list
     )
 
@@ -147,7 +149,7 @@ class MiniAnalyses:
         min_event_amplitude: float = 5.0e-12,
         threshold: float = 2.5,
         global_SD: Union[float, None] = None,
-        analysis_window: [Union[float, None], Union[float, None]] = [None, None],
+        analysis_window: List[Union[float, None], Union[float, None]] = [None, None],
         lpf: Union[float, None] = None,
         hpf: Union[float, None] = None,
         notch: Union[float, None] = None,
@@ -419,7 +421,7 @@ class MiniAnalyses:
         self.data = data
         self.timebase = self.timebase[jmin:jmax]
 
-    def moving_average(self, a, n: int = 3) -> (np.array, int):
+    def moving_average(self, a, n: int = 3) -> Tuple(np.array, int):
         ret = np.cumsum(a, dtype=float)
         ret[n:] = ret[n:] - ret[:-n]
         return ret[int(n / 2) :] / n, n  # re-align array
@@ -974,7 +976,7 @@ class MiniAnalyses:
         initdelay: Union[float, None] = 1e-3,
         debug: bool = False,
         label: str = "",
-    ) -> (dict, float):
+    ) -> Tuple(dict, float):
         """
         Fit the event using lmfit and LevenbergMarquardt
         Using lmfit is a bit more disciplined approach than just using scipy.optimize
@@ -1263,9 +1265,9 @@ class MiniAnalyses:
         """
         Plot the results from the analysis and the fitting
         """
-
-        import matplotlib.pyplot as mpl
-        import pylibrary.plotting.plothelpers as PH
+        print("plots: datashape ", data.shape)
+        print('Plots: events shape: ', events.shape)
+        print('onsets: ', self.onsets.shape)
 
         P = PH.regular_grid(
             3,
