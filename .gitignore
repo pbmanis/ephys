@@ -17,6 +17,9 @@ __pycache__/
 # C extensions
 *.so
 
+# parts of documentation
+doc/api/
+
 # Distribution / packaging
 .Python
 ephys_venv/
