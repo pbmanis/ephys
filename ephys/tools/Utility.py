@@ -1,14 +1,14 @@
 """
-Utility.py - general utility routines
-- power spectrum
-- elliptical filtering
-- handling very long input lines for dictionaries
-- general measurement routines for traces (mean, std, spikes, etc)
+Utility.py - general utility routines::
+    - power spectrum
+    - elliptical filtering
+    - handling very long input lines for dictionaries
+    - general measurement routines for traces (mean, std, spikes, etc)
 
 "declassed", 7/28/09 p. manis
-Use as:
-import Utility as Utils
-then call Utils.xxxxx()
+Use as::
+    import Utility as Utils
+    then call Utils.xxxxx()
 
 """
 # January, 2009
@@ -31,6 +31,7 @@ then call Utils.xxxxx()
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 """
 import fnmatch
 import itertools
@@ -57,6 +58,7 @@ class ScriptError(Exception):
 def nb_deriv(x, y, order=1):
     """
     Compute a derivative of order n of V
+
     """
     deriv = np.zeros_like(y)
     d = y.copy()
@@ -125,6 +127,7 @@ class Utility:
     def sinefit(self, x: np.ndarray, y: np.ndarray, F: float) -> (float, float):
         """ LMS fit of a sine wave with period T to the data in x and y
             aka "cosinor" analysis. 
+
         """
         npar = 2
         w = 2.0 * np.pi * F
@@ -140,6 +143,7 @@ class Utility:
         """ LMS fit of a sine wave with period T to the data in x and y
             aka "cosinor" analysis. 
             assumes that A (in sinefit) is precalculated
+
         """
         (p, residulas, rank, s) = np.linalg.lstsq(A, y)
         Amplitude = np.sqrt(p[0] ** 2 + p[1] ** 2)
@@ -251,11 +255,18 @@ class Utility:
     ) -> np.ndarray:
         """ Low pass filter a signal, possibly reducing the number of points in the
             data array.
+            Parameters
+            ----------
             signal: a numpya array of dim = 1, 2 or 3. The "last" dimension is filtered.
+            
             LPF: low pass filter frequency, in Hz
+            
             samplefreq: sampline frequency (points/second)
+            
             NPole: number of poles in the filter.
+            
             reduce: Flag that controls whether the resulting data is subsampled or not
+
         """
         if self.debugFlag:
             print(f"sfreq: {samplefreq:f}  LPF: {LPF:f}")
@@ -465,6 +476,7 @@ class Utility:
     ) -> Union[List, np.ndarray]:
         """
         Clean up spike time array, removing all less than mindT
+
         Parameters
         ----------
         spikeTimes : list or numpy array (1-D)
@@ -476,10 +488,11 @@ class Utility:
         
         Return
         ------
-        spikeTimes : list or numpy array (1-D_
+        spikeTimes : list or numpy array (1-D)
             A cleaned list of the spike times where the events are at least
             mindT appart.
             Note: If no spikes or just one spike in the input array, just return the array
+
         """
 
         if len(spikeTimes) > 1:

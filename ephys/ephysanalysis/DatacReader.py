@@ -37,16 +37,15 @@ import matplotlib.pylab as mpl
 from pyqtgraph.metaarray import MetaArray
 
 """
-This is what the datac data structure looks like (in C):
+This is what the datac data structure looks like (in C)::
+
 MATRIX.H:
         /*
-        	Matrix definition and Union
-          Used for data reading, transfer and display preparation
-        	added smatn/matn 8/92 for shorter file structure stuff.
-
+        Matrix definition and Union
+        Used for data reading, transfer and display preparation
+        added smatn/matn 8/92 for shorter file structure stuff.
         */
         #if !defined MATRIX_H
-
         #define LEFTSPACE 88		/* to make header reach 256 bytes in bmatn */
         			/* LEFTSPACE is size of an INTEGER (not char/byte) array
         				LEFTSPACE should be reduced by:
@@ -67,9 +66,7 @@ MATRIX.H:
         		long ztime;	/* the time since acquisition or file opening (milliseconds) */
         		int dummy[LEFTSPACE];	/* dummy space for more stuff */
         }d_hdr;
-
         #define BSIZE (32768+sizeof(struct data_header))
-
         #define ALLBUFF union all_buffer
           ALLBUFF{/*	buffer area for one data set */
         	struct smats {/* short form of the buffer */
@@ -104,7 +101,6 @@ MATRIX.H:
         			char comm[80];/* text position */
             }p_dir;/* personal directory in the file */
         };
-
         /* note this just defines the buffers: allocation it taken care of elsewhere */
         #define DATA_BUFF union data_buffer
         DATA_BUFF {
@@ -113,14 +109,10 @@ MATRIX.H:
         		int matn[4096];/* data array - interleaved 2 x 2048 max points */
         		char buff[2730*3*sizeof(int)];
         };
-		
         struct dac_buff {
         		int dac_array[4096];
         };
-
-
         #define MATRIX_H 1	/* define our inclusion here */
-
         #endif
 
 """
@@ -132,6 +124,7 @@ class ReadDatac:
         Initialize a DATAC file object, used to read data and notefiles
         dfile - the variables that are in dfile structure, as created by
         the various versions of DATAC, are defined here
+
         """
         
         nrl = 1  # 
@@ -182,7 +175,7 @@ class ReadDatac:
 
     def openfile(self, filename):
         """
-        open the requested file for reading
+        Open the requested file for reading
         
         Parameters
         ----------
@@ -192,9 +185,9 @@ class ReadDatac:
         -------
         error  - integer error flag::
 
-             1 - requested file was not found or could not be opened
-             3 - requested file was a matlab file; should be handled in matlab
-             0 - normal return, file is open and fid is the open file handle.
+             error = 1 - requested file was not found or could not be opened
+             error = 3 - requested file was a matlab file; should be handled in matlab
+             error = 0 - normal return, file is open and fid is the open file handle.
         
         """
         
@@ -236,8 +229,14 @@ class ReadDatac:
         Note that early DATAC files held data in integer format, as received from the data acquistion board.
         Later files (mode = 9) stored the data in a floating point format.
 
-        :params: filename: name of the file to open and read the header.
-        :return: nothing (self.err is set)
+        Parameters
+        ----------
+         filename: name of the file to open and read the header.
+        
+        Return
+        ------
+        nothing (self.err is set)
+        
         """
         data=[]
         err=1
