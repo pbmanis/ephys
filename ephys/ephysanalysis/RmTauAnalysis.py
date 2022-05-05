@@ -145,7 +145,6 @@ class RmTauAnalysis():
         vrange : list (V) (default: [-0.005, -0.020])
             Define the voltage range below RMP for the traces that will be fit to obtain tau_m.
             
-        
         region: list (s) (default: [])
             Define the time region for the fitting
         
@@ -156,7 +155,7 @@ class RmTauAnalysis():
         ------
             Nothing
             
-        Class variables with a leading taum_ are set by this routine, to return results.
+        Class variables with a leading taum\_ are set by this routine, to return results.
         
         """
         

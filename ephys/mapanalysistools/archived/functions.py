@@ -14,10 +14,15 @@ makeDispMap / matchDistortImg - for measuring and correcting motion/distortion b
 """
 import sys
 import os, re, math, time, threading, decimal
-from pyqtgraph import metaarray  # deprecated, but wait until it is gone
-import pyqtgraph as pg
+#from acq4.util.metaarray import *
+from pyqtgraph.metaarray import *
+#from scipy import *
+#from scipy.optimize import leastsq
+#from scipy.ndimage import gaussian_filter, generic_filter, median_filter
 from scipy import stats
 import scipy.signal, scipy.ndimage, scipy.optimize
+import numpy.ma
+#from acq4.util.debug import *
 import numpy as np
 
 try:
@@ -28,13 +33,13 @@ except:
 
 
 def dirDialog(startDir='', title="Select Directory"):
-  return str(pg.QtGui.QFileDialog.getExistingDirectory(None, title, startDir))
+  return str(QtGui.QFileDialog.getExistingDirectory(None, title, startDir))
 
 def fileDialog():
-  return str(pg.QtGui.QFileDialog.getOpenFileName())
+  return str(QtGui.QFileDialog.getOpenFileName())
 
-def cmp(a, b):
-    return (a > b) - (a < b)
+
+
 
 ## the built in logspace function is pretty much useless.
 def logSpace(start, stop, num):
@@ -419,7 +424,7 @@ def downsample(data, n, axis=0, xvals='subsample'):
     ma = None
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
         ma = data
-        data = data.view(np.ndarray)
+        data = data.view(ndarray)
         
     
     if hasattr(axis, '__len__'):
@@ -449,7 +454,7 @@ def downsample(data, n, axis=0, xvals='subsample'):
                 info[axis]['values'] = info[axis]['values'][::n][:nPts]
             elif xvals == 'downsample':
                 info[axis]['values'] = downsample(info[axis]['values'], n)
-        return metaarray.MetaArray(d2, info=info)
+        return MetaArray(d2, info=info)
     
         
 def downsamplend(data, div):
@@ -569,7 +574,7 @@ def registerImages(im1, im2, searchRange):
     ## get full scale correlation
     
     #turns out cross-correlation is a really lousy way to register images.
-    #xc = scipy.scipy.signal.signaltools.correlate2d(im1c, im2c, boundary='fill', fillvalue=im1c.mean(), mode=mode)
+    #xc = scipy.signal.signaltools.correlate2d(im1c, im2c, boundary='fill', fillvalue=im1c.mean(), mode=mode)
     def err(img):
         try:
             img.shape = im2c.shape
@@ -994,8 +999,8 @@ def volumeSum(data, alpha, axis=0, dtype=None):
 
 
 def slidingOp(template, data, op):
-    data = data.view(np.ndarray)
-    template = template.view(np.ndarray)
+    data = data.view(ndarray)
+    template = template.view(ndarray)
     tlen = template.shape[0]
     length = data.shape[0] - tlen
     result = np.empty((length), dtype=float)
@@ -1027,8 +1032,8 @@ def rmsMatch(template, data, thresh=0.75, scaleInvariant=False, noise=0.0):
 def fastRmsMatch(template, data, thresholds=[0.85, 0.75], scales=[0.2, 1.0], minTempLen=4):
     """Do multiple rounds of rmsMatch on scaled-down versions of the data set"""
     
-    data = data.view(np.ndarray)
-    template = template.view(np.ndarray)
+    data = data.view(ndarray)
+    template = template.view(ndarray)
     tlen = template.shape[0]
     
     inds = None
@@ -1045,8 +1050,8 @@ def fastRmsMatch(template, data, thresholds=[0.85, 0.75], scales=[0.2, 1.0], min
             t1 = template
             data1 = data
         else:
-            t1 = scipy.signal.signaltools.resample(template, t1len)
-            data1 = scipy.signal.signaltools.resample(data, int(data.shape[0] * scale))
+            t1 = signal.signaltools.resample(template, t1len)
+            data1 = signal.signaltools.resample(data, int(data.shape[0] * scale))
         
         ## find RMS matches
         if inds is None:
@@ -1063,7 +1068,7 @@ def fastRmsMatch(template, data, thresholds=[0.85, 0.75], scales=[0.2, 1.0], min
                     inds2.append(ind+n)
             inds = inds2
         lastScale = scale
-        inds = (np.array(inds) / scale).round()
+        inds = (array(inds) / scale).round()
     return inds.astype(int)
 
 
@@ -1077,10 +1082,10 @@ def highPass(data, cutoff, order=1, dt=None):
 def applyFilter(data, b, a, padding=100, bidir=True):
     """Apply a linear filter with coefficients a, b. Optionally pad the data before filtering
     and/or run the filter in both directions."""
-    d1 = data.view(np.ndarray)
+    d1 = data.view(ndarray)
     
     if padding > 0:
-        d1 = np.hstack([d1[:padding], d1, d1[-padding:]])
+        d1 = numpy.hstack([d1[:padding], d1, d1[-padding:]])
     
     if bidir:
         d1 = scipy.signal.lfilter(b, a, scipy.signal.lfilter(b, a, d1)[::-1])[::-1]
@@ -1091,7 +1096,7 @@ def applyFilter(data, b, a, padding=100, bidir=True):
         d1 = d1[padding:-padding]
         
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d1, info=data.infoCopy())
+        return MetaArray(d1, info=data.infoCopy())
     else:
         return d1
     
@@ -1108,7 +1113,7 @@ def besselFilter(data, cutoff, order=1, dt=None, btype='low', bidir=True):
     
     return applyFilter(data, b, a, bidir=bidir)
     #base = data.mean()
-    #d1 = scipy.signal.lfilter(b, a, data.view(np.ndarray)-base) + base
+    #d1 = scipy.signal.lfilter(b, a, data.view(ndarray)-base) + base
     #if (hasattr(data, 'implements') and data.implements('MetaArray')):
         #return MetaArray(d1, info=data.infoCopy())
     #return d1
@@ -1267,7 +1272,7 @@ def generateSphere(radius):
             if r2 > radius2:
                 d[x,y] = 0.0
             else:
-                d[x,y] = np.sqrt(radius2 - r2)
+                d[x,y] = sqrt(radius2 - r2)
     return d
 
 def make3Color(r=None, g=None, b=None):
@@ -1296,7 +1301,7 @@ def imgDeconvolve(data, div):
     data1[data.shape[0]:] = dmin
     
     ## determine shape of deconvolved image
-    dec = scipy.signal.deconvolve(data1[:, 0, 0], div)
+    dec = deconvolve(data1[:, 0, 0], div)
     shape1 = (dec[0].shape[0], data.shape[1], data.shape[2])
     shape2 = (dec[1].shape[0], data.shape[1], data.shape[2])
     dec1 = np.empty(shape1)
@@ -1305,7 +1310,7 @@ def imgDeconvolve(data, div):
     ## deconvolve
     for i in range(0, shape1[1]):
         for j in range(0, shape1[2]):
-            dec = scipy.signal.deconvolve(data1[:,i,j], div)
+            dec = deconvolve(data1[:,i,j], div)
             dec1[:,i,j] = dec[0]
             dec2[:,i,j] = dec[1]
     return (dec1, dec2)
@@ -1316,7 +1321,7 @@ def xColumn(data, col):
     yCols.remove(col)
     b = data[yCols].copy()
     b._info[1] = data.infoCopy()[0]['cols'][col]
-    b._info[1]['values'] = data[col].view(np.ndarray)
+    b._info[1]['values'] = data[col].view(ndarray)
     return b
 
 
@@ -1328,7 +1333,7 @@ def stdFilter(data, kernShape):
     res = np.empty(tuple(shape), dtype=float)
     for ind, i in np.ndenumerate(res):
         sl = [slice(max(0, ind[j]-kernShape[j]/2), min(shape[j], ind[j]+(kernShape[j]/2))) for j in range(0, data.ndim)]
-        res[tuple(ind)] = np.std(data[tuple(sl)])
+        res[tuple(ind)] = std(data[tuple(sl)])
     return res
 
 def makeDispMap(im1, im2, maxDist=10, searchRange=None, normBlur=5.0, matchSize=10., printProgress=False, showProgress=False, method="diffNoise"):
@@ -1444,7 +1449,7 @@ def matchDistortImg(im1, im2, scale=4, maxDist=40, mapBlur=30, showProgress=Fals
     #im1s = downsamplend(im1, (scale,scale))
     #im2s = downsamplend(im2, (scale,scale))
     im1s = downsample(downsample(im1, scale), scale)
-    im2s = downsample(downsample(im2, scale), scale)
+    imss = downsample(downsample(im2, scale), scale)
     (dispMap, goodMap) = makeDispMap(im1s, im2s, maxDist=maxDist/scale, normBlur=5.0, matchSize=10., showProgress=showProgress)
     #showImg(make3Color(r=dispMap[..., 0], g=dispMap[..., 1], b=goodMap), title="Rough displacement map")
     
@@ -1483,7 +1488,7 @@ def matchDistortImg(im1, im2, scale=4, maxDist=40, mapBlur=30, showProgress=Fals
     
     ## Generate matched images
     print("Distorting image to match..")
-    im2d = scipy.ndimage.geometric_transform(im2, lambda x: (x[0]+(dm2Blur[x[0], x[1], 0]), x[1]+(dm2Blur[x[0], x[1], 1])))
+    im2d = geometric_transform(im2, lambda x: (x[0]+(dm2Blur[x[0], x[1], 0]), x[1]+(dm2Blur[x[0], x[1], 1])))
     
     if showProgress:
         for w in imws:
@@ -1502,12 +1507,12 @@ def threshold(data, threshold, direction=1):
 
 def measureBaseline(data, threshold=2.0, iterations=2):
     """Find the baseline value of a signal by iteratively measuring the median value, then excluding outliers."""
-    data = data.view(np.ndarray)
+    data = data.view(ndarray)
     med = np.median(data)
     if iterations > 1:
         std = data.std()
         thresh = std * threshold
-        arr = np.ma.masked_outside(data, med - thresh, med + thresh)
+        arr = numpy.ma.masked_outside(data, med - thresh, med + thresh)
         if len(arr) == 0:
             raise Exception("Masked out all data. min: %f, max: %f, std: %f" % (med - thresh, med + thresh, std))
         return measureBaseline(arr[~arr.mask], threshold, iterations-1)
@@ -1516,16 +1521,16 @@ def measureBaseline(data, threshold=2.0, iterations=2):
 
 def measureNoise(data, threshold=2.0, iterations=2):
     ## Determine the base level of noise
-    data = data.view(np.ndarray)
+    data = data.view(ndarray)
     if iterations > 1:
-        med = np.median(data)
+        med = median(data)
         std = data.std()
         thresh = std * threshold
-        arr = np.ma.masked_outside(data, med - thresh, med + thresh)
+        arr = numpy.ma.masked_outside(data, med - thresh, med + thresh)
         return measureNoise(arr[~arr.mask], threshold, iterations-1)
     else:
         return data.std()
-    #data2 = data.view(np.ndarray)[:10*(len(data)/10)]
+    #data2 = data.view(ndarray)[:10*(len(data)/10)]
     #data2.shape = (10, len(data2)/10)
     #return median(data2.std(axis=0))
     
@@ -1577,9 +1582,9 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
       - Events last more than minLength samples
       Return an array of events where each row is (start, length, sum, peak)
     """
-    ## just make sure this is an np.ndarray and not a MetaArray before operating..
+    ## just make sure this is an ndarray and not a MetaArray before operating..
     #p = Profiler('findEvents')
-    data1 = data.view(np.ndarray)
+    data1 = data.view(ndarray)
     #p.mark('view')
     xvals = None
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
@@ -1591,7 +1596,7 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
     
     ## find all 0 crossings
     mask = data1 > 0
-    diff = mask[1:] ^ mask[:-1]  ## mask is True every time the trace crosses 0 between i and i+1
+    diff = mask[1:] - mask[:-1]  ## mask is True every time the trace crosses 0 between i and i+1
     times1 = np.argwhere(diff)[:, 0]  ## index of each point immediately before crossing.
     
     times = np.empty(len(times1)+2, dtype=times1.dtype)  ## add first/last indexes to list of crossing times
@@ -1637,7 +1642,7 @@ def zeroCrossingEvents(data, minLength=3, minPeak=0.0, minSum=0.0, noiseThreshol
         ## Fit gaussian to peak in size histogram, use fit sigma as criteria for noise rejection
         stdev = measureNoise(data1)
         #p.mark('measureNoise')
-        hist = np.histogram(events['sum'], bins=100)
+        hist = histogram(events['sum'], bins=100)
         #p.mark('histogram')
         histx = 0.5*(hist[1][1:] + hist[1][:-1]) ## get x values from middle of histogram bins
         #p.mark('histx')
@@ -1667,7 +1672,7 @@ def thresholdEvents(data, threshold, adjustTimes=True, baseline=0.0):
     """Finds regions in a trace that cross a threshold value (as measured by distance from baseline). Returns the index, time, length, peak, and sum of each event.
     Optionally adjusts times to an extrapolated baseline-crossing."""
     threshold = abs(threshold)
-    data1 = data.view(np.ndarray)
+    data1 = data.view(ndarray)
     data1 = data1-baseline
     #if (hasattr(data, 'implements') and data.implements('MetaArray')):
     try:
@@ -1835,7 +1840,7 @@ def adaptiveDetrend(data, x=None, threshold=3.0):
     if x is None:
         x = data.xvals(0)
     
-    d = data.view(np.ndarray)
+    d = data.view(ndarray)
     
     d2 = scipy.signal.detrend(d)
     
@@ -1849,7 +1854,7 @@ def adaptiveDetrend(data, x=None, threshold=3.0):
     d4 = d - base
     
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d4, info=data.infoCopy())
+        return MetaArray(d4, info=data.infoCopy())
     return d4
     
 
@@ -1886,7 +1891,7 @@ def modeFilter(data, window=500, step=None, bins=None):
     d2 = np.hstack(chunks)
     
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d2, info=data.infoCopy())
+        return MetaArray(d2, info=data.infoCopy())
     return d2
     
 
@@ -1910,7 +1915,7 @@ def histogramDetrend(data, window=500, bins=50, threshold=3.0):
     d3 = data.view(np.ndarray) - base
     
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d3, info=data.infoCopy())
+        return MetaArray(d3, info=data.infoCopy())
     return d3
     
     
@@ -1930,20 +1935,20 @@ def subtractMedian(data, time=None, width=100, dt=None):
             dt = x[1] - x[0]
         width = time / dt
     
-    d1 = data.view(np.ndarray)
+    d1 = data.view(ndarray)
     width = int(width)
     med = scipy.ndimage.median_filter(d1, size=width)
     d2 = d1 - med
     
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d2, info=data.infoCopy())
+        return MetaArray(d2, info=data.infoCopy())
     return d2
     
     
     
 #def removeBaseline(data, windows=[500, 100], threshold=4.0):
     ## very slow method using median_filter:
-    #d1 = data.view(np.ndarray)
+    #d1 = data.view(ndarray)
     #d2 = d1 - median_filter(d1, windows[0])
     
     #stdev = d2.std()
@@ -1964,7 +1969,7 @@ def denoise(data, radius=2, threshold=4):
     
     
     r2 = radius * 2
-    d1 = data.view(np.ndarray)
+    d1 = data.view(ndarray)
     d2 = data[radius:] - data[:-radius] #a derivative
     #d3 = data[r2:] - data[:-r2]
     #d4 = d2 - d3
@@ -1982,7 +1987,7 @@ def denoise(data, radius=2, threshold=4):
     d6[-radius:] = d1[-radius:]
     
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
-        return metaarray.MetaArray(d6, info=data.infoCopy())
+        return MetaArray(d6, info=data.infoCopy())
     return d6
 
 
@@ -2002,8 +2007,8 @@ def clementsBekkers(data, template):
     """
     
     ## Strip out meta-data for faster computation
-    D = data.view(np.ndarray)
-    T = template.view(np.ndarray)
+    D = data.view(ndarray)
+    T = template.view(ndarray)
     
     ## Prepare a bunch of arrays we'll need later
     N = len(T)
@@ -2011,7 +2016,7 @@ def clementsBekkers(data, template):
     sumT2 = (T**2).sum()
     sumD = rollingSum(D, N)
     sumD2 = rollingSum(D**2, N)
-    sumTD = np.correlate(D, T, mode='valid')
+    sumTD = correlate(D, T, mode='valid')
     
     ## compute scale factor, offset at each location:
     scale = (sumTD - sumT * sumD /N) / (sumT2 - sumT**2 /N)
@@ -2021,7 +2026,7 @@ def clementsBekkers(data, template):
     SSE = sumD2 + scale**2 * sumT2 + N * offset**2 - 2 * (scale*sumTD + offset*sumD - scale*offset*sumT)
     
     ## finally, compute error and detection criterion
-    error = np.sqrt(SSE / (N-1))
+    error = sqrt(SSE / (N-1))
     DC = scale / error
     return DC, scale, offset
     
@@ -2044,7 +2049,7 @@ def cbTemplateMatch(data, template, threshold=3.0):
         i1 = times[i*2]
         i2 = times[(i*2)+1]
         d = dc[i1:i2]
-        p = np.argmax(d)
+        p = argmax(d)
         result[0] = p+i1
         result[1] = d[p]
         result[2] = scale[p+i1]
@@ -2083,7 +2088,7 @@ def tauiness(data, win, step=10):
         result[i] = np.array(list(v[0]) + [v[3]])
         #result[i][0] = xvals[j]
         #result[i][1] = j
-    result = metaarray.MetaArray(result, info=[
+    result = MetaArray(result, info=[
         {'name': 'Time', 'values': xvals[ivals]}, 
         {'name': 'Parameter', 'cols': [{'name': 'Amplitude'}, {'name': 'Tau'}, {'name': 'Offset'}, {'name': 'Error'}]}
     ])
@@ -2102,7 +2107,7 @@ def expDeconvolve(data, tau):
         if 'values' in info[0]:
             info[0]['values'] = info[0]['values'][:-1]
         info[-1]['expDeconvolveTau'] = tau
-        return metaarray.MetaArray(d, info=info)
+        return MetaArray(d, info=info)
     else:
         return d
 
@@ -2131,7 +2136,7 @@ def expReconvolve(data, tau=None, dt=None):
         #if 'values' in info[0]:
             #info[0]['values'] = info[0]['values'][:-1]
         #info[-1]['expDeconvolveTau'] = tau
-        return metaarray.MetaArray(d, info=info)
+        return MetaArray(d, info=info)
     else:
         return d
 
@@ -2433,12 +2438,12 @@ def alphas(t, tau, starts):
 
 ### TODO: replace with faster scipy filters
 def smooth(data, it=1):
-    data = data.view(np.ndarray)
+    data = data.view(ndarray)
     d = np.empty((len(data)), dtype=data.dtype)
     for i in range(0, len(data)):
-        start = np.max(0, i-1)
-        stop = np.min(i+1, len(data)-1)
-        d[i] = np.mean(data[start:stop+1])
+        start = max(0, i-1)
+        stop = min(i+1, len(data)-1)
+        d[i] = mean(data[start:stop+1])
     if it > 1:
         return smooth(d, it-1)
     else:
@@ -2450,7 +2455,7 @@ def maxDenoise(data, it):
 def absMax(data):
     mv = 0.0
     for v in data:
-        if np.abs(v) > np.abs(mv):
+        if abs(v) > abs(mv):
             mv = v
     return mv
 
@@ -2481,10 +2486,10 @@ def cmd(func, n, time):
 def inpRes(data, v1Range, v2Range):
     r1 = [r for r in data if r['Time'] > v1Range[0] and r['Time'] < v1Range[1]]
     r2 = [r for r in data if r['Time'] > v2Range[0] and r['Time'] < v2Range[1]]
-    v1 = np.mean([r['voltage'] for r in r1])
-    v2 = np.min(smooth([r['voltage'] for r in r2], 10))
-    c1 = np.mean([r['current'] for r in r1])
-    c2 = np.mean([r['current'] for r in r2])
+    v1 = mean([r['voltage'] for r in r1])
+    v2 = min(smooth([r['voltage'] for r in r2], 10))
+    c1 = mean([r['current'] for r in r1])
+    c2 = mean([r['current'] for r in r2])
     return (v2-v1)/(c2-c1)
 
 
@@ -2493,7 +2498,7 @@ def findActionPots(data, lowLim=-20e-3, hiLim=0, maxDt=2e-3):
     Requires 2-column array:  array([[time...], [voltage...]])
     Defaults specify that an action potential is when the voltage trace crosses 
     from -20mV to 0mV in 2ms or less"""
-    data = data.view(np.ndarray)
+    data = data.view(ndarray)
     lastLow = None
     ap = []
     for i in range(0, data.shape[1]):
@@ -2515,14 +2520,14 @@ def getSpikeTemplate(ivc, traces):
     ## find threshold index
     ivd = ivc['max voltage'] - ivc['mean voltage']
     ivdd = ivd[1:] - ivd[:-1]
-    thrIndex = np.argmax(ivdd) + 1 + posCurr[0]
+    thrIndex = argmax(ivdd) + 1 + posCurr[0]
     
     ## subtract spike trace from previous trace
     minlen = min(traces[thrIndex].shape[1], traces[thrIndex-1].shape[1])
     di = traces[thrIndex]['Inp0', :minlen] - traces[thrIndex-1]['Inp0', :minlen]
     
     ## locate tallest spike
-    ind = np.argmax(di)
+    ind = argmax(di)
     maxval = di[ind]
     start = ind
     stop = ind

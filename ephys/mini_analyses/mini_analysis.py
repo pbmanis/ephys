@@ -18,8 +18,8 @@ from pylibrary.tools import cprint
 
 CP = cprint.cprint
 
-from .. import ephysanalysis as EP
-from ..tools import digital_filters as DF
+import ephys.ephysanalysis as EP
+from ephys.tools import digital_filters as DF
 from . import minis_methods as minis
 
 """
@@ -77,13 +77,15 @@ class MiniAnalysis:
     def __init__(self, dataplan):
         """
         Perform detection of miniature synaptic events, and some analysis
-                   Parameters
+        
+        Parameters
         ----------
         dataplan : object
             a dataplan object, with
                 datasource: the name of the file holding the dict
                 datadir : the path to the data itself
                 dataplan_params : the dict with information driving the analysis
+
         """
 
         self.datasource = dataplan.datasource
@@ -167,16 +169,18 @@ class MiniAnalysis:
         """
         Wraps analysis of individual data sets, writes plots to
         a file named "summarydata%s.p % self.datasource" in pickled format.
-               Parameters
+        
+        Parameters
         ----------
         fofilename : str (no default)
             name of the PDF plot output file
         check : bool (default: False)
-            If true, run just checks for the existence of the data files,
-        but does no analysis.
-               Returns
+            If true, run just checks for the existence of the data files, but does no analysis.
+        
+        Returns
         -------
         Nothing
+
         """
         print("analyze_all")
         acqr = EP.acq4read.Acq4Read(
@@ -277,6 +281,7 @@ class MiniAnalysis:
         Returns
         -------
             cell summary dictionary for the 'mouse' entry.
+
         """
         print("analyze one cell")
         if arreader is None:

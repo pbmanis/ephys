@@ -350,6 +350,7 @@ class DatacFile(object):
         structures from the Block, Hfile and Note classes.
         
          """
+        assert Path(fname).is_file()
         self.fname = fname
         self.data = matlab.loadmat(fname)
         

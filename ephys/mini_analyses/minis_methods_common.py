@@ -149,7 +149,7 @@ class MiniAnalyses:
         min_event_amplitude: float = 5.0e-12,
         threshold: float = 2.5,
         global_SD: Union[float, None] = None,
-        analysis_window: List[Union[float, None], Union[float, None]] = [None, None],
+        analysis_window: List[Union[float, None]] = [None, None],
         lpf: Union[float, None] = None,
         hpf: Union[float, None] = None,
         notch: Union[float, None] = None,
@@ -421,7 +421,7 @@ class MiniAnalyses:
         self.data = data
         self.timebase = self.timebase[jmin:jmax]
 
-    def moving_average(self, a, n: int = 3) -> Tuple(np.array, int):
+    def moving_average(self, a, n: int = 3) -> Tuple[np.array, int]:
         ret = np.cumsum(a, dtype=float)
         ret[n:] = ret[n:] - ret[:-n]
         return ret[int(n / 2) :] / n, n  # re-align array
@@ -637,6 +637,7 @@ class MiniAnalyses:
     ) -> tuple:
         """
         compute average event with length of template
+
         Parameters
         ----------
         traces:
@@ -646,6 +647,7 @@ class MiniAnalyses:
             List of event onset indices into the arrays
             Expect a 2-d list (traces x onsets)
         data : expect 2d list matching the eventlist.
+        
         """
         if eventlist is None and data is None:
             raise ValueError(
@@ -976,7 +978,7 @@ class MiniAnalyses:
         initdelay: Union[float, None] = 1e-3,
         debug: bool = False,
         label: str = "",
-    ) -> Tuple(dict, float):
+    ) -> Tuple[dict, float]:
         """
         Fit the event using lmfit and LevenbergMarquardt
         Using lmfit is a bit more disciplined approach than just using scipy.optimize

@@ -116,7 +116,8 @@ ToDo:
 Using the Pipeline
 ==================
 
-Note: When manipulating data file structures on disk, **always** use Acq4's DataManager.
+Note: When manipulating data file structures on disk, **always** use Acq4's DataManager. This is necessary to make sure
+that the hidden ".index" files are correctly moved as well.
  
 Clean up the data
 -----------------

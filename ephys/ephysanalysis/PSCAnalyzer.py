@@ -4,9 +4,9 @@ Or EPSPs and IPSPs...
 
 This module provides the following analyses:
 
-1. Amplitudes from a train
-2. Paired pulse facilitation for pulse pairs, and the first pair in a train.
-3. Current-voltage relationship in voltage clamp measured over a time window
+    1. Amplitudes from a train
+    2. Paired pulse facilitation for pulse pairs, and the first pair in a train.
+    3. Current-voltage relationship in voltage clamp measured over a time window
 
 The results of the analysis are stored in the class variable analysis_summary
 
@@ -38,6 +38,7 @@ os.environ["QT_MAC_WANTS_LAYER"] = "1"
 def make_key(pathname):
     """
     Make a key string using the date, slice, cell and protocol from the path name
+
     """
     p = pathname.parts
     return str("~".join([p[i] for i in range(-4, 0)]))
@@ -46,8 +47,8 @@ def make_key(pathname):
 class PSC_Fitter:
     """
     Provide fitting functions for PSCs:
-    1. decay tau only
-    2. PSC full fit (1-exp(tau_rise))^4 * exp(tau_fall)
+        1. decay tau only
+        2. PSC full fit (1-exp(tau_rise))^4 * exp(tau_fall)
 
     """
 
@@ -182,13 +183,13 @@ class PSCAnalyzer:
     def __init__(self, datapath, plot=True, update_regions=False):
         """
         Analyze PSCs in a few different formats:
-        IO - a stimulus sequence with increasing stimulation current,
-        all collected at a single holding voltage
-        VDEP - a Meausrement of EPSCs across voltage, targeted at obtaining
-        an NMDA/AMPA current ratio from currents at +50 and -90 mV. Data may include
-        averaging of repetead trials.
-        PPF - Paired pulse facilitiation over several intervals; may include repeated
-        trials
+            1. IO - a stimulus sequence with increasing stimulation current,
+            all collected at a single holding voltage
+            2. VDEP - a Meausrement of EPSCs across voltage, targeted at obtaining
+            an NMDA/AMPA current ratio from currents at +50 and -90 mV. Data may include
+            averaging of repetead trials.
+            3. PPF - Paired pulse facilitiation over several intervals; may include repeated
+            trials
 
         Parameters
         ----------
@@ -293,7 +294,8 @@ class PSCAnalyzer:
         Direct the analysis
         Uses the beginning of the protocol name to select which analysis to use
 
-        Parameters:
+        Parameters
+        ----------
         protocolName: str
             Name of the protocol to analyze, underneath the datapath
 
@@ -541,24 +543,28 @@ class PSCAnalyzer:
         Analyze paired-pulse facilitiation
 
         Notes:
-        The PPF protocol always involves 2 pulses, the second of which varies in time.
-        Here, we compute the ratio between the 2 pulses for each time,
-        and also save clips of the data waveforms for plotting
-        stim dict in pulse_train will look like:
-            {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
-            'amplitude': [0.00025, 0.00025],
-            'npulses': [2], 'period': [0.05],
-            'type': ['pulseTrain']}
+            The PPF protocol always involves 2 pulses, the second of which varies in time.
+            Here, we compute the ratio between the 2 pulses for each time,
+            and also save clips of the data waveforms for plotting.
+            
+            The stim dict in pulse_train will look like::
+                {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
+                'amplitude': [0.00025, 0.00025],
+                'npulses': [2], 'period': [0.05],
+                'type': ['pulseTrain']}
 
         Parameters
         ----------
         rmpregion: 2 element list (default: [0., 0.05])
             The region of the trace used to measure the resting membrane potential,
             in seconds.
+
         protocolName: str (default: None)
             The name of the protocol (not used here)
+            
         device: str (default: 'Stim0')
             The name of the stimulus device
+
         """
         pulse_train = self.AR.getStim(device)
 

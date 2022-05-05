@@ -2,11 +2,11 @@
 Analyze EPSCs or IPSCs
 Or EPSPs and IPSPs...
 
-This module provides the following analyses:
+This module provides the following analyses::
 
-1. Amplitudes from a train
-2. Paired pulse facilitation for pulse pairs, and the first pair in a train.
-3. Current-voltage relationship in voltage clamp measured over a time window
+    1. Amplitudes from a train
+    2. Paired pulse facilitation for pulse pairs, and the first pair in a train.
+    3. Current-voltage relationship in voltage clamp measured over a time window
 
 The results of the analysis are stored in the class variable analysis_summary
 
@@ -27,7 +27,7 @@ import numpy as np
 
 import ephys.ephysanalysis as EP
 import ephys.ephysanalysis.metaarray as EM  # need to use this version for Python 3
-import ephys.ephysanalysis.cursor_plot as CP
+import ephys.tools.cursor_plot as CP
 import pylibrary.plotting.plothelpers as PH
 import matplotlib.pyplot as mpl
 import matplotlib.colors
@@ -153,7 +153,8 @@ class PSCAnalyzer():
         Direct the analysis
         Uses the beginning of the protocol name to select which analysis to use
         
-        Parameters:
+        Parameters
+        ----------
         protocolName : str 
             Name of the protocol to analyze, underneath the datapath
         
@@ -757,10 +758,7 @@ class PSCAnalyzer():
                     dfw[i] = dfilt[i*nvs:i*nvs + nvs,: ]
                 dfw = np.array(dfw)
                 dfw = dfw.mean(axis=0)
-                i_mean = dfw[:, ist:ien].min(axis=1)  # all traces, average over specified time window
-            else:
-                for i in sh[0]:
-                    
+                i_mean = dfw[:, ist:ien].min(axis=1)  # all traces, average over specified time windoow
             return(i_mean)
             # except:
             #     return None

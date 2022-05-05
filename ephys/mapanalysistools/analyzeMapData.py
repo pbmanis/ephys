@@ -29,19 +29,15 @@ import pyqtgraph.multiprocess as mp
 
 import ephys.ephysanalysis as EP
 import ephys.mini_analyses as minis
-from ..tools import digital_filters as FILT
-from ..tools import functions
+import ephys.tools.digital_filters as FILT
+import ephys.tools.functions as functions
 from ephys.mapanalysistools import plotMapData as PMD
 from ephys.mini_analyses import minis_methods
 import pylibrary.tools.cprint as CP
 
-basedir = "/Users/pbmanis/Desktop/Python/mapAnalysisTools"
-
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
 re_duration = re.compile(r"(\d{1,3}ms)")
 np.seterr(divide="raise")
-# print ('maps: ', colormaps)
-#
 
 
 def def_notch():
@@ -709,8 +705,10 @@ class AnalyzeMap(object):
         """
         analyze_protocol calls:
             analyze_one_trial (repetition)
+
         data_nostim is a list of points where the stimulus/response DOES NOT occur, so we can compute the SD
         for the threshold in a consistent manner if there are evoked responses in the trace.
+
         """
         CP.cprint("g", "    Analyzing protocol")
         rate = self.rate
@@ -820,16 +818,23 @@ class AnalyzeMap(object):
         }
 
     def analyze_one_trial(self, data: np.ndarray, pars: dict = None) -> dict:
-        """
-        analyze_one_trial calls:
-            analyze_traces_in_trial
-            with returns "method" (the class that analyzed the data in a trial)
-        Analyze one trial in a protocol (one map; maps may have been repeated)
+        """ Analyze one trial in a protocol (one map; maps may have been repeated)
+        
+        analyze_one_trial calls
+        analyze_traces_in_trial
+        and returns "method" (the class that analyzed the data in a trial)
+
+        
+        
+        Parameters
+        ----------
         data: numpy array (2D): no default
              data, should be [target, tracelen]; e.g. already points to the trial
+
         pars: dict
-            Dictionary with the following entries:
-                rate, jtrial, tmaxev, evenstartthr, data-nostim, eventlist, nevents, tb, testplots
+            Dictionary with the following entries: 
+            rate, jtrial, tmaxev, evenstartthr, data-nostim, eventlist, nevents, tb, testplots
+                 
         """
         if self.verbose:
             print("   analyze one trial")

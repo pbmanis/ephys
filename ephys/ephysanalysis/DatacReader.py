@@ -6,11 +6,11 @@ readdatac.py
 
 A module to read DATAC files. These are binary files written by
 a C progam used between (1985-1999).
-Original C code by Daniel Bertrand and Paul Manis .
+Original C code by Daniel Bertrand and Paul Manis.
 Matlab reader version by Patrick Kanold (1996).
 
 Matlab: 4/30/99 P. Manis. Modified to handle modes 0 and 1 (early file structures),
- as well as get the timing information.
+as well as get the timing information.
 Shuld read legacy files, and files with just one channel in modes 2 and 3
 
 Python version: Converted 5/13/2014 PBManis.
@@ -183,11 +183,19 @@ class ReadDatac:
     def openfile(self, filename):
         """
         open the requested file for reading
-        :params: filename - the full name of the file including the path
-        :returns: error  - integer error flag:
-             1: requested file was not found or could not be opened
-             3: requested file was a matlab file; should be handled in matlab
-             0: normal return, file is open and fid is the open file handle.
+        
+        Parameters
+        ----------
+        filename - the full name of the file including the path
+        
+        Returns
+        -------
+        error  - integer error flag::
+
+             1 - requested file was not found or could not be opened
+             3 - requested file was a matlab file; should be handled in matlab
+             0 - normal return, file is open and fid is the open file handle.
+        
         """
         
         if not os.path.exists(filename):
@@ -404,21 +412,26 @@ class ReadDatac:
     def readrecords(self, record_list):
         """
         Read the selected data records from the currently open file. 
-        :params: record_list - the list of records (does not need to be contiguous)
-        Returns: Error (self.err)
-            Errors:
+        
+        Parameters
+        ----------
+        record_list - the list of records (does not need to be contiguous)
+        
+        Returns
+        -------
+        Error (self.err)
             0: success
             3: last record is past end of data in file
         
         Units:
-        record : int
-        Channels : usually 2 or 3
-        rate : sample rate per channel in microseconds (aggregate rate for timing is nr_channels*)rate
-        slow : not used
-        ztime : time since file was opened, in msec (I think - that's what the notes say)
-        gain : gain for each channel. Probably only correct for V
-        low_pass : low pass filter setting (kHz)
-            
+            record : int
+            Channels : usually 2 or 3
+            rate : sample rate per channel in microseconds (aggregate rate for timing is nr_channels*)rate
+            slow : not used
+            ztime : time since file was opened, in msec (I think - that's what the notes say)
+            gain : gain for each channel. Probably only correct for V
+            low_pass : low pass filter setting (kHz)
+                
         """ 
         if len(record_list) == 0: # catch when we just read the header for information
             self.err = 0; # this is ok...

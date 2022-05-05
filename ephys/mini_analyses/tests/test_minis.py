@@ -239,7 +239,7 @@ def run_ZeroCrossing(
         zc.setup(
             tau1=pars.template_taus[0],
             tau2=pars.template_taus[1],
-            dt=pars.dt,
+            dt_seconds=pars.dt,
             delay=0.0,
             template_tmax=5.0 * pars.template_taus[1],
             sign=pars.sign,
@@ -253,9 +253,16 @@ def run_ZeroCrossing(
         # events = zc.find_events(testpscn,
         #       data_nostim=None, minLength=minlen,)
         # print("# events in test data set: ", len(t_events))
+        zc.deconvolve(data=np.array(testpscn).squeeze()*pars.sign,
+            data_nostim = None,
+            itrace = 0,
+            minPeak=3e-12,
+            minSum = 0,
+            minLength = 3,)
 
+    print('testpscn: ', testpscn)
     if plot:
-        fig_handle = zc.plots(title="Zero Crossings", testmode=testmode)
+        fig_handle = zc.plots(data=np.array(testpscn), title="Zero Crossings", testmode=testmode)
     return zc, fig_handle
 
 
@@ -319,7 +326,7 @@ def run_ClementsBekkers(
         if mpl is None:
             import matplotlib.pyplot as mpl
         fig_handle = cb.plots(
-            np.array(testpscn), events=None, title="CB", testmode=testmode
+            data=np.array(testpscn), events=None, title="CB", testmode=testmode
         )  # i_events)
         mpl.show()
         # time.sleep(5)
@@ -674,11 +681,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1., mpl=None):
 
 if __name__ == "__main__":
     ntraces = 1
-    if len(sys.argv[0]) > 1:
-        testmethod = sys.argv[1]
-    if len(sys.argv[0]) > 2:
-        ntraces = int(sys.argv[2])
-    if testmethod not in [
+    methods = [
         "ZC",
         "CB",
         "AJ",
@@ -689,7 +692,20 @@ if __name__ == "__main__":
         "RS",
         "rs",
         "ALL",
-    ]:
+    ]
+    testmethod = None
+    print(len(sys.argv))
+    if len(sys.argv) <= 1:
+        print(f"Must specify test method from: ")
+        methodnames = [f"    {m:s}\n" for m in methods]
+        print(methodnames)
+        exit()
+
+    if len(sys.argv) > 1:
+        testmethod = sys.argv[1]
+    if len(sys.argv) > 2:
+        ntraces = int(sys.argv[2])
+    if testmethod not in methods:
         print("Test for %s method is not implemented" % testmethod)
         exit(1)
     else:

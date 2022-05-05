@@ -2,7 +2,7 @@
 Analyze spike shapes - pulled out of IVCurve 2/6/2016 pbm.
 Allows routine to be used to analyze spike trains independent of acq4's data models.
 Create instance, then call setup to define the "Clamps" object and the spike threshold. 
-The Clamps object must have the following variables defined:
+The Clamps object must have the following variables defined::
 
     commandLevels (current injection levels, list)
     time_base (np.array of times corresponding to traces)
@@ -121,17 +121,14 @@ class SpikeAnalysis():
         number of spikes in the stimulation window (self.Clamps.tstart, self.Clamps.tend)
         Updates the spike plot(s).
 
-        The following class variables are modified upon successful analysis and return:
-        self.spikecount: a 1-D numpy array of spike counts, aligned with the
-            current (command)
-        self.adapt_ratio: the adaptation ratio of the spike train
-        self.fsl: a numpy array of first spike latency for each command level
-        self.fisi: a numpy array of first interspike intervals for each
-            command level
-        self.nospk: the indices of command levels where no spike was detected
-        self.spk: the indices of command levels were at least one spike
-            was detected
-        self.analysis_summary : Dictionary of results.
+        The following class variables are modified upon successful analysis and return::
+            self.spikecount: a 1-D numpy array of spike counts, aligned with the current (command)
+            self.adapt_ratio: the adaptation ratio of the spike train
+            self.fsl: a numpy array of first spike latency for each command level
+            self.fisi: a numpy array of first interspike intervals for each command level
+            self.nospk: the indices of command levels where no spike was detected
+            self.spk: the indices of command levels were at least one spike was detected
+            self.analysis_summary : Dictionary of results.
         
         Parameters
         ----------
@@ -223,21 +220,17 @@ class SpikeAnalysis():
 
         Parameters
         ----------
-        mode: str (default : baseline)
-            baseline: from 0 to self.Clamps.tstart
-            poststimulus : from self.Clamps.tend to end of trace
-            evoked : from self.Clamps.start to self.Clamps.end
+        mode: str (default: baseline)
+            "baseline" from 0 to self.Clamps.tstart
+            "poststimulus" from self.Clamps.tend to end of trace
+            "evoked" from self.Clamps.start to self.Clamps.end
         
-        Returns:
-
+        Returns
         -------
         Nothing, but see the list of class variables that are modified
-        Class variable modified is the
-            self.analysis_summary : Dictionary of spike times. Key is
-                'spikes_baseline'
-                'spikes_poststimulus'
-                'spikes_evoked' 
-            according to the mode in the call
+
+        Class variable modified is self.analysis_summary
+        
         """
 
         if mode == 'baseline':
@@ -283,6 +276,7 @@ class SpikeAnalysis():
         Returns
         -------
         index : int (index to the closest time)
+
         """
         return np.argmin(self.Clamps.time_base-t)
 
@@ -325,6 +319,7 @@ class SpikeAnalysis():
         Returns
         -------
         Nothing (but see doc notes above)
+
         """
         self._initialize_summarymeasures()
         
@@ -527,6 +522,7 @@ class SpikeAnalysis():
             that are actually used (so, the threshold is absolute; the 150%
             value will be the closest estimate given the step sizes used to
             collect the data)
+
         """
         icmd = []  # list of command currents that resulted in spikes.
         for m in sorted(self.spikeShape.keys()):

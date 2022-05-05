@@ -1,4 +1,4 @@
-import sphinx_rtd_theme
+#import sphinx_rtd_theme
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -19,7 +19,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = 'ephys'
-copyright = '2019, Paul B Manis'
+copyright = '2019-2022, Paul B Manis'
 author = 'Paul B Manis'
 
 # The full version, including alpha/beta/rc tags
@@ -44,6 +44,7 @@ extensions = ['sphinx.ext.autodoc',
 napoleon_google_docstring = False
 napoleon_use_param = False
 napoleon_use_ivar = True
+numpydoc_show_class_members = False
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 #
@@ -75,7 +76,7 @@ autoclass_content = 'both'
 # html_theme = 'better'
 
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "alabaster"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
