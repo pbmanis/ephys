@@ -21,8 +21,6 @@ G : Genotype (defuault is '+/+', meaning wildtype)
 
 import os
 
-#basepath = '/Volumes/Pegasus/ManisLab_Data3/Sullivan_Chelsea/miniIPSCs/CHL1'  # CHL1 data set...
-
 def getdescription(indexfile):
     """
     Read the index file and find a genotype in the description field

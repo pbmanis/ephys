@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as mpl
 from scipy.optimize import curve_fit
 
-from .. import ephysanalysis as EP
+import ephys.ephysanalysis as EP
 from . import minis_methods
 
 
