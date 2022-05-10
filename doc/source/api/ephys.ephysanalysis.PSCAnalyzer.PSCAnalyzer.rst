@@ -23,10 +23,12 @@ PSCAnalyzer
       ~PSCAnalyzer.plot_data
       ~PSCAnalyzer.plot_vciv
       ~PSCAnalyzer.read_database
+      ~PSCAnalyzer.set_NGlist
       ~PSCAnalyzer.set_baseline_times
       ~PSCAnalyzer.set_region
       ~PSCAnalyzer.setup
       ~PSCAnalyzer.slope_subtraction
+      ~PSCAnalyzer.test
       ~PSCAnalyzer.update_database
       ~PSCAnalyzer.vcss_analysis
 
@@ -45,9 +47,11 @@ PSCAnalyzer
    .. automethod:: plot_data
    .. automethod:: plot_vciv
    .. automethod:: read_database
+   .. automethod:: set_NGlist
    .. automethod:: set_baseline_times
    .. automethod:: set_region
    .. automethod:: setup
    .. automethod:: slope_subtraction
+   .. automethod:: test
    .. automethod:: update_database
    .. automethod:: vcss_analysis

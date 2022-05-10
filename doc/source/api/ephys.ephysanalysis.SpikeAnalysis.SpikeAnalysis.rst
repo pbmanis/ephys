@@ -17,6 +17,7 @@ SpikeAnalysis
       ~SpikeAnalysis.fitOne
       ~SpikeAnalysis.getClassifyingInfo
       ~SpikeAnalysis.getIVCurrentThresholds
+      ~SpikeAnalysis.set_detector
       ~SpikeAnalysis.setup
 
    .. rubric:: Methods Documentation
@@ -28,4 +29,5 @@ SpikeAnalysis
    .. automethod:: fitOne
    .. automethod:: getClassifyingInfo
    .. automethod:: getIVCurrentThresholds
+   .. automethod:: set_detector
    .. automethod:: setup

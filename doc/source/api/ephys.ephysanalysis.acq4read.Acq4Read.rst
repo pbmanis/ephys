@@ -40,6 +40,7 @@ Acq4Read
       ~Acq4Read.setDataName
       ~Acq4Read.setImportant
       ~Acq4Read.setProtocol
+      ~Acq4Read.set_pre_process
       ~Acq4Read.subDirs
 
    .. rubric:: Methods Documentation
@@ -74,4 +75,5 @@ Acq4Read
    .. automethod:: setDataName
    .. automethod:: setImportant
    .. automethod:: setProtocol
+   .. automethod:: set_pre_process
    .. automethod:: subDirs
