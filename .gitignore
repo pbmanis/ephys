@@ -7,6 +7,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# sphinx generated files.
+doc/html
+doc/html/api
+doc/html/.doctrees
+doc/html/_modules
+ephys/tools/**/*.rst
+doc/html/_sources
+
 # pycharm
 .idea
 
