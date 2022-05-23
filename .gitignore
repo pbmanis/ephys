@@ -10,10 +10,12 @@ __pycache__/
 # sphinx generated files.
 doc/html
 doc/html/api
+doc/source/api
 doc/html/.doctrees
 doc/html/_modules
 ephys/tools/**/*.rst
 doc/html/_sources
+ephys/mini_analyses/doc
 
 # pycharm
 .idea
