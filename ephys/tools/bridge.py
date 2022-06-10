@@ -189,19 +189,23 @@ class Bridge(pg.QtGui.QMainWindow):
         then move on and do the first one
         """
         self.this_cell = -1
-        for i in self.df.index:  # run through all entries in the db for this cell
-            date = str(
+        for inext in self.df.index:  # run through all entries in the db for this cell
+            date = self.build_date(inext)
+            if self.day != "all":  # if all, just do it; otherwise, select
+                if not self._date_compare(self.day, date):
+                    continue  # keep looking
+            self.findIVs(i)
+
+    def build_date(self, i):
+        date = str(
                 Path(
                     self.df.at[i, "date"],
                     self.df.at[i, "slice_slice"],
                     self.df.at[i, "cell_cell"],
                 )
             )
-            print("Date: ", date)
-            if self.day != "all":  # if all, just do it; otherwise, select
-                if not self._date_compare(self.day, date):
-                    continue  # keep looking
-            self.findIVs(i)
+        print("Date: ", date)
+        return date
 
     def findIVs(self, index):
         self.validivs = []  # list of valid IVs for this cell at the dataframe index
@@ -236,13 +240,7 @@ class Bridge(pg.QtGui.QMainWindow):
             return
         inext = self.this_cell + 1
         if inext < len(self.df.index):
-            self.day = str(
-                Path(
-                    self.df.at[inext, "date"],
-                    self.df.at[inext, "slice_slice"],
-                    self.df.at[inext, "cell_cell"],
-                )
-            )
+            self.day = self.build_date(inext)
             self.findIVs(inext)
             
         

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
+"""
+Graphical interface to view data sets
+Part of Ephysanalysis package
+"""
+
 import importlib
 import os
 import pickle
 import sys
 from pathlib import Path
 
+import ephys.tools.minicalcs as minicalcs
 import numpy as np
 import pyqtgraph as pg
 import toml
@@ -12,16 +18,12 @@ from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from . import digital_filters as FILT
-from . import functions as FN
 from ..ephysanalysis import RmTauAnalysis, SpikeAnalysis, acq4read
 from ..mini_analyses import minis_methods, minis_methods_common
-import ephys.tools.minicalcs as minicalcs
+from . import digital_filters as FILT
+from . import functions as FN
 
-"""
-Graphical interface to view data sets
-Part of Ephysanalysis package
-"""
+
 
 os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
