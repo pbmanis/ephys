@@ -27,8 +27,10 @@ pyparsing==2.4.0
 pytest==4.5.0
 resampy==0.2.1
 scipy>=1.7.0
-pyqt5==5.12.3
-pyqt5-sip==12.9.0 # 4.19.18
+# pyqt5==5.12.3
+# pyqt5-sip==12.9.0 # 4.19.18
+pyqt6
+pyqt6-sip
 pyqtgraph
 
 seaborn>=0.11.2
@@ -59,7 +61,7 @@ PyOpenGL>=3.1.5
 -e /Users/pbmanis/Desktop/Python/pylibrary
 
 # # to support montager dependency in ephys package
-Shapely==1.7.1
+Shapely==1.8.2
 imreg_dft>=2.0
 descartes
 #mahotas
