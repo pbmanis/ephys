@@ -32,6 +32,8 @@ doc/api/
 
 # Distribution / packaging
 .Python
+.DS_Store
+.vscode/**
 ephys_venv/
 build/
 develop-eggs/
