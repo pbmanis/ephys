@@ -593,7 +593,7 @@ class MiniTestMethods:
             "onsets": result.Summary.onsets,
             "peaks": result.Summary.peaks,
             "amplitudes": result.Summary.amplitudes,
-            "fitresult": result.fitresult,
+            # "fitresult": result.fitresult,  # lmfit object: can't be pickled, so do not save.. 
             "fitted_tau1": result.fitted_tau1,
             "fitted_tau2": result.fitted_tau2,
             "risepower": result.risepower,

@@ -1,26 +1,20 @@
-from __future__ import print_function
-from __future__ import absolute_import
-
-import pandas as pd
-import sip
-# sip.setapi('QString', 2)
-# sip.setapi('QVariant', 2);
+from __future__ import absolute_import, print_function
 
 import os
-import sys
-import re
-import numpy as np
-from collections import OrderedDict
 import pprint
+import re
+import sys
 import timeit
+from collections import OrderedDict
 
+import numpy as np
+import pandas as pd
+import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
-#from PyQt5 import pg.Qt.QtGui, pg.Qt.QtCore
-from pyqtgraph.parametertree import Parameter, ParameterTree
-
 from ephys.ephysanalysis import acq4read
 from ephys.mapanalysistools import analyzeMapData as AMD
-import pylibrary.tools.fileselector as FS
+#from PyQt5 import pg.Qt.QtGui, pg.Qt.QtCore
+from pyqtgraph.parametertree import Parameter, ParameterTree
 
 AR = acq4read.Acq4Read()  # instance of the acq4 file reader
 

@@ -1,8 +1,15 @@
 from __future__ import print_function
-import os, sys, pickle, pprint
+
+from pathlib import Path
+import pickle
+import pprint
+import sys
+
 import numpy as np
 import pyqtgraph as pg
+
 from .. import AUDIT_TESTS
+
 
 class UserTester(object):
     """
@@ -29,6 +36,7 @@ class UserTester(object):
         *key* is used to determine the file name for storing test results. 
         """
         self.audit = AUDIT_TESTS
+
         self.key = key
         self.rtol = 1e-3
         self.args = args
@@ -50,6 +58,7 @@ class UserTester(object):
         If *result* and *expect* do not match, then raise an exception.
         """
         # Check test structures are the same
+        # print(type(info), type(expect))
         assert type(info) is type(expect)
         if hasattr(info, '__len__'):
             if len(info) != len(expect):
@@ -128,11 +137,11 @@ class UserTester(object):
         
         # we use DiffTreeWidget to display differences between large data structures, but
         # this is not present in mainline pyqtgraph yet
-        if hasattr(pg, 'DiffTreeWidget'):
-            win = pg.DiffTreeWidget()
-        else:
-            from cnmodel.util.difftreewidget import DiffTreeWidget
-            win = DiffTreeWidget()
+        # if hasattr(pg, 'DiffTreeWidget'):
+        win = pg.DiffTreeWidget()
+        # else:
+        #     from cnmodel.util.difftreewidget import DiffTreeWidget
+        #     win = DiffTreeWidget()
         
         win.resize(800, 800)
         win.setData(expect, info)
@@ -173,26 +182,38 @@ class UserTester(object):
         given *self.key*.
         """
         modfile = sys.modules[self.__class__.__module__].__file__
-        path = os.path.dirname(modfile)
-        return os.path.join(path, self.data_dir, self.key + '.pk')
+        pathname = Path(modfile).parent
+        return Path(pathname, self.data_dir, self.key + '.pk')
 
     def load_test_result(self):
         """
         Load prior test results for *self.key*.
         If there are no prior results, return None.
         """
-        fn = self.result_file()
-        if os.path.isfile(fn):
-            return pickle.load(open(fn, 'rb'),encoding='latin1')
+        fn = Path(self.result_file())
+        if fn.is_file():
+            try:
+                with open(fn, 'rb') as fh:
+                    data = pickle.load(fh, encoding='latin1')
+                return data
+            except:
+                print("User tester: file failed to load data. ", fn)
+                pass
+        else:
+            print("User tester: file was not found: ", fn)
         return None
 
     def save_test_result(self, result):
         """
         Store test results for *self.key*.
-        Th e*result* argument must be picklable.
+        The *result* argument must be picklable.
+        Therefore we should remove any objects that are not
+        basic python objects. The fitresult object is one
+        such... 
         """
-        fn = self.result_file()
-        dirname = os.path.dirname(fn)
-        if not os.path.isdir(dirname):
-            os.mkdir(dirname)
-        pickle.dump(result, open(fn, 'wb'))
+        fn = Path(self.result_file())
+        dirname = fn.parent
+        Path(dirname).mkdir(parents=False, exist_ok=True)
+        with open(fn, "wb") as fh:
+            pickle.dump(result, fh)
+ 

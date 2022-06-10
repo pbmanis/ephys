@@ -1267,9 +1267,6 @@ class MiniAnalyses:
         """
         Plot the results from the analysis and the fitting
         """
-        print("plots: datashape ", data.shape)
-        print('Plots: events shape: ', events.shape)
-        print('onsets: ', self.onsets.shape)
 
         P = PH.regular_grid(
             3,
