@@ -10,10 +10,10 @@ ZCFinder
 
    .. autosummary::
 
-      ~ZCFinder.find_events
-      ~ZCFinder.setup
+      ~ZCFinder.deconvolve
+      ~ZCFinder.identify_events
 
    .. rubric:: Methods Documentation
 
-   .. automethod:: find_events
-   .. automethod:: setup
+   .. automethod:: deconvolve
+   .. automethod:: identify_events
