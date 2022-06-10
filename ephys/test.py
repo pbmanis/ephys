@@ -14,10 +14,11 @@ def main():
 
     # Allow user to audit tests with --audit flag
     import ephys.ephysanalysis
+    import ephys.mini_analyses
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
-        minis.AUDIT_TESTS = True
+        ephys.mini_analyses.AUDIT_TESTS = True
 
     # generate test flags
     flags = sys.argv[1:]
