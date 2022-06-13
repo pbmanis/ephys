@@ -108,7 +108,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             else:
                 print('No Previous Files Found')
                 return
-
+        if sel is None:
+            return
         self.clampfiles = []
         self.AR.setDataName(self.ampdataname)
         if current_filename is not None:
@@ -673,7 +674,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.keyPressed.connect(self.on_key)
 
 
-class FloatSlider(pg.QtGui.QSlider):
+class FloatSlider(pg.QtWidgets.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
         self._multi = 10 ** decimals
@@ -696,24 +697,24 @@ class FloatSlider(pg.QtGui.QSlider):
         super(FloatSlider, self).setValue(int((value - self.min_val) * self._multi))
 
 
-class Slider(pg.QtGui.QWidget):
+class Slider(pg.QtWidgets.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
         self.verticalLayout = pg.QtGui.QVBoxLayout(self)
         self.label = pg.QtGui.QLabel(self)
-        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignHCenter)
+        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
         self.horizontalLayout = pg.QtGui.QHBoxLayout()
-        spacerItem = pg.QtGui.QSpacerItem(
-            0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
-        )
-        self.horizontalLayout.addItem(spacerItem)
+        # spacerItem = pg.QtGui.QSpacerItem(
+        #     0, 20, pg.QtWidgets.QSizePolicy.PolicyFlag.ExpandFlag # , pg.QtWidgets.QSizePolicy.Minimum
+        # )
+        # self.horizontalLayout.addItem(spacerItem)
         self.slider = FloatSlider(self, decimals=0)
-        self.slider.setOrientation(pg.QtCore.Qt.Horizontal)
+        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Horizontal)
         self.horizontalLayout.addWidget(self.slider)
-        spacerItem1 = pg.QtGui.QSpacerItem(
-            0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
-        )
-        self.horizontalLayout.addItem(spacerItem1)
+        # spacerItem1 = pg.QtGui.QSpacerItem(
+        #     0, 20, pg.QtWidgets.QSizePolicy.PolicyFlag.ExpandFlag # , pg.QtWidgets.QSizePolicy.Minimum
+        # )
+        # self.horizontalLayout.addItem(spacerItem1)
         self.verticalLayout.addLayout(self.horizontalLayout)
         self.resize(self.sizeHint())
 
@@ -746,7 +747,7 @@ class Slider(pg.QtGui.QWidget):
 
 def main():
 
-    app = pg.QtGui.QApplication([])
+    app = pg.QtWidgets.QApplication([])
     MV = MiniViewer(app)
     app.aboutToQuit.connect(
         MV.quit
@@ -754,7 +755,7 @@ def main():
     MV.set_window()
 
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-        pg.QtGui.QApplication.instance().exec_()
+        pg.QtGui.QApplication.instance().exec()
 
 
 if __name__ == "__main__":
