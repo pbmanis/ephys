@@ -184,7 +184,7 @@ class VCTraceplot():
             trstep = 10. # mV
             ylabel1 = "V (mV)"
             ylabel2 = "I (nA)"
-        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', '\_'), fontsize=12)
+        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', r'\_'), fontsize=12)
         for i in range(self.AR.traces.shape[0]):
             P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.data_array[i,:]*sf1 + i*trstep, 'k-', linewidth=0.5)
             if self.LaserBlue:

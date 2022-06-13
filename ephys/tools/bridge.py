@@ -486,7 +486,7 @@ class Bridge(pg.QtGui.QMainWindow):
             )
 
 
-class FloatSlider(pg.QtGui.QSlider):
+class FloatSlider(pg.Qt.QtWidgets.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
         self._multi = 10 ** decimals
@@ -508,7 +508,7 @@ class FloatSlider(pg.QtGui.QSlider):
         super(FloatSlider, self).setValue(int((value - self.min_val) * self._multi))
 
 
-class Slider(pg.QtGui.QWidget):
+class Slider(pg.Qt.QtWidgets.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
         self.verticalLayout = pg.QtGui.QVBoxLayout(self)

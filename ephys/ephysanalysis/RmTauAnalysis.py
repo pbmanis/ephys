@@ -126,7 +126,7 @@ class RmTauAnalysis():
         self.tau_h(self.tauh_voltage, peakRegion=[self.Clamps.tstart, r_pk], steadystateRegion=[r_ss, self.Clamps.tend], printWindow=False)
 
     def tau_membrane(self, peak_time=False, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[], tgap=0.):
-        """
+        r"""
         Compute time constant (single exponential) from the onset of the response to a current step
         
         Parameters

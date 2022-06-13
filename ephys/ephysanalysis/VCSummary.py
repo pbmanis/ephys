@@ -217,7 +217,7 @@ class VCSummary():
                         labelposition=(-0.12, 0.95))
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(self.datapath)
         
-        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', '\_'), fontsize=12)
+        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', r'\_'), fontsize=12)
         for i in range(self.AR.traces.shape[0]):
             P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e12, 'k-', linewidth=0.5)
 

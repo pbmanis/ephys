@@ -952,7 +952,7 @@ class PSCAnalyzer:
         print(it, ie)
         for i in range(data1.shape[0]):
             ax[0].plot(tb[:it], data1[i,:ie])
-        ax[0].set_title(str(self.datapath).replace("_", "\_") + " " + title, fontsize=8)
+        ax[0].set_title(str(self.datapath).replace("_", r"\_") + " " + title, fontsize=8)
         mpl.show()
 
     def set_region(self, region=None, baseline=None, slope=True):

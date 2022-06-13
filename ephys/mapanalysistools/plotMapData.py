@@ -1189,7 +1189,8 @@ class PlotMapData():
         axp.set_aspect("equal")
         title = measuretype.replace(r"_", r"\_")
         if whichstim >= 0:
-            title += f", Stim \# {whichstim:d} Only"
+            stima = r"Stim \# "
+            title += f", {stima:s} {whichstim:d} Only"
         if average:
             title += ", Average"
         # axp.set_title(title)

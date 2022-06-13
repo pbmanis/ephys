@@ -35,8 +35,8 @@ from .. ephysanalysis import acq4read as ARC
 from .. ephysanalysis import metaarray as EM
 from . import boundrect as BR
 from . import digital_filters as FILT
-import montage
-#import mahotas as MH
+# import montage
+# import mahotas as MH
 
 
 class ScannerInfo(object):
@@ -552,20 +552,20 @@ class MapTraces(object):
             self.SI_original_minmax = self.SI_ax.get_clim()  # keep original
             box = self.SI
         
-        if len(self.videos) > 0:
-            self.Montager = montage.Montager(celldir=self.cell)
-            self.Montager.run()
-            # M.list_images_and_videos()
-            self.Montager.process_videos(window='mpl', show=True, gamma=1.5, merge_gamma=-1., sigma=2.5)
-            # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
-            bounds = self.Montager.bounds
-            self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
-            self.extent = self.adjust(self.extent0, mapwidth)
-            self.imageax = ax.imshow(np.asarray(self.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
-                extent=self.extent0)
-            self.cmin = SND.minimum(self.merged_image)
-            self.cmax = SND.maximum(self.merged_image)
-            box = self.extent
+        # if len(self.videos) > 0:
+        #     self.Montager = montage.Montager(celldir=self.cell)
+        #     self.Montager.run()
+        #     # M.list_images_and_videos()
+        #     self.Montager.process_videos(window='mpl', show=True, gamma=1.5, merge_gamma=-1., sigma=2.5)
+        #     # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
+        #     bounds = self.Montager.bounds
+        #     self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
+        #     self.extent = self.adjust(self.extent0, mapwidth)
+        #     self.imageax = ax.imshow(np.asarray(self.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=vid_alpha, vmin = 0, vmax=self.vmax,
+        #         extent=self.extent0)
+        #     self.cmin = SND.minimum(self.merged_image)
+        #     self.cmax = SND.maximum(self.merged_image)
+        #     box = self.extent
             
         if self.image is not None:
             # mpl.imshow(self.image_data)
@@ -579,22 +579,22 @@ class MapTraces(object):
             box = self.extent
             
             
-        if self.mosaics:
-            self.Montager = montage.montager.Montager(celldir=self.cell)
-            self.Montager.setup(self.mosaics)
-            # M.list_images_and_videos()
-            # should pass some info to process_videos to balance alpha etc from the mosaic.
-            self.Montager.process_videos(window=None, show=True, gamma=1.5, merge_gamma=-1., sigma=2.5, register=False, mosaic_data=self.mosaics)
-            # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
-            bounds = self.Montager.image_boundary
-            self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
-            self.extent = self.adjust(self.extent0, mapwidth)
-            mpl.imshow(self.Montager.merged_image)
-            self.imageax = ax.imshow(np.array(self.Montager.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
-                extent=self.extent0)
-            self.cmin = SND.minimum(self.Montager.merged_image)
-            self.cmax = SND.maximum(self.Montager.merged_image)
-            box = self.extent
+        # if self.mosaics:
+        #     self.Montager = montage.montager.Montager(celldir=self.cell)
+        #     self.Montager.setup(self.mosaics)
+        #     # M.list_images_and_videos()
+        #     # should pass some info to process_videos to balance alpha etc from the mosaic.
+        #     self.Montager.process_videos(window=None, show=True, gamma=1.5, merge_gamma=-1., sigma=2.5, register=False, mosaic_data=self.mosaics)
+        #     # bounds are in  self.Montager.bounds: (minx, miny, maxx, maxy)
+        #     bounds = self.Montager.image_boundary
+        #     self.extent0 = [bounds[0], bounds[2], bounds[1], bounds[3]]
+        #     self.extent = self.adjust(self.extent0, mapwidth)
+        #     mpl.imshow(self.Montager.merged_image)
+        #     self.imageax = ax.imshow(np.array(self.Montager.merged_image, dtype=float), aspect='equal', cmap=cmap, alpha=mosaic_alpha, vmin = 0, vmax=self.vmax,
+        #         extent=self.extent0)
+        #     self.cmin = SND.minimum(self.Montager.merged_image)
+        #     self.cmax = SND.maximum(self.Montager.merged_image)
+        #     box = self.extent
 
         if self.window:
             if self.xlim == (0., 0.) and self.ylim == (0., 0.):

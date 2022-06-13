@@ -34,6 +34,7 @@ doc/api/
 .Python
 .DS_Store
 .vscode/**
+ephys.egg*
 ephys_venv/
 build/
 develop-eggs/
