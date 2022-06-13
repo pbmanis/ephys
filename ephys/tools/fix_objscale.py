@@ -52,7 +52,7 @@ class Changer:
     images: Union[str, None] = None
 
 
-class FixObjective(pg.QtGui.QWidget):
+class FixObjective(pg.QtWidgets.QWidget):
     def __init__(self, app=None):
         super(FixObjective, self).__init__()
         self.app = app

@@ -31,7 +31,7 @@ cprint = CP.cprint
 # dbfile = 'NF107Ai32Het_bcorr2.pkl'
 
 
-class Bridge(pg.QtGui.QMainWindow):
+class Bridge(pg.QtWidgets.QMainWindow):
     """
     Visual adjustment of bridge balance on acq4 data sets. 
     Writes out to the database

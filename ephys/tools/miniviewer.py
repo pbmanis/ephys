@@ -38,7 +38,7 @@ all_modules = [
 ]
 
 
-class MiniViewer(pg.QtGui.QWidget):
+class MiniViewer(pg.QtWidgets.QWidget):
     keyPressed = pg.QtCore.pyqtSignal(pg.QtCore.QEvent)
 
     def __init__(self, app=None):
