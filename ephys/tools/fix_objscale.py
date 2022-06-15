@@ -25,7 +25,7 @@ import toml
 
 import pylibrary.tools.cprint as CP
 
-os.environ["QT_MAC_WANTS_LAYER"] = "1"
+# os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 pp = pprint.PrettyPrinter(indent=4)
 
