@@ -25,7 +25,7 @@ from . import functions as FN
 
 
 
-os.environ["QT_MAC_WANTS_LAYER"] = "1"
+# os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 all_modules = [
     SpikeAnalysis,

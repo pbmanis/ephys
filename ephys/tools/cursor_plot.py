@@ -17,7 +17,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 import ephys.ephysanalysis as EP
 import pylibrary.tools.fileselector as FS
 import lmfit
-os.environ['QT_MAC_WANTS_LAYER'] = '1'
+# os.environ['QT_MAC_WANTS_LAYER'] = '1'
 
 font = QtGui.QFont()
 font.setFamily('Arial')

@@ -32,7 +32,7 @@ from ..tools import cursor_plot as CP
 from . import acq4read
 from . import metaarray as EM  # need to use this version for Python 3
 
-os.environ["QT_MAC_WANTS_LAYER"] = "1"
+# os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 
 def make_key(pathname):
