@@ -16,6 +16,7 @@ doc/html/_modules
 ephys/tools/**/*.rst
 doc/html/_sources
 ephys/mini_analyses/doc
+ephys/tools/data/files.toml  #local file history
 
 # pycharm
 .idea
