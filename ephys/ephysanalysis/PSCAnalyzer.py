@@ -479,7 +479,7 @@ class PSCAnalyzer:
         x0: float = 0.0,
         artifact_delay: float = 0.0,
         index: int = 0,
-        stim_intvl=list,
+        stim_intvl: list=[],
         max_width: float = 25.0,
         pre_time: float = 1.0e-3,
         pflag=False,
@@ -509,9 +509,7 @@ class PSCAnalyzer:
         """
         num_intervals = len(stim_intvl)
         if index < num_intervals - 1:
-            nxt_intvl = (
-                stim_intvl[index + 1] - stim_intvl[index]
-            )  # check interval sequence
+            nxt_intvl = stim_intvl[index + 1] - stim_intvl[index] # check interval sequence
             max_w = np.min((nxt_intvl, max_width - pre_time))
             if nxt_intvl > 0:  # still ascending
                 t_stim = [

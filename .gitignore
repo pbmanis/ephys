@@ -132,3 +132,4 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+ephys/ephysanalysis/PSCAnalyzer_+old.py
