@@ -825,7 +825,7 @@ class Acq4Read:
         self.repetitions = 1
         self.tstart = 0.0
         self.tend = 0.1
-        self.comandLevels = np.array([0.0])
+        self.commandLevels = np.array([0.0])
 
         if index is not None:
             seqparams = index["."]["sequenceParams"]

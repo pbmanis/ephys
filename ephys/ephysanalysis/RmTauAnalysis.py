@@ -26,15 +26,8 @@ for acq4
 
 
 from collections import OrderedDict
-import os
-import os.path
-import itertools
-import functools
 import numpy as np
-import scipy
 import pyqtgraph as pg
-import pprint
-import time
 
 from ..tools import Fitting
 

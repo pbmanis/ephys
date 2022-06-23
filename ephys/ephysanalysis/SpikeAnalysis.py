@@ -24,22 +24,15 @@ for Acq4 (and beyond)
 """
 
 from collections import OrderedDict
-import os
-import os.path
-from pathlib import Path
-import inspect
-import sys
-import itertools
-import functools
+
 import numpy as np
-import scipy
 import pprint
-import time
+from typing import Union
 
 from ..tools import Utility # pbm's utilities...
 from ..tools import Fitting # pbm's fitting stuff...
 
-this_source_file = 'ephysanalysis.SpikeAnalysisrc'
+this_source_file = 'ephysanalysis.SpikeAnalysis'
 
 class SpikeAnalysis():
     
@@ -609,7 +602,9 @@ class SpikeAnalysis():
             self.analysis_summary['FiringRate_1p5T'] = rate
             self.analysis_summary['AHP_Depth'] = AHPDepth*1e3  # convert to mV
 
-    def fitOne(self, x=None, yd=None, info='', function=None, fixNonMonotonic=True, excludeNonMonotonic=False):
+    def fitOne(self, x=None, yd=None, info='', function=None, 
+        fixNonMonotonic=True, excludeNonMonotonic=False,
+        max_current:Union[float, None] = None):
         """Fit the FI plot to an equation that is piecewise linear up to the threshold
             called Ibreak, then (1-exp(F/Frate)) for higher currents
         
@@ -633,6 +628,9 @@ class SpikeAnalysis():
             excludeNonMonotonic : Boolean (default: False)
                 if True, does not even try to fit, and returns None
         
+            max_current : float, None (default: None)
+                The max current level to include in the fitting,
+                to minimize effects of rollover/depolarization block
         Returns
         -------
         None if there is no fitting to be done (excluding non-monotonic or no spikes)
@@ -644,7 +642,11 @@ class SpikeAnalysis():
             self.FIGrowth = function
         if x is None: # use class data
             x = self.analysis_summary['FI_Curve'][0]*1e9
-            yd = self.analysis_summary['FI_Curve'][1]/self.analysis_summary['pulseDuration']  # convert to rate in spikes/second
+            y = self.analysis_summary['FI_Curve'][1]
+            if max_current is not None:
+                x = x[x<=max_current]
+                y = y[x<=max_current]
+            yd = y/self.analysis_summary['pulseDuration']  # convert to rate in spikes/second
         
         if self.FIGrowth == 'fitOneOriginal':
             ymax = np.max(yd)
