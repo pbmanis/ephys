@@ -687,11 +687,11 @@ class FloatSlider(pg.QtWidgets.QSlider):
 
     def setMinimum(self, value):
         self.min_val = value
-        return super(FloatSlider, self).setMinimum(value * self._multi)
+        return super(FloatSlider, self).setMinimum(int(value * self._multi))
 
     def setMaximum(self, value):
         self.max_val = value
-        return super(FloatSlider, self).setMaximum(value * self._multi)
+        return super(FloatSlider, self).setMaximum(int(value * self._multi))
 
     def setValue(self, value):
         super(FloatSlider, self).setValue(int((value - self.min_val) * self._multi))
@@ -748,6 +748,8 @@ class Slider(pg.QtWidgets.QWidget):
 def main():
 
     app = pg.QtWidgets.QApplication([])
+    app.setStyle("Fusion")
+
     MV = MiniViewer(app)
     app.aboutToQuit.connect(
         MV.quit
