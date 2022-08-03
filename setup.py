@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 import os
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 1, 12, '')
+version_info = (0, 2, 0, '')
 __version__ = '%d.%d.%d%s' % version_info
 
 

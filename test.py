@@ -17,7 +17,7 @@ def main():
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
-        ephys.minis.AUDIT_TESTS = True
+        ephys.mini_analyses.AUDIT_TESTS = True
 
     # generate test flags
     flags = sys.argv[1:]
