@@ -1,4 +1,5 @@
 from __future__ import print_function
+
 #!/usr/bin/python
 
 """
@@ -9,32 +10,35 @@ Takes advantage of acq4read code to access all data and attributes.
 
 
 """
-import itertools
 import argparse
+import itertools
 import json
 from collections import OrderedDict
 from pathlib import Path
-import pandas as pd
-import scipy.ndimage
-import scipy.signal
-import numpy as np
-import seaborn as sns
 
-import matplotlib.pyplot as mpl
-from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
+import matplotlib.pyplot as mpl
+import MetaArray as EM
+import numpy as np
+import pandas as pd
+import pylibrary.tools.utility as PU
+import scipy.ndimage
 import scipy.ndimage as SND
+import scipy.signal
+import seaborn as sns
 import shapely as SH
 import shapely.geometry as SG
-# import descartes
-
-from pylibrary.plotting import plothelpers as PH
-import pylibrary.tools.utility as PU
+import toml
+from matplotlib.widgets import RectangleSelector
 from pylibrary.plotting import picker
-from .. ephysanalysis import acq4read as ARC
-import MetaArray as EM
+from pylibrary.plotting import plothelpers as PH
+
+from ..ephysanalysis import acq4read as ARC
 from . import boundrect as BR
 from . import digital_filters as FILT
+
+# import descartes
+
 # import montage
 # import mahotas as MH
 
@@ -1034,7 +1038,8 @@ class MapTraces(object):
 def main():
 
     import nf107.set_expt_paths as set_expt_paths
-    set_expt_paths.get_computer()
+    datapaths = toml.load("wheres_my_data.toml")
+    set_expt_paths.get_computer(datapaths)
     experiments = set_expt_paths.get_experiments()
     exclusions = set_expt_paths.get_exclusions()
 
@@ -1064,6 +1069,8 @@ def main():
                         
     args = parser.parse_args()
     experimentname = args.experiment 
+    print(experiments)
+    print(experimentname)
     basepath = Path(experiments[experimentname]['disk'])
     # basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
 
