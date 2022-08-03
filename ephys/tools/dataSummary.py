@@ -87,7 +87,7 @@ import pandas as pd
 from io import StringIO
 
 from ephys.ephysanalysis import acq4read
-from ephys.ephysanalysis.metaarray import MetaArray
+import MetaArray
 
 def ansi_colors(color):
     colors = {

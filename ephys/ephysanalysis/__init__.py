@@ -15,7 +15,6 @@ from . import VCSummary
 from . import VCTraceplot
 from . import poisson_score
 from . import MakeClamps
-from . import metaarray as MetaArray
 # from . import PSCAnalyzer
 from ..tools import boundrect
 from ..tools import getcomputer

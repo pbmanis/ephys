@@ -13,7 +13,7 @@ import numpy as np
 
 import os.path
 from . import acq4read
-from . import metaarray as EM
+import MetaArray as EM
 from ..tools import digital_filters as DF
 import matplotlib.pyplot as mpl
 import matplotlib.colors

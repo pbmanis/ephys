@@ -30,6 +30,7 @@ class CursorPlot(object):
         
         self.title = title
         self.app = QtGui.QApplication([])
+        self.app.setStyle("fusion")
         self.win = pg.GraphicsWindow()
         self.layout = QtGui.QGridLayout()
         self.win.setLayout(self.layout)
@@ -467,7 +468,7 @@ class CursorPlot(object):
         self.rgn = rgn
 
     def mouseMoved(self, evt):
-        # evt is a PyQt5.QtCore.QPointF
+        # evt is a PyQt6.QtCore.QPointF
         if self.vb is None:  # wait until we have a plot
             return
         # if time.time() - self.lastmove < 0.033:  # slow down activity
@@ -505,7 +506,7 @@ def main():
     # x, y = CP.make_testdata()
     # CP.plotData(x, y)
     #if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-    app.exec_() # QtGui.QApplication.instance().exec_()    
+    app.exec() # QtGui.QApplication.instance().exec_()    
 
 
 ## Start Qt event loop unless running in interactive mode or using pyside.

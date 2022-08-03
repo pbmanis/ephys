@@ -34,7 +34,7 @@ from collections import OrderedDict
 import numpy as np
 import glob
 import matplotlib.pylab as mpl
-from pyqtgraph.metaarray import MetaArray
+import MetaArray
 
 """
 This is what the datac data structure looks like (in C)::

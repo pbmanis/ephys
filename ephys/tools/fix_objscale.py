@@ -25,7 +25,6 @@ import toml
 
 import pylibrary.tools.cprint as CP
 
-# os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -351,6 +350,7 @@ class FixObjective(pg.QtWidgets.QWidget):
 
 def main():
     app = pg.QtGui.QApplication([])
+    app.setStyle("fusion")
     FO = FixObjective(app)
     app.aboutToQuit.connect(
         FO.quit
@@ -358,7 +358,7 @@ def main():
     FO.set_window()
 
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-        pg.QtGui.QApplication.instance().exec_()
+        pg.QtGui.QApplication.instance().exec()
 
 
 # old command line version

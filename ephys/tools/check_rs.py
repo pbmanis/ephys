@@ -5,7 +5,7 @@ import pickle
 from pathlib import Path
 
 import ephys.ephysanalysis as EP
-import ephys.ephysanalysis.metaarray as EM  # need to use this version for Python 3
+import MetaArray as EM  # need to use this version for Python 3
 import ephys.ephysanalysis.PSCAnalyzer as EPP
 import matplotlib
 import matplotlib.colors

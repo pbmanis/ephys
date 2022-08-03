@@ -18,7 +18,7 @@ if python_version < 3:
     exit()
 
 import fnmatch
-from ephys.ephysanalysis import metaarray as MA
+import MetaArray as MA
 from pathlib import Path
 import pylibrary.tools.tifffile as tf
 import numpy as np

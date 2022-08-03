@@ -194,7 +194,7 @@ class Bridge(pg.QtWidgets.QMainWindow):
             if self.day != "all":  # if all, just do it; otherwise, select
                 if not self._date_compare(self.day, date):
                     continue  # keep looking
-            self.findIVs(i)
+            self.findIVs(inext)
 
     def build_date(self, i):
         date = str(
@@ -301,7 +301,8 @@ class Bridge(pg.QtWidgets.QMainWindow):
             return ivprots[protocolName]
 
     def check_for_bridge(self, protocolName):
-        prots = self.getProtocol(protcolName)
+        # prots = self.getProtocol(protocolName)
+        thisdata, ivprots = self.getIVProtocols()
         if "BridgeAdjust" not in ivprots[protocolName].keys():
             return False
         else:
@@ -590,6 +591,7 @@ def main():
     args = parser.parse_args()
 
     app = pg.mkQApp()
+    app.setStyle("fusion")
     BR = Bridge(args)
     # app.aboutToQuit.connect(BR.quit)  # prevent python exception when closing window with system control
     BR.set_window()
@@ -603,7 +605,7 @@ def main():
     # ptreedata.sigTreeStateChanged.connect(BR.process_changes)  # connect parameters to their updates
 
     if sys.flags.interactive == 0:
-        app.exec_()
+        app.exec()
 
 
 if __name__ == "__main__":

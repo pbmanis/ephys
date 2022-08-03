@@ -26,7 +26,7 @@ import scipy.ndimage as SND
 import pylibrary.plotting.plothelpers as PH
 import seaborn as sns
 import ephys.ephysanalysis.acq4read as ARC
-import ephys.ephysanalysis.metaarray as EM
+import MetaArray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
 import scipy.ndimage

@@ -14,7 +14,7 @@ import datetime
 import matplotlib.pyplot as mpl
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools.params import Params
-from ..ephysanalysis import metaarray as EM 
+import MetaArray as EM 
 
 
 class MakeClamps:
@@ -88,7 +88,7 @@ class MakeClamps:
         self.amplifeirSettings['WCCompValid', 'WCEmabled', 'CompEnabled', 'WCSeriesResistance']
         self.cmd_wave
         self.commandLevels (np.array(self.values))
-        self.traces = MetaArray(traces, info=info)
+        self.traces = EM.MetaArray(traces, info=info)
         self.tstart
         self.tdur
         self.tend

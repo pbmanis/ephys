@@ -4,36 +4,34 @@ from __future__ import absolute_import
 analyze ChR2 or uncaging map data
 
 """
-import re
-import sys
-import sqlite3
-from pathlib import Path
-from dataclasses import dataclass
-from dataclasses import dataclass, field
-from typing import Union, Dict, List
-
-import numpy as np
-import pandas as pd
-import scipy.signal
-import scipy.ndimage
-
-import os.path
-from collections import OrderedDict
-
-import math
-import dill as pickle
+import argparse
 import datetime
+import math
+import os.path
+import re
+import sqlite3
+import sys
 import timeit
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Union, Tuple
 
-import pyqtgraph.multiprocess as mp
-
+import dill as pickle
 import ephys.ephysanalysis as EP
 import ephys.mini_analyses as minis
 import ephys.tools.digital_filters as FILT
 import ephys.tools.functions as functions
+import matplotlib
+import matplotlib.pyplot as mpl
+import numpy as np
+import pandas as pd
+import pylibrary.tools.cprint as CP
+import pyqtgraph.multiprocess as mp
+import scipy.ndimage
+import scipy.signal
 from ephys.mapanalysistools import plotMapData as PMD
 from ephys.mini_analyses import minis_methods
-import pylibrary.tools.cprint as CP
 
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
 re_duration = re.compile(r"(\d{1,3}ms)")
@@ -320,7 +318,7 @@ class AnalyzeMap(object):
         data: np.ndarray,
         twin_base: list = [0, 0.1],
         twin_resp: list = [[0.101, 0.130]],
-    ) -> (float, float):
+    ) -> Tuple[float, float]:
         """
         Integrate durrent over a time window to get charges
         
@@ -1212,7 +1210,7 @@ class AnalyzeMap(object):
 
 
 
-    def fix_artifacts(self, data: np.ndarray) -> (np.ndarray, np.ndarray):
+    def fix_artifacts(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Use a template to subtract the various transients in the signal...
         """
@@ -1438,12 +1436,12 @@ class AnalyzeMap(object):
 def main():
     # these must be done here to avoid conflict when we import the class, versus
     # calling directly for testing etc.
-    matplotlib.use("Agg")
+    # matplotlib.use("Agg")
     rcParams = matplotlib.rcParams
     rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
     rcParams["pdf.fonttype"] = 42
     rcParams["ps.fonttype"] = 42
-    rcParams["text.latex.unicode"] = True
+    rcParams["text.usetex"] = True
     # rcParams['font.family'] = 'sans-serif'
     rcParams["font.weight"] = "regular"  # you can omit this, it's the default
     # rcParams['font.sans-serif'] = ['Arial']

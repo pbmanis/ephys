@@ -42,7 +42,7 @@ import pandas as pd
 import pandas.compat # for StringIO
 
 from ephys.ephysanalysis import acq4read
-from pyqtgraph.metaarray import MetaArray
+import MetaArray
 
 latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}
 \\usepackage[utf8]{inputenc}

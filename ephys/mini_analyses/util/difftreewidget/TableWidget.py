@@ -2,7 +2,7 @@
 import numpy as np
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.python2_3 import asUnicode, basestring
-import pyqtgraph.metaarray as metaarray
+import  metaarray
 
 
 __all__ = ['TableWidget']

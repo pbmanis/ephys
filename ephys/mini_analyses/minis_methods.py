@@ -32,7 +32,7 @@ from ephys.mini_analyses import clembek  # cythonized... pyx file
 from ephys.mini_analyses.minis_methods_common import MiniAnalyses
 from pylibrary.tools.cprint import cprint
 from scipy.optimize import curve_fit
-import ephys.ephysanalysis.metaarray as metaarray
+import MetaArray
 
 pyximport.install()
 

@@ -21,8 +21,8 @@ import scipy.ndimage as SND
 from typing import Union
 from typing import List
 from typing import Type
-
-from ephys.ephysanalysis import metaarray as EM
+import MetaArray as EM
+# from ephys.ephysanalysis import MetaArray as EM
 from pyqtgraph import configfile
 import pylibrary.tools.tifffile as tf
 import pylibrary.tools.cprint as CP

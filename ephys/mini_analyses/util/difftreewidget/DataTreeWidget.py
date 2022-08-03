@@ -5,12 +5,13 @@ from .TableWidget import TableWidget
 from pyqtgraph.python2_3 import asUnicode
 import types, traceback
 import numpy as np
+import MetaArray
 
-try:
-    import metaarray
-    HAVE_METAARRAY = True
-except:
-    HAVE_METAARRAY = False
+# try:
+#     import MetaArray
+#     HAVE_METAARRAY = True
+# except:
+#     HAVE_METAARRAY = False
 
 __all__ = ['DataTreeWidget']
 

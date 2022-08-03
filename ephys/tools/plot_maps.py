@@ -32,7 +32,7 @@ from pylibrary.plotting import plothelpers as PH
 import pylibrary.tools.utility as PU
 from pylibrary.plotting import picker
 from .. ephysanalysis import acq4read as ARC
-from .. ephysanalysis import metaarray as EM
+import MetaArray as EM
 from . import boundrect as BR
 from . import digital_filters as FILT
 # import montage

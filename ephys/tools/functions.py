@@ -14,7 +14,7 @@ makeDispMap / matchDistortImg - for measuring and correcting motion/distortion b
 """
 import sys
 import os, re, math, time, threading, decimal
-from pyqtgraph import metaarray  # deprecated, but wait until it is gone
+import MetaArray 
 import pyqtgraph as pg
 from scipy import stats
 import scipy.signal, scipy.ndimage, scipy.optimize

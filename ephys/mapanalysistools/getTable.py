@@ -13,7 +13,7 @@ import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from ephys.ephysanalysis import acq4read
 from ephys.mapanalysistools import analyzeMapData as AMD
-#from PyQt5 import pg.Qt.QtGui, pg.Qt.QtCore
+
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 AR = acq4read.Acq4Read()  # instance of the acq4 file reader
@@ -54,6 +54,7 @@ class BuildGui():
         self.mp = dict(zip(self.measures, [[]]*len(self.measures)))  # need to keep track of all the plots 
         
         self.app = pg.mkQApp()
+        self.app.setStyle("fusion")
         self.mainwin = pg.Qt.QtGui.QMainWindow()
         self.win = pg.Qt.QtGui.QWidget()
         self.main_layout = pg.Qt.QtGui.QGridLayout()  # top level layout for the window
@@ -483,4 +484,4 @@ if __name__== '__main__':
 
     G = BuildGui(tree) 
     if (sys.flags.interactive != 1): #  or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
-        pg.Qt.QtGui.QApplication.instance().exec_()
+        pg.Qt.QtGui.QApplication.instance().exec()
