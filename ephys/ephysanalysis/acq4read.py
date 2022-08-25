@@ -221,7 +221,7 @@ class Acq4Read:
         modes = []
         info = self.readDirIndex(protocolpath)  # top level info dict
         if info is None:
-            CP,cprint("r",
+            CP.cprint("r",
                 "acq4read.checkProtocol: Protocol is not managed (no .index file found): {0:s}".format(
                     protocolpath
                 )
@@ -317,12 +317,12 @@ class Acq4Read:
             )
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)
-        self._dirindex = configfile.readConfigFile(str(indexFile))
+        # self._dirindex = configfile.readConfigFile(str(indexFile))
         # print(self._dirindex)
         try:
             self._dirindex = configfile.readConfigFile(str(indexFile))
         except:
-            CP.cprint("r", f"Failed to read index file for {currdir:s}")
+            CP.cprint("r", f"Failed to read index file for {str(currdir):s}")
             CP.cprint("r", "Probably bad formatting or broken .index file")
             return self._dirindex
         return self._dirindex
@@ -1233,7 +1233,7 @@ class Acq4Read:
                 rep = rep + 1
         return True  # indicate protocol is all ok
 
-    def getImage(self, filename: Union[str, Path, None] = None) -> Union[dict]:
+    def getImage(self, filename: Union[str, Path, None] = None) -> dict:
         """
         getImage
         Returns the image file in the dataname
