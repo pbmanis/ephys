@@ -20,6 +20,7 @@ setup(name='ephys',
       entry_points={
           'console_scripts': [
                'dataSummary=ephys.tools.dataSummary:main',
+               'dircheck=ephys.tools.dir_check:main',
                'ma2tiff=ephys.tools.ma2tiff:convertfiles',
                'bridge=ephys.tools.bridge:main',
                'miniviewer=ephys.tools.miniviewer:main',
