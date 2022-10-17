@@ -643,19 +643,23 @@ class Acq4Read:
         holdcheck = False
         holdvalue = 0.0
         if info is not None:
-            try:
-                holdcheck = info["devices"][self.shortdname]["holdingCheck"]
-                holdvalue = info["devices"][self.shortdname]["holdingSpin"]
-            except:
-                print("Getting holding with short dname: ", self.shortdname, "failed")
-                print("Trying a different name (Clamp1.ma)")
-                self.setDataName('Clamp1.ma')
-                try:
-                    holdcheck = info["devices"][self.shortdname]["holdingCheck"]
-                    holdvalue = info["devices"][self.shortdname]["holdingSpin"]
-                except:
-                    print('That also failed')
-                    raise()
+            devices = list(info["devices"].keys())
+            if devices[0] == 'DAQ':
+                device = devices[1]
+            else:
+                device = devices[0]
+
+            if device not in self.clampdevices:
+                print(f"Failed to find {device:s} in {str(self.clampdevices):s}")
+                raise ValueError
+
+            if device not in list(info["devices"].keys()):
+                print(f"**Unable to match device: {device:s} in ")
+                print(info["devices"].keys())
+                raise ValueError
+
+            holdcheck = info["devices"][device]["holdingCheck"]
+            holdvalue = info["devices"][device]["holdingSpin"]
                 
         self.holding = holdvalue
         trx = []
@@ -723,7 +727,8 @@ class Acq4Read:
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
-                print(" acq4read.getData: File not found: ", fn)
+                print(" acq4read.getData: File not found: ", fn, self.dataname)
+                raise ValueError
                 if check:
                     return False
                 else:
