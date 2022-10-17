@@ -8,7 +8,8 @@ Compute IV Information
 
 import sys
 import numpy as np
-import os.path
+import inspect
+from pathlib import Path
 from collections import OrderedDict
 from typing import Union
 import matplotlib.colors
@@ -21,11 +22,19 @@ colormap = 'snshelix'
 
       
 class IVSummary():
-    def __init__(self, datapath, plot=True):
-        self.datapath = datapath
+    def __init__(self, datapath, altstruct=None, file:Union[str, Path, None] = None, plot=True):
 
         self.IVFigure = None
-        self.AR = acq4read.Acq4Read()  # make our own private version of the analysis and reader
+        self.mode = "acq4"
+
+        if datapath is not None:
+            self.AR = acq4read.Acq4Read()  # make our own private version of the analysis and reader
+            self.datapath = datapath
+        else:
+            self.AR = altstruct
+            print(altstruct)
+            self.datapath = file
+            self.mode = 'nwb'
         self.SP = SpikeAnalysis.SpikeAnalysis()
         self.RM = RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
@@ -37,7 +46,8 @@ class IVSummary():
         """
         if duration == 0:
             return True
-        self.AR.setProtocol(self.datapath)
+        if self.mode == 'acq4':
+            self.AR.setProtocol(self.datapath)
         if self.AR.getData():
             dur = self.AR.tend-self.AR.tstart
             if np.fabs(dur - duration) < 1e-4:
@@ -56,7 +66,8 @@ class IVSummary():
         Simple plot of spikes, FI and subthreshold IV
         
         """
-        self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
+        if self.mode == "acq4":
+            self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(clamps=self.AR, threshold=threshold, 
@@ -103,7 +114,11 @@ class IVSummary():
         P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(8., 10.))
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
-        P.figure_handle.suptitle(self.datapath, fontsize=8)
+
+        if self.mode == "acq4":
+            P.figure_handle.suptitle(self.datapath, fontsize=8)
+        elif self.mode == "nwb":
+            P.figure_handle.suptitle(str(self.datapath), fontsize=8)
         dv = 50.
         jsp = 0
         for i in range(self.AR.traces.shape[0]):
@@ -162,12 +177,21 @@ class IVSummary():
         if n > 0:
             P.axdict['B'].legend(fontsize=6)
         
-        P.axdict['C'].plot(self.RM.ivss_cmd*1e9, self.RM.ivss_v*1e3, 'ko-', markersize=4, linewidth=1.0)
+        P.axdict['C'].plot(np.array(self.RM.ivss_cmd)*1e9, np.array(self.RM.ivss_v)*1e3, 'ko-', markersize=4, linewidth=1.0)
         if not pubmode:
-            if self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
+
+            if isinstance(self.RM.analysis_summary["CCComp"], float):
+                enable = 'Off'
+                cccomp = 0.0
+                ccbridge = 0.0
+            elif self.RM.analysis_summary['CCComp']['CCBridgeEnable'] == 1:
                 enable = 'On'
+                cccomp = np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3)
+                ccbridge = np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance'])/1e6
             else:
                 enable = 'Off'
+                cccomp = 0.
+                ccbridge = 0.
             tstr = (r'RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms'.
                     format(self.RM.analysis_summary['RMP'], '\n', 
                            self.RM.analysis_summary['Rin'], '\n', 
@@ -175,10 +199,10 @@ class IVSummary():
             tstr += (r'{0:s}Holding: {1:.1f} pA{2:s}Bridge [{3:3s}]: {4:.1f} ${{M\Omega}}$'.
                      format('\n', np.mean(self.RM.analysis_summary['Irmp'])*1e12,
                             '\n', enable, 
-                            np.mean(self.RM.analysis_summary['CCComp']['CCBridgeResistance']/1e6)))
+                            ccbridge))
             tstr += (r'{0:s}Bridge Adjust: {1:.1f} ${{M\Omega}}$ {2:s}Pipette: {3:.1f} mV'.
                     format('\n', self.RM.analysis_summary['BridgeAdjust']/1e6,
-                           '\n', np.mean(self.RM.analysis_summary['CCComp']['CCPipetteOffset']*1e3)))
+                           '\n', cccomp))
 
             P.axdict['C'].text(-0.05, 0.80, tstr,
                 transform=P.axdict['C'].transAxes, horizontalalignment='left', verticalalignment='top', fontsize=7)
