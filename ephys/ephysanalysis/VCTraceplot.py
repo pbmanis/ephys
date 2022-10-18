@@ -6,9 +6,7 @@ Version 0.1
 
 """
 
-import sys
 from typing import Union
-import matplotlib
 import numpy as np
 
 import os.path
