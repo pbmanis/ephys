@@ -18,6 +18,9 @@ doc/html/_sources
 ephys/mini_analyses/doc
 ephys/tools/data/files.toml  #local file history
 
+# untitled stuff and NF107 stuff
+NF107*
+untitled*
 # pycharm
 .idea
 
