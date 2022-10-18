@@ -1,5 +1,5 @@
 """
-Analyze Rm, tau - pulled out of IVCurve 2/29/2016 pbm.
+RMTauAnalysis - Analyze Rm, tau - pulled out of IVCurve 2/29/2016 pbm.
 Allows routine to be used to responses to hyperpolarizing pulses independent of acq4's data models.
 Create instance, then  call setup to define the "Clamps" structure and analysis parameters. 
 
@@ -54,8 +54,7 @@ class RmTauAnalysis():
         self.taum_bounds = []
         self.analysis_summary = {}
 
-        
-
+    
     def setup(self, clamps=None, spikes=None, dataplot=None,
                 baseline=[0, 0.001], bridge_offset=0,
                 taumbounds = [0.001, 0.050], tauhvoltage=-0.08):
@@ -110,13 +109,17 @@ class RmTauAnalysis():
         
     
     def analyze(self, rmpregion=[0., 0.05], tauregion=[0.1, 0.125], to_peak=False, tgap=0.):
+
         self.rmp_analysis(region=rmpregion)
         self.tau_membrane(region=tauregion, peak_time=to_peak, tgap=tgap)
-        r_ss = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # steady-state region
         r_pk = self.Clamps.tstart + 0.4*(self.Clamps.tend-self.Clamps.tstart)
+        r_ss = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # steady-state region
         self.ivss_analysis(region=[r_ss, self.Clamps.tend])
         self.ivpk_analysis(region=[self.Clamps.tstart, r_pk])  # peak region
-        self.tau_h(self.tauh_voltage, peakRegion=[self.Clamps.tstart, r_pk], steadystateRegion=[r_ss, self.Clamps.tend], printWindow=False)
+        self.tau_h(self.tauh_voltage, 
+                peakRegion=[self.Clamps.tstart, r_pk], 
+                steadystateRegion=[r_ss, self.Clamps.tend],
+                printWindow=False)
 
     def tau_membrane(self, peak_time=False, printWindow=False, whichTau=1, vrange=[-0.002, -0.050], region=[], tgap=0.):
         r"""
@@ -136,7 +139,7 @@ class RmTauAnalysis():
             Not used
         
         vrange : list (V) (default: [-0.005, -0.020])
-            Define the voltage range below RMP for the traces that will be fit to obtain tau_m.
+            Define the voltage range _below_ RMP for the traces that will be fit to obtain tau_m.
             
         region: list (s) (default: [])
             Define the time region for the fitting
@@ -457,7 +460,7 @@ class RmTauAnalysis():
         """
         Measure the time constant associated with activation of the hyperpolarization-
         activated current, Ih. The tau is measured from the peak of the response to the
-        steady-state part, at a single current level.
+        end of the steady-state part, at a single current level.
         
         Parameters
         ----------
@@ -512,7 +515,7 @@ class RmTauAnalysis():
             return
         pk_voltages = self.Clamps.traces['Time': peakRegion[0]:peakRegion[1]].view(np.ndarray)
         pk_voltages_tr = pk_voltages.min(axis=1)
-        ipk_start = pk_voltages[itrace].argmin() + int(peakRegion[0]*self.Clamps.sample_rate[itrace]) # get starting index as well
+        ipk_start = pk_voltages[itrace].argmin() + int(peakRegion[0]/self.Clamps.sample_rate[itrace]) # get starting index as well
         pk_time = self.Clamps.time_base[ipk_start] 
 
         if not self.Spikes.spikes_counted:
@@ -550,7 +553,7 @@ class RmTauAnalysis():
             if printWindow:
                 print(("Ih FIT(%d, %.1f pA): %s " %
                       (whichdata[j], itaucmd[j] * 1e12, outstr)))
-        self.taum_fitted[itrace] = [xf[0], yf[0]]
+        self.tauh_fitted[itrace] = [xf[0], yf[0]]
         self.tauh_vrmp = self.ivbaseline[itrace]
         self.tauh_vss = ss_voltages[itrace]
         self.tauh_vpk = pk_voltages_tr[itrace]
