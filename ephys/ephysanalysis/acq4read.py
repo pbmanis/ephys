@@ -484,7 +484,7 @@ class Acq4Read:
                     devs.append(d)
         return devs
 
-    def getDataInfo(self, filename: Union[str, Path, None] = None):
+    def getDataInfo(self, filename: Union[str, Path, None] = None, silent:bool=False):
         """
         Get the index info for a record, without reading the trace data
         """
@@ -660,7 +660,11 @@ class Acq4Read:
 
             holdcheck = info["devices"][device]["holdingCheck"]
             holdvalue = info["devices"][device]["holdingSpin"]
-                
+        else:
+            if check:
+                return False
+            else:
+                raise ValueError       
         self.holding = holdvalue
         trx = []
         cmd = []
@@ -727,14 +731,13 @@ class Acq4Read:
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if not fn.is_file():
-                print(" acq4read.getData: File not found: ", fn, self.dataname)
-                raise ValueError
-                if check:
-                    return False
+                if not check:
+                    print(" acq4read.getData: File not found: ", fn, self.dataname)
+                    raise ValueError
                 else:
-                    continue
+                    return False
             if check:
-                return True
+                return True  # just note we found the first file
             if self.importantFlag and not important[i]:  # only return traces marked "important"
                 continue
             self.protoDirs.append(
