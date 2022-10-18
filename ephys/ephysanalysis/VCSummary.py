@@ -6,18 +6,18 @@ Version 0.1, does only min negative peak IV, max pos IV and ss IV
 
 """
 
-import sys
+from pathlib import Path
 
 import matplotlib
-import numpy as np
-
-import os.path
-from . import acq4read
-import MetaArray as EM
-import matplotlib.pyplot as mpl
 import matplotlib.colors
-import matplotlib
+import matplotlib.pyplot as mpl
+import numpy as np
 import pylibrary.plotting.plothelpers as PH
+
+import MetaArray as EM
+
+from . import acq4read
+
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
 
@@ -217,7 +217,7 @@ class VCSummary():
                         labelposition=(-0.12, 0.95))
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(self.datapath)
         
-        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', r'\_'), fontsize=12)
+        P.figure_handle.suptitle(str(Path(date, sliceid, cell, proto)).replace('_', r'\_'), fontsize=12)
         for i in range(self.AR.traces.shape[0]):
             P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.traces[i,:]*1e12, 'k-', linewidth=0.5)
 
@@ -257,10 +257,12 @@ class VCSummary():
         tuple : (date, sliceid, cell, protocol, any other...)
             last argument returned is the rest of the path...
         """
-        (p0, proto) = os.path.split(filename)
-        (p1, cell) = os.path.split(p0)
-        (p2, sliceid) = os.path.split(p1)
-        (p3, date) = os.path.split(p2)
+        fileparts = Path(filename).parts
+        proto = fileparts[-1]
+        sliceid = fileparts[-2]
+        cell = fileparts[-3]
+        date  = fileparts[-4]
+        p3 = fileparts[:-4]
         return (date, sliceid, cell, proto, p3)
         
      
