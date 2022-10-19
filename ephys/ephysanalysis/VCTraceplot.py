@@ -6,32 +6,46 @@ Version 0.1
 
 """
 
-from typing import Union
-import numpy as np
-
 import os.path
-from . import acq4read
-import MetaArray as EM
-from ..tools import digital_filters as DF
-import matplotlib.pyplot as mpl
-import matplotlib.colors
-import matplotlib
+from pathlib import Path
+from typing import Union
+
+
 import matplotlib.patches as mpatches
-from matplotlib.collections import PatchCollection
+import matplotlib.pyplot as mpl
+import numpy as np
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.utility as U
+from matplotlib.collections import PatchCollection
+
+import MetaArray as EM
+
+from ..tools import digital_filters as DF
+from . import acq4read
 
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
 
 
 class VCTraceplot():
-    def __init__(self, datapath, plot=True):
+    def __init__(self, datapath, altstruct=None, file: Union[str, Path, None] = None, plot=True):
         self.datapath = datapath
-        self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.mode = "acq4"
         self.plot = plot
-        self.reset()
 
+        if datapath is not None:
+            self.AR = (
+                acq4read.Acq4Read()
+            )  # make our own private version of the analysis and reader
+            self.datapath = datapath
+        else:
+            self.AR = altstruct
+            self.datapath = file
+            self.mode = "nwb2.5"
+        self.reset()
+        self.LaserBlue = None
+
+        
     def reset(self):
         self.pre_process_filters = {"LPF": None, "Notch": []}
         self.pre_process_flag = False
@@ -69,6 +83,9 @@ class VCTraceplot():
         self.analysis_summary = {}
 
     def set_pre_process(self, LPF:Union[None, float]=None, Notch:Union[None, list]=None):
+        if isinstance(LPF, dict):
+            Notch = LPF['Notch']
+            LPF = LPF['LPF']
         self.pre_process_filters['LPF'] = LPF
         self.pre_process_filters['Notch'] = Notch
 
@@ -77,17 +94,18 @@ class VCTraceplot():
         if self.pre_process_flag:
             raise ValueError("VCTraceplot: Already applited pre-processing (filtering) to this data set")
         if self.pre_process_filters['LPF'] is not None:
-            self.AR.data_array = DF.SignalFilter_LPFBessel(
-                    self.AR.data_array,
+
+            self.AR.traces = DF.SignalFilter_LPFBessel(
+                    self.AR.traces,
                     LPF=self.pre_process_filters['LPF'],
                     samplefreq=self.AR.sample_rate[0],
                     NPole = 8,
                 )
             self.pre_process_flag = True
-        if self.pre_process_filters['Notch'] is not None:
-
-            self.AR.data_array = DF.NotchFilter(
-                 self.AR.data_array,
+        if self.pre_process_filters['Notch'] != []:
+            print(self.pre_process_filters)
+            self.AR.traces = DF.NotchFilter(
+                 self.AR.traces,
                  notchf=self.pre_process_filters['Notch'],
                  Q=15, QScale=True, 
                  samplefreq = self.AR.sample_rate[0],)
@@ -104,7 +122,7 @@ class VCTraceplot():
         """
         #print('path: ', self.datapath)
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
-        self.AR.set_pre_process(self.pre_process_filters)
+        self.set_pre_process(self.pre_process_filters)
         self.setup(clamps=self.AR)
         if self.AR.getData():  # get that data.
             self.pre_process()
@@ -118,7 +136,7 @@ class VCTraceplot():
 #        self.tau_membrane(region=tauregion)
         r0 = self.Clamps.tstart + 0.9*(self.Clamps.tend-self.Clamps.tstart) # 
         self.ihold_analysis(region=[0., self.Clamps.tstart])
-        self.LaserBlue = self.AR.getLaserBlueCommand()
+        # self.LaserBlue = self.AR.getLaserBlueCommand()
 
     def ihold_analysis(self, region=None):
         """
@@ -173,7 +191,7 @@ class VCTraceplot():
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(self.datapath)
         sf1 = 1e12  # for currents, top plot, voltage clamp
         sf2 = 1e3 # for voltages, bottom plot, voltage clamp
-        trstep = 50. # pA
+        trstep = 100 # pA
         ylabel1 = "I (pA)"
         ylabel2 = "V (mV)"
         if self.AR.mode in ["IC", "I=0"]:
@@ -182,15 +200,17 @@ class VCTraceplot():
             trstep = 10. # mV
             ylabel1 = "V (mV)"
             ylabel2 = "I (nA)"
-        P.figure_handle.suptitle(os.path.join(date, sliceid, cell, proto).replace('_', r'\_'), fontsize=12)
+        ppath = Path(date, sliceid, cell, proto)
+        P.figure_handle.suptitle(str(ppath).replace('_', r'\_'), fontsize=12)
         for i in range(self.AR.traces.shape[0]):
-            P.axdict['A'].plot(self.AR.time_base*1e3, self.AR.data_array[i,:]*sf1 + i*trstep, 'k-', linewidth=0.5)
-            if self.LaserBlue:
+            P.axdict['A'].plot(self.AR.time_base*1e3, (self.AR.traces.view(np.ndarray)[i,:] -
+                self.AR.traces.view(np.ndarray)[i,0])*sf1 + i*trstep, 'k-', linewidth=0.5)
+            if self.LaserBlue is not None:
                 P.axdict['B'].plot(self.AR.LBR_time_base[0,:]*1e3, self.AR.LaserBlue_pCell[i,:], 'b-', linewidth=0.5)
-            P.axdict['C'].plot(self.AR.time_base*1e3, self.AR.cmd_wave[i,:]*sf2, 'k-', linewidth=0.5)
+            P.axdict['C'].plot(self.AR.time_base*1e3, self.AR.cmd_wave.view(np.ndarray)[i,:]*sf2, 'k-', linewidth=0.5)
         if self.AR.traces.shape[0] > 1:
-            iavg = np.mean(self.AR.data_array, axis=0)
-            P.axdict['A'].plot(self.AR.time_base*1e3, iavg*sf1 + -2*trstep, 'm-', linewidth=0.5)
+            iavg = np.mean(self.AR.traces.view(np.ndarray), axis=0)
+            P.axdict['A'].plot(self.AR.time_base*1e3, iavg*sf1 + -5*trstep, 'm-', linewidth=0.5)
         if self.stim_times is not None and self.stim_dur is not None:
             stim_patch_collection = []
             ylims = P.axdict['A'].get_ylim()
