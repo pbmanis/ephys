@@ -7,6 +7,7 @@ Version 0.1, does only min negative peak IV, max pos IV and ss IV
 """
 
 from pathlib import Path
+from typing import Union
 
 import matplotlib
 import matplotlib.colors
@@ -23,10 +24,20 @@ colormap = 'snshelix'
 
 
 class VCSummary():
-    def __init__(self, datapath, plot=True):
+    def __init__(self, datapath, altstruct=None, file: Union[str, Path, None] = None, plot=True):
         self.datapath = datapath
-        self.AR = acq4read.Acq4Read()  # make our own private cersion of the analysis and reader
+        self.mode = "acq4"
         self.plot = plot
+
+        if datapath is not None:
+            self.AR = (
+                acq4read.Acq4Read()
+            )  # make our own private version of the analysis and reader
+            self.datapath = datapath
+        else:
+            self.AR = altstruct
+            self.datapath = file
+            self.mode = "nwb2.5"
 
     def setup(self, clamps=None, baseline=[0, 0.001], taumbounds = [0.002, 0.050]):
         """
