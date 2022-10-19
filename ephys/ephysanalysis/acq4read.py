@@ -649,17 +649,14 @@ class Acq4Read:
             else:
                 device = devices[0]
 
-            if device not in self.clampdevices:
-                print(f"Failed to find {device:s} in {str(self.clampdevices):s}")
-                raise ValueError
+            if device in self.clampdevices:
+                if device not in list(info["devices"].keys()):
+                    print(f"**Unable to match device: {device:s} in ")
+                    print(info["devices"].keys())
+                    raise ValueError
 
-            if device not in list(info["devices"].keys()):
-                print(f"**Unable to match device: {device:s} in ")
-                print(info["devices"].keys())
-                raise ValueError
-
-            holdcheck = info["devices"][device]["holdingCheck"]
-            holdvalue = info["devices"][device]["holdingSpin"]
+                holdcheck = info["devices"][device]["holdingCheck"]
+                holdvalue = info["devices"][device]["holdingSpin"]
         else:
             if check:
                 return False
