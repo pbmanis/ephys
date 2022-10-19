@@ -61,7 +61,7 @@ class MakeClamps:
         self.tstart_tdur = tstart_tdur
         self.tstart = tstart_tdur[0]
         self.tend = np.sum(tstart_tdur)
-        self.dmode = dmode
+        self.mode = dmode
         self.protocol = protocol
 
     def setNWB(self, nwbmode: bool = False, nwbfile: Union[object, None] = None):
@@ -143,7 +143,15 @@ class MakeClamps:
         self.holding = 0.0
         self.bridgeBalance = 0.0
         self.neutralizingCap = 0.0
+        self.primaryGain = 1.0
         self.primarySignalLPF = 20000.
+        self.FastCompCap = 0.
+        self.SlowCompCap = 0.
+        self.RsCompBandwidth = 10000. # hz
+        self.RsCompCorrection = 0.
+        self.RsPrecition = 0.  # not recorded in acq4, we rarely use this.
+        self.WholeCellCompCap = 0.
+        self.WholeCellCompResist = 0.
         self.amplfierSettings = {
             "WCCompValid": False,
             "WCEnabled": False,
@@ -152,17 +160,37 @@ class MakeClamps:
         }
         self.clampState = None
         self.RSeriesUncomp = 0.0
-        if self.NWB:  # fill some parameters from the nwbfile instead of just using defaults
-            step_times = self.nwbfile.acquisition["Ics1"].control
+        if self.NWB:  # fill in as many of the parameters from the nwbfile as we can
+            if self.nwbfile.acquisition['Vcs1'].comments == "CC":
+                step_times = self.nwbfile.acquisition['Ics1'].control
+                step_times = self.nwbfile.acquisition["Ics1"].control
+                self.holding = self.nwbfile.acquisition["Vcs1"].bias_current
+                self.bridgeBalance = self.nwbfile.acquisition["Vcs1"].bridge_balance
+                self.neutralizingCap = self.nwbfile.acquisition[
+                    "Vcs1"
+                ].capacitance_compensation
+                self.primarySignalLPF = self.nwbfile.acquisition["Vcs1"].electrode.filtering
+                self.primaryGain = self.nwbfile.acquistion["Vcs1"].gain
+            
+            elif self.nwbfile.acquisition['Vcs1'].comments == "VC":
+                vacq = self.nwbfile.acquisition["Vcs1"]
+                iacq = self.nwbfile.acquisition["Ics1"]
+                step_times = vacq.control
+                self.holding = vacq.offset
+                self.FastCompCap = iacq.capacitance_fast
+                self.SlowCompCap = iacq.capacitance_slow
+                self.RsCompBandwidth = iacq.resistance_comp_bandwidth
+                self.RsCompCorrection = iacq.resistance_comp_correction,
+                self.RsPrecition = iacq.resistance_comp_prediction  # not recorded in acq4, we rarely use this.
+                self.WholeCellCompCap = iacq.whole_cell_capacitance_comp
+                self.WholeCellCompResist = iacq.whole_cell_series_resistance_comp
+ 
+                self.primarySignalLPF = self.nwbfile.acquisition["Ics1"].electrode.filtering
+                self.primaryGain = self.nwbfile.acquisition["Ics1"].gain
+
             self.tstart = step_times[0]*self.rate_sec[0]
             self.tend = step_times[1]*self.rate_sec[0]
             self.tdur = self.tend - self.tstart
-            self.holding = self.nwbfile.acquisition["Vcs1"].bias_current
-            self.bridgeBalance = self.nwbfile.acquisition["Vcs1"].bridge_balance
-            self.neutralizingCap = self.nwbfile.acquisition[
-                "Vcs1"
-            ].capacitance_compensation
-            self.primarySignalLPF = self.nwbfile.acquisition["Vcs1"].electrode.filtering
 
         else:
             self.tstart = self.tstart_tdur[
@@ -173,7 +201,7 @@ class MakeClamps:
         
         self.sample_interval = self.rate_sec[0] # express in seconds
         self.traces = np.array(self.data)
-        # nchannels = self.data.shape[0]
+
         dt = self.sample_interval  # makes assumption that rate is constant in a block
         if self.NWB:
             time_ax = 0
@@ -185,7 +213,7 @@ class MakeClamps:
         points = self.data.shape[time_ax]
         recs = range(self.data.shape[rec_ax])
 
-        if self.dmode == "CC":  # use first channel
+        if self.mode == "CC":  # use first channel
             mainch = 0
             cmdch = 1
         else:  # assumption is swapped - for this data, that means voltage clamp mode.
@@ -235,44 +263,47 @@ class MakeClamps:
             {"name": "Time", "units": "s", "values": self.time_base},  # dict 1
             {
                 "ClampState": {  # note that many of these values are just defaults and cannot be relied upon
-                    "primaryGain": 1.0,
-                    "ClampParams": {
-                        "OutputZeroEnable": 0,
-                        "PipetteOffset": 0.0,
-                        "Holding": self.holding,
-                        "PrimarySignalHPF": 0.0,
-                        "BridgeBalResist": self.bridgeBalance,
-                        "PrimarySignalLPF": self.primarySignalLPF,
-                        "RsCompBandwidth": 0.0,
-                        "WholeCellCompResist": 0.0,
-                        "WholeCellCompEnable": 6004,
-                        "LeakSubResist": 0.0,
-                        "HoldingEnable": 1,
-                        "FastCompTau": 0.0,
-                        "SlowCompCap": 0.0,
-                        "WholeCellCompCap": 0.0,
-                        "LeakSubEnable": 6004,
-                        "NeutralizationCap": self.neutralizingCap,
-                        "BridgeBalEnable": 0,
-                        "RsCompCorrection": 0.0,
-                        "NeutralizationEnable": 1,
-                        "RsCompEnable": 6004,
-                        "OutputZeroAmplitude": 0.0,
-                        "FastCompCap": 0.0,
-                        "SlowCompTau": 0.0,
-                    },
+                    "primarySignal": "Membrane Potential",
+                    "primaryGain": self.primaryGain,
+                    "primaryUnits": "V",
+                    "primaryScaleFactor": 0.1,
+
                     "secondarySignal": "Command Current",
                     "secondaryGain": 1.0,
                     "secondaryScaleFactor": 2e-09,
-                    "primarySignal": "Membrane Potential",
-                    "extCmdScale": 4e-10,
-                    "mode": self.dmode,
-                    "holding": self.holding,
-                    "primaryUnits": "V",
-                    "LPFCutoff": 10000.0,
                     "secondaryUnits": "A",
-                    "primaryScaleFactor": 0.1,
+
+                    "extCmdScale": 4e-10,
+                    "mode": self.mode,
+                    "holding": self.holding,
+                    "LPFCutoff": 10000.0,
                     "membraneCapacitance": 0.0,
+ 
+                    "ClampParams": {
+                        "BridgeValEnable": 6004,
+                        "BridgeBalResist": self.bridgeBalance,
+                        "FastCompCap": 0.0,
+                        "FastCompTau": 0.0,
+                        "HoldingEnable": 0,
+                        "Holding": self.holding,
+                        "LeakSubEnable": 0,
+                        "LeakSubResist": 0.0,
+                        "NeutralizationCap": self.neutralizingCap,
+                        "NeutralizationEnable": 6004,
+                        "OutputZeroAmplitude": 0.0,
+                        "OutputZeroEnable": 0,
+                        "PipetteOffset": 0.0,
+                        "PrimarySignalHPF": 0.0,
+                        "PrimarySignalLPF": self.primarySignalLPF,
+                        "RsCompBandwidth": 0.0,
+                        "RsCompCorrection": 0.0,
+                        "RsCompEnable": 6004,
+                        "SlowCompCap": 0.0,
+                        "SlowCompTau": 0.0,
+                        "WholeCellCompCap": 0.0,
+                        "WholeCellCompEnable": 6004,
+                        "WholeCellCompResist": 0.0,
+                    },
                 },
                 "Protocol": {
                     "recordState": True,
