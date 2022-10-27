@@ -740,9 +740,12 @@ class Acq4Read:
             self.protoDirs.append(
                 Path(d).name
             )  # keep track of valid protocol directories here
-            tr = EM.MetaArray(file=fn)
-            # except:
-            #     continue
+            try:
+                tr = EM.MetaArray(file=fn)
+            except:
+                print("Failed on reading file: ", fn)
+                raise ValueError(f"file failed: {str(fn):s}")
+                continue
             tr_info = tr[0].infoCopy()
 
             self.parseClampInfo(tr_info)
@@ -1406,7 +1409,7 @@ class Acq4Read:
 
 
 def one_test():
-    import boundrect as BR
+    import tools.boundrect as BR
 
     BRI = BR.BoundRect()
     #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
