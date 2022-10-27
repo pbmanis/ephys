@@ -37,12 +37,11 @@ Note that FitRegion no longer attempts to plot.
 
 """
 
-import sys
+from typing import Union
+
 import numpy as np
 import scipy
 import scipy.optimize
-import ctypes
-import numpy.random
 
 
 class Fitting:
@@ -814,12 +813,12 @@ class Fitting:
     def FitRegion(
         self,
         whichdata,
-        thisaxis,
-        tdat,
-        ydat,
-        t0=None,
-        t1=None,
-        fitFunc="exp1",
+        thisaxis:int,
+        tdat:np.ndarray,
+        ydat:np.ndarray,
+        t0:Union[float, None]=None,
+        t1:Union[float, None]=None,
+        fitFunc:str="exp1",
         fitFuncDer=None,
         fitPars=None,
         fixedPars=None,
@@ -920,6 +919,7 @@ class Fitting:
                 tx = np.array(tx)
                 tx = tx - t0
                 dy = np.array(dy)
+                # print("t0, t1, mintx: ", t0, t1, np.min(tx))
                 yn.append(names)
                 if not any(tx):
                     print("Fitting.py: No data in clipping window")
@@ -1004,6 +1004,8 @@ class Fitting:
                 xp.append(plsq)  # parameter list
                 xf.append(xfit)  # x plot point list
                 yf.append(yfit)  # y fit point list
+                self.tx = tx
+                self.dy = dy
         #        print xp
         #        print len(xp)
         return (xp, xf, yf, yn)  # includes names with yn and range of tx
