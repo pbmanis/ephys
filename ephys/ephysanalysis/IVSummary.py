@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 """
 Compute IV Information
 
@@ -8,24 +6,27 @@ Compute IV Information
 
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union, Literal
-
+from typing import Union, Literal, List
 import numpy as np
 import pylibrary.plotting.plothelpers as PH
-
+from pylibrary.tools import cprint
 from . import RmTauAnalysis, SpikeAnalysis, acq4read
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
 
+CP = cprint.cprint
 
 class IVSummary:
     def __init__(
-        self, datapath, altstruct=None, file: Union[str, Path, None] = None, plot=True
+        self, datapath, altstruct=None, file: Union[str, Path, None] = None, 
+        plot:bool=True,
+        pdf_pages:Union[object, None]=None,
     ):
 
         self.IVFigure = None
         self.mode = "acq4"
+        self.pdf_pages = pdf_pages
 
         if datapath is not None:
             self.AR = (
@@ -39,7 +40,9 @@ class IVSummary:
         self.SP = SpikeAnalysis.SpikeAnalysis()
         self.RM = RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
+        self.plotting_mode = "normal"
         self.decorate = True
+        self.plotting_alternation = 1
 
     def iv_check(self, duration=0.0):
         """
@@ -66,13 +69,37 @@ class IVSummary:
         self.plotting_alternation = alternate
         self.decorate = decorate
 
+    def stability_check(self, rmpregion:List=[0.0, 0.005], threshold = 2.0):
+        """_summary_
+
+        Args:
+            rmpregion (List, optional): timw window over which to measure RMP. Defaults to [0.0, 0.005]. in seconds
+            threshold (float, optional): Maximum SD of trace RMP. Defaults to 2.0. In mV
+
+        Returns:
+            bool: True if RMP is stable, False otherwise.
+        """
+        if self.mode == "acq4":
+            self.AR.setProtocol(
+                self.datapath
+            )  # define the protocol path where the data is
+        if self.AR.getData():  # get that data.
+            self.RM.setup(self.AR, self.SP, bridge_offset=0.0)
+        self.RM.rmp_analysis(time_window=rmpregion)
+        # print(self.RM.rmp, self.RM.rmp_sd, threshold)
+        if self.RM.rmp_sd > threshold:
+            return False
+        else:
+            return True
+
     def compute_iv(
         self,
         threshold=-0.010,
         bridge_offset=0.0,
         tgap=0.0005,
-        plotiv=True,
+        plotiv=False,
         full_spike_analysis=True,
+        to_peak=True,
     ) -> Union[None, object]:
         """
         Simple plot of spikes, FI and subthreshold IV
@@ -103,9 +130,9 @@ class IVSummary:
                 rmpregion=[0.0, self.AR.tstart - 0.001],
                 tauregion=[
                     self.AR.tstart,
-                    self.AR.tstart + (self.AR.tend - self.AR.tstart) / 5.0,
+                    self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0,
                 ],
-                to_peak=True,
+                to_peak=to_peak,
                 tgap=tgap,
             )
             if plotiv:
@@ -129,6 +156,8 @@ class IVSummary:
             return None
 
     def plot_iv(self, pubmode=False):
+        if not self.plot:
+            return
         x = -0.08
         y = 1.02
         sizer = {
@@ -199,13 +228,19 @@ class IVSummary:
                     )
         if not pubmode:
             for k in self.RM.taum_fitted.keys():
+                # CP('g', f"tau fitted keys: {str(k):s}")
+                if self.RM.tau_membrane == np.nan:
+                    continue
                 P.axdict["A"].plot(
-                    self.RM.taum_fitted[k][0] * 1e3,
-                    self.RM.taum_fitted[k][1] * 1e3,
+                    self.RM.taum_fitted[k][0] * 1e3,  # ms
+                    self.RM.taum_fitted[k][1] * 1e3,  # mV
                     "--g",
                     linewidth=1.0,
                 )
             for k in self.RM.tauh_fitted.keys():
+            # CP('r', f"tau fitted keys: {str(k):s}")
+                if self.RM.tauh_meantau == np.nan:
+                    continue
                 P.axdict["A"].plot(
                     self.RM.tauh_fitted[k][0] * 1e3,
                     self.RM.tauh_fitted[k][1] * 1e3,
@@ -284,23 +319,17 @@ class IVSummary:
                 enable = "Off"
                 cccomp = 0.0
                 ccbridge = 0.0
-            tstr = r"RMP: {0:.1f} mV {1:s}${{R_{{in}}}}$: {2:.1f} ${{M\Omega}}${3:s}${{\tau_{{m}}}}$: {4:.2f} ms".format(
-                self.RM.analysis_summary["RMP"],
-                "\n",
-                self.RM.analysis_summary["Rin"],
-                "\n",
-                self.RM.analysis_summary["taum"] * 1e3,
-            )
-            tstr += r"{0:s}Holding: {1:.1f} pA{2:s}Bridge [{3:3s}]: {4:.1f} ${{M\Omega}}$".format(
-                "\n",
-                np.mean(self.RM.analysis_summary["Irmp"]) * 1e12,
-                "\n",
-                enable,
-                ccbridge,
-            )
-            tstr += r"{0:s}Bridge Adjust: {1:.1f} ${{M\Omega}}$ {2:s}Pipette: {3:.1f} mV".format(
-                "\n", self.RM.analysis_summary["BridgeAdjust"] / 1e6, "\n", cccomp
-            )
+            taum = r"$\tau_m$"
+            tauh = r"$\tau_h$"
+            tstr = f"RMP: {self.RM.analysis_summary['RMP']:.1f} mV\n"
+            tstr += f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
+            tstr += f"{taum:s}: {self.RM.analysis_summary['taum']*1e3:.2f} ms\n"
+            tstr += f"{tauh:s}: {self.RM.analysis_summary['tauh_tau']*1e3:.3f} ms\n"
+            tstr += f"${{G_h}}$: {self.RM.analysis_summary['tauh_Gh'] *1e9:.3f} nS\n"
+            tstr += f"Holding: {np.mean(self.RM.analysis_summary['Irmp']) * 1e12:.1f} pA\n"
+            tstr += f"Bridge [{enable:3s}]: {ccbridge:.1f} ${{M\Omega}}$\n"
+            tstr += f"Bridge Adjust: {self.RM.analysis_summary['BridgeAdjust']:.1f} ${{M\Omega}}$\n"
+            tstr += f"Pipette: {cccomp:.1f} mV\n"
 
             P.axdict["C"].text(
                 -0.05,
@@ -374,12 +403,18 @@ class IVSummary:
         self.IVFigure = P.figure_handle
 
         if self.plot:
-            import matplotlib.pyplot as mpl
-
-            mpl.show()
+            if self.pdf_pages is None:
+                import matplotlib.pyplot as mpl
+                mpl.show()
+            else:
+                self.pdf_pages.savefig(dpi=300)
+                import matplotlib.pyplot as mpl
+                mpl.close()
         return P.figure_handle
 
     def plot_fig(self, pubmode=True):
+        if not self.plot:
+            return
         x = -0.08
         y = 1.02
         sizer = {
