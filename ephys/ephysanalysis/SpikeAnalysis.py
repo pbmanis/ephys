@@ -430,13 +430,15 @@ class SpikeAnalysis():
         thisspike['AP_beginV'] = self.Clamps.traces[i][thisspike['AP_beginIndex']]
 
         # compute rising and falling max dv/dt
+        four_ms = int(4e-3/dt)
+        three_ms = int(3e-3/dt)
+        two_ms = int(2e-3/dt)
         one_ms = int(1e-3/dt)
-
         thisspike['dvdt_rising'] = np.max(dvdt[thisspike['AP_beginIndex']:thisspike['AP_peakIndex']])
         thisspike['dvdt_falling'] = np.min(dvdt[thisspike['AP_peakIndex']:thisspike['AP_endIndex']])
-        thisspike['dvdt'] = dvdt[thisspike['AP_beginIndex']-one_ms:thisspike['AP_endIndex']]
-        thisspike['V'] = self.Clamps.traces[i][thisspike['AP_beginIndex']-one_ms:thisspike['AP_endIndex']].view(np.ndarray)
-        thisspike['Vtime'] = self.Clamps.time_base[thisspike['AP_beginIndex']-one_ms:thisspike['AP_endIndex']].view(np.ndarray)
+        thisspike['dvdt'] = dvdt[thisspike['AP_beginIndex']-four_ms:thisspike['AP_endIndex']+one_ms]
+        thisspike['V'] = self.Clamps.traces[i][thisspike['AP_beginIndex']-four_ms:thisspike['AP_endIndex']+one_ms].view(np.ndarray)
+        thisspike['Vtime'] = self.Clamps.time_base[thisspike['AP_beginIndex']-four_ms:thisspike['AP_endIndex']+one_ms].view(np.ndarray)
         # if successful in defining spike start/end, calculate half widths in two ways:
         # closest points in raw data, and by interpolation
         if (
