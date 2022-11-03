@@ -1,6 +1,10 @@
 # specific files
 ephys/ephysanalysis/c_deriv.c
 ephys/mini_analyses/clembek.c
+archived/
+*.p[k]  # database (pickled python) files
+*.pkl 
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
