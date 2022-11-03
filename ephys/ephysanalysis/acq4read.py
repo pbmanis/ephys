@@ -9,23 +9,24 @@ Does not require acq4 link; bypasses DataManager and PatchEPhys
 Requires pyqtgraph to read the .ma files and the .index file
 
 """
-import os
-import re
-from pathlib import Path
-import numpy as np
-import datetime
-import pprint
-import textwrap as WR
 import collections
+import datetime
+import gc
+import os
+import pprint
+import re
+import textwrap as WR
+from pathlib import Path
+from typing import List, Type, Union
+
+import numpy as np
+import pylibrary.tools.cprint as CP
+import pylibrary.tools.tifffile as tf
 import scipy.ndimage as SND
-from typing import Union
-from typing import List
-from typing import Type
-import MetaArray as EM
 # from ephys.ephysanalysis import MetaArray as EM
 from pyqtgraph import configfile
-import pylibrary.tools.tifffile as tf
-import pylibrary.tools.cprint as CP
+
+import MetaArray as EM
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -94,7 +95,22 @@ class Acq4Read:
             False # set to false to IGNORE the important flag for traces
         )
         # CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
-        
+    
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        del(self.time_base)
+        del(self.traces)
+        del(self.data_array)
+        del(self.cmd_wave)
+        del(self.values)
+        del(self.clamps)
+        del(self.sample_rate)
+        del(self.clampInfo)
+        del(self.clampdevices)
+        gc.collect()
 
     def setImportant(self, flag: bool = False) -> None:
         """
@@ -147,7 +163,9 @@ class Acq4Read:
         -------
         Sorted list of the directories in the path
         """
-        dirs = filter(Path.is_dir, list(Path(p).glob("*")))
+        p = Path(p)  # convert if not already
+        dirs = [d for d in list(p.glob("*")) if d.is_dir()]
+        #dirs = filter(Path.is_dir, list(Path(p).glob("*")))
         dirs = sorted(list(dirs))  # make sure these are in proper order...
         return dirs
 
@@ -626,6 +644,9 @@ class Acq4Read:
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
         dirs = self.subDirs(self.protocol)
+        if len(dirs) == 0:
+            CP.cprint("c", f"No data found for protocol: {str(self.protocol):s}")
+            return False
         index = self._readIndex()
         self.clampInfo["dirs"] = dirs
         self.clampInfo["missingData"] = []
@@ -729,13 +750,14 @@ class Acq4Read:
             fn = Path(d, self.dataname)
             if not fn.is_file():
                 if not check:
-                    print(" acq4read.getData: File not found: ", fn, self.dataname)
+                    CP.cprint("r", f"acq4read.getData: File not found:  {str(fn):s}, {str(self.dataname):s}")
                     raise ValueError
                 else:
                     return False
             if check:
                 return True  # just note we found the first file
             if self.importantFlag and not important[i]:  # only return traces marked "important"
+                CP.cprint("m", "acq4read: Skipping non-important data")
                 continue
             self.protoDirs.append(
                 Path(d).name
@@ -743,7 +765,8 @@ class Acq4Read:
             try:
                 tr = EM.MetaArray(file=fn)
             except:
-                print("Failed on reading file: ", fn)
+                CP.cprint("r", 
+                    f"acq4read: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
                 raise ValueError(f"file failed: {str(fn):s}")
                 continue
             tr_info = tr[0].infoCopy()
@@ -771,6 +794,7 @@ class Acq4Read:
             self.sample_rate.append(self.samp_rate)
             # print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
         if tr is None:
+            CP.cprint("r", "Acq4read.getData - Failed to read trace data: No traces found?")
             return False
         if self.mode is None:
             units = "A"  # just fake it
@@ -782,11 +806,25 @@ class Acq4Read:
         try:
             self.traces = np.array(trx)
         except:
-            print("?data does not have consistent shape in the dataset")
-            print(len(trx))
+            CP.cprint("y", "Acq4Read ?data does not have consistent shape in the dataset")
+            dim1_len = []
             for i in range(len(trx)):
-                print(trx[i].shape)
-            return False
+                dim1_len.append(trx[i].shape[1])
+            CP.cprint("y", f"          Dim 1 has lengths of {str(sorted(list(set(dim1_len)))):s}")
+            dim1_new = np.min(dim1_len)
+            # print("data array: ", len(self.data_array[0]))
+
+            CP.cprint("y", "          Reshaping to shortest length in time dimension")
+            for i in range(len(trx)):
+               trx[i] = trx[i][:,:dim1_new]  # make all lise elements the same shorter size
+               self.data_array[i] = self.data_array[i][:dim1_new]
+               self.cmd_wave[i] = self.cmd_wave[i][:dim1_new]
+               self.time_base[i] = self.time_base[i][:dim1_new]
+            try:
+                self.traces = np.array(trx)
+            except:
+                CP.cprint("r", "Failed to reshape array as required")
+                return False
 
         if len(self.values) == 0:
             ntr = len(self.traces)
@@ -1415,7 +1453,6 @@ def one_test():
     #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
     # this won't work in the wild, need appropriate data for testing.
     import matplotlib
-
     # matplotlib.use('')
     import matplotlib.pyplot as mpl
 
