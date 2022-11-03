@@ -3,13 +3,15 @@ Compute IV Information
 
 
 """
-
+import gc
 from collections import OrderedDict
 from pathlib import Path
 from typing import Union, Literal, List
+
 import numpy as np
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools import cprint
+
 from . import RmTauAnalysis, SpikeAnalysis, acq4read
 
 color_sequence = ["k", "r", "b"]
@@ -43,6 +45,12 @@ class IVSummary:
         self.plotting_mode = "normal"
         self.decorate = True
         self.plotting_alternation = 1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        gc.collect()
 
     def iv_check(self, duration=0.0):
         """
@@ -123,6 +131,7 @@ class IVSummary:
             self.SP.analyzeSpikes()
             if full_spike_analysis:
                 self.SP.analyzeSpikeShape()
+                # self.SP.analyzeSpikes_brief(mode="evoked")
                 self.SP.analyzeSpikes_brief(mode="baseline")
                 self.SP.analyzeSpikes_brief(mode="poststimulus")
             # self.SP.fitOne(function='fitOneOriginal')
@@ -155,21 +164,22 @@ class IVSummary:
             )
             return None
 
-    def plot_iv(self, pubmode=False):
+    def plot_iv(self, pubmode=False) -> Union[None, object]:
         if not self.plot:
-            return
+            return None
         x = -0.08
         y = 1.02
         sizer = {
-            "A": {"pos": [0.05, 0.50, 0.2, 0.63], "labelpos": (x, y), "noaxes": False},
+            "A": {"pos": [0.05, 0.50, 0.2, 0.71], "labelpos": (x, y), "noaxes": False},
             "A1": {
                 "pos": [0.05, 0.50, 0.08, 0.05],
                 "labelpos": (x, y),
                 "noaxes": False,
             },
-            "B": {"pos": [0.62, 0.30, 0.64, 0.22], "labelpos": (x, y), "noaxes": False},
-            "C": {"pos": [0.62, 0.30, 0.34, 0.22], "labelpos": (x, y)},
-            "D": {"pos": [0.62, 0.30, 0.08, 0.22], "labelpos": (x, y)},
+            "B": {"pos": [0.62, 0.30, 0.74, 0.17], "labelpos": (x, y), "noaxes": False},
+            "C": {"pos": [0.62, 0.30, 0.52, 0.17], "labelpos": (x, y)},
+            "D": {"pos": [0.62, 0.30, 0.30, 0.17], "labelpos": (x, y)},
+            "E": {"pos": [0.62, 0.30, 0.08, 0.17], "labelpos": (x, y)},
         }
         # dict pos elements are [left, width, bottom, height] for the axes in the plot.
         gr = [
@@ -186,6 +196,21 @@ class IVSummary:
             P.figure_handle.suptitle(str(self.datapath), fontsize=8)
         dv = 50.0
         jsp = 0
+        # create a color map ans use it for all data in the plot
+        # the map represents the index into the data array,
+        # and is then mapped to the current levels in the trace
+        # in case the sequence was randomized or run in a different
+        # sequence
+        import matplotlib.pyplot as mpl
+        import colorcet
+        
+        # matplotlib versions:
+        # cmap = mpl.colormaps['tab20'].resampled(self.AR.traces.shape[0])
+        cmap = colorcet.cm.glasbey_bw_minc_20_maxl_70
+        trace_colors = [cmap(float(i)/self.AR.traces.shape[0]) for i in range(self.AR.traces.shape[0])]
+
+        # colorcet versions:
+
         for i in range(self.AR.traces.shape[0]):
             if self.plotting_alternation > 1:
                 if i % self.plotting_alternation != 0:
@@ -199,12 +224,14 @@ class IVSummary:
                 self.AR.time_base * 1e3,
                 idv + self.AR.traces[i, :].view(np.ndarray) * 1e3,
                 "-",
+                color=trace_colors[i],
                 linewidth=0.35,
             )
             P.axdict["A1"].plot(
                 self.AR.time_base * 1e3,
                 self.AR.cmd_wave[i, :].view(np.ndarray) * 1e9,
                 "-",
+                color=trace_colors[i],
                 linewidth=0.35,
             )
             ptps = np.array([])
@@ -261,10 +288,20 @@ class IVSummary:
         P.axdict["B"].plot(
             self.SP.analysis_summary["FI_Curve"][0] * 1e9,
             self.SP.analysis_summary["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
-            "ko-",
-            markersize=4,
+            "grey",
+            linestyle='-',
+            # markersize=4,
             linewidth=0.5,
         )
+
+        P.axdict["B"].scatter(
+            self.SP.analysis_summary["FI_Curve"][0] * 1e9,
+            self.SP.analysis_summary["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
+            c=trace_colors,
+            s=16,
+            linewidth=0.5,
+        )
+
         clist = ["r", "b", "g", "c", "m"]  # only 5 possiblities
         linestyle = ["-", "--", "-.", "-", "--"]
         n = 0
@@ -296,9 +333,15 @@ class IVSummary:
         P.axdict["C"].plot(
             np.array(self.RM.ivss_cmd) * 1e9,
             np.array(self.RM.ivss_v) * 1e3,
-            "ko-",
-            markersize=4,
+            "grey",
+            # markersize=4,
             linewidth=1.0,
+        )
+        P.axdict["C"].scatter(
+            np.array(self.RM.ivss_cmd) * 1e9,
+            np.array(self.RM.ivss_v) * 1e3,
+            c=trace_colors[0:len(self.RM.ivss_cmd)],
+            s=16,
         )
         if not pubmode:
 
@@ -367,6 +410,11 @@ class IVSummary:
         P.axdict["C"].set_xlabel("I (nA)")
         P.axdict["C"].set_ylabel("V (mV)")
 
+        """
+        Plot the spike intervals as a function of time
+        into the stimulus
+
+        """
         for i in range(len(self.SP.spikes)):
             if len(self.SP.spikes[i]) == 0:
                 continue
@@ -378,10 +426,10 @@ class IVSummary:
                 np.array(self.SP.spikes[i][spx]) - self.SP.Clamps.tstart
             ) * 1e3  # just shorten...
             if len(spkl) == 1:
-                P.axdict["D"].plot(spkl[0], spkl[0], "or", markersize=4)
+                P.axdict["D"].plot(spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4)
             else:
                 P.axdict["D"].plot(
-                    spkl[:-1], np.diff(spkl), "o-", markersize=3, linewidth=0.5
+                    spkl[:-1], np.diff(spkl), "o-",color=trace_colors[i], markersize=3, linewidth=0.5
                 )
 
         PH.talbotTicks(
@@ -392,20 +440,33 @@ class IVSummary:
         P.axdict["D"].set_xlabel("Latency (ms)")
         P.axdict["D"].set_ylabel("ISI (ms)")
         P.axdict["D"].text(
-            0.05,
+            1.00,
             0.05,
             "Adapt Ratio: {0:.3f}".format(self.SP.analysis_summary["AdaptRatio"]),
             fontsize=9,
             transform=P.axdict["D"].transAxes,
-            horizontalalignment="left",
+            horizontalalignment="right",
             verticalalignment="bottom",
         )
+
+        # phase plot
+        # print(self.SP.spikeShape.keys())
+        import matplotlib.pyplot as mpl
+
+        # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShape.keys()))])
+        for k, i in enumerate(self.SP.spikeShape.keys()):
+            # print("ss i: ", i, self.SP.spikeShape[i][0])
+            P.axdict["E"].plot(self.SP.spikeShape[i][0]["V"], self.SP.spikeShape[i][0]["dvdt"], linewidth=0.35,
+            color = trace_colors[i])
+        P.axdict["E"].set_xlabel("V (mV)")
+        P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
+
         self.IVFigure = P.figure_handle
 
         if self.plot:
             if self.pdf_pages is None:
                 import matplotlib.pyplot as mpl
-                mpl.show()
+                # mpl.show()
             else:
                 self.pdf_pages.savefig(dpi=300)
                 import matplotlib.pyplot as mpl
