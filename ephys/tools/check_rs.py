@@ -6,7 +6,7 @@ from pathlib import Path
 
 import ephys.ephysanalysis as EP
 import MetaArray as EM  # need to use this version for Python 3
-import ephys.ephysanalysis.PSCAnalyzer as EPP
+import ephys.psc_analysis.PSCAnalyzer as EPP
 import matplotlib
 import matplotlib.colors
 import matplotlib.pyplot as mpl
