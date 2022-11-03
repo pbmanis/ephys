@@ -949,6 +949,8 @@ def main():
             CCIV_types = []
             VCIV_types = []
             stdIV_types = []
+            CC_Sponts = []
+            CC_Spont_types = []
         
 #       Only returns a dataframe if there is more than one entry
 #       Otherwise, it is like a series or dict
@@ -967,10 +969,14 @@ def main():
                     CCIVs.append(c)
                     if ps not in CCIV_types:
                         CCIV_types.append(p)
-                if 'VCIV' in c:
+                elif 'VCIV' in c:
                     VCIVs.append(c)
                     if ps not in VCIV_types:
                         VCIV_types.append(p)
+                elif c.startswith("CC_"):
+                    CC_Sponts.append(c)
+                    if ps not in CC_Spont_types:
+                        CC_Spont_types.append(p)
             print('='*80)
             print('COMPLETE PROTOCOLS')
             print('='*80)
@@ -987,6 +993,9 @@ def main():
             print('    STANDARD IVs: ')
             for iv in stdIVs:
                 print('        {0:<32s}'.format(iv))
+            print('    CC_Sponts: ')
+            for tr in CC_Sponts:
+                print('        {0:<32s}'.format(tr))
         
             print('\n------------')
             print('    Map types: ')
