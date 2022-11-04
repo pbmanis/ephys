@@ -29,7 +29,7 @@ from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtCore, QtGui
 
 from ephys.tools import cursor_plot as CP
-from ephys.ephysanalysis import acq4read
+from ephys.datareaders import acq4read
 import MetaArray as EM  # need to use this version for Python 3
 
 

@@ -13,7 +13,7 @@ def main():
     sys.path.insert(0, str(path))
 
     # Allow user to audit tests with --audit flag
-    import ephys.ephysanalysis
+    import ephys.ephys_analysis
     import ephys.mini_analyses
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')

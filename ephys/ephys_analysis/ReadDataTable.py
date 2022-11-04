@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ephys.ephysanalysis import acq4read
+from ephys.datareaders import acq4read
 from ephys.mapanalysistools import analyzeMapData as AMD
 import pylibrary.tools.fileselector as FS
 
@@ -76,13 +76,14 @@ class BuildGui():
         Test fixture
         """
         
-        self.basename = '/Users/pbmanis/Documents/data/MRK_Pyramidal'        
+        # self.basename = '/Users/pbmanis/Desktop/Python/mrk-nf107/datasets/MRK_Pyramidal'        
+        self.basename = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/MRK_Pyramidal'        
         self.filename = None
         self.tree = tree
         print('tree: ', tree)
-        self.mainwin = pg.Qt.QtGui.QMainWindow()
-        self.win = pg.Qt.QtGui.QWidget()
-        self.main_layout = pg.Qt.QtGui.QGridLayout()  # top level layout for the window
+        self.mainwin = pg.Qt.QtWidgets.QMainWindow()
+        self.win = pg.Qt.QtWidgets.QWidget()
+        self.main_layout = pg.Qt.QtWidgets.QGridLayout()  # top level layout for the window
         self.win.setLayout(self.main_layout)
         self.mainwin.setCentralWidget(self.win)
         self.mainwin.show()
@@ -91,10 +92,10 @@ class BuildGui():
 
         # build buttons at top of controls
         self.current_DSC = list(self.tree.keys())[0]
-        self.btn_read = pg.Qt.QtGui.QPushButton("Read")
-        self.btn_find = pg.Qt.QtGui.QPushButton('Find and Read')
+        self.btn_read = pg.Qt.QtWidgets.QPushButton("Read")
+        self.btn_find = pg.Qt.QtWidgets.QPushButton('Find and Read')
         # use a nested grid layout for the buttons
-        button_layout = pg.Qt.QtGui.QGridLayout()
+        button_layout = pg.Qt.QtWidgets.QGridLayout()
         button_layout.addWidget(self.btn_read,    1, 0, 1, 1)  
         # button_layout.addWidget(self.btn_analyze, 0, 1, 1, 1)
         button_layout.addWidget(self.btn_find,    0, 0, 1, 1)
@@ -120,8 +121,8 @@ class BuildGui():
         self.setProtocols()  # add the protocols
         
         # use a grid layout to hold the trees
-        self.ptree_widget = pg.Qt.QtGui.QWidget()
-        self.ptree_layout = pg.Qt.QtGui.QGridLayout()
+        self.ptree_widget = pg.Qt.QtWidgets.QWidget()
+        self.ptree_layout = pg.Qt.QtWidgets.QGridLayout()
         self.ptree_widget.setLayout(self.ptree_layout)
         self.ptree_layout.setSpacing(2)
         # ptree in row 1 col 0, 4 rows, 2 cols
@@ -134,8 +135,8 @@ class BuildGui():
         self.ptree_layout.setRowStretch(2, 1)
 
         # build plot window 
-        self.plots_widget = pg.Qt.QtGui.QWidget()
-        self.plots_layout = pg.Qt.QtGui.QGridLayout()
+        self.plots_widget = pg.Qt.QtWidgets.QWidget()
+        self.plots_layout = pg.Qt.QtWidgets.QGridLayout()
         self.plots_widget.setLayout(self.plots_layout)
         self.plots_layout.setContentsMargins(4, 4, 4, 4)
         self.plots_layout.setSpacing(2)
@@ -220,12 +221,12 @@ class BuildGui():
 def test():
     app = pg.mkQApp()
     RDT =  ReadDataTable() 
-    alldays, tree, df = RDT.readtable(fn='/Users/pbmanis/Desktop/Python/mrk-nf107/NF107Ai32_Het/NF107Ai32_Het.pkl',
+    alldays, tree, df = RDT.readtable(fn='/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het.pkl',
         datainfo='images')
 
     G = BuildGui(tree)
     if (sys.flags.interactive != 1): #  or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
-        pg.Qt.QtGui.QApplication.instance().exec_()
+        pg.Qt.QtWidgets.QApplication.instance().exec()
 
 
 

@@ -18,7 +18,8 @@ from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ..ephysanalysis import RmTauAnalysis, SpikeAnalysis, acq4read
+from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
+from ..datareaders import acq4read
 from ..mini_analyses import minis_methods, minis_methods_common
 from . import digital_filters as FILT
 from . import functions as FN

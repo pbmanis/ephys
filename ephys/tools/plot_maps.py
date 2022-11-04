@@ -33,7 +33,7 @@ from matplotlib.widgets import RectangleSelector
 from pylibrary.plotting import picker
 from pylibrary.plotting import plothelpers as PH
 
-from ..ephysanalysis import acq4read as ARC
+from ..datareaders import acq4read as ARC
 from . import boundrect as BR
 from . import digital_filters as FILT
 

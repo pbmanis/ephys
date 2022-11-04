@@ -86,7 +86,7 @@ import pandas as pd
 # import pandas_compat # for StringIO - separate package - but only for pandas < 0.24 or so
 from io import StringIO
 
-from ephys.ephysanalysis import acq4read
+from ..datareaders import acq4read
 import MetaArray
 
 def ansi_colors(color):

@@ -24,7 +24,7 @@ import pyqtgraph as pg
 from pylibrary.tools import cprint as CP
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from .. import ephysanalysis as EP
+from .. import ephys_analysis as EP
 
 cprint = CP.cprint
 # datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'

@@ -17,7 +17,7 @@ from collections import OrderedDict
 from pathlib import Path
 import pandas as pd
 import matplotlib
-matplotlib.use('Qt5Agg')
+matplotlib.use('QtAgg')
 import matplotlib.pyplot as mpl
 from matplotlib.widgets import RectangleSelector
 import matplotlib.backend_bases as MBB
@@ -25,7 +25,7 @@ import scipy.ndimage as SND
 
 import pylibrary.plotting.plothelpers as PH
 import seaborn as sns
-import ephys.ephysanalysis.acq4read as ARC
+import ephys.datareaders.acq4read as ARC
 import MetaArray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
@@ -36,7 +36,7 @@ import pprint
 import textwrap as WR
 import collections
 import tifffile as tf
-import ephys.ephysanalysis.boundrect as BR
+import ephys.ephys_analysis.boundrect as BR
 import ephys.mapanalysistools.digital_filters as FILT
 import mahotas as MH
 import nf107.set_expt_paths as set_expt_paths

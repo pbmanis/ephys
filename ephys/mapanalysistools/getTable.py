@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
-from ephys.ephysanalysis import acq4read
+from ephys.datareaders import acq4read
 from ephys.mapanalysistools import analyzeMapData as AMD
 
 from pyqtgraph.parametertree import Parameter, ParameterTree

@@ -23,7 +23,7 @@ import numpy as np
 import pylibrary.tools.cprint as CP
 import pylibrary.tools.tifffile as tf
 import scipy.ndimage as SND
-# from ephys.ephysanalysis import MetaArray as EM
+# from ephys.ephys_analysis import MetaArray as EM
 from pyqtgraph import configfile
 
 import MetaArray as EM

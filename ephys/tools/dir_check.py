@@ -40,7 +40,7 @@ from typing import List, Union
 
 import dateutil.parser as DUP
 
-from ephys.ephysanalysis import acq4read
+from ephys.datareaders import acq4read
 from termcolor import colored
 
 """

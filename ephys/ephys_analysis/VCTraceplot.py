@@ -21,7 +21,7 @@ from matplotlib.collections import PatchCollection
 import MetaArray as EM
 
 from ..tools import digital_filters as DF
-from . import acq4read
+from ..datareaders import acq4read
 
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'

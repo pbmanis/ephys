@@ -13,7 +13,7 @@ def main():
     sys.path.insert(0, str(path))
 
     # Allow user to audit tests with --audit flag
-    import ephys.ephysanalysis
+    import ephys.ephys_analysis
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
@@ -34,6 +34,8 @@ def main():
             break
     if add_path:
         flags.append('ephys/mini_analyses')
+        flags.append('ephys/ephys_analysis')
+        flags.append('ephys/psc_analysis')
 
     # ignore the an cache
     # flags.append('--ignore=minis/somedir')

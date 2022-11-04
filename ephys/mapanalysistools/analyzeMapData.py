@@ -15,10 +15,10 @@ import timeit
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Tuple, Union
 
 import dill as pickle
-import ephys.ephysanalysis as EP
+import ephys.ephys_analysis as EP
 import ephys.mini_analyses as minis
 import ephys.tools.digital_filters as FILT
 import ephys.tools.functions as functions

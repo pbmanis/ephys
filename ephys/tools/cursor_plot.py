@@ -14,7 +14,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-import ephys.ephysanalysis as EP
+import ephys.ephys_analysis as EP
 import pylibrary.tools.fileselector as FS
 import lmfit
 # os.environ['QT_MAC_WANTS_LAYER'] = '1'

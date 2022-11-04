@@ -18,7 +18,7 @@ from pylibrary.tools import cprint
 
 CP = cprint.cprint
 
-import ephys.ephysanalysis as EP
+import ephys.ephys_analysis as EP
 from ephys.tools import digital_filters as DF
 from . import minis_methods as minis
 

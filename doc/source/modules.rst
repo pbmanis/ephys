@@ -3,40 +3,40 @@ Modules
 .. toctree::
     :maxdepth: 1
 
-.. automodapi:: ephys.ephysanalysis.acq4read
+.. automodapi:: ephys.ephys_analysis.acq4read
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.DataPlan
+.. automodapi:: ephys.ephys_analysis.DataPlan
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.IVSummary
+.. automodapi:: ephys.ephys_analysis.IVSummary
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.VCSummary
+.. automodapi:: ephys.ephys_analysis.VCSummary
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.RmTauAnalysis
+.. automodapi:: ephys.ephys_analysis.RmTauAnalysis
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.SpikeAnalysis
+.. automodapi:: ephys.ephys_analysis.SpikeAnalysis
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.PSCAnalyzer
+.. automodapi:: ephys.ephys_analysis.PSCAnalyzer
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.EPSC_analyzer
+.. automodapi:: ephys.ephys_analysis.EPSC_analyzer
         :no-inheritance-diagram:
         
-.. automodapi:: ephys.ephysanalysis.ReadDataTable
+.. automodapi:: ephys.ephys_analysis.ReadDataTable
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.MakeClamps
+.. automodapi:: ephys.ephys_analysis.MakeClamps
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.MatdatacRead
+.. automodapi:: ephys.ephys_analysis.MatdatacRead
         :no-inheritance-diagram:
 
-.. automodapi:: ephys.ephysanalysis.DatacReader
+.. automodapi:: ephys.ephys_analysis.DatacReader
         :no-inheritance-diagram:
 
 

@@ -44,7 +44,7 @@ from random import sample
 
 import numpy as np
 import scipy.signal
-from ephys.ephysanalysis import c_deriv
+from ephys.ephys_analysis import c_deriv
 from numba import jit
 from numpy import ma as ma
 from scipy import fftpack as spFFT
@@ -74,6 +74,138 @@ def nb_deriv(x, y, order=1):
             )
         d = deriv
     return deriv
+
+# @jit(nopython=True, parallel=False, cache=False)
+def nb_clean_spiketimes(
+    spikeTimes: Union[List, np.ndarray], mindT: float = 0.7
+) -> Union[List, np.ndarray]:
+    """
+    Clean up spike time array, removing all less than mindT
+
+    Parameters
+    ----------
+    spikeTimes : list or numpy array (1-D)
+        array of the spike times
+    
+    mindT : float (default : 0.7)
+        minimum time between spikes, in the same units as spikeTimes
+        (normally this will be in milliseconds or seconds)
+    
+    Return
+    ------
+    spikeTimes : list or numpy array (1-D)
+        A cleaned list of the spike times where the events are at least
+        mindT appart.
+        Note: If no spikes or just one spike in the input array, just return the array
+
+    """
+    st = np.array(spikeTimes)
+    print("mindT: ", mindT)
+    if st.shape[0] > 1:
+        dst = np.diff(st)
+        sp_ok = np.argwhere(dst > mindT)
+        sp_ok_i = np.zeros(len(sp_ok)+1)
+        print(dst)
+        print("spok: ", sp_ok)
+        sp_ok_i[0] = st[0]
+        print([i for i in sp_ok_i])
+        sp_ok_i[1:] = [st[int(i)+1] for i in sp_ok_i]
+        st[1:] = st[dst] 
+        #np.append(st, [spikeTimes[s + 1] for s in sok])
+        return st
+    else:
+        return st
+
+def test_clean():
+    x = [0.1, 0.1002, 0.2, 0.2002, 0.3, 0.4, 0.5, 0.5001]
+    print(x)
+    print(nb_clean_spiketimes(x, mindT=0.001))
+
+@jit(nopython=False, parallel=False, cache=False)
+def nb_box_spike_find(x:np.ndarray, y:np.ndarray, dt:float, 
+        thr:float=-35.0, C1:float=-12.0, C2:float=11.0, dt2:float=1.75,
+        data_time_units:str='s') -> np.ndarray:
+        """
+        Find spikes using a box method:
+        Must be > threshold, and be above the rising/falling values in the window dt2
+        Units must be consistent: x, dt, dt2 (s or ms)
+        Unist must be consistent: y, thr, C1, C2 (V or mV)
+        Note: probably works best with mV and ms, given the constants above.
+        to C1, C2 and the width dt2
+        From Hight and Kalluri, J Neurophysiol., 2016
+        Note: Implementation is in cython (pyx) file in ephys/ephysanalysis
+        
+        Returns an array of indices in x where spikes occur
+        """
+        spikes = np.zeros_like(y)
+        c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
+            x.view(np.ndarray),
+            y.view(np.ndarray),
+            x.shape[0] - 1,
+            thr,  # threshold -35 mV
+            C1,  #  # slope value
+            C2,  # slope value
+            dt2,  # spike window (nominal 1.75 msec)
+            spikes,  # calculated spikes (times, set to 1 else 0)
+        )
+        # print('boxspikefind: ', spikes)
+        # spikes = [s[0] for s in spikes] # make into 1-d array
+        sf = 1.0
+        if data_time_units == 'ms':
+            dt *= 1e3
+        spikes = np.argwhere(spikes > 0.0) * dt
+        # print('thr c1 c2: ', thr, C1, C2, dt2)
+        # print('boxspikefind: ', spikes)
+        spkt = np.array([s[0] for s in spikes])
+        # print('spkt: ', spkt)
+        return spkt
+
+def nb_arg_relmax(
+        x:np.ndarray, vma:np.ndarray, t0:float, t1:float,
+        thresh: float, refract:float, mindip:float, dt: float
+        ):
+        #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
+        order = int(refract / dt) + 1
+        stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
+        # argrelmax seems to miss peaks occasionally
+        # spks = scipy.signal.argrelmax(vma, order=order)[0]
+        # stn = spks[np.where(vma[spks] >= thresh)[0]]
+        if len(stn) > 0:
+            stn2 = [stn[0]]
+        else:
+            stn2 = []
+        # filter peaks by checking that valleys between pairs
+        # are sufficiently deep. Note that this only checks
+        # BETWEEN spikes, so we need to do an additional
+        # check of the last "spike" separately
+        removed = []
+        t_forward = int(0.010 / dt)  # use 10 msec forward for drop
+        for i in range(len(stn) - 1):  # for all putative peaks
+            if i in removed:  # this can happen if event was removed in j loop
+                continue
+            test_end = min([stn[i] + t_forward, stn[i + 1], vma.shape[0]])
+
+            if stn[i] == test_end:
+                continue
+            elif (vma[stn[i]] - np.min(vma[stn[i] : test_end])) < mindip:
+                if (
+                    i == 0
+                ):  # special case: if first event fails, remove it from output list
+                    stn2 = []
+                removed.append(i)
+                continue
+            else:
+                stn2.append(stn[i])
+        # handle "spikes" that do not repolarize and are the *last* spike
+        if len(stn2) > 1:
+            test_end = stn2[-1] + t_forward
+            minv = np.min(vma[stn2[-1] : test_end])
+            if (vma[stn2][-1] - minv) < mindip:
+                removed.append(stn2[-1])
+                stn2 = stn2[:-1]  # remove the last spike
+        stn2 = sorted(list(set(stn2)))
+        xspk = x[[s + int(t0 / dt) for s in stn2]]
+        return xspk
 
 
 class Utility:
@@ -546,6 +678,205 @@ class Utility:
         spkt = [s[0] for s in spikes]
         # print('spkt: ', spkt)
         return spkt
+
+       
+    def findspikes_nb(  # calls numba version... ? 
+        self,
+        x: np.ndarray,  # expected in seconds
+        v: np.ndarray,  # expected in Volts, but can modifiy with scaling below
+        thresh: float = 0.0,  # V
+        t0: Union[float, None] = None,  # sec
+        t1: Union[float, None] = None,  # sec
+        dt: float = 2e-5,  # sec
+        mode: str = "schmitt",
+        detector: str = "threshold",
+        refract: float = 0.0007,  # sec
+        interpolate: bool = False,
+        peakwidth: float = 0.001,  # sec
+        mindip: float = 0.01,  # V
+        data_time_units: str='s',
+        data_volt_units: str='V',
+        debug: bool = False,
+        verify: bool = False,
+    ) -> Union[np.ndarray, List]:
+        """
+        findspikes identifies the times of action potential in the trace v, with the
+        times in t. An action potential is simply timed at the first point that exceeds
+        the threshold... or is the peak. 
+        4/1/11 - added peak mode
+        if mode is none or schmitt, we work as in the past.
+        if mode is peak, we return the time of the peak of the AP instead
+        7/15/11 - added interpolation flag
+        if True, the returned time is interpolated, based on a spline fit
+        if False, the returned time is just taken as the data time. 
+                    
+        Note: TIME UNITS MUST MATCH.
+        Units are set up for SECONDS in time base (acq4 standard)
+        Units are set up for VOLTS in voltages.
+        All time entities should be in SECONDS.
+        The data can be converted from ms to s and from mV to V
+        by setting data_time_units and data_volt_units
+        
+        Parameters
+        ----------
+            x : numpy array (no default)
+                time base, in seconds
+            v : numpy array
+                voltage array to search for spikes (Volts)
+            thresh : float (no default)
+                voltage for threshold detection (Volts)
+            t0, t1 : float (default: None)
+                time for start end end of spike search (seconds)
+                if None, whole trace is used
+            dt : float (default: 20e-5 seconds)
+                sample rate, in seconds
+            mode : string (default: 'schmitt')
+                trigger mode for most detection algorithms
+            detector : string (default: 'threshold')
+                detector mode (choices are 'threshold' and 'argrelmax')
+                Argrelmax works well to find spikes, and algorithm cleans up
+                event list
+            refract : float (default: 0.0007)
+                minimum refractory period for spike inclusion, in seconds (or units of time base)
+        """
+
+        if mode not in ["schmitt", "threshold", "peak"]:
+            raise ValueError(
+                'pylibrary.utility.findspikes: mode must be one of "schmitt", "threshold", "peak" : got %s'
+                % mode
+            )
+        if detector not in ["threshold", "argrelmax", "Kalluri"]:
+            raise ValueError(
+                'pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri": got %s'
+                % detector
+            )
+        assert data_time_units in ['s', 'ms']
+        assert data_volt_units in ['V', 'mV']
+        # parameters for the Hight and Kalluri detecctor
+        dt2 = 1.75e-3  # s
+        C1 = -0.012  # V
+        C2 = 0.011  # V
+        if data_time_units == 'ms':
+            x = x*1e-3   # convert to secs
+            dt = dt*1e-3
+            
+        if data_volt_units == 'mV':
+            v = v*1e-3
+            thresh = thresh*1e-3
+            # C1 = C1 * 1e-3
+            # C2 = C2 * 1e-3
+
+        if detector == "Kalluri":
+            print("Kalluri")
+            return nb_box_spike_find(
+                x=x, y=v, dt=dt, thr=thresh, C1=C1, C2=C2, dt2=dt2,
+                data_time_units=data_time_units,
+            )
+
+        if t1 is not None and t0 is not None:
+            xt = ma.masked_outside(x, t0, t1)
+            vma = ma.array(v, mask=ma.getmask(xt))
+            xt = ma.compressed(xt)  # convert back to usual numpy arrays then
+            vma = ma.compressed(vma)
+        else:
+            xt = np.array(x)
+            vma = np.array(vma)
+        # print('max x: ', np.max(xt))
+       #  print('dt: ', dt)
+
+        dv = np.diff(vma) / dt  # compute slope
+        dv2 = np.diff(dv) / dt  # and second derivative
+        st = np.array([])  # store spike times
+
+        if detector == "threshold":
+            print("threshold")
+            spv = np.where(vma > thresh)[0].tolist()  # find points above threshold
+            sps = (
+                np.where(dv > 0.0)[0] + 1
+            ).tolist()  # find points where slope is positive
+            sp = list(
+                set(spv) & set(sps)
+            )  # intersection defines putative spike start times
+            # then go on to mode...
+
+        elif detector == "argrelmax":
+            print("argrelmax")
+            xspk = nb_arg_relmax(x=xt, vma=vma, t0=t0, t1=t1,
+                 thresh=thresh, refract=refract, mindip=mindip, dt=dt)
+            return nb_clean_spiketimes(xspk, mindT=refract)  # done here.
+        else:
+            raise ValueError("Utility:findspikes: invalid detector")
+
+        sp.sort()  # make sure all detected events are in order (sets is unordered)
+
+        spl = sp
+        sp = tuple(sp)  # convert to tuple
+        if sp == ():
+            return st  # nothing detected
+
+        if mode in [
+            "schmitt",
+            "Schmitt",
+        ]:  # normal operating mode is fixed voltage threshold, with hysterisis
+            for k in sp:
+                xx = xt[k - 1 : k + 1]
+                y = vma[k - 1 : k + 1]
+                if interpolate:
+                    m = (y[1] - y[0]) / dt  # local slope
+                    b = y[0] - (xx[0] * m)
+                    st = np.append(st, xx[1] + (thresh - b) / m)
+                else:
+                    if len(x) > 1:
+                        st = np.append(st, xx[1])
+
+        elif mode == "peak":
+            kpkw = int(peakwidth / dt)
+            z = (np.array(np.where(np.diff(spv) > 1)[0]) + 1).tolist()
+            #            print('z: ', z)
+            z.insert(0, 0)  # first element in spv is needed to get starting AP
+            for k in z:
+                zk = spv[k]
+                spk = np.argmax(vma[zk : zk + kpkw]) + zk  # find the peak position
+                xx = xt[spk - 1 : spk + 2]
+                y = vma[spk - 1 : spk + 2]
+                if interpolate:
+                    try:
+                        # mimic Igor FindPeak routine with B = 1
+                        m1 = (y[1] - y[0]) / dt  # local slope to left of peak
+                        b1 = y[0] - (xx[0] * m1)
+                        m2 = (y[2] - y[1]) / dt  # local slope to right of peak
+                        b2 = y[1] - (xx[1] * m2)
+                        mprime = (
+                            m2 - m1
+                        ) / dt  # find where slope goes to 0 by getting the line
+                        bprime = m2 - ((dt / 2.0) * mprime)
+                        st = np.append(st, -bprime / mprime + xx[1])
+                    except:
+                        continue
+                else:
+                    # print('utility: yere', x)
+                    if len(xx) > 1:
+                        st = np.append(st, xx[1])  # always save the first one
+
+        # clean spike times
+        # # st = clean_spiketimes(st, mindT=refract)
+        # print(("nspikes detected: ", len(st)), 'max spike time:', np.max(st))
+        # st2 = self.clean_spiketimes(st, mindT=refract)
+        # print(("nspikes detected after cleaning: ", len(st2)))
+
+        if verify:
+            from matplotlib import pyplot as mpl
+
+            print(("nspikes detected: ", len(st)))
+            mpl.figure()
+            mpl.plot(x, v, "k-", linewidth=0.5)
+            mpl.plot(st, thresh * np.ones_like(st), "ro")
+            mpl.plot(xt[spv], v[spv], "r-")
+            mpl.plot(xt[sps], v[sps], "m-", linewidth=1)
+            mpl.show()
+        # exit(1)
+
+        return nb_clean_spiketimes(st, mindT=refract)
 
     def findspikes(
         self,
@@ -1371,6 +1702,9 @@ class Utility:
 if __name__ == "__main__":
     # test sequence parser
     
+    test_clean()
+    exit()
+
     U = Utility()
     seq1 = "1;5"
     r, n = U.seqparse(seq1)

@@ -17,7 +17,7 @@ import pylibrary.plotting.plothelpers as PH
 
 import MetaArray as EM
 
-from . import acq4read
+from ..datareaders import acq4read
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"

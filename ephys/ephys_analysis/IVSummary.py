@@ -12,7 +12,9 @@ import numpy as np
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools import cprint
 
-from . import RmTauAnalysis, SpikeAnalysis, acq4read
+from ..datareaders import acq4read
+
+from . import RmTauAnalysis, SpikeAnalysis
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"

@@ -26,8 +26,6 @@ from scipy.io import matlab
 
 import MetaArray as MA
 
-from .IVSummary import IVSummary as IVS
-
 """
 Helper functions
 """

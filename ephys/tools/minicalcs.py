@@ -14,7 +14,8 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from . import digital_filters as FILT
 
-from ..ephysanalysis import RmTauAnalysis, SpikeAnalysis, acq4read
+from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
+from ..datareaders import acq4read
 from ..mini_analyses import minis_methods, minis_methods_common
 
 class MiniCalcs():
