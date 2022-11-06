@@ -15,7 +15,7 @@ setup(name='ephys',
       author_email='pmanis@med.unc.edu',
       license='MIT',
       packages=find_packages(include=['ephys*']),
-      ext_modules=cythonize(["ephys/mini_analyses/clembek.pyx", "ephys/ephysanalysis/c_deriv.pyx"]),
+      ext_modules=cythonize(["ephys/mini_analyses/clembek.pyx", "ephys/ephys_analysis/c_deriv.pyx"]),
       zip_safe=False,
       entry_points={
           'console_scripts': [
