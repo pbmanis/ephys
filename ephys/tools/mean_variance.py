@@ -3,7 +3,7 @@ non-stationary noise analysis
 
 """
 
-from random import random, seed
+from numpy.random import default_rng
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ from lmfit.models import QuadraticModel, LinearModel
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from scipy.interpolate import UnivariateSpline
 from scipy.stats import linregress
+import digital_filters as DF
 
 class NSFA():
     """Non stationary fluctuation analysis
@@ -50,7 +51,7 @@ class NSFA():
         Returns
         -------
         the computed slope at each point.
-        Points at the start and end of the array are set to np.nan
+
         """
         assert (N >= 3) and ((N % 2) == 1)
         derivs = np.nan*np.zeros_like(y)
@@ -58,18 +59,18 @@ class NSFA():
         right = int((N+1)/2)
         for i in range(y.shape[0]):
             il = i - left
-            ir = i + right
+            ir = i + right + 1
             if il < 0:
                 il = 0
                 ir = 3
             if ir > y.shape[0]:
                 ir = y.shape[0]
                 il = y.shape[0]-3
-            res = linregress(x[i-il:i+ir], y[i-il:i+ir])
+            res = linregress(x[il:ir], y[il:ir])
             derivs[i] = res.slope
         return derivs
 
-    def align_on_rising(self, prewindow:float=0.007, postwindow=0.025, lowess_frac:float=0.08):
+    def align_on_rising(self, prewindow:float=0.030, postwindow=0.03, Nslope:int=7, plot:bool=False):
         """Align the traces on the rising slope of an event.
 
         Parameter
@@ -81,55 +82,71 @@ class NSFA():
         list of ints
             indices to the maximum rising slope before the peak
         """
-        sl_pre = int(prewindow/self.dt)
-        ev_post = int(postwindow/self.dt)
         self.max_slope_pts = np.zeros_like(self.events)
         res = []
         d = []
         t = []
-        event_indx = []
         maxsl = []
         deriv = []
-        Nslope = 7
         for itr in range(self.events.shape[0]):
-            event_indices = list(range(self.eventtimes[itr]-sl_pre,self.eventtimes[itr]+ev_post))
-            event_indx.append(event_indices)
-            rise  = self.events[itr][event_indices]
-            rise_t = self.timebase[event_indices]-prewindow
+            rise = self.events[itr]
+            rise_t = self.timebase
             d.append(rise)
             t.append(rise_t)
-            #rise_sm = lowess(rise, rise_t, frac = lowess_frac, return_sorted=False)
             slope = self.linear_slope(rise_t, rise, N=Nslope)
-
-
-            # rise_sm = UnivariateSpline(rise_t, rise, k=2)
-            # res.append(rise_sm(rise_t))
-
-            # dvdt_grad = np.gradient(res[-1], self.dt)
-            # gradmax = np.argmax(dvdt_grad)
             deriv.append(slope)
-            # maxsl.append(gradmax)
-            maxsl.append(np.nanargmax(slope))
+            maxsl.append(np.argmax(slope))
 
+        mint = 1000.0
+        maxt = -1000.0
+        for itr in range(self.events.shape[0]):
+            align_i = int(maxsl[itr])
+            align_t = self.dt*align_i
+            tx = t[itr]-align_t
+            if np.min(tx) < mint:
+                mint = np.min(tx)
+            if np.max(tx) > maxt:
+                maxt = np.max(tx)
+        tnew = np.arange(mint, maxt, self.dt)
+        for itr in range(self.events.shape[0]):
+            align_i = int(maxsl[itr])
+            align_t = self.dt*align_i
+            d[itr] = np.interp(tnew, t[itr]-align_t, d[itr])
+        meantr = np.mean(np.array(d), axis=0)
+        self.d = np.array(d)
+        self.t = tnew
+        self.meantr = meantr
+        # mpl.plot(tnew, meantr)
+        # mpl.show()
+
+
+        if not plot:
+            return
         f, ax = mpl.subplots(3,1, figsize=(8, 9))
         c = ['r', 'g', 'b', 'y', 'm']
         for itr in range(self.events.shape[0]):
             colr = c[itr%(len(c))]
-            ax[0].plot(t[itr], d[itr], color=colr) # self.events[itr][event_indices])
-
-            ax[1].plot(t[itr]-self.dt*maxsl[itr], d[itr], color=colr, linewidth=0.25) # self.events[itr][event_indices])
-            if len(res) > 0:
-                ax[1].plot(t[itr]-self.dt*maxsl[itr], res[itr], '--', color=colr)
-            print(maxsl[itr])
-            align_t = self.dt*maxsl[itr]
-            align_i = int(maxsl[itr]*self.dt)
-            if itr == 0:
-                print(t[itr][0])
-            ax[2].plot(t[itr] - align_t, deriv[itr], '-', color=colr)
+            align_i = int(maxsl[itr])
+            align_t = self.dt*align_i
+            ax[0].plot(self.timebase, self.events[itr], color=colr, linewidth=0.33)
+            ax[0].plot(self.timebase[self.eventtimes[itr]],
+                self.events[itr][self.eventtimes[itr]], "x", color=colr, markersize=4,
+                )
+            ax[0].plot(t[itr][align_i],
+                       self.events[itr][align_i], 'x', color=colr, markersize=4)
+            ax[1].plot(t[itr]-align_t, d[itr], color=colr, linewidth=0.33) # self.events[itr][event_indices])
+            ax[2].plot(t[itr], deriv[itr], '-', color=colr, linewidth=0.33)
             ax[2].plot(t[itr][align_i],
-                       deriv[itr][align_i], 'kx')
+                       deriv[itr][align_i], 'x', color=colr, markersize=4)
+        yl1 = ax[1].get_ylim()
+        ax[1].plot([0., 0.], yl1, 'k-', linewidth=0.25, alpha = 0.5)
         ax[1].sharex(ax[0])
+        yl2 = ax[2].get_ylim()
+        ax[2].plot([0., 0.], yl2, 'k-', linewidth=0.25, alpha = 0.5)
         ax[2].sharex(ax[0])
+        ax[0].set_title("PSCs")
+        ax[1].set_title("max slope aligned PSCs at 0 time")
+        ax[2].set_title("Aligned derivative of PSCs")
         mpl.show()
 
     
@@ -137,44 +154,50 @@ class TestGenerator():
     def __init__(self):
         self.set_transistions()
         self.dt = 0.0001
-        self.dur = 0.10
-        self.delay = 0.005
+        self.dur = 0.10  # whole event duration
+        self.delay = 0.005  # delay to start of event
         self.delay_tau = 0.001
         self.npts = int(self.dur/self.dt)
         self.time = np.arange(0, self.dt*self.npts, self.dt)
-        self.n_trials = 3
-        self.n_chans = 10000 # openings in one event
-        self.i_chan = 5
-        self.noise_var = 0.0 
+        self.n_trials = 100
+        self.n_chans = 50 # openings in one event
+        self.i_chan = 5e-12
+        self.noise_var = 3e-12 
+        self.i_chan_var = 0e-13
         self.max_prob = 0.6
+        self.rng = default_rng(314159)
 
     def set_transistions(self):
-        self.alpha = 0.0025 # opening rate
-        self.beta = 0.005 # closing rate
+        """Set forward and backward rates for channel c <-> o
+        """        
+        self.alpha = 0.002 # opening rate
+        self.beta = 0.010 # closing rate
         self.d0 = 0.0001
 
     def generate_sweeps(self):
-        delay = np.random.normal(scale=self.delay_tau, size=(self.n_chans, self.n_trials))+self.delay
-        dels = np.random.exponential(scale = self.alpha, size=(self.n_chans, self.n_trials)) + delay
-        durs = np.random.exponential(scale = self.beta,  size=(self.n_chans, self.n_trials)) + delay
-        probs = np.random.uniform(size=(self.n_chans, self.n_trials))
+        # use gamma as it has minimumum time
+        delay = 0.005 # self.rng.gamma(shape=2., scale=self.delay_tau, size=(self.n_chans, self.n_trials))+self.delay
+        dels = self.rng.exponential(scale = self.alpha, size=(self.n_chans, self.n_trials)) + delay
+        durs = self.rng.exponential(scale = self.beta,  size=(self.n_chans, self.n_trials))
+        chans = self.rng.normal(loc=self.i_chan, scale=self.i_chan_var, size=(self.n_chans, self.n_trials))
+        probs = self.rng.uniform(size=(self.n_chans, self.n_trials))
         idels = dels/self.dt
         idurs = durs/self.dt
         sweeps = np.zeros((self.n_trials, self.npts))
         for i, s in enumerate(range(sweeps.shape[0])):
-            sweeps[i] = np.random.normal(0., scale=self.noise_var, size=self.npts)
+            sweeps[i] = self.rng.normal(0., scale=self.noise_var, size=self.npts)
             for n in range(self.n_chans):
                 if probs[n, i] < self.max_prob:
-                    sweeps[i, int(idels[n, i]):(int(idels[n, i] + idurs[n, i]))] += self.i_chan
-
+                    sweeps[i, int(idels[n, i]):(int(idels[n, i] + idurs[n, i]))] += chans[n, i]
+            sweeps[i] = DF.SignalFilter_LPFButter(sweeps[i]-np.mean(sweeps[i][:10]), 3000.0, 1./self.dt, NPole=8)
         return sweeps
     
 
-    def fit_meanvar(self):
+    def fit_meanvar(self, mean:np.ndarray, var:np.ndarray):
         qmod = QuadraticModel()
 
-        pars = qmod.guess(self.var, x=self.mean)
-        qfit = qmod.fit(self.var, pars, x=self.mean)
+        pars = qmod.guess(data=var, x=mean)
+        qfit = qmod.fit(var, pars, x=mean)
         qfit.params['c'].set( vary=False, value=0.0)
         print(qfit.fit_report(min_correl=0.25))
         """fit parameters:
@@ -187,7 +210,7 @@ class TestGenerator():
         """
         NChan = -1.0/qfit.values['a']
         gamma = qfit.values['b']
-        Pomax = np.max(self.var)/ (2* gamma * NChan)
+        Pomax = np.max(var)/ (2.0 * gamma * NChan)
 
         print(f"nchan = {NChan:.3f}  gamma = {gamma:.3e}, Pomax = {Pomax:.2f}")
 
@@ -196,17 +219,29 @@ class TestGenerator():
     def run(self):
         sweeps = self.generate_sweeps()
         self.sweeps = sweeps
-        f, ax = mpl.subplots(3,1)
-        for i in range(np.min((2, sweeps.shape[0]))):
-            ax[0].plot(self.time, sweeps[i] + self.i_chan*1.2*i)
         self.mean = np.mean(sweeps, axis=0)
         self.var = np.var(sweeps, axis=0)
-        ax[1].plot(self.time, self.mean)
-        ax[1].plot(self.time, self.var)
-        ax[2].scatter(self.mean, self.var ,s=12)
-        qfit = self.fit_meanvar()
-        ax[2].plot(self.mean, qfit.best_fit, 'r--')
-        mpl.show()
+        qfit = self.fit_meanvar(self.mean, self.var)
+        self.plot(qfit, self.sweeps)
+        
+    
+    def plot(self, qfit, time, sweeps):
+        f, ax = mpl.subplots(3,1)
+        for i in range(np.min((100, np.array(sweeps).shape[0]))):
+            ax[0].plot(time, sweeps[i] + self.i_chan, linewidth=0.25)
+        
+        ax[1].plot(time, self.mean, 'b-', linewidth=0.5)
+        ax2 = ax[1].twinx()
+        imax_i = np.argmax(self.mean)
+        ax2.plot(time, self.var, '-', color='grey', linewidth=0.5)
+        ax2.plot(time[imax_i:], self.var[imax_i:], '-', color='c', linewidth=0.75)
+
+        ax2.set_ylim((0, np.max(self.var)))
+        imax_i = np.argmax(self.mean)
+        qfit = self.fit_meanvar(mean=self.mean[imax_i:], var=self.var[imax_i:])
+        ax[2].scatter(self.mean[imax_i:], self.var[imax_i:], c='k', s=9)
+        ax[2].plot(self.mean[imax_i:], qfit.best_fit, 'r--')
+
 
 
 if __name__ == "__main__":
@@ -215,5 +250,11 @@ if __name__ == "__main__":
     sweeps = tg.generate_sweeps()
     # tg.run()
     NSA = NSFA(timebase=tg.time, eventtraces=sweeps, eventtimes= [np.argmax(tr) for tr in sweeps])
-    NSA.align_on_rising()
+    NSA.align_on_rising(Nslope=13)
+    meanI = np.mean(NSA.d, axis=0)
+    varI = np.var(NSA.d, axis=0)
+    tg.mean=meanI
+    tg.var=varI
+    qfit = tg.fit_meanvar(mean= meanI, var = varI)
+    tg.plot(qfit, NSA.t, NSA.d)
     mpl.show()
