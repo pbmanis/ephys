@@ -8,7 +8,7 @@ from scipy.interpolate import UnivariateSpline
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
-from lmfit.models import QuadraticModel
+from lmfit.models import QuadraticModel, LinearModel
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
 class NSFA():
@@ -51,29 +51,42 @@ class NSFA():
         for itr in range(self.events.shape[0]):
             # print(self.eventtimes[itr])
             event_indices = list(range(self.eventtimes[itr]-sl_pre,self.eventtimes[itr]+ev_post))
-            # print(event_indices)
             event_indx.append(event_indices)
             rise  = self.events[itr][event_indices]
             rise_t = self.timebase[event_indices]
-            # print(np.argmin(rise_t), np.argmax(rise_t))
-            # print(rise_t)
             d.append(rise)
             t.append(rise_t) 
             #rise_sm = lowess(rise, rise_t, frac = lowess_frac, return_sorted=False)
-            rise_sm = UnivariateSpline(rise_t, rise, k=5, s=1)
-            # print(rise_sm)
-            res.append(rise_sm(rise_t))
-            # print(len(lowess_tight)*self.dt
-            # , len(rise_t)*self.dt)
+            x = []
+            n = 5
+            ilag = 0
+            slmax= 0.0
+            lm = LinearModel()
+            for i in range(1,len(rise)):
+                lm = LinearModel()
+                if i < n:
+                    s = lm.fit(x=rise_t[ilag:i], y=rise[ilag:i])
+                elif i > len(rise) - n:
+                    s = lm.fit(x=rise_t[i:n], y=rise[i:n])
 
-            dvdt = np.gradient(rise_sm(rise_t), self.dt)
-            # dvdt_s = UnivariateSpline(rise_t, dvdt, k=3, s=0)
-            # dvdt = dvdt_s(dvdt)
-            gradmax = np.argmax(dvdt)
-            deriv.append(dvdt)
-            maxsl.append(gradmax)
+                else:
+                    ilag = i - int(np.floor(ilag/2))
+                    ilead = i + int(np.floor(ilag/2))
+                    s = lm.fit(x = rise_t[ilag:ilead], y = rise[ilag:ilead])
+                if s['m'] > slmax:
+                    slmax = s['m']
+                deriv[i] = s['m']
 
-            # print(maxsl[-1])
+
+            # rise_sm = UnivariateSpline(rise_t, rise, k=2)
+            # res.append(rise_sm(rise_t))
+
+            # dvdt_grad = np.gradient(res[-1], self.dt)
+            # gradmax = np.argmax(dvdt_grad)
+            deriv.append(dvdt_grad)
+            # maxsl.append(gradmax)
+            maxsl.append(slmax)
+
 
         f, ax = mpl.subplots(3,1, figsize=(8, 9))
         c = ['r', 'g', 'b', 'y', 'm']
@@ -81,7 +94,7 @@ class NSFA():
             colr = c[itr%(len(c))]
             ax[0].plot(t[itr], d[itr], color=colr) # self.events[itr][event_indices])
 
-            ax[1].plot(t[itr]-self.dt*maxsl[itr], d[itr], color=colr) # self.events[itr][event_indices])
+            ax[1].plot(t[itr]-self.dt*maxsl[itr], d[itr], color=colr, linewidth=0.25) # self.events[itr][event_indices])
             ax[1].plot(t[itr]-self.dt*maxsl[itr], res[itr], '--', color=colr)
             ax[2].plot(t[itr]-self.dt*maxsl[itr], deriv[itr], '-', color=colr)
             # ax[1].plot(t[itr][int(maxsl[itr]*self.dt)],
