@@ -4,26 +4,106 @@ non-stationary noise analysis
 """
 
 from random import random, seed
-
-from lmfit.models import QuadraticModel
+from scipy.interpolate import UnivariateSpline
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
+from lmfit.models import QuadraticModel
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
+class NSFA():
+    """Non stationary fluctuation analysis
+    Traynelis et al 1993
+    Silver, Cull-Candy and Takahashi, 1996
 
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    def __init__(self, timebase:np.ndarray, eventtraces:np.ndarray, eventtimes:np.ndarray):
+        self.timebase = timebase
+        self.dt = np.mean(np.diff(self.timebase))
+        self.events = eventtraces # the actual traces of individual "cut out" events, each of length timebase
+        self.eventtimes = eventtimes # indicies to the peak times of events
 
+    def align_on_rising(self, prewindow:float=0.007, postwindow=0.025, lowess_frac:float=0.08):
+        """Align the traces on the rising slope of an event.
+
+        Parameter
+        ---------
+        prewindow : float (time, seconds)
+            window to look for max rising 
+        Returns
+        -------
+        list of ints
+            indices to the maximum rising slope before the peak
+        """
+        sl_pre = int(prewindow/self.dt)
+        ev_post = int(postwindow/self.dt)
+        self.max_slope_pts = np.zeros_like(self.events)
+        res = []
+        d = []
+        t = []
+        event_indx = []
+        maxsl = []
+        deriv = []
+        for itr in range(self.events.shape[0]):
+            # print(self.eventtimes[itr])
+            event_indices = list(range(self.eventtimes[itr]-sl_pre,self.eventtimes[itr]+ev_post))
+            # print(event_indices)
+            event_indx.append(event_indices)
+            rise  = self.events[itr][event_indices]
+            rise_t = self.timebase[event_indices]
+            # print(np.argmin(rise_t), np.argmax(rise_t))
+            # print(rise_t)
+            d.append(rise)
+            t.append(rise_t) 
+            #rise_sm = lowess(rise, rise_t, frac = lowess_frac, return_sorted=False)
+            rise_sm = UnivariateSpline(rise_t, rise, k=5, s=1)
+            # print(rise_sm)
+            res.append(rise_sm(rise_t))
+            # print(len(lowess_tight)*self.dt
+            # , len(rise_t)*self.dt)
+
+            dvdt = np.gradient(rise_sm(rise_t), self.dt)
+            # dvdt_s = UnivariateSpline(rise_t, dvdt, k=3, s=0)
+            # dvdt = dvdt_s(dvdt)
+            gradmax = np.argmax(dvdt)
+            deriv.append(dvdt)
+            maxsl.append(gradmax)
+
+            # print(maxsl[-1])
+
+        f, ax = mpl.subplots(3,1, figsize=(8, 9))
+        c = ['r', 'g', 'b', 'y', 'm']
+        for itr in range(self.events.shape[0]):
+            colr = c[itr%(len(c))]
+            ax[0].plot(t[itr], d[itr], color=colr) # self.events[itr][event_indices])
+
+            ax[1].plot(t[itr]-self.dt*maxsl[itr], d[itr], color=colr) # self.events[itr][event_indices])
+            ax[1].plot(t[itr]-self.dt*maxsl[itr], res[itr], '--', color=colr)
+            ax[2].plot(t[itr]-self.dt*maxsl[itr], deriv[itr], '-', color=colr)
+            # ax[1].plot(t[itr][int(maxsl[itr]*self.dt)],
+            #      res[itr][int(maxsl[itr]*self.dt)], 'kx')
+        ax[1].sharex(ax[0])
+        ax[2].sharex(ax[0])
+        mpl.show()
+
+    
 class TestGenerator():
     def __init__(self):
         self.set_transistions()
-        self.dt = 0.0005
+        self.dt = 0.0001
         self.dur = 0.10
         self.delay = 0.005
+        self.delay_tau = 0.001
         self.npts = int(self.dur/self.dt)
         self.time = np.arange(0, self.dt*self.npts, self.dt)
-        self.n_trials = 400
-        self.n_chans = 50 # # openings in one event
-        self.i_chan = 3.5
-        self.noise_var = 3.0 # self.i_chan
+        self.n_trials = 3
+        self.n_chans = 10000 # openings in one event
+        self.i_chan = 5
+        self.noise_var = 0.0 
         self.max_prob = 0.6
 
     def set_transistions(self):
@@ -31,9 +111,10 @@ class TestGenerator():
         self.beta = 0.005 # closing rate
         self.d0 = 0.0001
 
-    def n_sweeps(self):
-        dels = np.random.exponential(scale = self.alpha, size=(self.n_chans, self.n_trials)) + self.delay
-        durs = np.random.exponential(scale = self.beta,  size=(self.n_chans, self.n_trials)) + self.delay
+    def generate_sweeps(self):
+        delay = np.random.normal(scale=self.delay_tau, size=(self.n_chans, self.n_trials))+self.delay
+        dels = np.random.exponential(scale = self.alpha, size=(self.n_chans, self.n_trials)) + delay
+        durs = np.random.exponential(scale = self.beta,  size=(self.n_chans, self.n_trials)) + delay
         probs = np.random.uniform(size=(self.n_chans, self.n_trials))
         idels = dels/self.dt
         idurs = durs/self.dt
@@ -71,7 +152,7 @@ class TestGenerator():
         return(qfit)
 
     def run(self):
-        sweeps = self.n_sweeps()
+        sweeps = self.generate_sweeps()
         self.sweeps = sweeps
         f, ax = mpl.subplots(3,1)
         for i in range(np.min((2, sweeps.shape[0]))):
@@ -85,12 +166,12 @@ class TestGenerator():
         ax[2].plot(self.mean, qfit.best_fit, 'r--')
         mpl.show()
 
-        
-
-
 
 if __name__ == "__main__":
 
     tg = TestGenerator()
-    tg.run()
-
+    sweeps = tg.generate_sweeps()
+    # tg.run()
+    NSA = NSFA(timebase=tg.time, eventtraces=sweeps, eventtimes= [np.argmax(tr) for tr in sweeps])
+    NSA.align_on_rising()
+    mpl.show()
