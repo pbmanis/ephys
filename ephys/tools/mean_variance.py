@@ -4,12 +4,14 @@ non-stationary noise analysis
 """
 
 from random import random, seed
-from scipy.interpolate import UnivariateSpline
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
+from typing import Tuple
 from lmfit.models import QuadraticModel, LinearModel
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.interpolate import UnivariateSpline
+from scipy.stats import linregress
 
 class NSFA():
     """Non stationary fluctuation analysis
@@ -26,6 +28,46 @@ class NSFA():
         self.dt = np.mean(np.diff(self.timebase))
         self.events = eventtraces # the actual traces of individual "cut out" events, each of length timebase
         self.eventtimes = eventtimes # indicies to the peak times of events
+
+    def linear_slope(self, x: np.ndarray, y:np.ndarray, N:int=3) -> np.array:
+        """Compute the slope of an array by fitting segments of
+        points of length N (N must be odd), and returning the 
+        value and the index of the maximum slope.
+        This function provides local smoothing.
+
+        statsmodel.linregress is rumored to be the fastest way
+        to compute the regression.
+
+        Parameters
+        ----------
+        x: np.ndarray
+            x values (time)
+        y : np.ndarray
+            array of data to test
+        N : int, optional
+            number of points in the linear segments, by default 3
+
+        Returns
+        -------
+        the computed slope at each point.
+        Points at the start and end of the array are set to np.nan
+        """
+        assert (N >= 3) and ((N % 2) == 1)
+        derivs = np.nan*np.zeros_like(y)
+        left = int((N-1)/2)
+        right = int((N+1)/2)
+        for i in range(y.shape[0]):
+            il = i - left
+            ir = i + right
+            if il < 0:
+                il = 0
+                ir = 3
+            if ir > y.shape[0]:
+                ir = y.shape[0]
+                il = y.shape[0]-3
+            res = linregress(x[i-il:i+ir], y[i-il:i+ir])
+            derivs[i] = res.slope
+        return derivs
 
     def align_on_rising(self, prewindow:float=0.007, postwindow=0.025, lowess_frac:float=0.08):
         """Align the traces on the rising slope of an event.
@@ -48,34 +90,16 @@ class NSFA():
         event_indx = []
         maxsl = []
         deriv = []
+        Nslope = 7
         for itr in range(self.events.shape[0]):
-            # print(self.eventtimes[itr])
             event_indices = list(range(self.eventtimes[itr]-sl_pre,self.eventtimes[itr]+ev_post))
             event_indx.append(event_indices)
             rise  = self.events[itr][event_indices]
-            rise_t = self.timebase[event_indices]
+            rise_t = self.timebase[event_indices]-prewindow
             d.append(rise)
-            t.append(rise_t) 
+            t.append(rise_t)
             #rise_sm = lowess(rise, rise_t, frac = lowess_frac, return_sorted=False)
-            x = []
-            n = 5
-            ilag = 0
-            slmax= 0.0
-            lm = LinearModel()
-            for i in range(1,len(rise)):
-                lm = LinearModel()
-                if i < n:
-                    s = lm.fit(x=rise_t[ilag:i], y=rise[ilag:i])
-                elif i > len(rise) - n:
-                    s = lm.fit(x=rise_t[i:n], y=rise[i:n])
-
-                else:
-                    ilag = i - int(np.floor(ilag/2))
-                    ilead = i + int(np.floor(ilag/2))
-                    s = lm.fit(x = rise_t[ilag:ilead], y = rise[ilag:ilead])
-                if s['m'] > slmax:
-                    slmax = s['m']
-                deriv[i] = s['m']
+            slope = self.linear_slope(rise_t, rise, N=Nslope)
 
 
             # rise_sm = UnivariateSpline(rise_t, rise, k=2)
@@ -83,10 +107,9 @@ class NSFA():
 
             # dvdt_grad = np.gradient(res[-1], self.dt)
             # gradmax = np.argmax(dvdt_grad)
-            deriv.append(dvdt_grad)
+            deriv.append(slope)
             # maxsl.append(gradmax)
-            maxsl.append(slmax)
-
+            maxsl.append(np.nanargmax(slope))
 
         f, ax = mpl.subplots(3,1, figsize=(8, 9))
         c = ['r', 'g', 'b', 'y', 'm']
@@ -95,10 +118,16 @@ class NSFA():
             ax[0].plot(t[itr], d[itr], color=colr) # self.events[itr][event_indices])
 
             ax[1].plot(t[itr]-self.dt*maxsl[itr], d[itr], color=colr, linewidth=0.25) # self.events[itr][event_indices])
-            ax[1].plot(t[itr]-self.dt*maxsl[itr], res[itr], '--', color=colr)
-            ax[2].plot(t[itr]-self.dt*maxsl[itr], deriv[itr], '-', color=colr)
-            # ax[1].plot(t[itr][int(maxsl[itr]*self.dt)],
-            #      res[itr][int(maxsl[itr]*self.dt)], 'kx')
+            if len(res) > 0:
+                ax[1].plot(t[itr]-self.dt*maxsl[itr], res[itr], '--', color=colr)
+            print(maxsl[itr])
+            align_t = self.dt*maxsl[itr]
+            align_i = int(maxsl[itr]*self.dt)
+            if itr == 0:
+                print(t[itr][0])
+            ax[2].plot(t[itr] - align_t, deriv[itr], '-', color=colr)
+            ax[2].plot(t[itr][align_i],
+                       deriv[itr][align_i], 'kx')
         ax[1].sharex(ax[0])
         ax[2].sharex(ax[0])
         mpl.show()
