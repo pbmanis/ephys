@@ -767,7 +767,8 @@ class Acq4Read:
             except:
                 CP.cprint("r", 
                     f"acq4read: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
-                raise ValueError(f"file failed: {str(fn):s}")
+                #raise ValueError(f"file failed: {str(fn):s}")
+                print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                 continue
             tr_info = tr[0].infoCopy()
 
