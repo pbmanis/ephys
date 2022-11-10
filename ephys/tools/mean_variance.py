@@ -1,5 +1,5 @@
 """
-non-stationary noise analysis
+Provide and test non-stationary noise analysis
 
 """
 
@@ -159,9 +159,9 @@ class TestGenerator():
         self.delay_tau = 0.001
         self.npts = int(self.dur/self.dt)
         self.time = np.arange(0, self.dt*self.npts, self.dt)
-        self.n_trials = 100
-        self.n_chans = 50 # openings in one event
-        self.i_chan = 5e-12
+        self.n_trials = 400
+        self.n_chans = 20 # openings in one event
+        self.i_chan = 12e-12
         self.noise_var = 3e-12 
         self.i_chan_var = 0e-13
         self.max_prob = 0.6
