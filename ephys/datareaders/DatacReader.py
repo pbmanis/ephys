@@ -22,10 +22,8 @@ necessary structure and information used by acq4 data analysis programs.
 
 """
 
-import sys
+
 import os
-import platform
-import unittest
 import struct
 import string
 import binascii
