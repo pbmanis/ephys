@@ -31,6 +31,8 @@ def mean_I_analysis(
 
     Parameters
     ----------
+    clamps: acq4reader Clamps object holding data etc.
+
     region: tuple, list or numpy array with 2 values (default: None)
         start and end time of a trace used to measure the RMP across
         traces. Note that if slopewin is set, it may replace the region
@@ -73,14 +75,10 @@ def mean_I_analysis(
         )
     results = IAnalysis()
 
-    analysis_region = region.copy()
     if slope and slopewin is not None:
         region = slopewin
 
-    data1 = clamps.traces["Time" : region[0] : region[1]]
-    # print('data shape: ', data1.shape)
-
-    # data2 = clamps.traces.view(np.ndarray)
+    data1 = clamps.traces["Time" : region[0] : region[1]].view(np.ndarray)
     rgn = [int(region[i] / clamps.sample_interval) for i in range(len(region))]
     results.V_cmd = (
         clamps.cmd_wave[:, rgn[0] : rgn[1]].mean(axis=1).view(np.ndarray)
@@ -88,22 +86,19 @@ def mean_I_analysis(
     tb = np.arange(
         0, data1.shape[1] * clamps.sample_interval, clamps.sample_interval
     )
-    # tb2 = np.arange(0, data2.shape[1]*clamps.sample_interval, clamps.sample_interval)
-    data1 = data1.view(np.ndarray)
 
+    # subtract a flat baseline (current before the stimulus) from the trace
     if baseline is not None:
+        print('baseline removal: ', region)
         data1 = np.array([data1[i] - baseline[i] for i in range(data1.shape[0])])
-        # data2 = np.array([data2[i]-baseline[i] for i in range(data2.shape[0])])
-
-    # subtract the "baseline" from the beginning of the interval to the end.
+   
+    # subtract a sloping "baseline" from the beginning of the interval to the end.
     if slope:
         data1 = slope_subtraction(tb, data1, region, mode=mode)
-        # if not slope and slopewin is not None: # just first slope point to align current
-        #     data1 = results.slope_subtraction(tb, data1, region, mode='point')
         print("slope, slopewin: ", slope, slopewin, mode)
 
     sh = data1.shape
-    if nint > 1:
+    if nint > 1:  # reduce dimensions.
         dindx = range(intno, sh[0], nint)
         if data1.ndim == 3:
             data1 = data1[dindx, :, :]
@@ -111,9 +106,8 @@ def mean_I_analysis(
             data1 = data1[dindx, :]
         else:
             raise ValueError("Data must have 2 or 3 dimensions")
-    # print(sh, data1.shape, nint)
     results.i_mean_index = None
-    results.i_data = data1.mean(axis=0)
+    results.i_data = data1.mean(axis=0) # average data across all traces
     results.i_tb = tb + region[0]
 
     nx = int(sh[0] / len(reps))
@@ -133,12 +127,10 @@ def mean_I_analysis(
         i_mean = i_mean.mean(axis=0)  # average over reps
         return i_mean, results
 
+    # find minimum 
     elif mode == "min":
-
-        # mpl.plot(data1.T)
-        # mpl.show()
-
         i_mina = data1.min(axis=1)  # all traces, average over specified time window
+
         if nint == 1:
             nx = int(sh[0] / len(reps))
             try:
@@ -149,71 +141,11 @@ def mean_I_analysis(
                 raise ValueError("Reshape failed on min")
 
         i_min = i_mina.min(axis=0)  # average over reps
-        mpl.plot(i_min)
-        mpl.show()
         results.i_argmin = np.argmin(i_mina, axis=0)
-        # return i_min
-
-        # dfilt = data1 # scipy.signal.savgol_filter(data1, 5, 2, axis=1, mode='nearest')
-        # print('data1.shpae 0: ', data1.shape)
-        # ist = int(t0/clamps.sample_interval) # points in deadwin
-        # ien = int((analysis_region[1]-analysis_region[0])/clamps.sample_interval)
-        # print('region 0: ', analysis_region[0])
-        # print('analysis time: ', ist*clamps.sample_interval, ien*clamps.sample_interval)
-        # print('dfilt shape: ', dfilt.shape)
-        # print('ist, ien: ', ist, ien)
-        # i_min = dfilt[:, ist:ien].min(axis=1)  # all traces, get the minimum over specified time window
-        # print('nint: ', nint)
-        # print('imin shape: ', i_min.shape)
-        # print('reps: ', nreps)
-        # if nint == 1:
-        #     nx = int(sh[0]/nreps)
-        #     print('nx: ', nx)
-        #     print(i_min.shape)
-        #     print((nreps, nx))
-        #     try:
-        #         i_min = np.reshape(i_min, (nreps, nx))  # reshape by repetition
-        #         print('rehsape ok')
-        #     except:
-        #         print('reshape failed!!!!')
-        # i_min = i_min.mean(axis=0)  # average over reps
         print("imin shape: ", i_min.shape)
-        # data2 = np.reshape(data1, (nreps, nx, data1.shape[1])).mean(axis=0)
-        # print(data2.shape)
-        # f, ax = mpl.subplots(1,1)
-        # sns.set_palette("coolwarm_r",data2.shape[0])
-        # cp = sns.color_palette("muted",data2.shape[0])
-        # device = 'Stim0'
-        # # stim_I = np.array(results.AR.sequence[(device, 'command.PulseTrain_amplitude')])*1e6
-        # for i in range(data2.shape[0]):
-        #     ax.plot(data2[i,:], color = cp[i])
-        # data3 = np.reshape(data1, (nreps, nx, data1.shape[1]))
-        # for j in range(data3.shape[0]):
-        #     for i in range(data3.shape[1]):
-        #         csel = i
-        #         print('csel: ', csel)
-        #         ax.plot(data3[j, i,:], color = cp[csel], linestyle='--', linewidth=1, alpha=1)
-        # mpl.show()
-        # # print(ist, ien)
-        # print(dfilt.shape, nreps)
-        # dfw = [[]]*nreps
-        #  nvs = int(sh[0]/nreps)
-        #  print('nreps, nvs: ', nreps, nvs)
-        #  for i in range(nreps):
-        #      dfw[i] = data1[i*nvs:i*nvs + nvs,: ]
-        #  dfw = np.array(dfw)
-        #  print(dfw.shape)
-        #  dfw = np.array(dfw).mean(axis=0)
-        #  # dfw = dfw.reshape((nreps, -1, int(sh[0]/nreps)))
-        #  # dfw = dfw.mean(axis=0)
-        #  # for i in range(dfw.shape[0]):
-        #  #     mpl.plot(dfw[i])
-        #  # mpl.show()
-        #
-        #  # print(dfw.shape, ist, ien)
-        #  results.i_argmin = dfw[:, ist:ien].argmin(axis=1) +ist
 
         return i_min, results
+
 
 def slope_subtraction(tb, data1, region, mode="mean"):
     """
