@@ -1,6 +1,9 @@
-import numpy as np
 from typing import List, Tuple, Union
+
+import numpy as np
+
 import ephys.psc_analysis.functions as FN
+
 
 def analyze_VDEP(
     PSC,
@@ -67,11 +70,13 @@ def analyze_VDEP(
     PSC.analysis_summary["iHold"] = []
     PSC.analysis_summary[f"PSP_VDEP_AMPA"] = [[]] * len(PSC.pulse_train["start"])
     PSC.analysis_summary[f"PSP_VDEP_NMDA"] = [[]] * len(PSC.pulse_train["start"])
-    
+
     ###
 
-    bl, results = FN.mean_I_analysis(PSC.Clamps, region=bl_region, mode="baseline", reps=[0])
- 
+    bl, results = FN.mean_I_analysis(
+        PSC.Clamps, region=bl_region, mode="baseline", reps=[0]
+    )
+
     rgn = [delay, t1]
     # # print('rgn: ', rgn)
     # if PSC.update_regions:
@@ -99,16 +104,19 @@ def analyze_VDEP(
     # 3. use the new window to do the analysis by taking the mean in a 1msec wide window
     #    around the mean time
     slope_region = np.array(slope_region) + PSC.pulse_train["start"][0]
-    print('slope region: ', slope_region)
+    print("slope region: ", slope_region)
 
-    baseline_region=[
-            PSC.pulse_train["start"][0] + PSC.T0 - 0.0005,
-            PSC.pulse_train["start"][0] + PSC.T0,
-        ]
-    rgn_i = [int(baseline_region[i] / PSC.Clamps.sample_interval) for i in range(len(baseline_region))]
+    baseline_region = [
+        PSC.pulse_train["start"][0] + PSC.T0 - 0.0005,
+        PSC.pulse_train["start"][0] + PSC.T0,
+    ]
+    rgn_i = [
+        int(baseline_region[i] / PSC.Clamps.sample_interval)
+        for i in range(len(baseline_region))
+    ]
 
     V_cmd = PSC.Clamps.cmd_wave[:, rgn_i[0] : rgn_i[1]].mean(axis=1).view(np.ndarray)
-    
+
     cmds = np.array(V_cmd) + PSC.AR.holding + PSC.JunctionPotential
     # bl, results = FN.mean_I_analysis(
     #     clamps=PSC.Clamps,
@@ -119,7 +127,7 @@ def analyze_VDEP(
 
     data1, tb = FN.get_traces(
         PSC.Clamps,
-        region=[0,0.5], # slope_region,
+        region=[0, 0.5],  # slope_region,
         trlist=None,
         baseline=bl,
         intno=0,
@@ -131,18 +139,24 @@ def analyze_VDEP(
         return False
     PSC.plot_data(tb, data1)
 
-    ind = np.argmin(np.fabs(cmds - PSC.AMPA_voltage)) # find index closest to the reference AMPA voltage for measurement
+    ind = np.argmin(
+        np.fabs(cmds - PSC.AMPA_voltage)
+    )  # find index closest to the reference AMPA voltage for measurement
 
     PSC.T1 = PSC.T0 + 0.010  # note that this is a narrow time window to use - 10 msec.
 
     p1delay = PSC.pulse_train["start"][0] + PSC.T0
-    p1end = PSC.pulse_train["start"][0] + PSC.T1 
+    p1end = PSC.pulse_train["start"][0] + PSC.T1
     p1_region = [p1delay, p1end]
 
     nmdelay = PSC.pulse_train["start"][0] + ndelay
     i_mean, results = FN.mean_I_analysis(
         clamps=PSC.Clamps,
-        region=p1_region, mode="min", baseline=bl, reps=PSC.reps, slope=False
+        region=p1_region,
+        mode="min",
+        baseline=bl,
+        reps=PSC.reps,
+        slope=False,
     )
     if i_mean is None:
         return False

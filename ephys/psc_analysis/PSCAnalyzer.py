@@ -18,9 +18,10 @@ import os  # legacy
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
 import lmfit
+import MetaArray as EM  # need to use this version for Python 3
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as mpl
@@ -28,13 +29,13 @@ from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtCore, QtGui
 
-from ephys.tools import cursor_plot as CP
-from ephys.datareaders import acq4read
-import MetaArray as EM  # need to use this version for Python 3
 import ephys.psc_analysis.analyze_IO as A_IO
 import ephys.psc_analysis.analyze_PPF as A_PPF
 import ephys.psc_analysis.analyze_VDEP as A_VDEP
 import ephys.psc_analysis.functions as FN
+from ephys.datareaders import acq4read
+from ephys.tools import cursor_plot as CP
+
 
 class PSCAnalyzer:
     def __init__(
@@ -89,8 +90,8 @@ class PSCAnalyzer:
         clamps: object = None,
         spikes: dict = None,
         baseline: Union[List, Tuple] = [0, 0.001],
-        ignore_important_flag:bool=True,
-        device:str="Stim0",
+        ignore_important_flag: bool = True,
+        device: str = "Stim0",
     ):
         """
         Set up for the fitting
@@ -127,34 +128,37 @@ class PSCAnalyzer:
         p = pathname.parts
         return str("~".join([p[i] for i in range(-4, 0)]))
 
-    def get_meta_data(self, protocol:str): 
+    def get_meta_data(self, protocol: str):
         self.protocol = protocol
         self.pulse_train = self.AR.getStim(self.device)  # get the stimulus information
         # stim dict in pulse_train will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
         # 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
         # try:
-        self.devicedata = self.AR.getDeviceData(device=self.device, devicename="command")
+        self.devicedata = self.AR.getDeviceData(
+            device=self.device, devicename="command"
+        )
         if self.devicedata is None:
             print("No device data? name command, ", self.device)
             return False
         self.reps = self.AR.sequence[("protocol", "repetitions")]
 
         try:  # get the stimulus amplitude data for an IO functoin
-            self.stim_io = self.AR.sequence[(self.device, "command.PulseTrain_amplitude")]
+            self.stim_io = self.AR.sequence[
+                (self.device, "command.PulseTrain_amplitude")
+            ]
         except:
             self.stim_io = None
-        try: # get the stimulus rate
-            self.stim_dt = self.AR.sequence[(self.device, "command.PulseTrain_period")] 
+        try:  # get the stimulus rate
+            self.stim_dt = self.AR.sequence[(self.device, "command.PulseTrain_period")]
         except:
-            self.stim_dt = None    
-        try: # get the voltage from the multiclamp in vclamp mode
+            self.stim_dt = None
+        try:  # get the voltage from the multiclamp in vclamp mode
             self.stim_V = self.AR.sequence[("MultiClamp1", "Pulse_amplitude")]
         except:
             self.stim_V = None
-   
 
-    def _getData(self, protocolName:str, device:str="Stim0"):
+    def _getData(self, protocolName: str, device: str = "Stim0"):
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR, device=device)
         if not self.AR.getData():  # get that data.
@@ -228,7 +232,7 @@ class PSCAnalyzer:
         plot: bool = True,
         savetimes: bool = False,
         ignore_important_flag: bool = True,
-        device:str="Stim0",
+        device: str = "Stim0",
     ):
         """
         Direct the analysis
@@ -273,7 +277,6 @@ class PSCAnalyzer:
             # print('db head: ', self.db.head())
         return True
 
-
     def get_stimtimes(self):
         """
         This should get the stimulus times from the Acq4 protocol.
@@ -293,10 +296,10 @@ class PSCAnalyzer:
 
     def get_baseline(self):
         """Return the mean values in the data over the baseline region."""
-        bl, result = FN.mean_I_analysis(clamps=self.Clamps, region=self.baseline, reps=[0])
+        bl, result = FN.mean_I_analysis(
+            clamps=self.Clamps, region=self.baseline, reps=[0]
+        )
         return bl
-
-
 
     def _clean_array(self, rgn: Union[List, Tuple]):
         """
@@ -434,8 +437,6 @@ class PSCAnalyzer:
             return None
         return newCP.selectedRegion
 
-    
-
     def plot_vciv(self):
         """
         Plot the current voltage-clamp IV function
@@ -455,7 +456,7 @@ class PSCAnalyzer:
                 "bottommargin": 0.1,
             },
             labelposition=(-0.12, 0.95),
-            panel_labels = ["A", "B", "C", "D"],
+            panel_labels=["A", "B", "C", "D"],
         )
         (date, sliceid, cell, proto, p3) = self.file_cell_protocol(self.datapath)
         P.figure_handle.suptitle(str(Path(date, sliceid, cell, proto)), fontsize=12)
@@ -471,42 +472,50 @@ class PSCAnalyzer:
                 # "k-",
                 linewidth=0.5,
             )
-        if "PSP_VDEP_AMPA" in self.analysis_summary.keys() or "PSP_VDEP_NMDA" in self.analysis_summary.keys():
+        if (
+            "PSP_VDEP_AMPA" in self.analysis_summary.keys()
+            or "PSP_VDEP_NMDA" in self.analysis_summary.keys()
+        ):
             P.axdict["A"].set_xlim(
                 self.analysis_summary["stim_times"][0] * 1e3 - 10,
                 self.analysis_summary["stim_times"][0] * 1e3 + 50,
             )
             # P.axdict['A'].set_ylim(-2500, 2500)
         else:
-            P.axdict["A"].set_xlim(40, maxt+200)
+            P.axdict["A"].set_xlim(40, maxt + 200)
             P.axdict["A"].set_ylim(-3000, 2000)
         # PH.talbotTicks(P.axdict['A'], tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         P.axdict["A"].set_xlabel("T (ms)")
         P.axdict["A"].set_ylabel("I (pA)")
         if "PSP_IO" in self.analysis_summary.keys():  # io function
             for i in range(len(self.analysis_summary["stim_times"])):
-                    P.axdict["C"].plot(
-                        self.analysis_summary["psc_stim_amplitudes"][0],
-                        np.array(self.analysis_summary[f"PSP_IO"][i]),
-                        linewidth=1,
-                        markersize=4,
-                        marker="s",
-                    )
-                # except:
-                #     print("Plot Failed on protocol: ", self.datapath, proto)
+                P.axdict["C"].plot(
+                    self.analysis_summary["psc_stim_amplitudes"][0],
+                    np.array(self.analysis_summary[f"PSP_IO"][i]),
+                    linewidth=1,
+                    markersize=4,
+                    marker="s",
+                )
+            # except:
+            #     print("Plot Failed on protocol: ", self.datapath, proto)
             P.axdict["C"].set_xlabel("Istim (microAmps)")
             P.axdict["C"].set_ylabel("EPSC I (pA)")
             PH.talbotTicks(
                 P.axdict["C"], tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0}
             )
-        elif  "PSP_VDEP_AMPA" in self.analysis_summary.keys() or "PSP_VDEP_NMDA" in self.analysis_summary.keys():
+        elif (
+            "PSP_VDEP_AMPA" in self.analysis_summary.keys()
+            or "PSP_VDEP_NMDA" in self.analysis_summary.keys()
+        ):
 
             n_voltages = len(self.analysis_summary[f"PSP_VDEP_AMPA"][0])
 
             for i in range(len(self.analysis_summary["stim_times"])):
                 P.axdict["C"].plot(
                     self.analysis_summary["Vcmd"][:n_voltages] * 1e3,
-                    self.sign * np.array(self.analysis_summary[f"PSP_VDEP_AMPA"][i]) * 1e12,
+                    self.sign
+                    * np.array(self.analysis_summary[f"PSP_VDEP_AMPA"][i])
+                    * 1e12,
                     marker="o",
                     linewidth=1,
                     markersize=4,
@@ -532,7 +541,10 @@ class PSCAnalyzer:
             xm = []
             ym = []
             for i, sdt in enumerate(self.stim_dt):
-                x = np.repeat(np.array(sdt), len(self.analysis_summary["PPF"][sdt])) * 1e3
+                x = (
+                    np.repeat(np.array(sdt), len(self.analysis_summary["PPF"][sdt]))
+                    * 1e3
+                )
                 y = self.sign * np.array(self.analysis_summary[f"PPF"][sdt])
                 P.axdict["C"].scatter(
                     x,
@@ -588,41 +600,42 @@ class PSCAnalyzer:
         (p3, date) = os.path.split(p2)
         return (date, sliceid, cell, proto, p3)
 
+
 def test():
-        """
-        This is for testing - normally an instance of EPSC_analyzer would be
-        created and these values would be filled in.
-        """
-        import matplotlib
-        from matplotlib import rc
+    """
+    This is for testing - normally an instance of EPSC_analyzer would be
+    created and these values would be filled in.
+    """
+    import matplotlib
+    from matplotlib import rc
 
-        # rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
-        # rcParams['font.sans-serif'] = ['Arial']
-        # rcParams['font.family'] = 'sans-serif'
-        rc("text", usetex=False)
-        rcParams = matplotlib.rcParams
-        rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
-        rcParams["pdf.fonttype"] = 42
-        rcParams["ps.fonttype"] = 42
-        # disk = '/Volumes/Pegasus/ManisLab_Data3'
-        # disk = '/Volumes/PBM_005/data'
-        disk = "/Volumes/Pegasus/ManisLab_Data3"
-        middir = "Kasten_Michael"
-        directory = "Maness_PFC_stim"
-        cell = "2019.03.19_000/slice_000/cell_001"
-        cell = '2019.03.19_000/slice_001/cell_000'
+    # rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+    # rcParams['font.sans-serif'] = ['Arial']
+    # rcParams['font.family'] = 'sans-serif'
+    rc("text", usetex=False)
+    rcParams = matplotlib.rcParams
+    rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
+    rcParams["pdf.fonttype"] = 42
+    rcParams["ps.fonttype"] = 42
+    # disk = '/Volumes/Pegasus/ManisLab_Data3'
+    # disk = '/Volumes/PBM_005/data'
+    disk = "/Volumes/Pegasus/ManisLab_Data3"
+    middir = "Kasten_Michael"
+    directory = "Maness_PFC_stim"
+    cell = "2019.03.19_000/slice_000/cell_001"
+    cell = "2019.03.19_000/slice_001/cell_000"
 
-        fn = Path(disk, middir, directory, cell)
-        protocol = "Stim_IO_1_001"
-        protocol = 'PPF_2_001'
-        protocol = 'VC-EPSC_3_ver2_003'
-        fn = Path(fn, protocol)
-        if not fn.is_dir():
-            print("protocol directory not found: ", fn)
-            exit()
+    fn = Path(disk, middir, directory, cell)
+    protocol = "Stim_IO_1_001"
+    protocol = "PPF_2_001"
+    protocol = "VC-EPSC_3_ver2_003"
+    fn = Path(fn, protocol)
+    if not fn.is_dir():
+        print("protocol directory not found: ", fn)
+        exit()
 
-        PSC = PSCAnalyzer(fn, protocol[:-4])
-        PSC.measure_PSC(protocolName = protocol, savetimes=True)
+    PSC = PSCAnalyzer(fn, protocol[:-4])
+    PSC.measure_PSC(protocolName=protocol, savetimes=True)
 
 
 if __name__ == "__main__":

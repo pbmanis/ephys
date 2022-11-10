@@ -1,8 +1,10 @@
-import numpy as np
-import matplotlib.pyplot as mpl
 from dataclasses import dataclass
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
+
+import matplotlib.pyplot as mpl
 import MetaArray as EM  # need to use this version for Python 3
+import numpy as np
+
 
 @dataclass
 class IAnalysis:
@@ -14,7 +16,7 @@ class IAnalysis:
 
 
 def mean_I_analysis(
-    clamps:object,
+    clamps: object,
     region=None,
     t0=0.0,
     mode="mean",
@@ -80,18 +82,14 @@ def mean_I_analysis(
 
     data1 = clamps.traces["Time" : region[0] : region[1]].view(np.ndarray)
     rgn = [int(region[i] / clamps.sample_interval) for i in range(len(region))]
-    results.V_cmd = (
-        clamps.cmd_wave[:, rgn[0] : rgn[1]].mean(axis=1).view(np.ndarray)
-    )
-    tb = np.arange(
-        0, data1.shape[1] * clamps.sample_interval, clamps.sample_interval
-    )
+    results.V_cmd = clamps.cmd_wave[:, rgn[0] : rgn[1]].mean(axis=1).view(np.ndarray)
+    tb = np.arange(0, data1.shape[1] * clamps.sample_interval, clamps.sample_interval)
 
     # subtract a flat baseline (current before the stimulus) from the trace
     if baseline is not None:
-        print('baseline removal: ', region)
+        print("baseline removal: ", region)
         data1 = np.array([data1[i] - baseline[i] for i in range(data1.shape[0])])
-   
+
     # subtract a sloping "baseline" from the beginning of the interval to the end.
     if slope:
         data1 = slope_subtraction(tb, data1, region, mode=mode)
@@ -107,36 +105,30 @@ def mean_I_analysis(
         else:
             raise ValueError("Data must have 2 or 3 dimensions")
     results.i_mean_index = None
-    results.i_data = data1.mean(axis=0) # average data across all traces
+    results.i_data = data1.mean(axis=0)  # average data across all traces
     results.i_tb = tb + region[0]
 
     nx = int(sh[0] / len(reps))
 
     if mode in ["mean", "baseline"]:  # just return the mean value
-        i_mean = data1.mean(
-            axis=1
-        )  # all traces, average over specified time window
+        i_mean = data1.mean(axis=1)  # all traces, average over specified time window
         if nint == 1:
             nx = int(sh[0] / len(reps))
             try:
-                i_mean = np.reshape(
-                    i_mean, (len(reps), nx)
-                )  # reshape by repetition
+                i_mean = np.reshape(i_mean, (len(reps), nx))  # reshape by repetition
             except:
                 return i_mean
         i_mean = i_mean.mean(axis=0)  # average over reps
         return i_mean, results
 
-    # find minimum 
+    # find minimum
     elif mode == "min":
         i_mina = data1.min(axis=1)  # all traces, average over specified time window
 
         if nint == 1:
             nx = int(sh[0] / len(reps))
             try:
-                i_mina = np.reshape(
-                    i_mina, (len(reps), nx)
-                )  # reshape by repetition
+                i_mina = np.reshape(i_mina, (len(reps), nx))  # reshape by repetition
             except:
                 raise ValueError("Reshape failed on min")
 
@@ -188,17 +180,18 @@ def slope_subtraction(tb, data1, region, mode="mean"):
             data1[i, :] -= bline
     return data1
 
+
 def get_traces(
-    clamps:object,
-    region:Union[List, Tuple]=None,
-    trlist:Union[List, Tuple, None]=None,
-    baseline:Union[None, List]=None,
-    order:int=0,
-    intno:int=0,
-    nint:int=1,
-    reps:list=[0],
-    mode:str="baseline",
-    slope:bool=True,
+    clamps: object,
+    region: Union[List, Tuple] = None,
+    trlist: Union[List, Tuple, None] = None,
+    baseline: Union[None, List] = None,
+    order: int = 0,
+    intno: int = 0,
+    nint: int = 1,
+    reps: list = [0],
+    mode: str = "baseline",
+    slope: bool = True,
 ):
     """
     Get the mean current (averages) in a window
@@ -222,9 +215,7 @@ def get_traces(
 
     data1 = clamps.traces["Time" : region[0] : region[1]]
 
-    tb = np.arange(
-        0, data1.shape[1] * clamps.sample_interval, clamps.sample_interval
-    )
+    tb = np.arange(0, data1.shape[1] * clamps.sample_interval, clamps.sample_interval)
     data1 = data1.view(np.ndarray)
     nreps = len(reps)
     sh = data1.shape
@@ -270,5 +261,5 @@ def get_traces(
     elif order == 1 or nreps == 1:
         data2 = data1  # np.reshape(data1, (len(reps), nx,   sh[1]))
     data2 = data2.mean(axis=0)
-    
+
     return data2, tb
