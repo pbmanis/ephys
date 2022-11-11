@@ -392,9 +392,7 @@ class acq4_reader:
 
                 index[k] = self._parse_index(index[k])
                 if isinstance(index[k], list) or isinstance(index[k], np.ndarray):
-                    self.textline += "{0:s} {1:3d} : list/array, len= {2:4d}{3:s}".format(
-                        " " * self.indent * 4, k, len(index[k]), self.lb
-                    )
+                    self.textline += f"{' ' * self.indent * 4:s} {str(k):3s} : list/array, len= {len(index[k]):4d}{str(self.lb):s}"
                 elif k not in ["__timestamp__", "."]:
                     indents = " " * (self.indent * 4)
                     indents2 = " " * (self.indent * 4)
