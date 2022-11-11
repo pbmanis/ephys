@@ -3,7 +3,7 @@ import os  # legacy
 import sys
 import pickle
 from pathlib import Path
-
+import ephys.datareaders
 import ephys.ephys_analysis as EP
 import MetaArray as EM  # need to use this version for Python 3
 import ephys.psc_analysis.PSCAnalyzer as EPP
@@ -22,7 +22,7 @@ def check_rs(protocol, clamp="MultiClamp1.ma", verbose=False):
     Print out Rs values when they have changed WITHIN A PROTOCOL.
     Save the resulting compensation parameters in a dict for later.
     """
-    AR = EP.acq4_reader.acq4_reader(Path(protocol))
+    AR = ephys.datareaders.acq4_reader.acq4_reader(Path(protocol))
     protocol = Path(protocol)
     prot_Rs = []
     protocol_reported = False
@@ -32,7 +32,11 @@ def check_rs(protocol, clamp="MultiClamp1.ma", verbose=False):
         if f.is_file():
             continue
         prot_dir = Path(protocol, f, clamp)
-        info = AR.getDataInfo(prot_dir)
+        try:
+            info = AR.getDataInfo(prot_dir)
+        except:
+            # cprint("r", f"Failed reading {str(prot_dir):s}, {prot_dir.is_file():b}")
+            continue # unable to read .index file - may be for several reasons.
         if info is None:
             continue
         WC = AR.parseClampWCCompSettings(info)
@@ -82,13 +86,13 @@ def print_rs(WCRS):
     print("Code: magenta: no compensation, red: Rs>30M, yellow: Rs>20M, white: Rs<20M, compensated")
     print("="*80)
     
-def check_rs_cell(cell_dir):
+def check_cell_rs(cell_dir):
     """
     Given a cell directory (/Volumes/user/experiment/date.mm.yy_000/slice_nnn/cell_mmm)
     go through all the prototocols and read the amplifier settings. 
     """
     prots = list(Path(cell_dir).glob("*"))
-    print('# prots: ', len(prots))
+    print(f"\n{'*'*80:s} \n{str(cell_dir):s}\n   # prots: {len(prots):d}")
     w = []
     for p in prots:
         if p.is_file():
@@ -96,7 +100,26 @@ def check_rs_cell(cell_dir):
         w.append(check_rs(Path(cell_dir, p)))
     print_rs(w)
 
+def check_day_rs(day_dir):
+    slices = list(Path(day_dir).glob("slice_*"))
+    for slice in slices:
+        slp = Path(day_dir, slice)
+        cells = list(Path(slp).glob("cell*"))
+        for cell in cells:
+            cpath = Path(slp, cell)
+            check_cell_rs(cpath)
+
+def check_topdir_rs(top_dir):
+    days = list(Path(top_dir).glob("*_00*"))
+    for day in days:
+        print(str(day))
+        check_day_rs(day)
+
+def main():
+    #check_day_rs(sys.argv[1])
+    check_topdir_rs(sys.argv[1])
+
 if __name__ == '__main__':
-    check_rs_cell(sys.argv[1])
+    main()
 
     
