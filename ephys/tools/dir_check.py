@@ -32,16 +32,16 @@ import re
 import stat
 import subprocess
 import sys
-
-# import textwrap
-
 from pathlib import Path
 from typing import List, Union
 
 import dateutil.parser as DUP
+from termcolor import colored
 
 from ephys.datareaders import acq4_reader
-from termcolor import colored
+
+# import textwrap
+
 
 """
 Make a LaTex Header and Footer for the output
@@ -120,7 +120,6 @@ class DirCheck:
         # if self.outfile is not None:
         #     self.fmtstring += self.lb  # insert newlines when writing output to file
 
-
         if output is not None:
             self.coloredOutput = False
             self.outfile = output
@@ -141,13 +140,13 @@ class DirCheck:
                 )
                 self.printLine(
                     "\\vspace{2cm}\\center{\\textbf{\huge{"
-                    + str(self.outfile) # .replace("_", "\_")
+                    + str(self.outfile)  # .replace("_", "\_")
                     + "}}}"
                     + self.lb
                 )
                 self.printLine(
                     "\\vspace{1cm}\\center{\\textbf{\\large{"
-                    + str(self.topdir) # .replace("_", "\_")
+                    + str(self.topdir)  # .replace("_", "\_")
                     + "}}}"
                     + self.lb
                 )
@@ -157,7 +156,10 @@ class DirCheck:
                     "\\vspace{1cm}\\center{\\textbf{\\LARGE{Run Date:}}}" + self.lb
                 )
                 self.printLine(
-                    "\\vspace{0.5cm}\\center{\\textbf{\\huge{" + self.now + "}}}" + self.lb
+                    "\\vspace{0.5cm}\\center{\\textbf{\\huge{"
+                    + self.now
+                    + "}}}"
+                    + self.lb
                 )
                 self.printLine("\\newpage", color=None)
                 # self.printLine("\\begin{Verbatim} " + self.lb)
@@ -172,9 +174,6 @@ class DirCheck:
             self.topdir = path
         else:
             topdirs = list(self.topdir.glob("*"))
-
-
-
 
         self.do_dirs(topdirs, current_top_dir=self.topdir)
 
@@ -235,7 +234,7 @@ class DirCheck:
             # if self.just_list_dirs:
             #     print("doing dir: ", dpath.parent, dpath.name)
             #     continue
-            
+
             daydir = dpath.name
             dsday = dpath.name[:10]
 
@@ -245,7 +244,7 @@ class DirCheck:
             if ndir > 1:
                 # self.printLine(self.lb + "\\end{Verbatim}" + self.lb)
                 self.printLine("+" * 80 + self.lb + "\\newpage" + self.lb)
-               # self.printLine("\\begin{Verbatim} " + self.lb)
+            # self.printLine("\\begin{Verbatim} " + self.lb)
             if daystring is not None:
                 self.printLine(self.fmtstring.format(str(d), "", "", "", tstamp))
             else:
@@ -269,7 +268,9 @@ class DirCheck:
                 if daydir not in daysdone:
                     indir = Path(current_top_dir, daydir)
                     ind = self.AR.readDirIndex(indir)
-                    self.printLine(self.AR.getIndex_text(ind), color="blue", verbatim=True)
+                    self.printLine(
+                        self.AR.getIndex_text(ind), color="blue", verbatim=True
+                    )
                     self.printLine(
                         "            {0:16s} : {1:20s}{2:s}".format(
                             "-" * 16, "-" * 20, self.lb
@@ -305,7 +306,9 @@ class DirCheck:
                 if slicedir.name.startswith("slice_"):
                     slicepath = Path(current_top_dir, daydir, slicedir)
                     tstamp = self.gettimestamp(slicepath)
-                    self.printLine(self.fmtstring.format("", str(slicedir), "", "", tstamp), "teal")
+                    self.printLine(
+                        self.fmtstring.format("", str(slicedir), "", "", tstamp), "teal"
+                    )
                     a4index = self.AR.readDirIndex(slicepath)
                     self.printLine(self.AR.getIndex_text(a4index), verbatim=True)
                 else:
@@ -327,7 +330,9 @@ class DirCheck:
                         cellpath = Path(current_top_dir, daydir, slicedir, celldir)
                         tstamp = self.gettimestamp(cellpath)
                         self.printLine(
-                            self.lb + self.fmtstring.format("", str(celldir), "", "", tstamp), "violet",
+                            self.lb
+                            + self.fmtstring.format("", str(celldir), "", "", tstamp),
+                            "violet",
                         )
                         try:
                             a4index = self.AR.readDirIndex(cellpath)
@@ -357,27 +362,35 @@ class DirCheck:
                         continue
                     protodir = Path(current_top_dir, daydir, slicedir, celldir)
                     for protocol in sorted(protodir.iterdir()):  # all protocols
-                        if protocol.name in [".DS_Store", "log.txt"] or self.check_extensions(
-                            protocol
-                        ):
+                        if protocol.name in [
+                            ".DS_Store",
+                            "log.txt",
+                        ] or self.check_extensions(protocol):
                             continue
                         if protocol.name in [".index"]:
                             stx = os.stat(Path(protodir, protocol))
                             if stx.st_size == 0:
                                 self.printLine(
-                                    "   {0:s} is empty".format(str(protocol)), color="red"
+                                    "   {0:s} is empty".format(str(protocol)),
+                                    color="red",
                                 )
                             continue
                         if any([protocol.name.endswith(e) for e in [".tif", ".ma"]]):
                             continue
-                        protopath = Path(current_top_dir, daydir, slicedir, celldir, protocol)
+                        protopath = Path(
+                            current_top_dir, daydir, slicedir, celldir, protocol
+                        )
                         tstamp = self.gettimestamp(protopath)
                         self.printLine(
-                            self.fmtstring.format("", "", "", protocol.name, tstamp), verbatim=True, suppress_trailing_lb=True
+                            self.fmtstring.format("", "", "", protocol.name, tstamp),
+                            verbatim=True,
+                            suppress_trailing_lb=True,
                         )
                         if self.show_protocol:
                             a4index = self.AR.readDirIndex(protopath)
-                            self.printLine(self.AR.getIndex_text(a4index), verbatim=True)
+                            self.printLine(
+                                self.AR.getIndex_text(a4index), verbatim=True
+                            )
                             self.printLine(
                                 "              -----------------------" + self.lb
                             )
@@ -477,7 +490,7 @@ class DirCheck:
     def printLine(self, text, verbatim=False, suppress_trailing_lb=False, color=None):
         # if self.outputMode == 'latex':
         if not verbatim:
-            text = text.replace('_', '\_')
+            text = text.replace("_", "\_")
         if self.outfile is None:
             if self.coloredOutput:
                 if color == None:
@@ -492,39 +505,61 @@ class DirCheck:
             lb2 = ""
         else:
             lb2 = self.lb
-            
+
         with open(self.outfile, "a") as f:
             if self.outputMode == "latex":
                 if color != None and color != "red":
                     if verbatim:
                         f.write(
-                            self.lb + "{\\color{" + f"{color:s}" + "}"
-                            + "\\begin{Verbatim}" + self.lb                            
-                            + self.lb + text  +  self.lb
-                            + "\\end{Verbatim}" + self.lb + "}"
+                            self.lb
+                            + "{\\color{"
+                            + f"{color:s}"
+                            + "}"
+                            + "\\begin{Verbatim}"
+                            + self.lb
+                            + self.lb
+                            + text
+                            + self.lb
+                            + "\\end{Verbatim}"
+                            + self.lb
+                            + "}"
                         )
                     else:
                         f.write(
                             # + "{\\color{%s}" % color
-                            self.lb + text +  self.lb
-                        )      
+                            self.lb
+                            + text
+                            + self.lb
+                        )
                 elif color == "red":
-                        f.write(self.lb+"{\\colorbox{"+f"{color:s}"+"}"+self.lb+"{\\framebox{"+self.lb+ "\\begin{minipage}{1.0\\linewidth} " +
-                                self.lb + text+ self.lb + "\\end{minipage}}" +self.lb + "}")
+                    f.write(
+                        self.lb
+                        + "{\\colorbox{"
+                        + f"{color:s}"
+                        + "}"
+                        + self.lb
+                        + "{\\framebox{"
+                        + self.lb
+                        + "\\begin{minipage}{1.0\\linewidth} "
+                        + self.lb
+                        + text
+                        + self.lb
+                        + "\\end{minipage}}"
+                        + self.lb
+                        + "}"
+                    )
                 elif color == None:
                     if verbatim:
                         f.write(
-                            self.lb 
-                            + "\\begin{Verbatim} " + self.lb
-                            + text  
-                            + self.lb + "\\end{Verbatim}"
+                            self.lb
+                            + "\\begin{Verbatim} "
+                            + self.lb
+                            + text
+                            + self.lb
+                            + "\\end{Verbatim}"
                         )
                     else:
-                        f.write(
-                            self.lb 
-                             + text  
-                            + self.lb
-                        )
+                        f.write(self.lb + text + self.lb)
 
                 else:
                     if verbatim:
@@ -533,15 +568,11 @@ class DirCheck:
                             + "\\begin{Verbatim} "
                             + self.lb
                             + text
-                            + self.lb + "\\end{Verbatim}"
+                            + self.lb
+                            + "\\end{Verbatim}"
                         )
                     else:
-                        f.write(
-                            self.lb
-                            + text
-                            + self.lb
-                        )
-
+                        f.write(self.lb + text + self.lb)
 
     # remove latex intermediate files that are not needed after pdf generation
     def tex_out(self):
