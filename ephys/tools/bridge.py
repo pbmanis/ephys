@@ -355,7 +355,7 @@ class Bridge(pg.QtWidgets.QMainWindow):
         self.win.setWindowTitle("No File")
         self.buttons = pg.QtGui.QGridLayout()
 
-        self.buttons = pg.QtGui.QVBoxLayout(self)
+        # self.buttons = pg.QtGui.QVBoxLayout(self)
 
         self.button_do_valid_ivs = pg.QtGui.QPushButton("Setup Valid IVs")
         self.buttons.addWidget(self.button_do_valid_ivs, stretch=2)
@@ -578,7 +578,7 @@ def main():
         "datadir", type=str, default="", help="Full path to data directory"
     )
     parser.add_argument(
-        "dbfile", type=str, default="", help="Name of database file (including path)"
+        "--dbfile", type=str, default="", help="Name of database file (including path)"
     )
     parser.add_argument(
         "-d",

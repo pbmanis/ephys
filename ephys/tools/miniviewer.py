@@ -10,7 +10,6 @@ import pickle
 import sys
 from pathlib import Path
 
-import ephys.tools.minicalcs as minicalcs
 import numpy as np
 import pyqtgraph as pg
 import toml
@@ -18,13 +17,13 @@ from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
+import ephys.tools.minicalcs as minicalcs
+
 from ..datareaders import acq4read
+from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
 from ..mini_analyses import minis_methods, minis_methods_common
 from . import digital_filters as FILT
 from . import functions as FN
-
-
 
 # os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
@@ -611,13 +610,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def set_window(self, parent=None):
         super(MiniViewer, self).__init__(parent=parent)
-        self.win = pg.GraphicsWindow(title="MiniViewer")
-        layout = pg.QtGui.QGridLayout()
+        self.win = pg.GraphicsLayoutWidget(title="MiniViewer")
+        layout = pg.Qt.QtWidgets.QGridLayout()
         layout.setSpacing(8)
         self.win.setLayout(layout)
         self.win.resize(1280, 800)
         self.win.setWindowTitle("No File")
-        self.buttons = pg.QtGui.QGridLayout()
+        self.buttons = pg.Qt.QtWidgets.QGridLayout()
         self.build_ptree()
         self.buttons.addWidget(self.ptree)
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
@@ -655,14 +654,14 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.xplot = pg.PlotWidget()
         # row, column, rowspan, colspan)
         layout.addLayout(self.buttons, 0, 0, 10, 1)
-        self.dlayout = pg.QtGui.QGridLayout()
+        self.dlayout = pg.QtWidgets.QGridLayout()
         self.dataplot.setMinimumHeight(500)
         self.dlayout.addWidget(self.dataplot, 0, 0, 3, 8)
         self.dlayout.addWidget(self.dataplot2, 3, 0, 1, 8)
         self.dlayout.addWidget(self.w1, 4, 0, 1, 8)
         self.dlayout.setColumnMinimumWidth(0, 650)
         layout.addLayout(self.dlayout, 0, 1, 1, 1)
-        self.dsumlayout = pg.QtGui.QGridLayout()
+        self.dsumlayout = pg.QtWidgets.QGridLayout()
         self.dsumlayout.addWidget(self.fitplot) #, 0, 0)
         self.dsumlayout.addWidget(self.histplot) #, 1, 0)
         self.dsumlayout.addWidget(self.xplot) #, 2, 0)
@@ -679,7 +678,6 @@ class FloatSlider(pg.QtWidgets.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
         self._multi = 10 ** decimals
-        print("multi: ", self._multi)
         self.setMinimum(self.minimum())
         self.setMaximum(self.maximum())
 
@@ -701,10 +699,10 @@ class FloatSlider(pg.QtWidgets.QSlider):
 class Slider(pg.QtWidgets.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
-        self.verticalLayout = pg.QtGui.QVBoxLayout(self)
-        self.label = pg.QtGui.QLabel(self)
+        self.verticalLayout = pg.Qt.QtWidgets.QVBoxLayout(self)
+        self.label = pg.Qt.QtWidgets.QLabel(self)
         self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self.horizontalLayout = pg.QtGui.QHBoxLayout()
+        self.horizontalLayout = pg.Qt.QtWidgets.QHBoxLayout()
         # spacerItem = pg.QtGui.QSpacerItem(
         #     0, 20, pg.QtWidgets.QSizePolicy.PolicyFlag.ExpandFlag # , pg.QtWidgets.QSizePolicy.Minimum
         # )
@@ -757,8 +755,8 @@ def main():
     )  # prevent python exception when closing window with system control
     MV.set_window()
 
-    if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-        pg.QtGui.QApplication.instance().exec()
+    if (sys.flags.interactive != 1):
+        pg.QtWidgets.QApplication.instance().exec()
 
 
 if __name__ == "__main__":
