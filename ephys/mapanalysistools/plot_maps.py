@@ -3,9 +3,9 @@ from __future__ import print_function
 
 """
 Simple adjunct routine to plot LSPS/CRACM maps with traces, over cell image if possible.
-Reuqires acq4read. 
+Reuqires acq4_reader. 
 
-Takes advantage of acq4read code to access all data and attributes.
+Takes advantage of acq4_reader code to access all data and attributes.
 
 
 """
@@ -25,7 +25,7 @@ import scipy.ndimage as SND
 
 import pylibrary.plotting.plothelpers as PH
 import seaborn as sns
-import ephys.datareaders.acq4read as ARC
+import ephys.datareaders.acq4_reader as ARC
 import MetaArray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
@@ -51,7 +51,7 @@ class ScannerInfo(object):
     """
     def __init__(self, AR):
         BRI = BR.BoundRect()
-        self.AR = AR  # save the acq4read instance for access to the data
+        self.AR = AR  # save the acq4_reader instance for access to the data
         self.AR.getScannerPositions()
         self.scannerpositions = np.array(AR.scannerpositions)
         pos = self.AR.scannerCamera['frames.ma']['transform']['pos']
@@ -91,7 +91,7 @@ class MapTraces(object):
         self.cell = None
         self.datasets = OrderedDict()
         self.image = None
-        self.AR = ARC.Acq4Read()
+        self.AR = ARC.acq4_reader()
         self.outputfn = None
         self.invert = True
         self.vmax = 20000.

@@ -20,7 +20,7 @@ output (o) : define output file (tab delimited file for import to other programs
 
 
 Mar 2018: Version 2
-Uses acq4read and is independent of acq4 itself.
+Uses acq4_reader and is independent of acq4 itself.
 
 July 2018: 
 Major surgery - to output Pandas (pickled) files as well. UGH.
@@ -86,7 +86,7 @@ import pandas as pd
 # import pandas_compat # for StringIO - separate package - but only for pandas < 0.24 or so
 from io import StringIO
 
-from ..datareaders import acq4read
+from ..datareaders import acq4_reader
 import MetaArray
 
 def ansi_colors(color):
@@ -245,7 +245,7 @@ class DataSummary():
         self.coldefs = 'Date \tDescription \tNotes \tGenotype \tAge \tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t'
         self.coldefs += 'Cell \t Cell Notes \t \tProtocols \tImages \t'
 
-        self.AR = acq4read.Acq4Read()  # instance of the reader
+        self.AR = acq4_reader.acq4_reader()  # instance of the reader
         self.AR.setDataName(device)
         if self.outputMode == 'tabfile':
             print('Tabfile output: Writing to {:<s}'.format(self.outFilename))

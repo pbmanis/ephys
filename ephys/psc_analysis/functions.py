@@ -33,7 +33,7 @@ def mean_I_analysis(
 
     Parameters
     ----------
-    clamps: acq4reader Clamps object holding data etc.
+    clamps: acq4_readerer Clamps object holding data etc.
 
     region: tuple, list or numpy array with 2 values (default: None)
         start and end time of a trace used to measure the RMP across

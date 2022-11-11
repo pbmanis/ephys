@@ -183,7 +183,7 @@ class MiniAnalysis:
 
         """
         print("analyze_all")
-        acqr = EP.acq4read.Acq4Read(
+        acqr = EP.acq4_reader.acq4_reader(
             dataname=self.clamp_name
         )  # creates a new instance every time - probably should just create one.
         summarydata = {}
@@ -285,7 +285,7 @@ class MiniAnalysis:
         """
         print("analyze one cell")
         if arreader is None:
-            acqr = EP.acq4read.Acq4Read(
+            acqr = EP.acq4_reader.acq4_reader(
                 dataname=self.clamp_name
             )  # only if we don't already have one
         else:

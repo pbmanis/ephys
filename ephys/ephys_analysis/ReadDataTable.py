@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-from ephys.datareaders import acq4read
+from ephys.datareaders import acq4_reader
 from ephys.mapanalysistools import analyzeMapData as AMD
 import pylibrary.tools.fileselector as FS
 

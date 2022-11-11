@@ -49,7 +49,7 @@ class Bridge(pg.QtWidgets.QMainWindow):
             )
             exit(1)
         self.AR = (
-            EP.acq4read.Acq4Read()
+            EP.acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()

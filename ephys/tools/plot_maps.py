@@ -4,9 +4,9 @@ from __future__ import print_function
 
 """
 Simple adjunct routine to plot LSPS/CRACM maps with traces, over cell image if possible.
-Reuqires acq4read. 
+Reuqires acq4_reader. 
 
-Takes advantage of acq4read code to access all data and attributes.
+Takes advantage of acq4_reader code to access all data and attributes.
 
 
 """
@@ -33,7 +33,7 @@ from matplotlib.widgets import RectangleSelector
 from pylibrary.plotting import picker
 from pylibrary.plotting import plothelpers as PH
 
-from ..datareaders import acq4read as ARC
+from ..datareaders import acq4_reader as ARC
 from . import boundrect as BR
 from . import digital_filters as FILT
 
@@ -52,7 +52,7 @@ class ScannerInfo(object):
         # print('ScannerInfo called')
         BRI = BR.BoundRect()
         self.offset = offset
-        self.AR = AR  # save the acq4read instance for access to the data
+        self.AR = AR  # save the acq4_reader instance for access to the data
         self.AR.getScannerPositions()
         self.scannerpositions = np.array(AR.scannerpositions)
         for i, s in enumerate(self.scannerpositions):
@@ -108,7 +108,7 @@ class ImageInfo(object):
     """
     def __init__(self, AR):
         BRI = BR.BoundRect()
-        self.AR = AR  # save the acq4read instance for access to the data
+        self.AR = AR  # save the acq4_reader instance for access to the data
         # self.AR.getImage()
         pos = self.AR.Image_pos
         scale = self.AR.Image_scale
@@ -209,7 +209,7 @@ class MapTraces(object):
         self.cell = None
         self.datasets = OrderedDict()
         self.image = None
-        self.AR = ARC.Acq4Read()
+        self.AR = ARC.acq4_reader()
         self.AR.setImportant(False) # turn off the default flag
         self.outputfn = None
         self.invert = True

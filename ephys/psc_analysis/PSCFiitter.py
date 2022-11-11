@@ -20,7 +20,7 @@ from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtCore, QtGui
 
 from ..tools import cursor_plot as CP
-from ephys.datareaders import acq4read
+from ephys.datareaders import acq4_reader
 
 
 class PSC_Fitter:

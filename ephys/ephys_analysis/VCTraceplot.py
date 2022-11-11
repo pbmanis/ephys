@@ -21,7 +21,7 @@ from matplotlib.collections import PatchCollection
 import MetaArray as EM
 
 from ..tools import digital_filters as DF
-from ..datareaders import acq4read
+from ..datareaders import acq4_reader
 
 color_sequence = ['k', 'r', 'b']
 colormap = 'snshelix'
@@ -35,7 +35,7 @@ class VCTraceplot():
 
         if datapath is not None:
             self.AR = (
-                acq4read.Acq4Read()
+                acq4_reader.acq4_reader()
             )  # make our own private version of the analysis and reader
             self.datapath = datapath
         else:

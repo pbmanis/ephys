@@ -19,7 +19,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 
 import ephys.tools.minicalcs as minicalcs
 
-from ..datareaders import acq4read
+from ..datareaders import acq4_reader
 from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
 from ..mini_analyses import minis_methods, minis_methods_common
 from . import digital_filters as FILT
@@ -29,7 +29,7 @@ from . import functions as FN
 
 all_modules = [
     SpikeAnalysis,
-    acq4read,
+    acq4_reader,
     RmTauAnalysis,
     FILT,
     minis_methods,
@@ -46,7 +46,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.app = app
         self.datadir = "/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het"
         self.AR = (
-            acq4read.Acq4Read()
+            acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
         self.SP = SpikeAnalysis.SpikeAnalysis()
         self.RM = RmTauAnalysis.RmTauAnalysis()

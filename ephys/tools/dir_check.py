@@ -40,7 +40,7 @@ from typing import List, Union
 
 import dateutil.parser as DUP
 
-from ephys.datareaders import acq4read
+from ephys.datareaders import acq4_reader
 from termcolor import colored
 
 """
@@ -113,7 +113,7 @@ class DirCheck:
         self.video_re = re.compile("^[Vv]ideo_(\d{3,3}).ma")
         self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
         self.tstamp = re.compile("\s*(__timestamp__: )([\d.\d]*)")
-        self.AR = acq4read.Acq4Read()
+        self.AR = acq4_reader.acq4_reader()
         self.recurselevel = 0
         self.fmtstring = "{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}"
         self.fmtstring2 = "{0:>15s} {1:<10s} {2:<40s} {3:<10} {4:>20}"

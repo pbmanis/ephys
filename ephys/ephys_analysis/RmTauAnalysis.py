@@ -15,7 +15,7 @@ Clamps must have the following variables defined:
     values (command waveforms; why it is called this in acq4 is a mystery)
 
 The "Clamps" object can be provided by acq4's PatchEphys module, or by
-an instance of acq4read.
+an instance of acq4_reader.
 
 RmTauAnalysis requires that the SpikeAnalysis be run first.
 

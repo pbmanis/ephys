@@ -22,7 +22,7 @@ def check_rs(protocol, clamp="MultiClamp1.ma", verbose=False):
     Print out Rs values when they have changed WITHIN A PROTOCOL.
     Save the resulting compensation parameters in a dict for later.
     """
-    AR = EP.acq4read.Acq4Read(Path(protocol))
+    AR = EP.acq4_reader.acq4_reader(Path(protocol))
     protocol = Path(protocol)
     prot_Rs = []
     protocol_reported = False

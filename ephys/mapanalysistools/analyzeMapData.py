@@ -146,7 +146,7 @@ class AnalyzeMap(object):
     def __init__(self, rasterize=True):
         self.Pars = AnalysisPars()
         self.Data = AnalysisData()
-        self.AR = EP.acq4read.Acq4Read()
+        self.AR = EP.acq4_reader.acq4_reader()
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.verbose = True

@@ -17,7 +17,7 @@ import pylibrary.plotting.plothelpers as PH
 
 import MetaArray as EM
 
-from ..datareaders import acq4read
+from ..datareaders import acq4_reader
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
@@ -33,7 +33,7 @@ class VCSummary:
 
         if datapath is not None:
             self.AR = (
-                acq4read.Acq4Read()
+                acq4_reader.acq4_reader()
             )  # make our own private version of the analysis and reader
             self.datapath = datapath
         else:

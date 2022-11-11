@@ -6,7 +6,7 @@ import numpy as np
 from pylibrary.util import cprint
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.plotting import styler as PLS
-from ephysanalysis import acq4read
+from ephysanalysis import acq4_reader
 
 class PlotTraces():
 

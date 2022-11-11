@@ -3,7 +3,7 @@ Modules
 .. toctree::
     :maxdepth: 1
 
-.. automodapi:: ephys.ephys_analysis.acq4read
+.. automodapi:: ephys.ephys_analysis.acq4_reader
         :no-inheritance-diagram:
 
 .. automodapi:: ephys.ephys_analysis.DataPlan

@@ -35,7 +35,7 @@ class CursorPlot(object):
         self.layout = QtGui.QGridLayout()
         self.win.setLayout(self.layout)
         self.win.resize(1024,800)
-        self.AR = EP.acq4read.Acq4Read()  # make our own private version of the analysis and reader
+        self.AR = EP.acq4_reader.acq4_reader()  # make our own private version of the analysis and reader
         self.initParameters()
         self.buildParameters()
 

@@ -41,7 +41,7 @@ class Summary():
     def do_one_protocol(self, ds, dprot, sign=-1, plots=False):
         fn = os.path.join(self.basedir, datasets[ds]['dir'], ('minis_{0:03d}'.format(datasets[ds]['prots'][dprot])))
         print('fn: ', fn)
-        self.acq = EP.acq4read.Acq4Read(dataname='Clamp1.ma')
+        self.acq = EP.acq4_reader.acq4_reader(dataname='Clamp1.ma')
         self.acq.setProtocol(fn)
         self.acq.getData()
         data = self.acq.data_array*1e12

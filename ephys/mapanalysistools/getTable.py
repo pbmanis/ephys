@@ -11,12 +11,12 @@ import numpy as np
 import pandas as pd
 import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
-from ephys.datareaders import acq4read
+from ephys.datareaders import acq4_reader
 from ephys.mapanalysistools import analyzeMapData as AMD
 
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
-AR = acq4read.Acq4Read()  # instance of the acq4 file reader
+AR = acq4_reader.acq4_reader()  # instance of the acq4 file reader
 
 def readProtocol(protocolFilename, caller, records=None, sparsity=None, getPhotodiode=False):
     starttime = timeit.default_timer()

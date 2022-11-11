@@ -12,7 +12,7 @@ import numpy as np
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools import cprint
 
-from ..datareaders import acq4read
+from ..datareaders import acq4_reader
 
 from . import RmTauAnalysis, SpikeAnalysis
 
@@ -34,7 +34,7 @@ class IVSummary:
 
         if datapath is not None:
             self.AR = (
-                acq4read.Acq4Read()
+                acq4_reader.acq4_reader()
             )  # make our own private version of the analysis and reader
             self.datapath = datapath
         else:
@@ -161,7 +161,7 @@ class IVSummary:
                 return fh
         else:
             print(
-                "IVSummary::compute_iv: acq4reader.getData found no data to return from: \n  >  ",
+                "IVSummary::compute_iv: acq4_readerer.getData found no data to return from: \n  >  ",
                 self.datapath,
             )
             return None

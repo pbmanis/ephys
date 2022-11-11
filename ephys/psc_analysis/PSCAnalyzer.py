@@ -33,7 +33,7 @@ import ephys.psc_analysis.analyze_IO as A_IO
 import ephys.psc_analysis.analyze_PPF as A_PPF
 import ephys.psc_analysis.analyze_VDEP as A_VDEP
 import ephys.psc_analysis.functions as FN
-from ephys.datareaders import acq4read
+from ephys.datareaders import acq4_reader
 from ephys.tools import cursor_plot as CP
 
 
@@ -68,7 +68,7 @@ class PSCAnalyzer:
         """
         self.datapath = datapath
         self.AR = (
-            acq4read.Acq4Read()
+            acq4_reader.acq4_reader()
         )  # make our own private version of the analysis and reader
         self.plot = plot
         self.db = None
