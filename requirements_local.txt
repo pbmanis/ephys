@@ -16,6 +16,8 @@ Cython==0.29.21
 dill==0.3.1.1
 # efel>=3.0.93 
 # envisage==4.7.2
+colorcet
+termcolor
 
 
 lmfit==0.9.13
