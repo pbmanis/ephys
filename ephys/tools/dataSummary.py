@@ -215,21 +215,23 @@ class DataSummary():
         self.panda_string = ''
 
         # column definitions - may need to adjust if change data that is pasted into the output
-        self.day_defs = ['date', 'description', 'notes', 'species', 'strain', 'genotype', 'age', 
+        self.day_defs = ['date', 'description', 'notes', 'species', 'strain', 'genotype', 'age', 'animal identifier',
                          'sex', 'weight', 'solution', 'internal', 'temperature', 'important', 'expUnit']
         self.slice_defs = ['slice_slice', 'slice_notes', 'slice_location', 'slice_orientation', 'important']
         self.cell_defs =  ['cell_cell',   'cell_notes',  'cell_type', 'cell_location', 'cell_important']
         self.data_defs = ['data_incomplete', 'data_complete', 'data_images', 'annotated', 'data_directory']
         
         # expected keys in various structural levels: days, slices, cells
-        self.day_keys = ['description', 'notes', 'species', 'strain', 'genotype', 'age', 'sex', 'weight', 'solution', 'animal identification', '__timestamp__', 
+        self.day_keys = ['description', 'notes', 'species', 'strain', 'genotype', 'age', 'animal identifier',
+                        'sex', 'weight', 'solution', 'animal identification', '__timestamp__', 
                         'internal', 'temperature', 'expUnit', 'dirType', 'important', 'time']
         self.slice_keys = ['notes', 'location', 'orientation', 'important', '__timestamp__']
         self.cell_keys = [ 'notes', 'type', 'location', 'important', '__timestamp__']
         self.data_dkeys = ['incomplete', 'complete', 'data_images', 'annotated', 'directory']
         
         self.day_template = (
-            OrderedDict([('species', '{:>s}'), ('strain', '{:>s}'),('genotype', '{:>12s}'), ('age', '{:>5s}'), ('sex', '{:>2s}'), ('weight', '{:>5s}'),
+            OrderedDict([('species', '{:>s}'), ('strain', '{:>s}'),('genotype', '{:>12s}'), ('age', '{:>5s}'), ('animal identifier', '{:>6s}'), 
+                         ('sex', '{:>2s}'), ('weight', '{:>5s}'),
                          ('solution', '{:>s}'), ('internal', '{:>s}'), ('temperature', '{:>5s}'), ('important', '{:>s}'), ('elapsedtime', '{:>8.2f}'), 
                          ('expUnit', '{:>s}')])
                         )        
@@ -242,7 +244,7 @@ class DataSummary():
         self.data_template = (
             OrderedDict([('incomplete', '{0:s}'), ('complete', '{1:s}'), ('images', '{2:s}'), ('annotated', '{3:s}'), ('directory', '{4:s}')])
                         )        
-        self.coldefs = 'Date \tDescription \tNotes \tGenotype \tAge \tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t'
+        self.coldefs = 'Date \tDescription \tNotes \tGenotype \tAge \tAnimal Identifier\tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t'
         self.coldefs += 'Cell \t Cell Notes \t \tProtocols \tImages \t'
 
         self.AR = acq4_reader.acq4_reader()  # instance of the reader
@@ -591,7 +593,7 @@ class DataSummary():
             modes = []
             info = self.AR.readDirIndex(protocolpath) # top level info dict
             if info is None:
-                print('prsp+Protocol is not managed (no .index file found): {0:s}'.format(protocolpath))
+                print(f"Protocol is not managed (no .index file found): {str(protocolpath):s}")
                 continue
             info = info['.']
             if 'devices' not in info.keys():  # just safety... 
