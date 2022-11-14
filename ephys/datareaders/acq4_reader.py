@@ -169,9 +169,23 @@ class acq4_reader:
         dirs = sorted(list(dirs))  # make sure these are in proper order...
         return dirs
 
-    def checkProtocol(self, protocolpath: Union[str, Path, None] = None) -> bool:
+    def checkProtocol(self, protocolpath: Union[str, Path, None] = None, allow_partial=False) -> bool:
         """
         Check the protocol to see if the data is complete
+
+        Parameters
+        ----------
+        protocolpath: str or path (no default)
+
+        allow_partial: bool (default: False)
+            If True, allow incomplete protocols (use all available data)
+            Empty protocols and protocols with no .index file will still return False
+            If False, incomplete protocols will still return false
+
+        Returns
+        -------
+        Boolean for protocol data found (True) or not found/incomplete (False)
+
         """
         if protocolpath is None:
             protocolpath = self.protocol
@@ -218,7 +232,8 @@ class acq4_reader:
             print(
                 f"acq4_reader.checkProtocol: Completed dirs and expected dirs are different: Completed {ncomplete: d}, expected: {nexpected:d}"
             )
-            # return False
+            if not allow_partial:  # block partials
+                return False
         return True
 
     def checkProtocolImportantFlags(
@@ -508,9 +523,12 @@ class acq4_reader:
         info = None
         fn = Path(filename)
         if fn.is_file():
-            tr = EM.MetaArray(file=fn, readAllData=False)
-            info = tr[0].infoCopy()
-            self.parseClampInfo(info)
+            try:
+                tr = EM.MetaArray(file=fn, readAllData=False)
+                info = tr[0].infoCopy()
+                self.parseClampInfo(info)
+            except:
+                pass
         return info
 
     def parseClampInfo(self, info: list):
@@ -633,11 +651,14 @@ class acq4_reader:
         # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
-    def getData(self, pos: int = 1, check: bool = False):
+    def getData(self, pos: int = 1, check: bool = False, allow_partial=False):
         """
         Get the data for the current protocol
         if check is True, we just check that the requested file exists and return
         True if it does and false if it does not
+        if allow_partial is true, we get as much data as we can even if the protocol
+        did not complete.
+
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
@@ -746,14 +767,12 @@ class acq4_reader:
         tr = None
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
-            if not fn.is_file():
-                if not check:
+            if check:
+                if not fn.is_file():
                     CP.cprint("r", f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}")
                     raise ValueError
-                else:
-                    return False
-            if check:
                 return True  # just note we found the first file
+
             if self.importantFlag and not important[i]:  # only return traces marked "important"
                 CP.cprint("m", "acq4_reader: Skipping non-important data")
                 continue
@@ -763,17 +782,20 @@ class acq4_reader:
             try:
                 tr = EM.MetaArray(file=fn)
             except:
-                CP.cprint("r", 
-                    f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
-                #raise ValueError(f"file failed: {str(fn):s}")
-                print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
-                continue
-            tr_info = tr[0].infoCopy()
+                if allow_partial:  # just get what we can
+                    continue
+                else:
+                    print(allow_partial)
+                    CP.cprint("r", 
+                        f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
+                    #raise ValueError(f"file failed: {str(fn):s}")
+                    print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
+                    continue
 
+            tr_info = tr[0].infoCopy()
             self.parseClampInfo(tr_info)
             self.WCComp = self.parseClampWCCompSettings(tr_info)
             self.CCComp = self.parseClampCCCompSettings(tr_info)
-
             # if i == 0:
             #     pp.pprint(info)
             cmd = self.getClampCommand(tr)
@@ -792,7 +814,7 @@ class acq4_reader:
             sr = tr_info[1]["DAQ"]["primary"]["rate"]
             self.sample_rate.append(self.samp_rate)
             # print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
-        if tr is None:
+        if tr is None and allow_partial is False:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
         if self.mode is None:
@@ -1019,7 +1041,8 @@ class acq4_reader:
         return times
 
     def getDeviceData(
-        self, device="Photodiode", devicename="Photodiode"
+        self, device="Photodiode", devicename="Photodiode",
+        allow_partial=False,
     ) -> Union[dict, None]:
         """
         Get the data from a device
@@ -1032,10 +1055,13 @@ class acq4_reader:
         devicename : str (default: 'Photodiode')
             The name of the device as set in the config (might be 'pCell', etc)
             This might or might not be the same as the device
+        allow_partial: bool (default: False)
+            return true even with partial information returned.
         
         Returns
         -------
-        Success : boolean
+        Success : dict
+        failure: None
         
         The results are stored data for the current protocol
         """
@@ -1059,8 +1085,11 @@ class acq4_reader:
         for i, d in enumerate(dirs):
             fn = Path(d, device + ".ma")
             if not fn.is_file():
-                print(" acq4_reader.getDeviceData: File not found: ", fn)
-                return None
+                if not allow_partial:
+                    print(" acq4_reader.getDeviceData: File not found: ", fn)
+                    return None
+                else:
+                    continue
             try:
                 lbr = EM.MetaArray(file=fn)
             except:
@@ -1071,6 +1100,8 @@ class acq4_reader:
             self.Device_time_base.append(lbr.xvals("Time"))
             sr = info[1]["DAQ"][devicename]["rate"]
             self.Device_sample_rate.append(sr)
+        if len(self.Device_data) == 0:
+            return None
         self.Device_data = np.array(self.Device_data)
         self.Device_sample_rate = np.array(self.Device_sample_rate)
         self.Device_time_base = np.array(self.Device_time_base)
