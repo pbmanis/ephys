@@ -128,16 +128,19 @@ class PSCAnalyzer:
         p = pathname.parts
         return str("~".join([p[i] for i in range(-4, 0)]))
 
-    def get_meta_data(self, protocol: str):
+    def get_meta_data(self, protocol: str, allow_partial=True):
         self.protocol = protocol
         self.pulse_train = self.AR.getStim(self.device)  # get the stimulus information
         # stim dict in pulse_train will look like:
         # {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
         # 'amplitude': [0.00025, 0.00025], 'npulses': [2], 'period': [0.05], 'type': ['pulseTrain']}
         # try:
+        self.stim_io = None
+        self.stim_dt = None
+        self.stikm_V = None
         self.devicedata = self.AR.getDeviceData(
-            device=self.device, devicename="command"
-        )
+            device=self.device, devicename="command",
+            allow_partial=allow_partial)
         if self.devicedata is None:
             print("No device data? name command, ", self.device)
             return False
@@ -157,34 +160,37 @@ class PSCAnalyzer:
             self.stim_V = self.AR.sequence[("MultiClamp1", "Pulse_amplitude")]
         except:
             self.stim_V = None
+        return True
 
     def _getData(self, protocolName: str, device: str = "Stim0"):
         self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         self.setup(clamps=self.AR, device=device)
-        if not self.AR.getData():  # get that data.
+        if not self.AR.getData(allow_partial=True):  # get that data.
             return False
         # print("Protocol important: ", self.AR.protocol_important, "ignore: ", ignore_important_flag)
         if not self.AR.protocol_important and not self.ignore_important_flag:
             return False
-        self.get_meta_data(protocol=protocolName)
+        if not self.get_meta_data(protocol=protocolName):
+            return False
         self.read_database(f"{protocolName:s}.p")
         return True
 
     def set_NGlist(self, NGlist=[]):
         self.NGlist = NGlist  # list of "not good" traces within a protocol
 
-    def check_protocol(self, protocol):
+    def check_protocol(self, protocol, allow_partial=False):
         """
         Verify that the protocol we are examining is complete.
         Returns True or False
         """
 
-        return self.AR.checkProtocol(protocol)
+        return self.AR.checkProtocol(protocol, allow_partial=allow_partial)
 
     def assign_default_protocol_map(self):
         self.protocol_map["IO_protocols"] = ["Stim_IO"]
         self.protocol_map["VDEP"] = ["VC_EPSC_3"]
         self.protocol_map["PPF"] = ["PPF"]
+        self.protocol_map["Train"] = ["Train"]
 
     def assign_protocols(self, protocol_type: str, protocol_name: str):
         """Assign analysis routines to protocol names.
@@ -256,6 +262,8 @@ class PSCAnalyzer:
             ok = A_VDEP.analyze_VDEP(self)
         elif protocolName.startswith("PPF"):
             ok = A_PPF.analyze_PPF(self)
+        elif protocolName.startswith("Train"):
+            ok = A_PPF.analyze_Train(self)
         if not ok:
             print("Failed on protocol in IV: ", self.datapath, protocolName)
             return False
@@ -394,7 +402,7 @@ class PSCAnalyzer:
             ie = it
         if it > ie:
             it = ie
-        print(it, ie)
+
         for i in range(data1.shape[0]):
             ax[0].plot(tb[:it], data1[i, :ie])
         ax[0].set_title(
@@ -403,7 +411,6 @@ class PSCAnalyzer:
         mpl.show()
 
     def set_region(self, region=None, baseline=None, slope=True):
-        print("set region")
         if region is None:
             raise ValueError(
                 "PSCAnalyzer, set_region requires a region beginning and end to measure the current"
@@ -431,7 +438,7 @@ class PSCAnalyzer:
 
         if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
             QtGui.QApplication.instance().exec_()
-        print("done with cp")
+
         self.T0, self.T1 = newCP.selectedRegion
         if self.T0 is None:
             return None
