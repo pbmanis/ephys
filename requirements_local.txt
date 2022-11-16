@@ -18,8 +18,9 @@ dill==0.3.1.1
 # envisage==4.7.2
 colorcet
 termcolor
+jinja2==3.0.1
 
-
+pyabf
 lmfit==0.9.13
 
 matplotlib>=3.5.0
@@ -30,6 +31,8 @@ numba # ==0.50.1
 numpy>=1.23
 pandas>=1.0
 openpyxl
+XlsxWriter>=3.0
+jinja2
 psutil==5.6.7
 pyparsing==2.4.0
 
