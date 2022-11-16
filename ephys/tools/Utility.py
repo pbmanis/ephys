@@ -49,6 +49,7 @@ from numba import jit
 from numpy import ma as ma
 from scipy import fftpack as spFFT
 
+debugFlag = False
 
 class ScriptError(Exception):
     pass
@@ -220,7 +221,7 @@ class Utility:
 
     def pSpectrum(
         self, data: np.ndarray, samplefreq: float = 44100
-    ) -> (np.ndarray, np.ndarray):
+    ) -> Tuple[np.ndarray, np.ndarray]:
         npts = len(data)
         # we should window the data here
         if npts == 0:
@@ -256,7 +257,7 @@ class Utility:
         freqAzero = np.arange(0, nUniquePts, 1.0) * (samplefreq / npts)
         return (spectrum, freqAzero)
 
-    def sinefit(self, x: np.ndarray, y: np.ndarray, F: float) -> (float, float):
+    def sinefit(self, x: np.ndarray, y: np.ndarray, F: float) -> Tuple[float, float]:
         """ LMS fit of a sine wave with period T to the data in x and y
             aka "cosinor" analysis. 
 
@@ -271,13 +272,13 @@ class Utility:
         Phase = np.arctan2(p[1], p[0])  # better check this...
         return (Amplitude, Phase)
 
-    def sinefit_precalc(self, x: np.ndarray, y: np.ndarray, F: float) -> (float, float):
+    def sinefit_precalc(self, x: np.ndarray, y: np.ndarray, F: float) -> Tuple[float, float]:
         """ LMS fit of a sine wave with period T to the data in x and y
             aka "cosinor" analysis. 
             assumes that A (in sinefit) is precalculated
 
         """
-        (p, residulas, rank, s) = np.linalg.lstsq(A, y)
+        (p, residulas, rank, s) = np.linalg.lstsq(x, y)
         Amplitude = np.sqrt(p[0] ** 2 + p[1] ** 2)
         Phase = np.arctan2(p[1], p[0])  # better check this...
         return (Amplitude, Phase)
@@ -403,13 +404,14 @@ class Utility:
         if self.debugFlag:
             print(f"sfreq: {samplefreq:f}  LPF: {LPF:f}")
         wn = [LPF / (samplefreq / 2.0)]
+        filter_b, filter_a = scipy.signal.bessel(NPole, wn, btype="low", output="ba")
         reduction = 1
         if reduce:
             if LPF <= samplefreq / 2.0:
                 reduction = int(samplefreq / LPF)
         if self.debugFlag is True:
             print(
-                f"signalfilter: samplef: {sf:f}  wn: {wn:f}  lpf: {flpf:f}  NPoles: {NPole:d}"
+                f"signalfilter: samplef: {samplefreq:f}  wn: {wn:f}  lpf: {LPF:f}  NPoles: {NPole:d}"
             )
             sm = np.mean(signal)
             if bidir:
@@ -589,16 +591,16 @@ class Utility:
         (evp, eva) = self.local_maxima(a, span=minpeakdist, sign=1)
         # now clean it up
         u = np.where(eva > 0.0)
-        t_start = t[evp[u]]
+        t_start = evp[evp[u]]
         d_start = eva[evp[u]]
         return (t_start, d_start)  # just return the list of the starts
 
     def RichardsonSilberberg(self, data, tau, time=None):
         D = data.view(np.ndarray)
         rn = tau * np.diff(D) + D[:-2, :]
-        rn = savitzky_golay(rn, kernel=11, order=4)
+        rn = self.savitzky_golay(rn, kernel=11, order=4)
         if time is not None:
-            vn = rn - tau * savitzky_golay(np.diff(D), kernel=11, order=4)
+            vn = rn - tau * self.savitzky_golay(np.diff(D), kernel=11, order=4)
             return (rn, vn)
         else:
             return rn
@@ -1182,7 +1184,7 @@ class Utility:
         spv = np.where(v > thresh)[0].tolist()  # find points above threshold
         sps = np.where(dv > 0.0)[0].tolist()  # find points where slope is positive
         sp = list(
-            Set.intersection(Set(spv), Set(sps))
+            set.intersection(set(spv), set(sps))
         )  # intersection defines putative spikes
         sp.sort()  # make sure all detected events are in order (sets is unordered)
         sp = tuple(sp)  # convert to tuple
@@ -1269,7 +1271,7 @@ class Utility:
         splist = {}
         if y.ndim == 3:
             for r in selected:
-                splist[r] = findspikes(
+                splist[r] = self.findspikes(
                     x[tpts],
                     y[r, axis, tpts],
                     thresh,
@@ -1278,7 +1280,7 @@ class Utility:
                     interpolate=interpolate,
                 )
         else:
-            splist = findspikes(
+            splist = self.findspikes(
                 x[tpts],
                 y[tpts],
                 thresh,
@@ -1307,7 +1309,7 @@ class Utility:
                         thr = threshold
                     else:
                         thr = threshold[j]
-                    (m1, m2) = measure(mode, x[i], d[j, :], t0, t1, thresh=thr)
+                    (m1, m2) = self.measure(mode, x[i], d[j, :], t0, t1, thresh=thr)
                     result = np.append(result, m1)
         else:
             d = y[selected, thisaxis, :]  # get data for this block
@@ -1316,7 +1318,7 @@ class Utility:
                     thr = threshold
                 else:
                     thr = threshold[j]
-                (m1, m2) = measure(mode, x, d[j, :], t0, t1, thresh=thr)
+                (m1, m2) = self.measure(mode, x, d[j, :], t0, t1, thresh=thr)
                 result = np.append(result, m1)
         return result
 
@@ -1331,7 +1333,7 @@ class Utility:
                 thr = threshold
             else:
                 thr = threshold[j]
-            (m1, m2) = measure(mode, x, d[j][:], t0, t1, thresh=thr)
+            (m1, m2) = self.measure(mode, x, d[j][:], t0, t1, thresh=thr)
             result = np.append(result, m1)
         return result
 
@@ -1426,8 +1428,8 @@ class Utility:
             return np.array([])
 
     def clipdata(self, y, xm, x0, x1):
-        mx = ma.getdata(mask(xm, xm, x0, x1))
-        my = ma.getdata(mask(y, xm, x0, x1))
+        mx = ma.getdata(np.mask(xm, xm, x0, x1))
+        my = ma.getdata(np.mask(y, xm, x0, x1))
         return (mx, my)
 
     def count_spikes(self, spk):
@@ -1472,12 +1474,12 @@ class Utility:
             ts = tw[0]
             te = tw[1]
             td = tw[2]
-            ssv = measure("mean", t, V[j, :], te - td, te)
-            ssi = measure("mean", t, I[j, :], te - td, te)
-            rvm = measure("mean", t, V[j, :], 0.0, ts - 1.0)
-            minv = measure("min", t, V[j, :], ts, te)
-            spk = findspikes(t, V[j, :], thr, t0=ts, t1=te)
-            nspikes.append(count_spikes(spk))  # build spike list
+            ssv = self.measure("mean", t, V[j, :], te - td, te)
+            ssi = self.measure("mean", t, I[j, :], te - td, te)
+            rvm = self.measure("mean", t, V[j, :], 0.0, ts - 1.0)
+            minv = self.measure("min", t, V[j, :], ts, te)
+            spk = self.findspikes(t, V[j, :], thr, t0=ts, t1=te)
+            nspikes.append(self.count_spikes(spk))  # build spike list
             ispikes.append(ssi[0])
             if nspikes[-1] >= 1:
                 fsl.append(spk[0])
@@ -1554,7 +1556,7 @@ class Utility:
                 for ff in namefs:
                     fileList = list(filter(ff, fileList))
         except:
-            raise ScriptError(str(e))
+            raise ScriptError(str())
         return fileList
 
     def seqparse(self, sequence:str, mode:str='nd'):
@@ -1646,7 +1648,7 @@ class Utility:
             recs = np.arange(fn, ln, skip)
 
         if mo.find("l") >= 0:  # log spacing; skip is length of result
-            recs = np.logspace(log10(fn),log10(ln),skip)
+            recs = np.logspace(np.log10(fn), np.log10(ln),skip)
 
         if mo.find("t") >= 0:  # just repeat the first value
             recs = [fn]
@@ -1782,7 +1784,7 @@ if __name__ == "__main__":
     #     v[p] = 20.0
     #     v[p1] = 15.0
     #     v[p2] = -20.0
-    #     sp = findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
+    #     sp  self.findspikes(t, v, 0.0, dt = dt, mode = 'schmitt', interpolate = False)
     #     print 'findSpikes'
     #     print 'sp: ', sp
     #     f = MP.figure(1)

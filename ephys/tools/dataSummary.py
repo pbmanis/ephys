@@ -973,10 +973,7 @@ class DataSummary:
         outfile = Path(self.outFilename)
         if self.outputMode == "pandas" and not self.append:
             print("\nOUTPUTTING DIRECTLY VIA PANDAS, extension is .pkl")
-            #  self.colprint()
-            print("panda string: ", self.panda_string)
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
-            # print('Head write: \n', df.head(5), '\n')
             if outfile.suffix != '.pkl':
                 outfile = outfile.with_suffix('.pkl')
             df.to_pickle(outfile)
