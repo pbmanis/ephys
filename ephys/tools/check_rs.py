@@ -168,7 +168,6 @@ class Check_RS(pg.QtWidgets.QWidget):
             for cell in cells:
                 cpath = Path(slp, cell)
                 self.check_cell_rs(cpath)
-        self.quit()
 
     def check_topdir_rs(self, top_dir):
         days = list(Path(top_dir).glob("*_00*"))

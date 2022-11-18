@@ -88,9 +88,10 @@ import dateutil.parser as DUP
 import MetaArray
 import numpy as np
 import pandas as pd
-
+from pylibrary.tools import cprint 
 from ..datareaders import acq4_reader
 
+CP = cprint.cprint
 
 def ansi_colors(color):
     colors = {
@@ -225,6 +226,7 @@ class DataSummary:
         self.pairflag = pairflag
         self.device = device
         self.append = append
+        self.all_dataset_protocols = [] # a list of ALL protocols found in the dataset
 
         self.daylist = None
         self.index = 0
@@ -737,6 +739,8 @@ class DataSummary:
             mp = Path(protocol).parts
             protocol = mp[-1]
             protocol = str(protocol)
+            if protocol not in self.all_dataset_protocols:
+                self.all_dataset_protocols.append(protocol)
             if protocol.startswith("Patch"):
                 continue
 
@@ -1070,6 +1074,7 @@ class DataSummary:
                 "chestnut": "saddlebrown",
                 "giant": "sandybrown",
                 "giant?": "sandybrown",
+                "giant cell": "sandybrown",
                 "Unknown": "white",
                 "unknown": "white",
                 " ": "white",
@@ -1092,8 +1097,11 @@ class DataSummary:
                 'glia': 'lightslategray',
                 'Glia': 'lightslategray',
         }
+        if row.cell_type.lower() in colors.keys():
+            return [f"background-color: {colors[row.cell_type.lower()]:s}" for s in range(len(row))]
+        else:
+            return [f"background-color: red" for s in range(len(row))]
 
-        return [f"background-color: {colors[row.cell_type]:s}" for s in range(len(row))]
 
     def organize_columns(self, df):
         return df
@@ -1139,7 +1147,9 @@ class DataSummary:
                 coltxt = df[column].astype(str)
                 coltxt = coltxt.map(str.rstrip)
                 maxcol = coltxt.map(len).max()
-                column_width = maxcol
+                column_width = np.max([maxcol, len(column)]) # make sure the title fits
+                if column_width > 50:
+                    column_width = 50 # but also no super long ones
                 #column_width = max(df_new[column].astype(str).map(len).max(), len(column))
             else:
                 column_width = 25
@@ -1174,6 +1184,9 @@ def dir_recurse(ds, current_dir, args, indent=0):
     indent -= 2
     if indent < 0:
         indent = 0
+    print(f"\n{' '*indent:s}All Protocols in dataset: \n")
+    for prot in sorted(ds.all_dataset_protocols):
+        print(f"{' '*indent:s}    {prot:s}")
     return indent
 
 
@@ -1314,6 +1327,7 @@ def main():
     if args.outputFilename is not None:
         print("Writing: ")
         dir_recurse(ds, ds.basedir, args)
+        
         exit()
         files = list(ds.basedir.glob("*"))
         alldirs = [f for f in files if f.is_dir() and str(f.name).startswith("20")]
@@ -1352,6 +1366,8 @@ def main():
             VCIV_types = []
             stdIV_types = []
             CC_Sponts = []
+            VC_Sponts = []
+            VC_Spont_types = []
             CC_Spont_types = []
 
             #       Only returns a dataframe if there is more than one entry
@@ -1385,10 +1401,14 @@ def main():
                     VCIVs.append(c)
                     if ps not in VCIV_types:
                         VCIV_types.append(p)
-                elif c.startswith("CC_"):
+                elif c.startswith("CC_Spont"):
                     CC_Sponts.append(c)
                     if ps not in CC_Spont_types:
                         CC_Spont_types.append(p)
+                elif c.startswith("VC_Spont"):
+                    VC_Sponts.append(c)
+                    if ps not in VC_Spont_types:
+                        VC_Spont_types.append(p)
             print("=" * 80)
             print("COMPLETE PROTOCOLS")
             print("=" * 80)
@@ -1408,7 +1428,9 @@ def main():
             print("    CC_Sponts: ")
             for tr in CC_Sponts:
                 print("        {0:<32s}".format(tr))
-
+            print("    CV_Sponts: ")
+            for tr in VC_Sponts:
+                print("        {0:<32s}".format(tr))
             print("\n------------")
             print("    Map types: ")
             for m in map_types:
