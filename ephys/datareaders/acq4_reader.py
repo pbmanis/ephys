@@ -891,7 +891,7 @@ class acq4_reader:
         # set some defaults in case there is no .index file
         self.repetitions = 1
         self.tstart = 0.0
-        self.tend = 0.1
+        self.tend = np.max(self.time_base)
         self.commandLevels = np.array([0.0])
 
         if index is not None:
