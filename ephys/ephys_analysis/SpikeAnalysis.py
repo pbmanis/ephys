@@ -135,10 +135,9 @@ class SpikeAnalysis():
         if reset:
             self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
         
-        twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
+    
         maxspkrate = 50  # max rate to count  in adaptation is 50 spikes/second
         minspk = 4
-        maxspk = int(maxspkrate*twin)  # scale max dount by range of spike counts
         #print('max spike rate: ', maxspk)
         ntr = len(self.Clamps.traces)
         self.spikecount = np.zeros(ntr)
@@ -150,6 +149,8 @@ class SpikeAnalysis():
         self.spikeIndices = [[] for i in range(ntr)]
         #print 'clamp start/end: ', self.Clamps.tstart, self.Clamps.tend
         lastspikecount = 0
+        twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
+        maxspk = int(maxspkrate*twin)  # scale max dount by range of spike counts
         U = Utility.Utility()
         for i in range(ntr):  # this is where we should parallelize the analysis for spikes
             spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
@@ -347,7 +348,10 @@ class SpikeAnalysis():
         self.iHold = np.mean(self.iHold_i)
         self.analysis_summary['spikes'] = self.spikeShape  # save in the summary dictionary too       
         self.analysis_summary['iHold'] = self.iHold
-        self.analysis_summary['pulseDuration'] = self.Clamps.tend - self.Clamps.tstart
+        try:
+            self.analysis_summary['pulseDuration'] = self.Clamps.tend - self.Clamps.tstart
+        except:
+            self.analysis_summary['pulseDuration'] = np.max(self.Clamps.time_base)
         if len(self.spikeShape.keys()) > 0:  # only try to classify if there are spikes
             self.getClassifyingInfo()  # build analysis summary here as well.
         if printSpikeInfo:
@@ -413,13 +417,13 @@ class SpikeAnalysis():
             k = kbegin + 2
         if k > len(dvdt):  # end of block of data, so can not measure
             return(thisspike)
-        # print('kbegin, k: ', kbegin, k)
         try:
             km = np.argmax(dvdt[kbegin:k]) + kbegin
         except:
-            print(f'{this_source_file:s}:: kbdgin, k: ', kbegin, k)
-            print(len(dvdt))
-            raise
+            print(f"can't analyze spike in {this_source_file:s}:: kbegin = {kbegin:d}, k = {k:d}")
+            print("len (dv/dt): ", len(dvdt))
+            return(thisspike)
+
         if ((km - kbegin) < 1):
             km = kbegin + int((k - kbegin)/2.) + 1
         kthresh = np.argmin(np.fabs(dvdt[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
