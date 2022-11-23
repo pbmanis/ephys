@@ -3,24 +3,23 @@ from typing import List
 import numpy as np
 from collections import OrderedDict
 
-def analyze_PPF(
+def analyze_Train(
     PSC,
     rmpregion: list = [0.0, 0.045],
     twidth: float = 0.02,
     measure_func: object = np.min,
 ):
     """
-    Analyze paired-pulse facilitiation
-
+    Analyze Trains of stimuli
     Notes:
-        The PPF protocol always involves 2 pulses, the second of which varies in time.
-        Here, we compute the ratio between the 2 pulses for each time,
+        The Train protocol has at least 3-4 pulses at a constant interval.
+        Here, we compute the ratio between the Nth pulse and the first pulse response,
         and also save clips of the data waveforms for plotting.
 
         The stim dict in pulse_train will look like::
-            {'start': [0.05, 0.1], 'duration': [0.0001, 0.0001],
-            'amplitude': [0.00025, 0.00025],
-            'npulses': [2], 'period': [0.05],
+            {'start': [0.05, 0.1, 0.5, 0.2, 0.25], 'duration': [0.0001 .. nth],
+            'amplitude': [0.00025, ... nth],
+            'npulses': [N], 'period': [0.05],
             'type': ['pulseTrain']}
 
     Parameters
@@ -48,118 +47,86 @@ def analyze_PPF(
         intvl_trace = int(rj[4:])
         PSC.reject_list.append((trial * len(PSC.reps)) + intvl_trace)
 
-    Stim_Intvl = np.tile(PSC.stim_dt, len(PSC.reps))  # stimuli in order
+    stim = PSC.AR.getStim("Stim0")
+    if stim['type'] == 'pulseTrain':
+        stim_dt = stim['start']
+    else:
+        stim_dt = PSC.stim_dt
+    Stim_Intvl = np.tile(stim_dt, len(PSC.reps))  # stimuli in order
 
     PSC.reject_list = []
     for rj in PSC.NGlist:
         trial = int(rj[0:3])
         intvl_trace = int(rj[4:])
-        PSC.reject_list.append((trial * len(PSC.stim_dt)) + intvl_trace)
+        PSC.reject_list.append((trial * len(stim_dt)) + intvl_trace)
 
-    PSC.analysis_summary[f"PPF"] = [[]] * len(PSC.stim_dt)
+    PSC.analysis_summary[f"Train"] = [[]] * len(stim_dt)
     PSC.analysis_summary["iHold"] = []
-    PSC.analysis_summary["ppf_dt"] = PSC.stim_dt
+    PSC.analysis_summary["train_dt"] = stim_dt
     PSC.i_mean = []
 
-    ppf_traces_T1 = OrderedDict(
-        [(k, []) for k in PSC.stim_dt]
-    )  # control response for each dt
-    ppf_traces_R1 = OrderedDict(
-        [(k, []) for k in PSC.stim_dt]
-    )  # Response to the second stimulus at dt
-    ppf_traces_T2 = OrderedDict([(k, []) for k in PSC.stim_dt])
-    ppf_traces_R2 = OrderedDict([(k, []) for k in PSC.stim_dt])
+    train_traces_T = {}
+    train_traces_R = {}
+    nreps = len(PSC.reps)
+    for k in range(nreps):
+        train_traces_T[k] = [(n, []) for n in range(stim['npulses'])]
+        train_traces_R[k] = [(n, []) for n in range(stim['npulses'])]
 
-    ppf_dat = OrderedDict(
-        [(k, []) for k in PSC.stim_dt]
+    train_dat = OrderedDict(
+        [(k, []) for k in stim_dt]
     )  # calculated PPF for each trial.
-    num_intervals = len(Stim_Intvl)
+
     dead_time = 1.5e-3  # time before start of response measure
-    # f, axx = mpl.subplots(1,1)
-    for j in range(len(PSC.AR.traces)):  # for all (accepted) traces
+    psc_amp = np.zeros((nreps, stim['npulses']))*np.nan
+    j = 0
+    for nr in range(nreps):  # for all (accepted) traces
         if j in PSC.reject_list:
             print("*" * 80)
             print(f"trace j={j:d} is in rejection list: {str(PSC.reject_list):s}")
             print(f"     from: {str(PSC.NGlist):s}")
             print("*" * 80)
+            j += 1
             continue
-        mi = PSC.AR.trace_index[
-            j
-        ]  # get index into marked/accepted traces then compute the min value minus the baseline
-        t_stim1 = PSC._compute_interval(
-            x0=PSC.pulse_train["start"][0],
-            artifact_delay=dead_time,
-            index=mi,
-            stim_intvl=Stim_Intvl,
-            max_width=twidth,
-            pre_time=1e-3,
-            pflag=False,
-        )
-        t_stim2 = PSC._compute_interval(
-            x0=Stim_Intvl[mi] + PSC.pulse_train["start"][0],
-            artifact_delay=dead_time,
-            index=mi,
-            stim_intvl=Stim_Intvl,
-            max_width=twidth,
-            pre_time=1e-3,
-            pflag=False,
-        )
-
-        PSC.T0 = t_stim2[0]  # kind of bogus
-        PSC.T1 = t_stim2[1]
-
-        bl = np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
-        i_pp1 = (
-            PSC.Clamps.traces["Time" : t_stim1[0] : t_stim1[1]][j] - bl
-        )  # first pulse trace
-        tb_ref = PSC.Clamps.time_base[
-            np.where(
-                (PSC.Clamps.time_base >= t_stim1[0])
-                & (PSC.Clamps.time_base < t_stim1[1])
+        # get index into marked/accepted traces then compute the min value minus the baseline
+        mi = PSC.AR.trace_index[j] 
+        train_windows = []
+        for k in range(stim['npulses']):
+            t_stim = PSC._compute_interval(
+                x0=stim["start"][k],
+                artifact_delay=dead_time,
+                index=mi,
+                stim_intvl=Stim_Intvl,
+                max_width=twidth,
+                pre_time=1e-3,
+                pflag=False,
             )
-        ]
-        i_pp2 = (
-            PSC.Clamps.traces["Time" : t_stim2[0] : t_stim2[1]][j] - bl
-        )  # second pulse trace
-        tb_p2 = PSC.Clamps.time_base[
-            np.where(
-                (PSC.Clamps.time_base >= t_stim2[0])
-                & (PSC.Clamps.time_base < t_stim2[1])
+            train_windows.append(t_stim)
+            if k == 0:
+                bl = np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
+            I_psc = (
+                PSC.Clamps.traces["Time" : t_stim[0] : t_stim[1]] - bl
             )
-        ]
+            psc_amp[nr, k] = measure_func(I_psc)*1e12
+        j += 1
+    print(dir(PSC))
+    import matplotlib.pyplot as mpl
+    f, ax = mpl.subplots(2,1)
+    for nr in range(nreps):
+        ax[0].plot(stim['start'], psc_amp[nr,:], 'o', markersize=2)
+    ax[0].set_title(str(PSC.datapath) + PSC.protocol, loc="right")
+    mpl.show()
 
-        da1 = measure_func(i_pp1)
-        da2 = measure_func(i_pp2)
-        ppf_tr = da2 / da1  # get facilitation for this trace and interval
-        ppf_dat[Stim_Intvl[mi]].append(ppf_tr)  # accumulate
-        ppf_traces_T1[Stim_Intvl[mi]].append(tb_ref)
-        ppf_traces_R1[Stim_Intvl[mi]].append(i_pp1)
-        ppf_traces_T2[Stim_Intvl[mi]].append(tb_p2)
-        ppf_traces_R2[Stim_Intvl[mi]].append(i_pp2)
-        # print(np.min(tb_ref), np.max(tb_ref), np.min(tb_p2), np.max(tb_p2))
-        # plotWidget = pg.plot(title="traces")
-        # si = Stim_Intvl[mi]
-        # plotWidget.plot(ppf_traces_T1[si][-1], ppf_traces_R1[si][-1], pen='g')
-        # plotWidget.plot(ppf_traces_T2[si][-1], ppf_traces_R2[si][-1], pen='r')
-        # plotWidget.plot(tb_ref, np.ones_like(tb_ref)*da1, pen='b')
-        # plotWidget.plot(tb_p2, np.ones_like(tb_p2)*da2, pen='m')
-        # if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-        #     QtGui.QApplication.instance().exec_()
+    train_tr = da2 / da1  # get facilitation for this trace and interval
+    train_dat[Stim_Intvl[mi]].append(train_tr)  # accumulate
+    train_traces_T[Stim_Intvl[mi]].append(tb_ref)
+    train_traces_R[Stim_Intvl[mi]].append(i_pp1)
 
-        # axx.plot(tb_ref, i_pp1, 'k-')
-        # axx.plot(tb_p2, i_pp2, 'r-')
-    PSC.analysis_summary[f"PPF"] = ppf_dat
-    PSC.analysis_summary["PPF_traces_T1"] = ppf_traces_T1
-    PSC.analysis_summary["PPF_traces_R1"] = ppf_traces_R1
-    PSC.analysis_summary["PPF_traces_T2"] = ppf_traces_T2
-    PSC.analysis_summary["PPF_traces_R2"] = ppf_traces_R2
-    PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim_I)
-    PSC.analysis_summary["psc_intervals"] = np.array(PSC.stim_dt)
-    PSC.analysis_summary["stim_times"] = PSC.pulse_train["start"]
+    PSC.analysis_summary[f"Train"] = train_dat
+    PSC.analysis_summary["Train_traces_T"] = train_traces_T
+    PSC.analysis_summary["Train_traces_R"] = train_traces_R
+    PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim['amplitude'])
+    PSC.analysis_summary["psc_intervals"] = np.array([stim['period']]*stim['npulses'])
+    PSC.analysis_summary["stim_times"] = np.array(stim['start'])
     PSC.analysis_summary["window"] = [PSC.T0, PSC.T1]
 
-    # fname = Path(PSC.datapath).parts
-    # fname = '/'.join(fname[-4:]).replace('_', '\_')
-    # f.suptitle(f"{fname:s}")
-    # mpl.show()
     return True
