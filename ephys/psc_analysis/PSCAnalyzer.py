@@ -32,6 +32,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 import ephys.psc_analysis.analyze_IO as A_IO
 import ephys.psc_analysis.analyze_PPF as A_PPF
 import ephys.psc_analysis.analyze_VDEP as A_VDEP
+import ephys.psc_analysis.analyze_Train as A_TR
 import ephys.psc_analysis.functions as FN
 from ephys.datareaders import acq4_reader
 from ephys.tools import cursor_plot as CP
@@ -153,9 +154,11 @@ class PSCAnalyzer:
         except:
             self.stim_io = None
         try:  # get the stimulus rate
+
             self.stim_dt = self.AR.sequence[(self.device, "command.PulseTrain_period")]
         except:
             self.stim_dt = None
+        
         try:  # get the voltage from the multiclamp in vclamp mode
             self.stim_V = self.AR.sequence[("MultiClamp1", "Pulse_amplitude")]
         except:
@@ -262,8 +265,8 @@ class PSCAnalyzer:
             ok = A_VDEP.analyze_VDEP(self)
         elif protocolName.startswith("PPF"):
             ok = A_PPF.analyze_PPF(self)
-        elif protocolName.startswith("Train"):
-            ok = A_PPF.analyze_Train(self)
+        elif protocolName.startswith("Train_4"):
+            ok = A_TR.analyze_Train(self)
         if not ok:
             print("Failed on protocol in IV: ", self.datapath, protocolName)
             return False
