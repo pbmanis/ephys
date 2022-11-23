@@ -999,11 +999,11 @@ class acq4_reader:
             tstart = [stimuli["PulseTrain"]["start"]["value"]]
             times["duration"] = []
             times["amplitude"] = []
-            times["npulses"] = [stimuli["PulseTrain"]["pulse_number"]["value"]]
-            times["period"] = [stimuli["PulseTrain"]["period"]["value"]]
-            times["type"] = [stimuli["PulseTrain"]["type"]]
-            for n in range(times["npulses"][0]):
-                times["start"].append(tstart[0] + n * times["period"][0])
+            times["npulses"] = stimuli["PulseTrain"]["pulse_number"]["value"]
+            times["period"] = stimuli["PulseTrain"]["period"]["value"]
+            times["type"] = stimuli["PulseTrain"]["type"]
+            for n in range(times["npulses"]):
+                times["start"].append(tstart[0] + n * times["period"])
                 times["duration"].append(stimuli["PulseTrain"]["length"]["value"])
                 times["amplitude"].append(stimuli["PulseTrain"]["amplitude"]["value"])
 
