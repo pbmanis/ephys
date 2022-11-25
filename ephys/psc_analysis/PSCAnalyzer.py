@@ -42,6 +42,7 @@ class PSCAnalyzer:
     def __init__(
         self,
         datapath: Union[str, Path],
+        df: object=None,
         plot: bool = True,
         update_regions: bool = False,
     ):
@@ -67,7 +68,7 @@ class PSCAnalyzer:
             analysis can be defined and saved.
 
         """
-        self.datapath = datapath
+        self.datapath = Path(datapath) # convert to path object
         self.AR = (
             acq4_reader.acq4_reader()
         )  # make our own private version of the analysis and reader
@@ -85,6 +86,16 @@ class PSCAnalyzer:
             -0.0741
         )  # in V  - this is the Cl eq potential to minize GABA interference
         self.NMDA_delay = 0.050  # delay in s to make measurement
+        if df is not None:
+            date = str(Path(*self.datapath.parts[:-3]))
+            # print("datapath: ", date)
+            group = df[df['date'] == date]["Group"]
+            if len(group) == 0:
+                self.Group = ""
+            else:
+                self.Group = group.values[0]
+            # print(self.group)
+            # exit()
 
     def setup(
         self,
@@ -589,7 +600,7 @@ class PSCAnalyzer:
         if self.plot:
             mpl.show()
 
-    def file_cell_protocol(self, filename):
+    def file_cell_protocol(self, filename:Union[str, Path]):
         """
         file_cell_protocol breaks the current filename down and returns a
         tuple: (date, cell, protocol)
@@ -604,10 +615,18 @@ class PSCAnalyzer:
         tuple: (date, sliceid, cell, protocol, any other...)
             last argument returned is the rest of the path...
         """
-        (p0, proto) = os.path.split(filename)
-        (p1, cell) = os.path.split(p0)
-        (p2, sliceid) = os.path.split(p1)
-        (p3, date) = os.path.split(p2)
+        filename = Path(filename)
+        fparts = Path.parts
+        proto = fparts[-1]
+        cell = fparts[-1]
+        sliceid = fparts[-3]
+        date = fparts[-4]
+        p3 = Path(*fparts[:-4])
+        # (p0, proto) = os.path.split(filename)
+        
+        # (p1, cell) = os.path.split(p0)
+        # (p2, sliceid) = os.path.split(p1)
+        # (p3, date) = os.path.split(p2)
         return (date, sliceid, cell, proto, p3)
 
 
