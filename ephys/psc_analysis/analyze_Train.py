@@ -142,12 +142,7 @@ def analyze_Train(
             bl_1 = np.mean(PSC.Clamps.traces["Time" : bl1[0] : bl1[1]][j])
             bl = (bl_0 + bl_1)/2.0           
             I_psc = PSC.Clamps.traces["Time" : t_stim[0] : t_stim[1]][j] - bl
-            # trim off positive current at beginning of trace (e.g., artifact)
-            for ip in I_psc:
-                if ip > 0:
-                    ip = np.nan
-                else:
-                    break
+            
             # if str(PSC.datapath.parts[-4]).startswith('2022.05.27'):
             #     print('rep: ', rep_no, 'pulse: ', pulse_no, 'baseline: ', bl, "Imin: ", np.min(I_psc))
             train_traces_T[rep_no][pulse_no] = PSC.Clamps.time_base[
