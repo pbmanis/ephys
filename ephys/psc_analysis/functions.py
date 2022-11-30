@@ -134,7 +134,7 @@ def mean_I_analysis(
 
         i_min = i_mina.min(axis=0)  # average over reps
         results.i_argmin = np.argmin(i_mina, axis=0)
-        print("imin shape: ", i_min.shape)
+        # print("imin shape: ", i_min.shape)
 
         return i_min, results
 

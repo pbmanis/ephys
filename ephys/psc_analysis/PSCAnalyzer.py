@@ -294,7 +294,7 @@ class PSCAnalyzer:
                 self.db.loc[date, "protocol"] = protocolName
                 self.db.loc[date, "T0"] = self.T0
                 self.db.loc[date, "T1"] = self.T1
-                print("old date data updated")
+                # print("old date data updated")
             self.update_database()
             # print('db head: ', self.db.head())
         return True
@@ -308,10 +308,13 @@ class PSCAnalyzer:
 
     def set_baseline_times(self, baseline: Union[List, Tuple]):
         """
-        baseline: 2-element list or numpy array
+        baseline: 2 or 4 -element list or numpy array
+        if 2 elements, it is start and stop of baseline
+        if 4 elements, it is start and stop of first part of baseline,
+        and start and stop of a second part of the baseline
         """
-        if len(baseline) != 2:
-            raise ValueError("Baseline must be a 2-element array")
+        if len(baseline) not in [2,4]:
+            raise ValueError("Baseline must be a 2 or 4 -element array")
         if isinstance(baseline, list):
             baseline = np.array(baseline)
         self.baseline = np.sort(baseline)
@@ -319,8 +322,14 @@ class PSCAnalyzer:
     def get_baseline(self):
         """Return the mean values in the data over the baseline region."""
         bl, result = FN.mean_I_analysis(
-            clamps=self.Clamps, region=self.baseline, reps=[0]
+            clamps=self.Clamps, region=self.baseline[0:2], reps=[0]
         )
+        if len(self.baseline) == 4:
+            bl2, result = FN.mean_I_analysis(
+                clamps=self.Clamps, region=self.baseline[2:4], reps=[0]
+            )
+            bl = (bl + bl2)/2.0 # average the two baseline values
+            
         return bl
 
     def _clean_array(self, rgn: Union[List, Tuple]):

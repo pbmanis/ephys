@@ -22,7 +22,7 @@ def plot_one_train(stim, psc_amp, PSC):
 def analyze_Train(
     PSC,
     rmpregion: list = [0.0, 0.045],
-    twidth: float = 0.02,
+    twidth: float = 0.04,
     measure_func: object = np.min,
 ):
     """
@@ -64,11 +64,18 @@ def analyze_Train(
         PSC.reject_list.append((trial * len(PSC.reps)) + intvl_trace)
 
     stim = PSC.AR.getStim("Stim0")
+    n_reps = len(PSC.reps)
+    n_pulses = stim['npulses']
     if stim['type'] == 'pulseTrain':
         stim_dt = stim['start']
     else:
         stim_dt = PSC.stim_dt
-    Stim_Intvl = np.tile(stim_dt, len(PSC.reps))  # stimuli in order
+    Stim_Intvl = np.tile(stim_dt, n_reps)  # stimuli in order
+    twidths = [twidth]*n_pulses
+    for i, sdt in enumerate(stim_dt):
+        if twidth > sdt:
+            twidths[i] = sdt - 0.001 # make sure the window ends before next stimulus
+
 
     PSC.reject_list = []
     for rj in PSC.NGlist:
@@ -83,17 +90,16 @@ def analyze_Train(
     train_traces_T = {}
     train_traces_R = {}
     train_facilitation_R = {}
-    nreps = len(PSC.reps)
-    # calculated train response for each stimulus in each trial.
-    for k in range(nreps):
-        train_traces_T[k] = [(n, []) for n in Stim_Intvl.ravel()]
-        train_traces_R[k] = [(n, []) for n in Stim_Intvl.ravel()]
-        train_facilitation_R[k] = [(n, []) for n in Stim_Intvl.ravel()]
 
-    dead_time = 1.5e-3  # time before start of response measure
-    psc_amp = np.zeros((nreps, stim['npulses']))*np.nan
+    # calculated train response for each stimulus in each trial.
+    for k in range(n_reps):
+        train_traces_T[k] = [None]*n_pulses
+        train_traces_R[k] = [None]*n_pulses
+        train_facilitation_R[k] = [(n, []) for n in Stim_Intvl.ravel()]
+    dead_time = 1.e-3  # time before start of response measure
+    psc_amp = np.zeros((n_reps, n_pulses))*np.nan
     j = 0
-    for nr in range(nreps):  # for all (accepted) traces
+    for rep_no in PSC.reps:  # for all (accepted) traces
         # get index into marked/accepted traces then compute the min value minus the baseline
         if j >= len(PSC.AR.trace_index):
             j += 1
@@ -105,27 +111,54 @@ def analyze_Train(
             print(f"     from: {str(PSC.NGlist):s}")
             print("*" * 80)
             j += 1
-            train_dat[Stim_Intvl[mi]].append(np.nan)
             continue
 
         train_windows = []
-        for k in range(stim['npulses']):
+        for pulse_no in range(n_pulses):
             t_stim = PSC._compute_interval(
-                x0=stim["start"][k],
+                x0=stim["start"][pulse_no],
                 artifact_delay=dead_time,
                 index=mi,
                 stim_intvl=Stim_Intvl,
-                max_width=twidth,
+                max_width=twidths[pulse_no],
                 pre_time=1e-3,
                 pflag=False,
             )
+            # print("t_stim: ", t_stim)
             train_windows.append(t_stim)
-            if k == 0:
-                bl = np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
-            I_psc = (
-                PSC.Clamps.traces["Time" : t_stim[0] : t_stim[1]] - bl
-            )
-            psc_amp[nr, k] = measure_func(I_psc)*1e12
+            # if pulse_no == 0:  # only need to get baseline once per trace
+            #     bl = np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
+            #     bl2 = np.mean((PSC.Clamps.traces["Time" : 0.4 : 0.449][j]))
+            #     bl = (bl + bl2)/2.0
+            # Baseline from right before stimulus to right before next stimulus (or equivalent time at end of train)
+            # print(stim["start"][pulse_no], Stim_Intvl)
+            bl0 = [Stim_Intvl[pulse_no]-0.0025, Stim_Intvl[pulse_no]-0.0005]
+            if pulse_no < n_pulses:
+                bl1 = [Stim_Intvl[pulse_no+1]-0.0025, Stim_Intvl[pulse_no+1]-0.0005]
+            else:
+                bl1 = [Stim_Intvl[pulse_no]-0.0025 + twidths[pulse_no], Stim_Intvl[pulse_no]-0.0005+twidths[pulse_no]]
+            # print("bl wins: ", bl0, bl1)
+            bl_0 = np.mean(PSC.Clamps.traces["Time" : bl0[0] : bl0[1]][j])
+            bl_1 = np.mean(PSC.Clamps.traces["Time" : bl1[0] : bl1[1]][j])
+            bl = (bl_0 + bl_1)/2.0           
+            I_psc = PSC.Clamps.traces["Time" : t_stim[0] : t_stim[1]][j] - bl
+            # trim off positive current at beginning of trace (e.g., artifact)
+            for ip in I_psc:
+                if ip > 0:
+                    ip = np.nan
+                else:
+                    break
+            # if str(PSC.datapath.parts[-4]).startswith('2022.05.27'):
+            #     print('rep: ', rep_no, 'pulse: ', pulse_no, 'baseline: ', bl, "Imin: ", np.min(I_psc))
+            train_traces_T[rep_no][pulse_no] = PSC.Clamps.time_base[
+                np.where(
+                    (PSC.Clamps.time_base >= t_stim[0])
+                    & (PSC.Clamps.time_base < t_stim[1])
+                    )
+                ]
+            train_traces_R[rep_no][pulse_no] = I_psc
+
+            psc_amp[rep_no, pulse_no] = measure_func(I_psc)*1e12
         j += 1
         # train_tr = np.divide(np.array(psc_amp[nr,:]),np.array(psc_amp[nr,0]).reshape((-1,1)))  # get facilitation for this trace and interval
         # train_facilitation_R[nr] = train_tr
@@ -137,11 +170,14 @@ def analyze_Train(
     # print(psc_amp)
     PSC.T0 = t_stim[0]
     PSC.T1 = t_stim[1]
-    PSC.analysis_summary["npulses"] = stim["npulses"]
+    PSC.analysis_summary["npulses"] = n_pulses
+    PSC.analysis_summary["nreps"] = n_reps
+    PSC.analysis_summary["Stim_I"] = stim_I
     PSC.analysis_summary["Train_Facilitation_R"] = np.array(train_facilitation_R)  # ratio responses
     PSC.analysis_summary["train_dt"] = stim_dt # one rep
-    PSC.analysis_summary["Train_traces_T"] = Stim_Intvl # all data
-    PSC.analysis_summary["Train_traces_R"] = psc_amp # all data
+    PSC.analysis_summary["Train_traces_T"] = train_traces_T # trace time data
+    PSC.analysis_summary["Train_traces_R"] = train_traces_R # trace current data
+    PSC.analysis_summary["psc_amp"] = psc_amp
     PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim['amplitude'])
     PSC.analysis_summary["stim_times"] = np.array(stim['start'])
     PSC.analysis_summary["window"] = train_windows
