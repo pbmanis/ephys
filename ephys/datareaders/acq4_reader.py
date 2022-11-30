@@ -204,7 +204,7 @@ class acq4_reader:
         info = info["."]
         if "devices" not in info.keys():  # just safety...
             CP.cprint("r", "acq4_reader.checkProtocol: No devices in the protocol")
-            CP.print("r", "      info keys: {str(list(info.keys())):s")
+            CP.cprint("r", "      info keys: {str(list(info.keys())):s")
             return False
         devices = info["devices"].keys()
         clampDevices = []
@@ -1157,7 +1157,7 @@ class acq4_reader:
             try:
                 sr = info[1]["DAQ"]["Shutter"]["rate"]
             except:
-                print(info[1]["DAQ"].keys())
+                print("Info keys is missing requested DAQ.Shutter.rate: ", info[1]["DAQ"].keys())
                 exit(1)
             self.LBR_sample_rate.append(sr)
         self.LaserBlue_info = info
