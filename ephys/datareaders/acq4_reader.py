@@ -858,7 +858,8 @@ class acq4_reader:
             uni = 'None'
         else:
             uni = cmd.axisUnits(-1)
-        self.traces = EM.MetaArray(
+        try:
+            self.traces = EM.MetaArray(
             self.data_array,
             info=[
                 {
@@ -870,6 +871,9 @@ class acq4_reader:
                 tr.infoCopy(-1),
             ],
         )
+        except:
+            CP.cprint("r", "No valid traces found")
+            return False
         self.cmd_wave = EM.MetaArray(
             self.cmd_wave,
             info=[
