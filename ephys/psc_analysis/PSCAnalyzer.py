@@ -249,6 +249,8 @@ class PSCAnalyzer:
     def measure_PSC(
         self,
         protocolName: str,
+        deadtime:float=0.7e-3,
+        artifact_sign:str='+',
         plot: bool = True,
         savetimes: bool = False,
         ignore_important_flag: bool = True,
@@ -269,15 +271,15 @@ class PSCAnalyzer:
         """
         if not self._getData(protocolName=protocolName, device=device):
             return False
-
+        ok = False
         if protocolName.startswith("Stim_IO"):
             ok = A_IO.analyze_IO(self)
         elif protocolName.startswith("VC-EPSC_3"):
             ok = A_VDEP.analyze_VDEP(self)
-        elif protocolName.startswith("PPF"):
-            ok = A_PPF.analyze_PPF(self)
+        elif protocolName.startswith("PPF_2"):
+            ok = A_PPF.analyze_PPF(self, deadtime=deadtime, artifact_sign=artifact_sign)
         elif protocolName.startswith("Train_4"):
-            ok = A_TR.analyze_Train(self)
+            ok = A_TR.analyze_Train(self, deadtime=deadtime, artifact_sign=artifact_sign)
         if not ok:
             print("Failed on protocol in IV: ", self.datapath, protocolName)
             return False
@@ -340,10 +342,11 @@ class PSCAnalyzer:
             rgn = [x[0] for x in rgn]
         return rgn
 
-    def _compute_interval(
+
+    def compute_interval(
         self,
         x0: float = 0.0,
-        artifact_delay: float = 0.0,
+        artifact_duration: float = 0.0,
         index: int = 0,
         stim_intvl: list = [],
         max_width: float = 25.0,
@@ -356,7 +359,7 @@ class PSCAnalyzer:
 
         x0: float
             starting time for the interval
-        artifact_delay: float
+        artifact_duration: float
             duration to remove from the start of the trace as the stimulus
             artifact
         index: int
@@ -381,17 +384,17 @@ class PSCAnalyzer:
             max_w = np.min((nxt_intvl, max_width - pre_time))
             if nxt_intvl > 0:  # still ascending
                 t_stim = [
-                    x0 + artifact_delay,
+                    x0, #+ artifact_duration,
                     x0 + max_w - pre_time,
                 ]  # limit width if interval is
                 if pflag:
                     print("nxt>0: ", t_stim)
             else:
-                t_stim = [x0 + artifact_delay, x0 + max_width - pre_time]
+                t_stim = [x0, x0 + max_width - pre_time]
                 if pflag:
                     print("nxt < 0: ", t_stim)
         else:
-            t_stim = [x0 + artifact_delay, x0 + max_width - pre_time]
+            t_stim = [x0, x0 + max_width - pre_time]
             if pflag:
                 print("last index: ", t_stim)
         t_stim = self._clean_array(t_stim)

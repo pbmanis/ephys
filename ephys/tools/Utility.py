@@ -1508,6 +1508,28 @@ class Utility:
             "FISI": np.array(fisi),
         }
 
+    def trim_psc(self, I_psc, dt:float, sign="+", artifact_duration:float=0.5e-3):
+        # trim off positive or negative current spike at beginning of trace (e.g., artifact)
+        # dt is sample interval in seconds (e.g, time between points)
+        # artifact duration is the minimum duration in seconds
+        p_flag = False
+        n_flag = False
+        for ip, psc in enumerate(I_psc):
+            if ip*dt < artifact_duration:  # and a minimum duration
+                I_psc[ip] = np.nan
+            # elif sign == "+" and psc > 0:  # trim positive artifact at start
+            #     I_psc[ip] = np.nan
+            # elif sign == '-' and psc < -2e-8:  # trim negative artifact at start
+            #     I_psc[ip] = np.nan
+
+            else:
+                break
+        # print(ip*dt, len(I_psc)*dt)
+        if all(np.isnan(I_psc)):
+            print("trace was reduced to nothing")
+            exit()
+        return I_psc
+
     def ffind(self, path, shellglobs=None, namefs=None, relative=True):
         """
         Finds files in the directory tree starting at 'path' (filtered by

@@ -2,6 +2,10 @@ from pathlib import Path
 from typing import List
 import numpy as np
 from collections import OrderedDict
+import ephys.tools.Utility as UT
+
+UT = UT.Utility()
+
 
 def plot_one_train(stim, psc_amp, PSC):
     import matplotlib.pyplot as mpl
@@ -22,8 +26,10 @@ def plot_one_train(stim, psc_amp, PSC):
 def analyze_Train(
     PSC,
     rmpregion: list = [0.0, 0.045],
+    deadtime: float=0.7e-3,
+    artifact_sign: str='+',
     twidth: float = 0.04,
-    measure_func: object = np.min,
+    measure_func: object = np.nanmin,
 ):
     """
     Analyze Trains of stimuli
@@ -96,7 +102,7 @@ def analyze_Train(
         train_traces_T[k] = [None]*n_pulses
         train_traces_R[k] = [None]*n_pulses
         train_facilitation_R[k] = [(n, []) for n in Stim_Intvl.ravel()]
-    dead_time = 1.e-3  # time before start of response measure
+
     psc_amp = np.zeros((n_reps, n_pulses))*np.nan
     j = 0
     for rep_no in PSC.reps:  # for all (accepted) traces
@@ -115,23 +121,17 @@ def analyze_Train(
 
         train_windows = []
         for pulse_no in range(n_pulses):
-            t_stim = PSC._compute_interval(
+            t_stim = PSC.compute_interval(
                 x0=stim["start"][pulse_no],
-                artifact_delay=dead_time,
+                artifact_duration=deadtime,
                 index=mi,
                 stim_intvl=Stim_Intvl,
                 max_width=twidths[pulse_no],
                 pre_time=1e-3,
                 pflag=False,
             )
-            # print("t_stim: ", t_stim)
             train_windows.append(t_stim)
-            # if pulse_no == 0:  # only need to get baseline once per trace
-            #     bl = np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
-            #     bl2 = np.mean((PSC.Clamps.traces["Time" : 0.4 : 0.449][j]))
-            #     bl = (bl + bl2)/2.0
-            # Baseline from right before stimulus to right before next stimulus (or equivalent time at end of train)
-            # print(stim["start"][pulse_no], Stim_Intvl)
+
             bl0 = [Stim_Intvl[pulse_no]-0.0025, Stim_Intvl[pulse_no]-0.0005]
             if pulse_no < n_pulses:
                 bl1 = [Stim_Intvl[pulse_no+1]-0.0025, Stim_Intvl[pulse_no+1]-0.0005]
@@ -152,8 +152,8 @@ def analyze_Train(
                     )
                 ]
             train_traces_R[rep_no][pulse_no] = I_psc
-
-            psc_amp[rep_no, pulse_no] = measure_func(I_psc)*1e12
+            sinterval = PSC.Clamps.sample_interval
+            psc_amp[rep_no, pulse_no] = measure_func(UT.trim_psc(I_psc, dt=sinterval, artifact_duration=deadtime, sign=artifact_sign))*1e12
         j += 1
         # train_tr = np.divide(np.array(psc_amp[nr,:]),np.array(psc_amp[nr,0]).reshape((-1,1)))  # get facilitation for this trace and interval
         # train_facilitation_R[nr] = train_tr
@@ -175,8 +175,10 @@ def analyze_Train(
     PSC.analysis_summary["psc_amp"] = psc_amp
     PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim['amplitude'])
     PSC.analysis_summary["stim_times"] = np.array(stim['start'])
+    PSC.analysis_summary['sample_interval'] = sinterval
     PSC.analysis_summary["window"] = train_windows
     PSC.analysis_summary["Group"] = PSC.Group
+
 
     # plot_one_train(PSC.analysis_summary['train_dt'],
     #             PSC.analysis_summary['Train_traces_R'],

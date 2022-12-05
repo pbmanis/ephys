@@ -7,7 +7,7 @@ def analyze_IO(
     PSC,
     rmpregion: List = [0.0, 0.05],
     twidth: float = 0.05,
-    deadwin: float = 0.001,
+    deadtime: float = 0.0007,
     protocolName: bool = None,
     device: str = "Stim0",
 ):
@@ -57,7 +57,7 @@ def analyze_IO(
                 j
             ]  # get index into marked traces then compute the min value minus the baseline
             da = np.min(
-                PSC.Clamps.traces["Time" : region[0] : region[1]][j]
+                PSC.Clamps.traces["Time" : region[0]+deadtime : region[1]][j]
             ) - np.mean(PSC.Clamps.traces["Time" : rmpregion[0] : rmpregion[1]][j])
             if Stim_IO[mi] not in list(idat[i].keys()):
                 idat[i][Stim_IO[mi]] = [da]
@@ -83,4 +83,5 @@ def analyze_IO(
     PSC.analysis_summary["ppf_dt"] = np.array(stim_dt)
     PSC.analysis_summary["stim_times"] = PSC.pulse_train["start"]
     PSC.analysis_summary["window"] = [PSC.T0, PSC.T1]
+    PSC.analysis_summary["Group"] = PSC.Group
     return True

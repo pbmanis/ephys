@@ -18,15 +18,15 @@ class IAnalysis:
 def mean_I_analysis(
     clamps: object,
     region=None,
-    t0=0.0,
-    mode="mean",
-    baseline=None,
-    intno=0,
-    nint=1,
-    reps=[0],
-    slope=False,
+    t0:float=0.0,
+    mode:str="mean",
+    baseline:Union[float, None] = None,
+    intno:int=0,
+    nint:int=1,
+    reps:list=[0],
+    slope:bool=False,
     slopewin=None,
-):
+    ):
     """
     Get the mean or min or baseline current in a window
     Works with the current Clamps object
