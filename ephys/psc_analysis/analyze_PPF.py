@@ -4,6 +4,10 @@ import numpy as np
 from collections import OrderedDict
 import pylibrary.tools.cprint as CP
 import ephys.tools.Utility as UT
+import pint
+from pint import UnitRegistry, set_application_registry
+UR = UnitRegistry()
+set_application_registry(UR)
 
 UT = UT.Utility()
 
@@ -116,10 +120,7 @@ def analyze_PPF(
         
         PSC.T0 = t_stim2[0]  # kind of bogus - not used anymore
         PSC.T1 = t_stim2[1]
-        if deadtime > 0.7e-3:
-            CP.cprint("r", f" .  deadtime:  {deadtime:f}")
-            CP.cprint("r", f" .  t_stim1:  {str(t_stim1):s}")
-            CP.cprint("r", f" .  t_stim2:  {str(t_stim2):s}")
+
 
 
         bl1_0 = [t_stim1[0]-0.0035-deadtime, t_stim1[0]-deadtime-0.001]
@@ -128,35 +129,32 @@ def analyze_PPF(
         bl2_1 = [t_stim2[1]-0.0035-deadtime, t_stim2[1]-0.001-deadtime]
 
         bl1_0 = np.mean(PSC.Clamps.traces["Time" : bl1_0[0] : bl1_0[1]][j])
-        # bl1_1 = np.mean(PSC.Clamps.traces["Time" : bl1_1[0] : bl1_1[1]][j])
-        # bl1 = bl1_0 # (bl1_0 + bl1_1)/2.0 . # first pulse: only use pre-stim baseline
-        # bl2_0 = np.mean(PSC.Clamps.traces["Time" : bl2_0[0] : bl2_0[1]][j])
         bl2_1 = np.mean(PSC.Clamps.traces["Time" : bl2_1[0] : bl2_1[1]][j])
-        # bl2 = bl2_1 # (bl2_0 + bl2_1)/2.0     # all other pulses just use the end point        
-        # I_psc1 = PSC.Clamps.traces["Time" : t_stim[0] : t_stim[1]][j] - bl1
+
         i_pp1 = (
             PSC.Clamps.traces["Time" : t_stim1[0] : t_stim1[1]][j] - bl1_0
-        )  # first pulse trace
+        ).view(np.ndarray)*UR.A  # first pulse trace
         tb_ref = PSC.Clamps.time_base[
             np.where(
                 (PSC.Clamps.time_base >= t_stim1[0])
                 & (PSC.Clamps.time_base < t_stim1[1])
             )
-        ]
+        ]*UR.s
         i_pp2 = (
             PSC.Clamps.traces["Time" : t_stim2[0] : t_stim2[1]][j] - bl2_1
-        )  # second pulse trace
+        ).view(np.ndarray)*UR.A  # second pulse trace
         tb_p2 = PSC.Clamps.time_base[
             np.where(
                 (PSC.Clamps.time_base >= t_stim2[0])
                 & (PSC.Clamps.time_base < t_stim2[1])
             )
-        ]
+        ]*UR.s
 
         sinterval = PSC.Clamps.sample_interval
+
         da1 = measure_func(UT.trim_psc(i_pp1, dt=sinterval, artifact_duration=deadtime, sign=artifact_sign))
         da2 = measure_func(UT.trim_psc(i_pp2, dt=sinterval, artifact_duration=deadtime, sign=artifact_sign))
-        ppf_tr = da2 / da1  # get facilitation for this trace and interval
+        ppf_tr = da2.magnitude / da1.magnitude  # get facilitation for this trace and interval
         ppf_dat[Stim_Intvl[mi]].append(ppf_tr)  # accumulate
         ppf_traces_T1[Stim_Intvl[mi]].append(tb_ref)
         ppf_traces_R1[Stim_Intvl[mi]].append(i_pp1)
@@ -179,7 +177,7 @@ def analyze_PPF(
     PSC.analysis_summary["PPF_traces_R1"] = ppf_traces_R1
     PSC.analysis_summary["PPF_traces_T2"] = ppf_traces_T2
     PSC.analysis_summary["PPF_traces_R2"] = ppf_traces_R2
-    PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim_I)
+    PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim_I)*UR.A
     PSC.analysis_summary["psc_intervals"] = np.array(PSC.stim_dt)
     PSC.analysis_summary['sample_interval'] = sinterval
     PSC.analysis_summary["stim_times"] = PSC.pulse_train["start"]
