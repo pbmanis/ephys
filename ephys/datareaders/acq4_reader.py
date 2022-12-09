@@ -196,10 +196,8 @@ class acq4_reader:
         info = self.readDirIndex(protocolpath)  # top level info dict
         if info is None:
             print(
-                "acq4_reader.checkProtocol: Protocol is not managed (no .index file found): {0:s}".format(
-                    protocolpath
-                )
-            )
+                f"acq4_reader.checkProtocol: Protocol is not managed (no .index file found): {str(protocolpath):s}")
+            
             return False
         info = info["."]
         if "devices" not in info.keys():  # just safety...
