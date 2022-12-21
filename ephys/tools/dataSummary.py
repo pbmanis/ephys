@@ -985,7 +985,7 @@ class DataSummary:
             if outfile.suffix != '.pkl':
                 outfile = outfile.with_suffix('.pkl')
             df.to_pickle(outfile)
-        if self.outputMode == "pandas" and self.append:
+        elif self.outputMode == "pandas" and self.append:
             print("\nAPPENDING to EXISTING PANDAS DATAFRAME")
             # first save the original with a date-time string appended
             if outfile.suffix != '.pkl':
@@ -1178,7 +1178,8 @@ def dir_recurse(ds, current_dir, args, indent=0):
         Printer(f"{sp:s}Data: {str(d.name):s}", "green")
     ds.getDay(alldatadirs)
     # if args.output in ["pandas"]:
-    ds.write_string_pandas()
+    if len(alldatadirs) > 0:
+        ds.write_string_pandas()
     allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20") and str(f.name) != args.exclude]
     indent += 2
     sp = " " * indent
@@ -1336,7 +1337,7 @@ def main():
     )
 
     if args.outputFilename is not None:
-        print("Writing: ")
+        print("Writing to output, recurively through directories ")
         dir_recurse(ds, ds.basedir, args)
         
         exit()
