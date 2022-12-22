@@ -161,7 +161,7 @@ class IVSummary:
                 return fh
         else:
             print(
-                "IVSummary::compute_iv: acq4_readerer.getData found no data to return from: \n  >  ",
+                "IVSummary::compute_iv: acq4_reader.getData found no data to return from: \n  >  ",
                 self.datapath,
             )
             return None
