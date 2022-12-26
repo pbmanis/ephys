@@ -19,6 +19,7 @@ from typing import Dict, List, Tuple, Union
 
 import dill as pickle
 import ephys.ephys_analysis as EP
+import ephys.datareaders as DR
 import ephys.mini_analyses as minis
 import ephys.tools.digital_filters as FILT
 import ephys.tools.functions as functions
@@ -146,7 +147,7 @@ class AnalyzeMap(object):
     def __init__(self, rasterize=True):
         self.Pars = AnalysisPars()
         self.Data = AnalysisData()
-        self.AR = EP.acq4_reader.acq4_reader()
+        self.AR = DR.acq4_reader.acq4_reader()
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.verbose = True
