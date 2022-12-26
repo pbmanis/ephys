@@ -529,11 +529,14 @@ class acq4_reader:
                 pass
         return info
 
-    def parseClampInfo(self, info: list):
+    def parseClampInfo(self, info: list, switchchan):
         """
         Get important information from the info[1] directory that we can use
         to determine the acquisition type
         """
+        chorder = [1, 0]
+        if switchchan:
+            chorder = [0, 1]
         try:  # old acq4 may not have this
             self.mode = info[1]["ClampState"]["mode"]
         except:
@@ -548,11 +551,19 @@ class acq4_reader:
             if info[1]['units'] == 'V':
                 self.mode = 'IC'
             if self.mode in ["IC", "I=0"]:
-                self.tracepos = 1
-                self.cmdpos = 0
+                if not switchchan:
+                    self.tracepos = 1
+                    self.cmdpos = 0
+                else:
+                    self.tracepos = 0
+                    self.cmdpos = 1
             elif self.mode in ["VC"]:
-                self.tracepos = 1
-                self.cmdpos = 0            
+                if not switchchan:
+                    self.tracepos = 1
+                    self.cmdpos = 0
+                else: 
+                    self.tracepos = 0
+                    self.cmdpos = 1           
             
             return
         
@@ -561,12 +572,14 @@ class acq4_reader:
             info[1]["ClampState"]["secondaryUnits"],
         ]
         self.samp_rate = info[1]["DAQ"]["primary"]["rate"]
+        # CP.cprint("r", f"parseclampinfo, mode = {self.mode:s}")
+
         if self.mode in ["IC", "I=0"]:
-            self.tracepos = 1
-            self.cmdpos = 0
+            self.tracepos = chorder[0]
+            self.cmdpos = chorder[1]
         elif self.mode in ["VC"]:
-            self.tracepos = 1
-            self.cmdpos = 0
+            self.tracepos = chorder[1]
+            self.cmdpos = chorder[0]
         else:
             raise ValueError("Unable to determine how to map channels")
 
@@ -680,6 +693,8 @@ class acq4_reader:
         info = self.getIndex()  # self.protocol)
         holdcheck = False
         holdvalue = 0.0
+        switchchan = False
+
         if info is not None:
             devices = list(info["devices"].keys())
             if devices[0] == 'DAQ':
@@ -695,6 +710,14 @@ class acq4_reader:
 
                 holdcheck = info["devices"][device]["holdingCheck"]
                 holdvalue = info["devices"][device]["holdingSpin"]
+                priSignal = info["devices"][device]["primarySignalCombo"]
+                secSignal = info["devices"][device]["secondarySignalCombo"]
+                icampmode = info["devices"][device]["icModeRadio"]
+                # CP.cprint('r', f"priSignal: {priSignal:s}   secSignal: {secSignal:s}  ic_ampmode: {icampmode:d}")
+                if icampmode == 1 and priSignal == "Membrane Current":
+                    # Erroneous report from mulitclamp - force switch of channels below
+                    CP.cprint("r", f"Switching channels: inconsistent amplifier mode and primary signals")
+                    switchchan = True
         else:
             if check:
                 return False
@@ -790,8 +813,9 @@ class acq4_reader:
                     print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                     continue
 
+
             tr_info = tr[0].infoCopy()
-            self.parseClampInfo(tr_info)
+            self.parseClampInfo(tr_info, switchchan)
             self.WCComp = self.parseClampWCCompSettings(tr_info)
             self.CCComp = self.parseClampCCCompSettings(tr_info)
             # if i == 0:
@@ -815,6 +839,8 @@ class acq4_reader:
         if tr is None and allow_partial is False:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
+        CP.cprint("r", f"Mode: {self.mode:s}")
+        assert self.mode is not None
         if self.mode is None:
             units = "A"  # just fake it
             self.mode = "VC"
@@ -1602,7 +1628,13 @@ def one_test():
 
 
 if __name__ == "__main__":
-    one_test()
+    #one_test()
+    AR = acq4_reader()
+    datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
+    print(Path(datapath).is_file())
+    AR.setProtocol(datapath)
+    d = AR.getDataInfo(datapath)
+    print(d)
 
     # AR = acq4_reader()
     #
