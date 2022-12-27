@@ -42,8 +42,8 @@ import ephys.ephys_analysis.IV_Analysis_params as AnalysisParams
 
 PMD = mapanalysistools.plotMapData.PlotMapData()
 
-import nf107.set_expt_paths as set_expt_paths
-set_expt_paths.get_paths()
+# import nf107.set_expt_paths as set_expt_paths
+# set_expt_paths.get_paths()
 
 np.seterr(divide="raise", invalid="raise")
 
