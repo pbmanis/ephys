@@ -867,102 +867,102 @@ class GetAllIVs:
         self.spike_dataframe = dcomp
         return self.Pspikes
 
-    def _get_measures(self, spikedict, fidict, age):
-        """Get the spike data from all of the protocols
-        in the spike dict
+    # def _get_measures(self, spikedict, fidict, age):
+    #     """Get the spike data from all of the protocols
+    #     in the spike dict
 
-        Args:
-            spikedict (dictionary): spike analysis from this protocol
-            fidict (dictionary): fi analysis from this protocol
-            ages (_type_): _description_
+    #     Args:
+    #         spikedict (dictionary): spike analysis from this protocol
+    #         fidict (dictionary): fi analysis from this protocol
+    #         ages (_type_): _description_
 
-        Returns:
-            _type_: _description_
-        """
-        cellmeas = self.make_emptydict(spike_measures)
-        for protocol in spikedict.keys():  # for every protocol in the Spikes dict
-            if not isinstance(u, Path):  # ooops, skip that one
-                continue
-            if not self.select_protocols(u):
-                continue
-            for m in spike_measures:
-                if m is None:
-                    continue
-                age[m].append(age)
-                if m == "spikethreshold":
-                    fi = fidict[protocol]["FI_Curve"]
-                    firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[0]
-                    if len(firstsp) > 0:
-                        firstsp = firstsp[0]
-                        cellmeas[m].append(fi[0][firstsp] * 1e12)  # convert to pA
-                    else:
-                        cellmeas[m].append(np.nan)
-                elif m == "maxrate":
-                    fi = fidict[protocol]["FI_Curve"]
-                    firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[
-                        0
-                    ]  # spikes and positive current together
-                    if len(firstsp) > 0 and np.max(
-                        fi[1] >= 2e-9
-                    ):  # spikes and minimum current injection
-                        cellmeas[m].append(
-                            np.max(fi[1][firstsp]) / fidict[protocol]["pulseDuration"]
-                        )  # convert to spikes/second
-                    else:
+    #     Returns:
+    #         _type_: _description_
+    #     """
+    #     cellmeas = self.make_emptydict(spike_measures)
+    #     for protocol in spikedict.keys():  # for every protocol in the Spikes dict
+    #         if not isinstance(protocol, Path):  # ooops, skip that one
+    #             continue
+    #         if not self.select_protocols(u):
+    #             continue
+    #         for m in spike_measures:
+    #             if m is None:
+    #                 continue
+    #             age[m].append(age)
+    #             if m == "spikethreshold":
+    #                 fi = fidict[protocol]["FI_Curve"]
+    #                 firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[0]
+    #                 if len(firstsp) > 0:
+    #                     firstsp = firstsp[0]
+    #                     cellmeas[m].append(fi[0][firstsp] * 1e12)  # convert to pA
+    #                 else:
+    #                     cellmeas[m].append(np.nan)
+    #             elif m == "maxrate":
+    #                 fi = fidict[protocol]["FI_Curve"]
+    #                 firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[
+    #                     0
+    #                 ]  # spikes and positive current together
+    #                 if len(firstsp) > 0 and np.max(
+    #                     fi[1] >= 2e-9
+    #                 ):  # spikes and minimum current injection
+    #                     cellmeas[m].append(
+    #                         np.max(fi[1][firstsp]) / fidict[protocol]["pulseDuration"]
+    #                     )  # convert to spikes/second
+    #                 else:
 
-                        cellmeas[m].append(np.nan)
-                elif m == "Ibreak":
-                    fig = fidict[protocol]["FI_Growth"]
-                    if len(fig) > 0:
-                        par = fig[0]["parameters"]
-                        if len(par) > 0 and len(par[0]) > 0:
-                            cellmeas[m].append(par[0][1])
-                elif m == "Irate":
-                    fig = fidict[protocol]["FI_Growth"]
-                    if len(fig) > 0:
-                        par = fig[0]["parameters"]
-                        if len(par) > 0 and len(par[0]) > 0:
-                            cellmeas[m].append(par[0][4])
-                elif m == "FR_Slope":  # get slope from near-threshold firing
-                    rate_spks = []
-                    rate_i = []
-                    fidata = fidict[protocol]["FI_Curve"]
-                    for fsp in range(len(fidata[0])):
-                        if fsp not in spikedict.keys():
-                            continue
-                        nspkx = len(spikedict[fsp])
-                        if nspkx > 0 and fidata[0][fsp] > 0.0:
-                            if len(rate_spks) < 3:
-                                rate_spks.append(
-                                    nspkx / fidict[protocol]["pulseDuration"]
-                                )
-                                rate_i.append(fidata[0][fsp] * 1e9)
-                    if len(rate_i) > 0:
+    #                     cellmeas[m].append(np.nan)
+    #             elif m == "Ibreak":
+    #                 fig = fidict[protocol]["FI_Growth"]
+    #                 if len(fig) > 0:
+    #                     par = fig[0]["parameters"]
+    #                     if len(par) > 0 and len(par[0]) > 0:
+    #                         cellmeas[m].append(par[0][1])
+    #             elif m == "Irate":
+    #                 fig = fidict[protocol]["FI_Growth"]
+    #                 if len(fig) > 0:
+    #                     par = fig[0]["parameters"]
+    #                     if len(par) > 0 and len(par[0]) > 0:
+    #                         cellmeas[m].append(par[0][4])
+    #             elif m == "FR_Slope":  # get slope from near-threshold firing
+    #                 rate_spks = []
+    #                 rate_i = []
+    #                 fidata = fidict[protocol]["FI_Curve"]
+    #                 for fsp in range(len(fidata[0])):
+    #                     if fsp not in spikedict.keys():
+    #                         continue
+    #                     nspkx = len(spikedict[fsp])
+    #                     if nspkx > 0 and fidata[0][fsp] > 0.0:
+    #                         if len(rate_spks) < 3:
+    #                             rate_spks.append(
+    #                                 nspkx / fidict[protocol]["pulseDuration"]
+    #                             )
+    #                             rate_i.append(fidata[0][fsp] * 1e9)
+    #                 if len(rate_i) > 0:
 
-                        p = np.polyfit(rate_i, rate_spks, 1)
-                        cellmeas[m].append(p[0])  # store slope from fit
-                else:
+    #                     p = np.polyfit(rate_i, rate_spks, 1)
+    #                     cellmeas[m].append(p[0])  # store slope from fit
+    #             else:
 
-                    if m in list(d[u].keys()):  #  and m not in measures_fromspikes:
-                        cellmeas[m].append(d[u][m])
+    #                 if m in list(d[u].keys()):  #  and m not in measures_fromspikes:
+    #                     cellmeas[m].append(d[u][m])
 
-                    else:  # loop through traces
-                        xm = []
-                        spkdata = spikedict[protocol]["spikes"]
-                        for tr in spkdata.keys():  # each trace with spikes
-                            for spk in spkdata[tr]:
-                                if m in spikedict[protocol]["spikes"][tr][spk].keys():
-                                    if (
-                                        spikedict[protocol]["spikes"][tr][spk][m]
-                                        is not None
-                                    ):
-                                        xm.append(
-                                            spikedict[protocol]["spikes"][tr][spk][m]
-                                        )
+    #                 else:  # loop through traces
+    #                     xm = []
+    #                     spkdata = spikedict[protocol]["spikes"]
+    #                     for tr in spkdata.keys():  # each trace with spikes
+    #                         for spk in spkdata[tr]:
+    #                             if m in spikedict[protocol]["spikes"][tr][spk].keys():
+    #                                 if (
+    #                                     spikedict[protocol]["spikes"][tr][spk][m]
+    #                                     is not None
+    #                                 ):
+    #                                     xm.append(
+    #                                         spikedict[protocol]["spikes"][tr][spk][m]
+    #                                     )
 
-                        if len(xm) > 0:
-                            cellmeas[m].append(np.nanmean(xm))
-        return cellmeas
+    #                     if len(xm) > 0:
+    #                         cellmeas[m].append(np.nanmean(xm))
+    #     return cellmeas
 
     # def plot_age(self):
     #
