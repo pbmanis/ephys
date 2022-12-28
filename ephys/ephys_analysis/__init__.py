@@ -6,7 +6,7 @@ __version__ = "%d.%d.%d%s" % version_info
 
 from ..tools import DataPlan
 from . import IV_Analysis
-from . import IV_Analysis_params
+from . import IV_Analysis_Params
 from . import IV_Summarize
 
 from . import RmTauAnalysis

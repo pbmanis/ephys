@@ -5,18 +5,16 @@ Used as a wrapper for multiple experiments.
 """
 from multiprocessing import set_start_method
 
-set_start_method("spawn")
 import os
 import sys
 
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
-import argparse
 import datetime
 import json
 import random
 import re
-import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Type, Union
 
@@ -28,8 +26,6 @@ import pandas as pd
 import toml
 
 matplotlib.use("QtAgg")
-import ephys.ephys_analysis as EP
-import ephys.mapanalysistools as mapanalysistools
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
@@ -37,8 +33,9 @@ import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
 
-import ephys.ephys_analysis.IV_Analysis_params as AnalysisParams
-
+import ephys.ephys_analysis as EP
+import ephys.ephys_analysis.IV_Analysis_Params as AnalysisParams
+import ephys.mapanalysistools as mapanalysistools
 
 PMD = mapanalysistools.plotMapData.PlotMapData()
 
@@ -47,72 +44,107 @@ PMD = mapanalysistools.plotMapData.PlotMapData()
 
 np.seterr(divide="raise", invalid="raise")
 
+@dataclass
+class cmdargs:
+    experiment: Union[str, list, None] = None
+    basedir: Union[str, Path, None] = None
+    exptdir : Union[str, Path, None] = None
+    inputFilename: Union[str, Path, None] = None
+    outputFilename: Union[str, Path, None] = None
+    outputPath: Union[str, Path, None] = None
+    annotationFile: Union[str, Path, None] = None
+    artifactFilename: Union[str, Path, None] = None
+    map_annotationFile: Union[str, Path, None] = None
+    
+    day: str = "all"
+    after: str = "1970.1.1"
+    before: str = "2266.1.1"
+    slicecell: str = ""
+    protocol: str = ""
+    configfile: Union[str, None] = None
+    iv_flag: bool=False
+    vc_flag: bool=False
+    map_flag: bool=False
+    merge_flag: bool=False
+    dry_run: bool=False
+    verbose: bool=False
+    autoout: bool=False
+    excel: bool=False
+    # graphics controls
+    plotmode: str = "document"
+    IV_pubmode:str = "normal"
+    rasterize:bool = True
+    update:bool = False
+    noparallel:bool=True
+    replot:bool=False
+
+    # analysis parameters
+    ivduration:float = 0.0
+    threshold:float=2.5  # cb event detection threshold (x baseline std)
+    signflip:bool = False
+    alternate_fit1: bool=False 
+    alternate_fit2: bool = False  # second alternate
+    measuretype: str = "ZScore"  # display measure for spot plot in maps
+    spike_threshold: float=-0.035
+    artifact_suppression:bool=False
+    noderivative:bool=False
+    whichstim:int = -1
+    trsel: Union[int, None] = None
+    notchfilter:bool=False
+    notchfreqs:str = "60, 120, 180, 240"
+    LPF:float = 0.0
+    HPF: float = 0.0
+    notchQ: float=90.0
+    detector:str = 'cb'    
+
 
 class IV_Analysis(object):
-    def __init__(self):
-        pass
+    def __init__(self, args:object):
 
-    def setup_and_run(self, args: object, exclusions:dict):
-        if args.experiment not in ["None", None]:
-            expts = set_expt_paths.get_experiments()[args.experiment]
-            self.exclusions = exclusions
-            self.basedir = expts["datadisk"] # Path(experiments[args.experiment]["disk"])
-            self.exptdir = self.basedir # Path(experiments[args.experiment]["directory"])
-            self.inputFilename = Path(expts['db_directory'], expts['datasummary']
-                #self.exptdir, expts["datasummary"]
-            ).with_suffix(".pkl")
-            self.outputPath = self.exptdir
-            if expts["annotation"] is not None:
-                self.annotationFile = Path(
-                    self.exptdir, expts["annotation"]
-                )
-            else:
-                self.annotationFile = None
-            if expts["maps"] is not None:
-                self.map_annotationFile = Path(
-                    self.exptdir, expts["maps"]
-                )
-            else:
-                self.map_annotationFile = None
-        else:
-            raise ValueError(
-                'Experiment was not specified; please specify with "-E exptname"'
-            )
-        if len(args.outputFilename) > 0:
-            self.outputFilename = Path(
-                self.outputPath, args.outputFilename
-            ).with_suffix(
-                ".pdf"
-            )  # PDF output file
-            if self.outputFilename.is_file():  # overwrite
-                os.remove(self.outputFilename)
+        #args = vars(in_args)  # convert to dict
 
-        else:
-            self.outputFilename = None
-        if len(args.artifactFilename) > 0:
-            self.artifactFilename = args.artifactFilename
-        else:
-            self.artifactFilename = None
+        set_start_method("spawn")
+        self.basedir = None
+        self.exptdir = None
+        self.inputFilename = None
+        self.outputFilename = None
+        self.outputPath = None
+        self.annotationFile = None
+        self.map_annotationFile = None
+        self.artifactFilename = None
+        self.exclusions = None
 
         self.experiment = args.experiment
-        self.exclusions = None
+        
+        # selection of data for analysis
         self.day = args.day
+        self.before = DUP.parse(args.before)
+        self.after = DUP.parse(args.after)
+        self.slicecell = args.slicecell
+        self.protocol = args.protocol
+        
+        # modes for analysis
         self.iv_flag = args.iv_flag
         self.vc_flag = args.vc_flag
         self.map_flag = args.map_flag
+        
+        # output controls
         self.merge_flag = args.merge_flag
-        self.IV_pubmode = args.IV_pubmode
-        self.dryrun = args.dryrun
+
+        self.dry_run = args.dry_run
         self.verbose = args.verbose
-        self.before = DUP.parse(args.before)
-        self.after = DUP.parse(args.after)
-        self.day = args.day
-        self.slicecell = args.slicecell
-        self.protocol = args.protocol
+        self.autoout = args.autoout
+        self.excel = args.excel
+        # graphics controls
+        self.plotmode = args.plotmode
+        self.IV_pubmode = args.IV_pubmode
         self.rasterize = True
-        self.noparallel = args.noparallel
         self.update = args.update
+        self.noparallel = args.noparallel
         self.replot = args.replot
+
+        # analysis parameters
+        self.ivduration= args.ivduration
         self.threshold = args.threshold
         self.signflip = args.signflip
         self.alternate_fit1 = (
@@ -120,117 +152,126 @@ class IV_Analysis(object):
         )  # use alterate time constants in template for event
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
-        self.spike_threshold = args.spikethreshold
+        self.spike_threshold = args.spike_threshold
         self.artifact_suppress = args.artifact_suppression
         self.noderivative_artifact = args.noderivative
-        self.tempdir = None
-        self.autoout = args.autoout
         self.whichstim = args.whichstim
         self.trsel = args.trsel
-        self.plotmode = args.plotmode
         self.notchfilter = args.notchfilter
         self.notchfreqs = eval(args.notchfreqs)
         self.LPF = args.LPF
         self.HPF = args.HPF
         self.notch_Q = args.notchQ
-
         self.detector = args.detector
-        self.iv_select = {
-            "duration": args.ivduration
-        }  # dictionary of selection flags for IV data
-        # if args.annotationFile is not '':
-        #     self.annotationFile = Path(args.annotationFile)
-        # else:
-        #     self.annotationFile = None
-        self.annotated = None
+
+        self.tempdir = None
+        self.annotated_dataframe: Union[pd.DataFrame, None] = None
         self.allprots = []
 
         self.AM = mapanalysistools.analyzeMapData.AnalyzeMap(rasterize=self.rasterize)
-        self.AM.set_methodname("cb_cython")
-        self.df = pd.read_pickle(str(self.inputFilename))
+        if self.detector == 'cb':
+            self.AM.set_methodname("cb_cython")
+        elif self.detector == 'aj':
+            self.AM.set_methodname("aj_cython")
+        elif self.detector == 'zc':
+            raise ValueError("Detector ZC is not recommended at this time")
+        else:
+            raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc")
 
-        if args.excel:  # just write to excel and we are done
-            print(
-                "Writing to {0:s}".format(
-                    str(Path(self.outputPath, self.inputFilename.stem + ".xlsx"))
+        self.setup()
+    
+    def set_exclusions(self, exclusions: Union[dict, None] = None):
+        self.exclusions = exclusions
+
+    def set_experiment(self, expt:dict):
+        self.experiment = expt
+
+    def setup(self):
+        if self.experiment not in ["None", None]:
+            self.basedir = Path(self.experiment["datadisk"])
+            self.exptdir = Path(self.basedir)
+            self.inputFilename = Path(self.experiment['db_directory'], self.experiment['datasummary']
+                ).with_suffix(".pkl")
+            self.outputPath = self.exptdir
+            if self.experiment['outputFilename'] is not None:
+                self.outputFilename = Path(self.outputPath, self.experiment['outputFilename']).with_suffix(
+                ".pdf")
+                self.outputFilename.unlink(missing_ok=True)
+
+            if self.experiment["annotation"] is not None:
+                self.annotationFile = Path(
+                    self.exptdir, self.experiment["annotation"]
                 )
+            else:
+                self.annotationFile = None
+            
+            if 'maps' in list(self.experiment.keys()) and self.experiment["maps"] is not None:
+                self.map_annotationFile = Path(
+                    self.exptdir, self.experiment["maps"]
+                )
+            else:
+                self.map_annotationFile = None
+        else:
+            raise ValueError(
+                'Experiment was not specified"'
             )
-            self.df.to_excel(str(self.inputFilename.with_suffix(".xlsx")))
+
+        if self.artifactFilename is not None and len(self.artifactFilename) > 0:
+            self.artifactFilename = self.artifactFilename
+        else:
+            self.artifactFilename = None
+
+
+        # get the input file (from dataSummary)
+        self.df = pd.read_pickle(str(self.inputFilename))
+        if self.excel:  # just re-write as an excel and we are done
+            excel_file = Path(self.outputPath, self.inputFilename.stem + ".xlsx")
+            print(f"Writing to {str(excel_file):s}" )
+            self.df.to_excel(excel_file)
             exit(0)
 
-        u = self.df["date"]
-        alld = [x for x in u]
+        self.iv_select = {
+            "duration": self.ivduration
+        }  # dictionary of selection flags for IV data
 
         if self.verbose:
-            print("alldays found: \n", alld)
+            dates = self.df["date"]
+            alld = [date for date in dates]
+            print("Dates found in input file (excel): \n", alld)
 
         # pull in the annotated data (if present) and update the cell type in the main dataframe
+        self.df["annotated" ] = False   # clear annotations
         if self.annotationFile is not None:
-            print("Reading annotation file: ", self.annotationFile)
-            fn, ext = os.path.splitext(self.annotationFile)
+            print(f"Reading annotation file: {str(self.annotationFile):s}")
+            ext = self.annotationFile.suffix
             if ext in [".p", ".pkl", ".pkl3"]:
-                self.y = pd.read_pickle(Path(self.basedir, self.annotationFile))
+                self.annotated_dataframe = pd.read_pickle(Path(self.basedir, self.annotationFile))
             elif ext in [".xls", ".xlsx"]:
-                self.annotated = pd.read_excel(str(self.annotationFile))
+                self.annotated_dataframe = pd.read_excel(self.annotationFile)
             else:
                 raise ValueError(
-                    "Do not know how to read annotation file: %s, Valid extensions are for pickle and excel"
-                    % self.annotationFile
+                    f"Do not know how to read annotation file: {str(self.annotationFile):s}, Valid extensions are for pickle and excel"
                 )
+            self.update_annotations()
 
-        self.df[
-            "annotated"
-        ] = False  # just mark every cell as not being annotated/type adjusted, etc.
-        # print(self.df[self.df.index.duplicated()])
-
-        if self.annotated is not None:
-            self.annotated.set_index("ann_index", inplace=True)
-            x = self.annotated[self.annotated.index.duplicated()]
-            if len(x) > 0:
-                print("watch it - duplicated index in annotated file")
-                print(x)
-                exit()
-            # self.annotated.set_index("ann_index", inplace=True)
-            self.df.loc[
-                self.df.index.isin(self.annotated.index), "cell_type"
-            ] = self.annotated.loc[:, "cell_type"]
-            self.df.loc[self.df.index.isin(self.annotated.index), "annotated"] = True
-            if self.verbose:  # check whether it actually took
-                for icell in range(len(self.df.index)):
-                    print(
-                        "{0:<32s}  type: {1:>20s}, annotated (T,F): {2!s:>5} Index: {3:d}".format(
-                            str(self.make_cellstr(self.df, icell)),
-                            self.df.iloc[icell]["cell_type"],
-                            str(self.df.iloc[icell]["annotated"]),
-                            icell,
-                        )
-                    )
-
-        # pull in map annotations. Thesea are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
-        if self.map_annotationFile is not None:
-            self.map_annotations = pd.read_excel(
-                Path(self.map_annotationFile).with_suffix(".xlsx"), sheet_name="Sheet1"
-            )
-            print("Reading map annotation file: ", self.map_annotationFile)
-        # print(self.map_annotations.head())
-
-
-        if self.outputFilename is not None and self.outputFilename.exists():
-            os.remove(self.outputFilename)
-        # select a date:
+        if self.outputFilename is not None:
+            self.outputFilename.unlink(missing_ok=True)
+    
+    def run(self):
+    # select a date:
         if self.day != "all":  # specified day
             day = str(self.day)
             print(f"Looking for day: {day:s} in {str():s}")
             if "_" not in day:
                 day = day + "_000"
             day_x = self.df.loc[self.df["date"] == day]
-            print("Retrieved day: ", day_x)
+            print("  ... Retrieved day: ", day_x)
             for iday in day_x.index:
                 self.do_day(iday, 0)
 
         # get the complete protocols:
-        #       Only returns a dataframe if there is more than one entry
-        #       Otherwise, it is like a series or dict
+        # Only returns a dataframe if there is more than one entry
+        # Otherwise, it is like a series or dict
         else:
             if self.outputFilename is None:
                 for n, iday in enumerate(range(len(self.df.index))):
@@ -258,6 +299,36 @@ class IV_Analysis(object):
                     ).with_suffix(".bak")
                 )
             self.df.to_pickle(str(self.inputFilename))
+
+    def update_annotations(self):
+        if self.annotated_datframe is not None:
+            self.annotated_dataframe.set_index("ann_index", inplace=True)
+            x = self.annotated_dataframe[self.annotated_dataframe.index.duplicated()]
+            if len(x) > 0:
+                print("watch it - duplicated index in annotated file")
+                print(x)
+                exit()
+            # self.annotated_dataframe.set_index("ann_index", inplace=True)
+            self.df.loc[
+                self.df.index.isin(self.annotated_dataframe.index), "cell_type"
+            ] = self.annotated_dataframe.loc[:, "cell_type"]
+            self.df.loc[self.df.index.isin(self.annotated_dataframe.index), "annotated"] = True
+            if self.verbose:  # check whether it actually took
+                for icell in range(len(self.df.index)):
+                    print(
+                        "{0:<32s}  type: {1:>20s}, annotated (T,F): {2!s:>5} Index: {3:d}".format(
+                            str(self.make_cellstr(self.df, icell)),
+                            self.df.iloc[icell]["cell_type"],
+                            str(self.df.iloc[icell]["annotated"]),
+                            icell,
+                        )
+                    )
+        # pull in map annotations. Thesea are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
+        if self.map_annotationFile is not None:
+            self.map_annotations = pd.read_excel(
+                Path(self.map_annotationFile).with_suffix(".xlsx"), sheet_name="Sheet1"
+            )
+            print("Reading map annotation file: ", self.map_annotationFile)
 
     def make_cellstr(self, df: object, iday: int, sep: str = os.sep):
         """
@@ -323,7 +394,7 @@ class IV_Analysis(object):
             self.outputFilename is None and not self.autoout
         ):  # no output file, do nothing
             return
-        if self.dryrun:
+        if self.dry_run:
             return
         # check autooutput and reset outputfilename if true:
         CP.cprint("c",
@@ -466,7 +537,7 @@ class IV_Analysis(object):
 
     def find_cell(
         self,
-        df,
+        df: pd.DataFrame,
         datestr: Union[str, datetime.datetime],
         slicestr: str,
         cellstr: str,
@@ -539,8 +610,8 @@ class IV_Analysis(object):
             if isinstance(celltype, float):
                 return None
             CP.cprint("red", f"Map annotated celltype: {celltype:s}")
-        elif self.annotated is not None:
-            cell_df = self.find_cell(self.annotated, datestr, slicestr, cellstr)
+        elif self.annotated_dataframe is not None:
+            cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr)
             if len(cell_df["cell_type"]) == 0:
                 return None
             celltype = cell_df["cell_type"]
@@ -592,7 +663,7 @@ class IV_Analysis(object):
         print("data complete: ", prots["data_complete"])
         u = prots["data_complete"].split(", ")
         allprots = self.gather_protocols(u, prots)
-        # if self.dryrun:
+        # if self.dry_run:
         #     print('Would process day: {0:s} slice: {1:s} cell: {2:s}'.format(
         #             datestr, slicestr, cellstr))
         #     if not fullfile.is_dir() or (fullfile.is_dir() and len(prots) == 0):
@@ -633,7 +704,7 @@ class IV_Analysis(object):
         if self.map_flag:
             if len(allprots["maps"]) == 0:
                 return
-            if self.dryrun:
+            if self.dry_run:
                 print(
                     "Would process day: {0:s} slice: {1:s} cell: {2:s}".format(
                         datestr, slicestr, cellstr
@@ -649,8 +720,8 @@ class IV_Analysis(object):
                     )
                     celltype = cell_df["cell_type"].values[0]
                     CP.cprint("red", f"map annotated celltype: {celltype:s}")
-                elif self.annotated is not None:
-                    cell_df = self.find_cell(self.annotated, datestr, slicestr, cellstr)
+                elif self.annotated_dataframe is not None:
+                    cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr)
                     celltype = cell_df["cell_type"].values[0]
                     print("cell annotated celltype: ", celltype)
                 else:
@@ -739,8 +810,8 @@ class IV_Analysis(object):
                         celltype = 'Unknown'
                         CP.cprint("yellow", f"map annotated celltype: {celltype:s}")
                         
-                elif self.annotated is not None:
-                    cell_df = self.find_cell(self.annotated, datestr, slicestr, cellstr)
+                elif self.annotated_dataframe is not None:
+                    cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr)
                     celltype = cell_df["cell_type"].values[0]
                     CP.cprint("yellow", f"cell annotated celltype: {celltype:s})")
                 else:
@@ -1082,7 +1153,7 @@ class IV_Analysis(object):
             return None
         
         mapdir = Path(self.basedir, mapname)
-        # if self.dryrun:
+        # if self.dry_run:
         #     datestr, slicestr, cellstr = self.make_cell(iday)
         #     print('   Would analyze %s' % mapdir, '\n    base: ', str(self.basedir))
         #     foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
@@ -1262,13 +1333,13 @@ class IV_Analysis(object):
 
         nfiles = 0
         allivs = []
-        if self.dryrun:
+        if self.dry_run:
             print(allprots.keys())
         for ptype in allprots.keys():  # check all the protocols
             if ptype not in ["stdIVs", "CCIV_long"]:  # just CCIV types
                 continue
             allivs.extend(allprots[ptype])  # combine into a new list
-        if self.dryrun:
+        if self.dry_run:
             print("  allivs: ", iday, datestr, slicestr, cellstr, allivs)
         nworkers = 16  # number of cores/threads to use
         tasks = range(len(allivs))  # number of tasks that will be needed
@@ -1279,13 +1350,13 @@ class IV_Analysis(object):
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(iday, i, x, allivs, nfiles, pdf)
-                if self.dryrun:
+                if self.dry_run:
                     continue
                 if r is None:
                     continue
                 results["IV"][allivs[i]] = r["IV"]
                 results["Spikes"][allivs[i]] = r["Spikes"]
-            if not self.dryrun:
+            if not self.dry_run:
                 self.df.at[iday, "IV"] = results[
                     "IV"
                 ]  # everything in the RM analysis_summary structure
@@ -1301,7 +1372,7 @@ class IV_Analysis(object):
                     result, nfiles = self.analyze_iv(iday, i, x, allivs, nfiles, pdf=pdf)
                     tasker.results[allivs[i]] = result
             # reform the results for our database
-            if self.dryrun:
+            if self.dry_run:
                 return
             riv = {}
             rsp = {}
@@ -1320,7 +1391,7 @@ class IV_Analysis(object):
             ] = rsp  # everything in the SP analysus_summary structure
             # foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
         # exptdir = self.inputFilename.parent
-        # if self.dryrun:
+        # if self.dry_run:
         #     return  # NEVER update the database...
         # fns = sorted(list(results.keys()))  # get all filenames
         # print('results: ', results['IV'])
@@ -1362,7 +1433,7 @@ class IV_Analysis(object):
             check = EPIV.iv_check(duration=self.iv_select["duration"])
             if check is False:
                 return (None, 0)  # skip analysis
-        if not self.dryrun:
+        if not self.dry_run:
             print("IV analysis for  %s" % Path(self.basedir, f))
             EPIV = EP.IVSummary.IVSummary(str(Path(self.basedir, f)), plot=True)
             br_offset = 0.0
@@ -1470,7 +1541,7 @@ class IV_Analysis(object):
             if len(allprots[pname]) == 0:
                 continue
             for f in allprots[pname]:
-                if not self.dryrun:
+                if not self.dry_run:
                     print("Analyzing %s" % Path(self.basedir, f))
                     EPVC = EP.VCSummary.VCSummary(Path(self.basedir, f), plot=False,)
                     plotted = EPVC.compute_iv()
@@ -1526,8 +1597,9 @@ def main():
         "cyan",
         f"Starting analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
     )
-    IV = IV_Analysis()
-    IV.setup_and_run(args, exclusions)
+    IV = IV_Analysis(args)
+    IV.setup(args, exclusions)
+    IV.run()
 
     # allp = sorted(list(set(NF.allprots)))
     # print('All protocols in this dataset:')

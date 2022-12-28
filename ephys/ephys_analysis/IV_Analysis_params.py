@@ -1,18 +1,14 @@
-import time
-from pathlib import Path
 import argparse
-from dataclasses import dataclass, field
-from typing import Union, Dict, List
-import dataclasses
-from collections import OrderedDict
-import numpy as np
 import json
+from dataclasses import dataclass, field
+
 import toml
-from pprint import PrettyPrinter
+
 
 def build_parser(experiments):
     parser = argparse.ArgumentParser(
-        description="Map and IV data analysis", fromfile_prefix_chars="@",
+        description="Map and IV data analysis",
+        fromfile_prefix_chars="@",
     )
     parser.add_argument(
         "-E",
@@ -38,7 +34,7 @@ def build_parser(experiments):
         help="Specify input dataSummray file name (including full path)",
     )
     parser.add_argument("-d", "--day", type=str, default="all", help="day for analysis")
-    
+
     parser.add_argument(
         "-a",
         "--after",
@@ -86,17 +82,11 @@ def build_parser(experiments):
         "-o",
         "--output",
         type=str,
-        default="",
+        default=None,
         dest="outputFilename",
         help="Specify output PDF filename (full path)",
     )
-    parser.add_argument(
-        "--artfile",
-        type=str,
-        default="",
-        dest="artifactFilename",
-        help="Specify artifact file (base name, no extension)",
-    )
+
     parser.add_argument(
         "-A",
         "--auto",
@@ -136,11 +126,12 @@ def build_parser(experiments):
     parser.add_argument(
         "-m", "--map", action="store_true", dest="map_flag", help="Analyze maps only"
     )
+
     # control options
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        dest="dryrun",
+        dest="dry_run",
         help="Do a dry run, reporting only directories",
     )
     parser.add_argument(
@@ -155,6 +146,79 @@ def build_parser(experiments):
         action="store_true",
         dest="noparallel",
         help="Turn off parallel processing (used primarily for debugging)",
+    )
+    parser.add_argument(
+        "--replot",
+        action="store_true",
+        dest="replot",
+        help="Replot the data from previously analyzed dataset(s)",
+    )
+    parser.add_argument(
+        "--ivdur",
+        type=float,
+        default=0.0,
+        dest="ivduration",
+        help="Only analyze IVs of a particular duration, in seconds",
+    )
+    parser.add_argument(
+        "--spike_threshold",
+        type=float,
+        default=-0.035,
+        dest="spike_threshold",
+        help="Set spike_threshold for IVs",
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=2.5,
+        dest="threshold",
+        help="Set threshold for event detection in maps",
+    )
+
+    # data treatment/preprocessing options
+
+    parser.add_argument(
+        "--plotmode",
+        type=str,
+        dest="plotmode",
+        default="document",
+        choices=["document", "publication"],
+        help="Plot mode: document or publication",
+    )
+    parser.add_argument(
+        "--pubmode",
+        type=str,
+        dest="IV_pubmode",
+        default="normal",
+        choices=["normal", "pubmode", "traces_only"],
+        help="clean IV plot",
+    )
+
+    ###
+    ### Specific paramters for mapping analysis
+    ###
+    parser.add_argument(
+        "--artfile",
+        type=str,
+        default="",
+        dest="artifactFilename",
+        help="Specify artifact file (base name, no extension)",
+    )
+    # plotting options
+    parser.add_argument(
+        "--whichstim",
+        type=int,
+        dest="whichstim",
+        default=-1,
+        help="define which stimulus to plot (Z scores, I_max, Qr)",
+    )
+    parser.add_argument(
+        "--trsel",
+        type=int,
+        dest="trsel",
+        default=None,
+        help="select a trace from the map to plot",
     )
 
     # analysis parameter options
@@ -192,36 +256,6 @@ def build_parser(experiments):
         dest="measuretype",
         help="Set measure for spot plot (ZScore, Qr, I_max)",
     )
-    parser.add_argument(
-        "--replot",
-        action="store_true",
-        dest="replot",
-        help="Replot the data from previously analyzed dataset(s)",
-    )
-    parser.add_argument(
-        "--ivdur",
-        type=float,
-        default=0.0,
-        dest="ivduration",
-        help="Only analyze IVs of a particular duration, in seconds",
-    )
-    parser.add_argument(
-        "--spikethreshold",
-        type=float,
-        default=-0.035,
-        dest="spikethreshold",
-        help="Set spikethreshold for IVs",
-    )
-    parser.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=2.5,
-        dest="threshold",
-        help="Set threshold for event detection in maps",
-    )
-
-    # data treatment/preprocessing options
     parser.add_argument(
         "--artifact_suppression",
         action="store_true",
@@ -270,43 +304,11 @@ def build_parser(experiments):
         help="Set notch Q (sharpness of notch; default=90)",
     )
 
-    # plotting options
-    parser.add_argument(
-        "--whichstim",
-        type=int,
-        dest="whichstim",
-        default=-1,
-        help="define which stimulus to plot (Z scores, I_max, Qr)",
-    )
-    parser.add_argument(
-        "--trsel",
-        type=int,
-        dest="trsel",
-        default=None,
-        help="select a trace from the map to plot",
-    )
-    parser.add_argument(
-        "--plotmode",
-        type=str,
-        dest="plotmode",
-        default="document",
-        choices=["document", "publication"],
-        help="Plot mode: document or publication",
-    )
-    parser.add_argument(
-        "--pubmode", 
-        type=str,
-        dest="IV_pubmode", 
-        default="normal",
-        choices=["normal", "pubmode", "traces_only"],
-        help="clean IV plot"
-    )
-
     args = parser.parse_args()
     # args = vars(parser.parse_args())
     return args
-    
-    
+
+
 def getCommands(experiments):
     args = build_parser(experiments)
 
@@ -331,7 +333,9 @@ def getCommands(experiments):
                 # print("Getting parser variable: ", c)
                 vargs[c] = config[c]
             else:
-                raise ValueError(f"config variable {c:s} does not match with comand parser variables")
+                raise ValueError(
+                    f"config variable {c:s} does not match with comand parser variables"
+                )
 
         print("   ... All configuration file variables read OK")
     # now copy into the Param dataclass if we want to params = Params() parnames
