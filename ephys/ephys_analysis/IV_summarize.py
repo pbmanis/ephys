@@ -20,7 +20,7 @@ to all cells. OU is the approopriate mode when dealing with sparse expression (e
 recombination) where the cells in a given subject may have different gene expression patterns, and the
 expression pattern can be identified during data collection. 
 Currently, there is no "intermediate" mode, where all of the OU data are computed for a subject, and then
-averaged with each EU. 
+averaged by the "code" with each EU. 
 
  
 This module can be used in two ways:
@@ -71,7 +71,6 @@ rcParams["text.usetex"] = False
 cprint = CP.cprint
 
 
-
 def get_computer():
     if os.name == "nt":
         computer_name = os.environ["COMPUTERNAME"]
@@ -82,7 +81,7 @@ def get_computer():
 
 computer_name = get_computer()
 
-# iv measures to plot:
+# iv measures to track:
 iv_measures = [
     "Date",
     "Cell_ID",
@@ -97,7 +96,7 @@ iv_measures = [
     "tauh_tau",
 ]
 
-# measures to plot, plus indexing (Date, Coding: Cell_ID, Animal_ID)
+# spike measures to track (including indexing (Date, Coding: Cell_ID, Animal_ID, etc.)
 spike_measures = [
     "Date",
     "Cell_ID",
@@ -123,7 +122,7 @@ spike_measures = [
     "FR_Slope",
 ]
 
-# parameters that should not be averaged numerically
+# parameters in the tracked items that should not be averaged numerically
 no_average = [
     "Date",
     "coding",
@@ -186,7 +185,7 @@ class GetAllIVs:
             must contain mode; others are filled with defaults if not specified
 
         Returns:
-            _type_: _description_
+            Nothing
         """
         self.coding = {}
         self.mode = args["mode"]
@@ -263,7 +262,7 @@ class GetAllIVs:
         """Build pandas data frame from selected experiments
 
         Args:
-            args (_type_): _description_
+            None
         """
 
         self.dfs = pd.DataFrame()
@@ -316,7 +315,7 @@ class GetAllIVs:
         return
 
     def run(self):
-
+        """Run with current parameters and build a summary plot of the measurements."""
         if self.dfs is None:
             self.build_dataframe()
 
@@ -340,7 +339,7 @@ class GetAllIVs:
             panel_labels=["A"],
         )
 
-        # now do the FI curves and the subfigures
+        # now do the FI curves and the two subfigures
         # along with their analyses
         self.plot_FI(self.PFig)
         P1 = self.plot_IV_info(self.mode, parentFigure=self.PFig)
@@ -389,10 +388,10 @@ class GetAllIVs:
 
     def select_protocols(self, prot: Union[Path, str]):
         """run a selector to determine whether a protocol matches
-        the ones in self.protocols.]
+        the ones in self.protocols.
 
         Args:
-            prot (Union[Path, str]): _description_
+            prot (Union[Path, str]): protocol to selct form list of prototcols
 
         Returns:
             _type_: _description_
@@ -406,7 +405,8 @@ class GetAllIVs:
 
     def plot_FI(self, PF):
         """plot all FI Curves in the dataset, superimposed
-        This function does no analysis.
+        This function does no analysis, but requires that
+        analysis be done prior to calling it.
 
         Args:
             PF (pandas dataframe): the dataframe for this dataset
@@ -534,9 +534,7 @@ class GetAllIVs:
                     accumulator=accumulator,
                     func=np.nanmin,
                 )
-            elif (
-                m == "peak_V"
-            ):  # find mean peak spike voltage
+            elif m == "peak_V":  # find mean peak spike voltage
                 accumulator = self._get_spike_parameter(
                     measure=m,
                     measurename=m,
@@ -544,9 +542,7 @@ class GetAllIVs:
                     accumulator=accumulator,
                     func=np.nanmean,
                 )
-            elif (
-                m == "peaktotrough"
-            ):  # find mean peak-to-trough
+            elif m == "peaktotrough":  # find mean peak-to-trough
                 accumulator = self._get_spike_parameter(
                     measure=m,
                     measurename=m,
@@ -629,18 +625,14 @@ class GetAllIVs:
 
         assert mode in ["OU", "EU"]
 
-        Accumulator = pd.DataFrame(
-            spike_measures
-        )  
+        Accumulator = pd.DataFrame(spike_measures)
         dates = self.dfs.date.unique()
 
         # for each mouse (day) :: Observational Unit AND Experimental Unit
         # The observational unit is the cell.
         # the Experimetnal unit is the day (perhaps it should be the "ID")
 
-        OU_accumulator = (
-            []
-        )  
+        OU_accumulator = []
         for day in dates:
             Day_accumulator = []
             for idx in self.dfs.index[
@@ -671,7 +663,8 @@ class GetAllIVs:
                     )
 
                 Cell_accumulator = self._get_cell_means(
-                    Cell_accumulator, spike_measures,
+                    Cell_accumulator,
+                    spike_measures,
                 )  # get mean values for the cell
                 OU_accumulator.append(Cell_accumulator)
 
@@ -773,7 +766,11 @@ class GetAllIVs:
                     )
             gps[param] = groups
 
-            if param not in no_average and len(gps[param]["A"]) > 1 and len(gps[param]["B"]) > 1:
+            if (
+                param not in no_average
+                and len(gps[param]["A"]) > 1
+                and len(gps[param]["B"]) > 1
+            ):
                 t, p = scipy.stats.ttest_ind(
                     gps[param]["A"], gps[param]["B"], equal_var=False, nan_policy="omit"
                 )
@@ -817,7 +814,7 @@ class GetAllIVs:
                 continue
             yd = dcomp[measure].replace([np.inf], np.nan)
 
-            x = pd.Series(dcomp['coding'])
+            x = pd.Series(dcomp["coding"])
             iasort = x.argsort()
             if np.all(np.isnan(yd)):
                 iax += 1
@@ -851,14 +848,9 @@ class GetAllIVs:
             pax[iax].set_title(measure, fontsize=7)  # .replace('_', '\_'))
 
             pax[iax].set_ylim(paxes[measure])
-            # if measure == "AdaptRatio":
-            #     if pax[iax].get_legend() is not None:
-            #         mpl.setp(pax[iax].get_legend().get_texts(), fontsize="5")
-            # else:
-            #     if pax[iax].get_legend() is not None:
-            #         pax[iax].get_legend().remove()
+
             iax += 1
-    
+
         iax = 0
         for i, measure in enumerate(spike_measures):
             if measure in no_average:
@@ -879,7 +871,6 @@ class GetAllIVs:
         """Get the spike data from all of the protocols
         in the spike dict
 
-
         Args:
             spikedict (dictionary): spike analysis from this protocol
             fidict (dictionary): fi analysis from this protocol
@@ -894,10 +885,6 @@ class GetAllIVs:
                 continue
             if not self.select_protocols(u):
                 continue
-            # if "FI_Curve" not in list(
-            #     d[u].keys()
-            # ):  # protocol needs an FI_Curve analysis
-            #     continue
             for m in spike_measures:
                 if m is None:
                     continue
@@ -922,13 +909,7 @@ class GetAllIVs:
                             np.max(fi[1][firstsp]) / fidict[protocol]["pulseDuration"]
                         )  # convert to spikes/second
                     else:
-                        # print(
-                        #     "no max: day: {0:s}  max spks: {1:d}  # traces with spikes {2:d}".format(
-                        #         self.make_cell(idx),
-                        #         int(np.max(fi)),
-                        #         len(firstsp),
-                        #     )
-                        # )
+
                         cellmeas[m].append(np.nan)
                 elif m == "Ibreak":
                     fig = fidict[protocol]["FI_Growth"]
@@ -957,8 +938,7 @@ class GetAllIVs:
                                 )
                                 rate_i.append(fidata[0][fsp] * 1e9)
                     if len(rate_i) > 0:
-                        #     cellmeas[m].append(np.nan)
-                        # else:
+
                         p = np.polyfit(rate_i, rate_spks, 1)
                         cellmeas[m].append(p[0])  # store slope from fit
                 else:
@@ -1023,7 +1003,7 @@ class GetAllIVs:
     #         # print('spike_hues: ', spike_hues)
     #
     #
-    #
+
     def _get_iv_parameter(
         self,
         measure: str,
@@ -1078,11 +1058,11 @@ class GetAllIVs:
         for m in iv_measures:
             if m not in no_average:
                 accumulator = self._get_iv_parameter(
-                    measure = m,
-                    measurename = m,
-                    cellmeas = cellmeas,
-                    accumulator = accumulator,
-                    func = np.nanmean,
+                    measure=m,
+                    measurename=m,
+                    cellmeas=cellmeas,
+                    accumulator=accumulator,
+                    func=np.nanmean,
                 )
 
             elif m in no_average:
@@ -1107,7 +1087,7 @@ class GetAllIVs:
                 cprint("r", f"     {(tracekeys):s}")
                 accumulator[m].append(np.nan)
         return accumulator
-    
+
     def _get_iv_info(self, mode: str):
         """analyze iv data
 
@@ -1125,18 +1105,14 @@ class GetAllIVs:
 
         assert mode in ["OU", "EU"]
 
-        Accumulator = pd.DataFrame(
-            iv_measures
-        )  
+        Accumulator = pd.DataFrame(iv_measures)
         dates = self.dfs.date.unique()
 
         # for each mouse (day) :: Observational Unit AND Experimental Unit
         # The observational unit is the cell.
         # the Experimetnal unit is the day (perhaps it should be the "ID")
 
-        OU_accumulator = (
-            []
-        )  
+        OU_accumulator = []
         for day in dates:
             Day_accumulator = []
             for idx in self.dfs.index[
@@ -1168,12 +1144,13 @@ class GetAllIVs:
                     )
 
                 Cell_accumulator = self._get_cell_means(
-                    Cell_accumulator, iv_measures,
+                    Cell_accumulator,
+                    iv_measures,
                 )  # get mean values for the cell
                 OU_accumulator.append(Cell_accumulator)
 
         return OU_accumulator
-    
+
     def plot_IV_info(self, mode, parentFigure=None):
         """
         Mode can be OU for observational unit (CELL) or EU for experimental Unit
@@ -1244,19 +1221,6 @@ class GetAllIVs:
         #                 [f"{str(obs_unit):s}_{sl:s}_{cell:s}"] * len(OU_accumulator[m])
         #             )
 
-        # ot = f"Obs,Group"
-        # for m in iv_measures:
-        #     ot += f",{m:s}"
-        # ot += "\n"
-        # for i in range(len(EU_accumulator[iv_measures[0]])):
-        #     ot += f"{i:d},{EU_iv_hues[m][i]:s}"
-        #     for m in iv_measures:
-        #         ot += f",{EU_accumulator[m][i]:f}"
-        #     ot += "\n"
-        # ofile = Path(f"R_{self.experiment}_{self.celltype:s}_{self.mode}.csv")
-        # ofile.write_text(ot)
-
-        # dcomp = pd.DataFrame(EU_accumulator)
         gps = {}
         for param in iv_measures:
             groups = {}
@@ -1272,11 +1236,14 @@ class GetAllIVs:
                         .replace(np.inf, np.nan)
                         .dropna(how="all")
                     )
-                # if code == 'B':
-                #     print(dcomp[(dcomp["coding"] == new_code)][param])
+
             gps[param] = groups
-            if param not in no_average and len(gps[param]["A"]) > 1 and len(gps[param]["B"]) > 1:
-   
+            if (
+                param not in no_average
+                and len(gps[param]["A"]) > 1
+                and len(gps[param]["B"]) > 1
+            ):
+
                 t, p = scipy.stats.ttest_ind(
                     gps[param]["A"], gps[param]["B"], equal_var=False, nan_policy="omit"
                 )
@@ -1315,9 +1282,6 @@ class GetAllIVs:
                     )
                     print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
                 print("=" * 80)
-        # df_iv = pd.DataFrame(EU_accumulator)
-        # df_iv = df_iv.assign(coding=pd.Series(EU_iv_hues["Rin"]))
-        # df_iv = df_iv.assign(ID=pd.Series(EU_Cell_IDs["Rin"]))
 
         self.Pb = PH.regular_grid(
             2,
@@ -1346,8 +1310,8 @@ class GetAllIVs:
         for i, measure in enumerate(iv_measures):
             if measure in no_average:
                 continue
-            
-            x = pd.Series(dcomp['coding'])
+
+            x = pd.Series(dcomp["coding"])
             yd = dcomp[measure].replace([np.inf], np.nan)
             iasort = x.argsort()
             if np.all(np.isnan(yd)):
@@ -1388,16 +1352,6 @@ class GetAllIVs:
             else:
                 paxb[iax].get_legend().remove()
             iax += 1
-        # iax = 0
-        # for i, measure in enumerate(iv_measures):
-        #     if i > 0 or measure in no_average:
-        #         continue
-        #     for lh in paxb[iax].legend().legendHandles:
-        #         lh.set_alpha(1)
-        #         lh._sizes = [4]
-        #         mpl.setp(paxb[iax].get_legend().get_texts(), fontsize="7")
-        #         lh._fontsize = 6
-        #     iax += 1
 
         self.iv_dataframe = dcomp
         return self.Pb
@@ -1451,39 +1405,6 @@ def get_cell_name(row):
 
 def _make_short_name(row):
     return get_rec_date(row["date"])
-
-
-# def find_protocols(df):
-#     # df = pd.read_excel(excelsheet)
-#     # code_dataframe = pd.read_excel(codesheet)
-
-#     # generate short names list
-#     df['shortdate'] = df.apply(_make_short_name, axis=1)
-
-#     # df_new['date'] = sorted(list(df['shortdate', right_on='Date', how='left')
-#     df_new = pd.merge(df, code_dataframe, left_on='shortdate', right_on='Date', how='left')
-#     df_new['holding'] = np.nan
-#     df_new['dvdt_rising'] =np.nan
-#     df_new['dvdt_falling'] =np.nan
-#     df_new['AP_thr_V'] = np.nan
-#     df_new['AP_HW'] = np.nan
-#     df_new['AP_begin_V'] = np.nan
-#     df_new['AHP_trough_V'] = np.nan
-#     df_new['AHP_depth_V'] = np.nan
-#     df_new['FiringRate'] = np.nan
-#     df_new['AdaptRatio'] = np.nan
-#     df_new['spiketimes'] = np.nan
-#     nprots = 0
-
-
-#     with pd.ExcelWriter(analyzed_data_file) as writer:
-#         df_new.to_excel(writer, sheet_name = "Sheet1")
-#         for i, column in enumerate(df_new.columns):
-#             column_width = max(df_new[column].astype(str).map(len).max(),24) # len(column))
-#             writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
-#         # writer.save()
-#     print("\nFind_protocols wrote to : ", analyzed_data_file)
-#     return df_new
 
 
 def checkforprotocol(df, index, protocol: str):
