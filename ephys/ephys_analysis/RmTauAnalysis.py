@@ -427,6 +427,13 @@ class RmTauAnalysis:
             # Steady-state IV where there are no spikes
             self.ivss_v = self.ivss_v_all[self.Spikes.nospk]
             self.ivss_cmd_all = self.Clamps.commandLevels
+            # print("** ", self.Spikes.nospk)
+            # print("    ", np.max(self.Spikes.nospk))
+            # print("   ", len(self.ivss_cmd_all), "**")
+            if len(self.Spikes.nospk[0]) == 0:
+                return
+            if np.max(self.Spikes.nospk) >= len(self.ivss_cmd_all):
+                return
             self.ivss_cmd = self.ivss_cmd_all[self.Spikes.nospk]
             isort = np.argsort(self.ivss_cmd)
             self.ivss_cmd = self.ivss_cmd[isort]
@@ -447,9 +454,13 @@ class RmTauAnalysis:
                     w=None,
                     cov=False,
                 )
-                pval = np.polyval(pf, self.ivss_cmd)
-                # print('pval: ', pval)
-                slope = np.diff(pval) / np.diff(self.ivss_cmd)  # local slopes
+                def pderiv(pf, x):
+                    y = 3*pf[0]*x**2 + 2*pf[1]*x + pf[2]
+                    return y
+                
+                # pval = np.polyval(pf, self.ivss_cmd)
+
+                slope = pderiv(pf, np.array(self.ivss_cmd)) # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.0)
                 self.rss_fit = {"I": imids, "V": np.polyval(pf, imids)}
                 # print('fit V: ', self.rss_fit['V'])
@@ -509,6 +520,8 @@ class RmTauAnalysis:
             # Steady-state IV where there are no spikes
             self.ivpk_v = self.ivpk_v_all[self.Spikes.nospk]
             self.ivpk_cmd_all = self.Clamps.commandLevels
+            # if np.max(self.Spikes.nospk) >= len(self.ivss_cmd_all):
+            #     return
             self.ivpk_cmd = self.ivpk_cmd_all[self.Spikes.nospk]
             bl = self.ivbaseline[self.Spikes.nospk]
             isort = np.argsort(self.ivpk_cmd)
@@ -526,8 +539,17 @@ class RmTauAnalysis:
                     w=None,
                     cov=False,
                 )
-                pval = np.polyval(pf, self.ivpk_cmd)
-                slope = np.diff(pval) / np.diff(self.ivpk_cmd)
+
+                def pderiv(pf, x):
+                    y = 3*pf[0]*x**2 + 2*pf[1]*x + pf[2]
+                    return y
+                
+                # pval = np.polyval(pf, self.ivss_cmd)
+
+                slope = pderiv(pf, np.array(self.ivpk_cmd)) 
+                # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
+                # pval = np.polyval(pf, self.ivpk_cmd)
+                # slope = np.diff(pval) / np.diff(self.ivpk_cmd)
                 imids = np.array((self.ivpk_cmd[1:] + self.ivpk_cmd[:-1]) / 2.0)
                 self.rpk_fit = {"I": imids, "V": np.polyval(pf, imids)}
                 l = int(len(slope) / 2)
