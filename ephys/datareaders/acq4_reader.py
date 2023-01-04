@@ -695,7 +695,7 @@ class acq4_reader:
         holdvalue = 0.0
         switchchan = False
 
-        if info is not None:
+        if info is not None and "devices" in list(info.keys()):
             devices = list(info["devices"].keys())
             if devices[0] == 'DAQ':
                 device = devices[1]
@@ -839,7 +839,7 @@ class acq4_reader:
         if tr is None and allow_partial is False:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
-        CP.cprint("r", f"Mode: {self.mode:s}")
+        # CP.cprint("r", f"Mode: {self.mode:s}")
         assert self.mode is not None
         if self.mode is None:
             units = "A"  # just fake it
@@ -937,8 +937,10 @@ class acq4_reader:
                 self.tend = np.max(self.time_base)
             seqkeys = list(seqparams.keys())
             if mclamppulses in seqkeys:
-                self.repetitions = len(seqparams[mclamppulses])
-                self.commandLevels = np.array(seqparams[mclamppulses])
+                if protoreps in list(seqparams.keys()):
+                    self.repetitions = len(seqparams[protoreps])
+                self.commandLevels = np.repeat(np.array(seqparams[mclamppulses]), self.repetitions).ravel()
+
                 function = index["."]["devices"][self.shortdname][
                     "waveGeneratorWidget"
                 ]["function"]
