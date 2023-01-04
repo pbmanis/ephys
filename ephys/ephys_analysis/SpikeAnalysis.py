@@ -285,7 +285,7 @@ class SpikeAnalysis():
         self.analysis_summary['AHP_Depth'] = np.inf  # convert to mV
         self.analysis_summary['AHP_Trough'] = np.inf  # convert to mV
 
-    def analyzeSpikeShape(self, printSpikeInfo=False, begin_dV=12.0):
+    def analyzeSpikeShape(self, printSpikeInfo=False, begin_dV=12.0, maxspikes=5):
         """analyze the spike shape.
         Does analysis of ONE protocol, all traces.
         Based on the analysis from Druckman et al. Cerebral Cortex, 2013
@@ -311,6 +311,11 @@ class SpikeAnalysis():
             Slope used to define onset of the spike. The default value
             is from Druckmann et al; change this at your own peril!
         
+        maxspikes : int (default 5)
+            Maximum number of spikes for detailed analysis of spike shape. Only the first
+            maxspikes in a trial (trace) are analyzed. The rest are counted and latency measured,
+            but there is no detailed analysis.
+
         Returns
         -------
         Nothing (but see doc notes above)
@@ -340,7 +345,7 @@ class SpikeAnalysis():
             trspikes = OrderedDict()
             for j in range(len(self.spikes[i])):
                 # print('i,j,etc: ', i, j, begin_dV)
-                thisspike = self.analyze_one_spike(i, j, begin_dV)
+                thisspike = self.analyze_one_spike(i, j, begin_dV, maxspikes)
                 if thisspike is not None:
                     trspikes[j] = thisspike
             self.spikeShape[i] = trspikes
@@ -361,7 +366,7 @@ class SpikeAnalysis():
                 for n in sorted(self.spikeShape[m].keys()):
                     pp.pprint(self.spikeShape[m][n])
 
-    def analyze_one_spike(self, i, j, begin_dV):
+    def analyze_one_spike(self, i, j, begin_dV, maxspikes:int=5):
         thisspike = {'trace': i, 'AP_number': j, 'AP_beginIndex': None, 'AP_endIndex': None, 
                      'AP_peakIndex': None, 'peak_T': None, 'peak_V': None, 'AP_Latency': None,
                      'AP_beginV': None, 'halfwidth': None, 'halfwidth_interpolated': None,
@@ -429,8 +434,11 @@ class SpikeAnalysis():
         kthresh = np.argmin(np.fabs(dvdt[kbegin:km] - begin_dV)) + kbegin  # point where slope is closest to begin
         # print('kthresh, kbegin: ', kthresh, kbegin)
         # save values in dict here
-        thisspike['AP_beginIndex'] = kthresh
         thisspike['AP_Latency'] = self.Clamps.time_base[kthresh]
+        if j > maxspikes:
+            return thisspike
+
+        thisspike['AP_beginIndex'] = kthresh
         thisspike['AP_beginV'] = self.Clamps.traces[i][thisspike['AP_beginIndex']]
 
         # compute rising and falling max dv/dt

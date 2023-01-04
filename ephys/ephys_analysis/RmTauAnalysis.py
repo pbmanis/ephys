@@ -355,7 +355,10 @@ class RmTauAnalysis:
         else:
             self.taum_taum = np.NaN
             self.analysis_summary["taum"] = np.NaN
-        self.analysis_summary["taupars"] = self.taum_pars
+        if len(self.taum_pars) > 0:
+            self.analysis_summary["taupars"] = self.taum_pars[0].tolist()
+        else:
+            self.analysis_summary["taupars"] = self.taum_pars
         self.analysis_summary["taufunc"] = self.taum_func
 
     def rmp_analysis(self, time_window:list=[]):
@@ -386,11 +389,8 @@ class RmTauAnalysis:
         self.irmp = data2.view(np.ndarray).mean(axis=1)
         self.analysis_summary["RMP"] = self.rmp
         self.analysis_summary["RMP_SD"] = self.rmp_sd
-        self.analysis_summary["RMPs"] = self.ivbaseline  # save raw baselines as well
-        self.analysis_summary["Irmp"] = self.irmp
-
-
-    #        print('irmp: ', self.irmp, ' rmp: ', self.rmp)
+        self.analysis_summary["RMPs"] = self.ivbaseline.tolist()  # save raw baselines as well
+        self.analysis_summary["Irmp"] = self.irmp.tolist()
 
     def ivss_analysis(self, time_window:list=[]):
         """
@@ -679,6 +679,11 @@ class RmTauAnalysis:
         if itaucmd is None or np.fabs(itaucmd) < 1e-11:
             return  # don't attempt to fit a tiny current
         whichaxis = 0
+        # print("whicdata: ", whichdata)
+        # print(steadystate_timewindow, pk_time)
+        # import matplotlib.pyplot as mpl
+        # mpl.plot(self.Clamps.time_base, self.Clamps.traces.view(np.ndarray)[0])
+        # mpl.show()
         (fpar, xf, yf, names) = Fits.FitRegion(
             whichdata,
             whichaxis,
@@ -689,11 +694,11 @@ class RmTauAnalysis:
             t1=steadystate_timewindow[1],
             fitFunc=Func,
             fitPars=initpars,
-            method="SLSQP",
+            method="Nelder-Mead", # "SLSQP",
             bounds=[
                 (-0.120, 0.05),
                 (-0.1, 0.1),
-                (0.005, (steadystate_timewindow[1] - pk_time) * 2.0),
+                (0.001, (steadystate_timewindow[1] - pk_time) * 2.0),
             ],
         )
         if not fpar:
@@ -737,3 +742,5 @@ class RmTauAnalysis:
         self.analysis_summary["tauh_bovera"] = self.tauh_bovera
         self.analysis_summary["tauh_Gh"] = self.tauh_Gh
         self.analysis_summary["tauh_vss"] = self.tauh_vss
+
+        # print(self.analysis_summary)
