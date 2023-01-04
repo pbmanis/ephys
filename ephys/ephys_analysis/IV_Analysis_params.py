@@ -70,6 +70,13 @@ def build_parser(experiments):
         + "and must be specific (e.g., CCIV_001)",
     )
     parser.add_argument(
+        "--extra_subdirectories",
+        type=str,
+        default=None,
+        dest="extra_subdirectories",
+        help="List of extra subdirectories",
+    )
+    parser.add_argument(
         "--configfile",
         type=str,
         default=None,
@@ -79,11 +86,10 @@ def build_parser(experiments):
 
     # output options
     parser.add_argument(
-        "-o",
-        "--output",
+        "--pdf",
         type=str,
         default=None,
-        dest="outputFilename",
+        dest="pdfFilename",
         help="Specify output PDF filename (full path)",
     )
 
