@@ -41,6 +41,7 @@ class IVSummary:
             self.AR = altstruct
             self.datapath = file
             self.mode = "nwb2.5"
+        self.datapath = str(datapath)
         self.SP = SpikeAnalysis.SpikeAnalysis()
         self.RM = RmTauAnalysis.RmTauAnalysis()
         self.plot = plot
