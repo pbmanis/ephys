@@ -35,6 +35,8 @@ XlsxWriter>=3.0
 jinja2
 psutil==5.6.7
 pyparsing==2.4.0
+tables
+pypdf2
 
 resampy==0.2.1
 scipy>=1.9.3
