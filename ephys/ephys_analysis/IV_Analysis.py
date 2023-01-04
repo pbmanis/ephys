@@ -3,10 +3,10 @@ Module for analyzing datasets with optogenetic or uncaging laser mapping
 current-voltage relationships, and so on... 
 Used as a wrapper for multiple experiments. 
 """
-from multiprocessing import set_start_method
-
-import os
+import gc
 import sys
+from multiprocessing import set_start_method
+from collections.abc import Iterable
 
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
@@ -23,9 +23,11 @@ import dill
 import matplotlib
 import numpy as np
 import pandas as pd
+from pandas import HDFStore
 import toml
 
 matplotlib.use("QtAgg")
+import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
@@ -245,7 +247,7 @@ class IV_Analysis(object):
         # get the input file (from dataSummary)
         self.df = pd.read_pickle(str(self.inputFilename))
         CP.cprint("g", f"Read in put file: {str(self.inputFilename):s}")
-        self.df = self.df.assign(day=None)  # make sure we have short day available
+        self.df['day'] = None #self.df = self.df.assign(day=None)  # make sure we have short day available
         self.df = self.df.apply(self._add_date, axis=1)
         # self.df.drop_duplicates(['date', 'slice_slice', 'cell_cell', 'data_complete'],
         #      keep='first', inplace=True, ignore_index=True)
@@ -306,6 +308,7 @@ class IV_Analysis(object):
 
     def run(self):
     # select a date:
+        self.n_analyzed = 0
         if self.day != "all":  # specified day
             day = str(self.day)
             print(f"Looking for day: {day:s} in database from {str(self.inputFilename):s}")
@@ -566,6 +569,7 @@ class IV_Analysis(object):
                 c = Path(
                     day, prots.iloc[i]["slice_slice"], prots.iloc[i]["cell_cell"], x
                 )
+            c = str(c) # make sure it is serializable for later on with JSON.
             # maps
             if x.startswith("Map"):
                 allprots["maps"].append(c)
@@ -706,6 +710,7 @@ class IV_Analysis(object):
 
 
         """
+        datestr, slicestr, cellstr = self.make_cell(iday)
         if len(self.slicecell) >= 2:
             slicen = "slice_%03d" % int(self.slicecell[1])
             if slicestr != slicen:
@@ -715,7 +720,7 @@ class IV_Analysis(object):
                 if cellstr != celln:
                     return
 
-        datestr, slicestr, cellstr = self.make_cell(iday)
+
         dsday, nx = Path(datestr).name.split("_")
         thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
         if thisday < self.after or thisday > self.before:
@@ -731,7 +736,7 @@ class IV_Analysis(object):
                     day = Path(*pathparts[i:])
                     break
             if day is None:
-                print("no day found in fileparts: ", pathparts)
+                CP.cprint("r", f"do_day: Day found in fileparts: {str(pathparts):s}")
                 exit()
             
             for subdir in self.extra_subdirectories:
@@ -741,6 +746,7 @@ class IV_Analysis(object):
                     if fullfile.is_dir():
                         break
         if not fullfile.is_dir():
+            CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
             exit()
         celltype = self.get_celltype(iday)
         prots = self.df.iloc[iday]["data_complete"]
@@ -791,10 +797,14 @@ class IV_Analysis(object):
             return
         # CP.cprint("r", f"iv flag: {str(self.iv_flag):s}")
         if self.iv_flag:
-            self.make_tempdir()  # clean up temporary directory
+            self.df["IV"] = None
+            self.df["Spikes"] = None
+            if pdf is not None:
+                self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(iday=iday, file=fullfile, allprots=allprots, celltype=celltype, pdf=pdf)
             if pdf is not None:
                 self.merge_pdfs(celltype)  # do not do this until all the parallel processing for the day is done.
+            gc.collect()
 
         if self.vc_flag:
             self.analyze_vcs(iday, allprots)
@@ -1239,7 +1249,7 @@ class IV_Analysis(object):
             true if there data was processed; otherwise False
         """
         # import matplotlib
-        import matplotlib.pyplot as mpl
+        # import matplotlib.pyplot as mpl
         CP.cprint('g', 'Entering IV_Analysis:analyze_map')
         # matplotlib.use('Agg')
         rcParams = matplotlib.rcParams
@@ -1411,6 +1421,11 @@ class IV_Analysis(object):
         #        print('returning results', results.keys())
         return result
 
+
+
+    
+
+
     def analyze_ivs(self, iday, file:Union[Path, str], allprots: dict, celltype:str, pdf: None):
         """
         Overall analysis of IV protocols for one day
@@ -1436,19 +1451,85 @@ class IV_Analysis(object):
         # self.make_tempdir()
 #        datestr, slicestr, cellstr = self.make_cell(iday)
         CP.cprint("c", f"      {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}")
+
+        # clean up data in IV and SPikes : remove Posix
+
+
+        def _cleanup_ivdata(results:dict):
+            import numpy
+            if isinstance(results, dict) and len(results) == 0:
+                results = None
+            if results is not None:
+                for r in list(results.keys()):
+                    u = results[r]
+                    for k in u.keys():
+                        if isinstance(u[k], dict):
+                            for uk in u[k].keys():
+                                if isinstance(u[k][uk], bool) or isinstance(u[k][uk], np.int32):
+                                    u[k][uk] = int(u[k][uk])
+                        if k in ['taupars', 'RMPs', 'Irmp']:
+                            #if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, np.float)):
+                            # print("type for ", k, type(u[k]))
+                            if isinstance(u[k], numpy.ndarray):
+                                u[k] = u[k].tolist()
+                            elif isinstance(u[k], list) and len(u[k]) > 0:
+                                if isinstance(u[k][0], numpy.ndarray):
+                                    u[k] = u[k][0].tolist()
+                            elif isinstance(u[k], np.float64):
+                                u[k] = float(u[k])
+                            elif isinstance(u[k], list):
+                                pass
+                            else:
+                                print(type(u[k]))
+                                raise ValueError
+                        # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str)):
+                        #     u[k] = u[k].tolist()
+                        elif isinstance(u[k], np.float64):
+                            u[k] = float(u[k])
+                    results[str(r)] = results.pop(r)
+            return results
  
+        def _cleanup_spikedata(results:dict):
+            if isinstance(results, dict) and len(results) == 0:
+                results = None
+ 
+            if results is not None:
+                for r in list(results.keys()):
+                    results[str(r)] = results.pop(r)
+            return results
+
+        def cleanIVs(row):
+            if not isinstance(row.IV, dict):
+                return row.IV
+            newrow = {}
+            for k, v in row.IV.items():
+                newrow[str(k)] = row.IV[k]
+            _cleanup_ivdata(newrow)
+            return newrow
+
+        def cleanSpikes(row):
+            if not isinstance(row.Spikes, dict):
+                return row.Spikes
+            newrow = {}
+            for k, v in row.Spikes.items():
+                newrow[str(k)] = row.Spikes[k]
+            _cleanup_ivdata(newrow)
+            return newrow
+
+        self.df["IV"] = self.df.apply(cleanIVs,  axis=1)
+        self.df["Spikes"] = self.df.apply(cleanSpikes,  axis=1)
+
         nfiles = 0
         allivs = []
         for ptype in allprots.keys():  # check all the protocols
-            if ptype not in ["stdIVs", "CCIV_long"]:  # just CCIV types
-                continue
-            allivs.extend(allprots[ptype])  # combine into a new list
+            if ptype in ["stdIVs", "CCIV_long"]:  # just CCIV types
+                for prot in allprots[ptype]:
+                    allivs.append(prot)  # combine into a new list
         nworkers = 16  # number of cores/threads to use
         tasks = range(len(allivs))  # number of tasks that will be needed
         results = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
-        result = [None] * len(tasks)  # likewise
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(iday, i, x, file, allivs, nfiles, pdf)
@@ -1458,6 +1539,8 @@ class IV_Analysis(object):
                     continue
                 results["IV"][allivs[i]] = r["IV"]
                 results["Spikes"][allivs[i]] = r["Spikes"]
+            results['IV'] = _cleanup_ivdata(results["IV"])
+            results['Spikes'] = _cleanup_ivdata(results["Spikes"])
             if not self.dry_run:
                 self.df.at[iday, "IV"] = results[
                     "IV"
@@ -1466,41 +1549,75 @@ class IV_Analysis(object):
                     "Spikes"
                 ]  # everything in the SP analysus_summary structure
         #            print(self.df.at[iday, 'IV'])
-        else:
-            with mp.Parallelize(
-                enumerate(tasks), results=results, workers=nworkers
-            ) as tasker:
-                for i, x in tasker:
-                    result, nfiles = self.analyze_iv(iday, i, x, file, allivs, nfiles, pdf=pdf)
-                    tasker.results[allivs[i]] = result
-            # reform the results for our database
-            if self.dry_run:
-                return
-            riv = {}
-            rsp = {}
-            for f in list(results.keys()):
-                if "IV" in results[f]:
-                    riv[f] = results[f]["IV"]
-                if "Spikes" in results[f]:
-                    rsp[f] = results[f]["Spikes"]
-            #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-            #            print('riv: ', riv)
-            self.df.at[
-                iday, "IV"
-            ] = riv  # everything in the RM analysis_summary structure
-            self.df.at[
-                iday, "Spikes"
-            ] = rsp  # everything in the SP analysus_summary structure
-            # foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
-        # analyzeddatapath = self.inputFilename.parent
-        # if self.dry_run:
-        #     return  # NEVER update the database...
-        # fns = sorted(list(results.keys()))  # get all filenames
-        # print('results: ', results['IV'])
+        # else:
+        #     result = [None] * len(tasks)  # likewise
+        #     with mp.Parallelize(
+        #         enumerate(tasks), results=results, workers=nworkers
+        #     ) as tasker:
+        #         for i, x in tasker:
+        #             result, nfiles = self.analyze_iv(iday, i, x, file, allivs, nfiles, pdf=pdf)
+        #             tasker.results[allivs[i]] = result
+        #     # reform the results for our database
+        #     if self.dry_run:
+        #         return
+        #     riv = {}
+        #     rsp = {}
+        #     for f in list(results.keys()):
+        #         if "IV" in results[f]:
+        #             riv[f] = results[f]["IV"]
+        #         if "Spikes" in results[f]:
+        #             rsp[f] = results[f]["Spikes"]
+        #     #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+        #     #            print('riv: ', riv)
+        #     for r in list(riv.keys):
+        #         riv[str(r)] = riv.pop(r)
+        #     for r in list(rsp.keys()):
+        #         rsp[str(r)] = rsp.pop(r)
+        #     self.df.at[
+        #         iday, "IV"
+        #     ] = riv  # everything in the RM analysis_summary structure
+        #     self.df.at[
+        #         iday, "Spikes"
+        #     ] = rsp  # everything in the SP analysus_summary structure
+
+        # foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
+        self.df['annotated'] = self.df['annotated'].astype(int)
+        self.df['expUnit'] = self.df['expUnit'].astype(int)
+
         if len(allivs) > 0:
-            with open(Path(self.analyzeddatapath, 'IV_Analysis.pkl'), 'wb') as fh:
-                self.df.to_pickle(fh)
-#            pickle.dump(df, fh)
+            # with pickle:
+            # with open(Path(self.analyzeddatapath, 'IV_Analysis.pkl'), 'wb') as fh:
+            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 1, 'mtime': 1})
+            #
+            # with hdf5:
+            day, slice, cell = self.make_cell(iday=iday)
+            keystring = str(Path(Path(day).name, slice, cell))  # the keystring is the cell.
+            if self.n_analyzed == 0:
+                self.df.iloc[iday].to_hdf("IV_Analysis.h5", key=keystring, mode='w')
+            else:
+                self.df.iloc[iday].to_hdf("IV_Analysis.h5", key=keystring, mode='a')
+            self.df.iloc[iday]["IV"] = None
+            self.df.iloc[iday]["Spikes"] = None
+            self.n_analyzed += 1
+            gc.collect()
+            # with parquet:
+            # import json
+            # print("-"*40)
+            # for i, v in enumerate(self.df["Spikes"].values):
+            #     if not pd.isnull(v):
+            #         for k, x in v.items():
+            #             print(k, x)
+                        # if isinstance(x, np.ndarray):
+                        #     print("#######", k, x)
+            # print(self.df.iloc[42]['Spikes'].values)
+            # print("IV type: ", type(self.df['IV'].values))
+
+            # with open("test.json", "w") as fw:
+            #     json.dump(self.df['Spikes'].values.tolist(), fw)
+            
+            # with open(Path(self.analyzeddatapath, 'IV_Analysis.parquet'), 'wb') as fh:
+            #     self.df.to_parquet(fh, engine='fastparquet')
+
         # with open(Path(analyzeddatapath, 'events', foname), 'wb') as fh:
         #      dill.dump(results, fh)
 
@@ -1529,9 +1646,9 @@ class IV_Analysis(object):
             if a pdfpages instance, all of the pages plotted by IVSummary are concatenated
             into the output file (self.pdfFilename)
         """
-        import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
+        # import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 
-        protocol = Path(allivs[i].name)
+        protocol = Path(allivs[i]).name
         result = {}
         iv_result = {}
         sp_result = {}
@@ -1546,13 +1663,14 @@ class IV_Analysis(object):
         # print("looking for data directory: ", fpath)
         # print("Data directory exists?: ", fpath.is_dir())
         if not fpath.is_dir():
-            CP.cprint("r", f"File not found!! {str(fpath):s}")
+            CP.cprint("r", f"File not found (analyze_iv)!! {str(fpath):s}")
             exit()
         
         if self.iv_select["duration"] > 0.0:
             EPIV = EP.IVSummary.IV(str(fpath), plot=True,)
             check = EPIV.iv_check(duration=self.iv_select["duration"])
             if check is False:
+                gc.collect()
                 return (None, 0)  # skip analysis
         if not self.dry_run:
             print(f"      IV analysis for {str(fpath):s}")
@@ -1561,12 +1679,11 @@ class IV_Analysis(object):
             if (
                 not pd.isnull(self.df.at[iday, "IV"])
                 and protocol in self.df.at[iday, "IV"]
-                and "--Adjust" in self.df.at[iday, "IV"][f].keys()
+                and "--Adjust" in self.df.at[iday, protocol]["BridgeAdjust"]
             ):
-                br_offset = self.df.at[iday, "IV"][f]["BridgeAdjust"]
                 print(
                     "Bridge: {0:.2f} Mohm".format(
-                        self.df.at[iday, "IV"][f]["BridgeAdjust"] / 1e6
+                        self.df.at[iday, "IV"][protocol]["BridgeAdjust"] / 1e6
                     )
                 )
             ctype = self.df.at[iday, "cell_type"]
@@ -1616,27 +1733,31 @@ class IV_Analysis(object):
                 mpl.close(plot_handle)
                 CP.cprint("g", f"saved to: {str(t_path):s}")
                 nfiles += 1
-       
+            del EPIV
+            del iv_result
+            del sp_result
+            gc.collect()
             return result, nfiles
 
         else:
-            print("Dry Run: would analyze %s" % Path(self.rawdatapath, f))
+            print("Dry Run: would analyze %s" % Path(self.rawdatapath, protocol))
             br_offset = 0
 
             # print('IV keys: ', self.df.at[iday, 'IV'])
             if self.df.at[iday, "IV"] == {} or pd.isnull(self.df.at[iday, "IV"]):
                 print("   current database has no IV data set for this file")
-            elif f not in list(self.df.at[iday, "IV"].keys()):
+            elif protocol not in list(self.df.at[iday, "IV"].keys()):
                 print(
                     "Protocol {0:s} not found in day: {1:s}".format(
-                        str(f), self.df.at[iday, "date"]
+                        str(protocol), self.df.at[iday, "date"]
                     )
                 )
-            elif "BridgeAdjust" in self.df.at[iday, "IV"][f].keys():
-                br_offset = self.df.at[iday, "IV"][f]["BridgeAdjust"]
+            elif "BridgeAdjust" in self.df.at[iday, "IV"][protocol].keys():
+                br_offset = self.df.at[iday, "IV"][protocol]["BridgeAdjust"]
                 print("   with Bridge: {0:.2f}".format(br_offset / 1e6))
             else:
                 print("... has no bridge, will use 0")
+            gc.collect()
             return None, 0
 
     def analyze_vcs(self, iday: int, allprots: dict):
