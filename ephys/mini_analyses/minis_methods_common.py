@@ -386,9 +386,9 @@ class MiniAnalyses:
         corresponding timebase.
         """
         self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
-        print(
-            "preparedata timebase shape, data shape: ", self.timebase.shape, data.shape
-        )
+        # print(
+        #     "preparedata timebase shape, data shape: ", self.timebase.shape, data.shape
+        # )
         if self.analysis_window[1] is not None:
             jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
         else:
@@ -463,7 +463,6 @@ class MiniAnalyses:
         else:
             nparg = np.less
         self.intervals = []
-        print("summarize data shape: ", data.shape)
         self.timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
 
         nrejected_too_small = 0
