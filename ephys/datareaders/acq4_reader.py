@@ -535,10 +535,20 @@ class acq4_reader:
         to determine the acquisition type
         """
         chorder = [1, 0]
+        # print("switchchan: ", switchchan)
         if switchchan:
             chorder = [0, 1]
         try:  # old acq4 may not have this
             self.mode = info[1]["ClampState"]["mode"]
+            if self.mode in ["IC", "I=0"]:
+                self.tracepos = chorder[0]
+                self.cmdpos = chorder[1]
+            elif self.mode in ["VC"]:
+                self.tracepos = chorder[0]
+                self.cmdpos = chorder[1]
+            else:
+                raise ValueError("Unable to determine how to map channels")
+            # print("Mode found: ", self.mode)
         except:
             print("info 1: ")
             for k in list(info[1].keys()):
@@ -574,14 +584,7 @@ class acq4_reader:
         self.samp_rate = info[1]["DAQ"]["primary"]["rate"]
         # CP.cprint("r", f"parseclampinfo, mode = {self.mode:s}")
 
-        if self.mode in ["IC", "I=0"]:
-            self.tracepos = chorder[0]
-            self.cmdpos = chorder[1]
-        elif self.mode in ["VC"]:
-            self.tracepos = chorder[1]
-            self.cmdpos = chorder[0]
-        else:
-            raise ValueError("Unable to determine how to map channels")
+
 
     def parseClampWCCompSettings(self, info: list) -> dict:
         """
