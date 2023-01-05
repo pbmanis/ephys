@@ -1,31 +1,28 @@
 import argparse
-from pathlib import Path
-import numpy as np
-import scipy.signal
-import scipy.ndimage
+import datetime
 from collections import OrderedDict
-from dataclasses import dataclass
 from dataclasses import dataclass, field
-from typing import Union, Dict, List
+from pathlib import Path
+from typing import Dict, List, Union
 
 import matplotlib
-import seaborn
-
-import matplotlib.pyplot as mpl
-import matplotlib.colors
-import matplotlib
-import matplotlib.collections as collections
-from matplotlib.patches import Wedge
-from matplotlib.collections import PatchCollection
-from matplotlib import colors as mcolors
 import matplotlib.cm
-
-
+import matplotlib.collections as collections
+import matplotlib.colors
+import matplotlib.pyplot as mpl
+import numpy as np
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
+import scipy.ndimage
+import scipy.signal
+import seaborn
+from matplotlib import colors as mcolors
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Wedge
 
 color_sequence = ["k", "r", "b"]
 colormapname = "parula"
+
 
 def setMapColors(colormapname: str, reverse: bool = False) -> object:
     cmnames = dir(matplotlib.cm)
@@ -179,8 +176,8 @@ def testplot():
     """
     Note: This cannot be used if we are running in multiprocessing mode - will throw an error
     """
-    from pyqtgraph.Qt import QtGui, QtCore
     import pyqtgraph as pg
+    from pyqtgraph.Qt import QtCore, QtGui
 
     pg.setConfigOption("leftButtonPan", False)
     app = QtGui.QApplication([])
@@ -232,16 +229,22 @@ def testplot():
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtGui.QApplication.instance().exec_()
     exit()
-    #return datar, avgd
+    # return datar, avgd
 
-class PlotMapData():
+
+class PlotMapData:
     def __init__(self, verbose=False):
         self.rasterized = False
         self.verbose = verbose
         self.reset_flags()
 
     def reset_flags(self):
-        self.plotted_em = {'histogram': False, 'stack': False, 'avgevents': False, 'avgax': [0, None, None]}
+        self.plotted_em = {
+            "histogram": False,
+            "stack": False,
+            "avgevents": False,
+            "avgax": [0, None, None],
+        }
 
     def set_Pars_and_Data(self, pars, data):
         """
@@ -305,7 +308,7 @@ class PlotMapData():
             rmat = np.matrix([[c, -s], [s, c]])  # rotation matrix
             newpos = np.dot(rmat, newpos.T).T
         return newpos
-    
+
     def plot_timemarker(self, ax: object) -> None:
         """
         Plot a vertical time line marker for the stimuli
@@ -332,7 +335,7 @@ class PlotMapData():
         CP.cprint("c", "    Plot_hist")
 
         # assert not self.plotted_em['histogram']
-        self.plotted_em['histogram'] = True
+        self.plotted_em["histogram"] = True
         plotevents = True
         rotation = 0.0
         plotFlag = True
@@ -348,17 +351,19 @@ class PlotMapData():
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
-            for j, jtrace in enumerate(events[itrial]['onsets']):
+            for j, jtrace in enumerate(events[itrial]["onsets"]):
                 nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
         for itrial in events.keys():
-            for j, onsets in enumerate(events[itrial]['onsets']):
+            for j, onsets in enumerate(events[itrial]["onsets"]):
                 ntrialev = len(onsets)
                 eventtimes[iev : iev + ntrialev] = onsets
                 iev += ntrialev
-        CP.cprint("c", 
-            f"    plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec")
+        CP.cprint(
+            "c",
+            f"    plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec",
+        )
 
         if plotevents and len(eventtimes) > 0:
             nevents = 0
@@ -398,8 +403,17 @@ class PlotMapData():
 
         # assert not self.plotted_em['stack']
         CP.cprint("c", "    Starting stack plot")
-        linewidth=0.35  # base linewidth
-        self.plotted_em['stack'] = True
+        now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
+        mpl.text(
+            0.96,
+            0.01,
+            s=now,
+            fontsize=6,
+            ha="right",
+            transform=ax.get_figure().transFigure,
+        )
+        linewidth = 0.35  # base linewidth
+        self.plotted_em["stack"] = True
         if ax is None:
             f, ax = mpl.subplots(1, 1)
             self.figure_handle = f
@@ -438,15 +452,18 @@ class PlotMapData():
             )
             mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
             self.plot_timemarker(ax)
+
             ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
             return
-        
+
         crflag = [False for i in range(mdata.shape[0])]
 
         for itrial in range(mdata.shape[0]):
             if events[itrial] is None:
                 continue
-            evtr = events[itrial]['event_trace_list']  # of course it is the same for every entry.
+            evtr = events[itrial][
+                "event_trace_list"
+            ]  # of course it is the same for every entry.
             for itrace in range(mdata.shape[1]):
                 smpki = events[itrial]["smpksindex"][itrace]
                 pktimes = events[itrial]["peaktimes"][itrace]
@@ -465,16 +482,13 @@ class PlotMapData():
                         tri = np.ndarray(0)
                         for (
                             iev
-                        ) in (
-                            self.Pars.twin_resp
-                        ):  # find events in all response windows
+                        ) in self.Pars.twin_resp:  # find events in all response windows
                             tri = np.concatenate(
                                 (
                                     tri.copy(),
                                     smpki[
                                         np.where(
-                                            (tb[smpki] >= iev[0])
-                                            & (tb[smpki] < iev[1])
+                                            (tb[smpki] >= iev[0]) & (tb[smpki] < iev[1])
                                         )[0]
                                     ],
                                 ),
@@ -533,14 +547,14 @@ class PlotMapData():
                             rasterized=self.rasterized,
                         )
         for itrial in range(mdata.shape[0]):
-            for itrace in range(mdata.shape[1]):            
+            for itrace in range(mdata.shape[1]):
                 if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
                     if crflag[itrial]:
                         alpha = 1.0
                         lw = linewidth
                     else:
                         alpha = 0.3
-                        lw = linewidth*0.25
+                        lw = linewidth * 0.25
                     ax.plot(
                         tb[:itmax],
                         mdata[itrial, itrace, :itmax] * self.Pars.scale_factor
@@ -555,7 +569,6 @@ class PlotMapData():
         mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
         ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
-
 
     def get_calbar_Yscale(self, amp: float):
         """
@@ -601,19 +614,22 @@ class PlotMapData():
         # ensure we don't plot more than once...
         # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
-        if self.plotted_em['avgax'][0] == 0:
-            self.plotted_em['avgax'][1] = ax
-        elif self.plotted_em['avgax'][0] == 1:
-            if self.plotted_em['avgax'][1] == ax:
-                raise ValueError('plot_avgevent_traces : repeated into same axis')
+        if self.plotted_em["avgax"][0] == 0:
+            self.plotted_em["avgax"][1] = ax
+        elif self.plotted_em["avgax"][0] == 1:
+            if self.plotted_em["avgax"][1] == ax:
+                raise ValueError("plot_avgevent_traces : repeated into same axis")
             else:
-                self.plotted_em['avgax'][2] = ax
-                self.plotted_em['avgevents'] = True
+                self.plotted_em["avgax"][2] = ax
+                self.plotted_em["avgevents"] = True
         # CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
 
         # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
-            CP.cprint("r", f"[plot_avgevent_traces]:: evtype: {evtype:s}. No events, no axis, or no time base")
+            CP.cprint(
+                "r",
+                f"[plot_avgevent_traces]:: evtype: {evtype:s}. No events, no axis, or no time base",
+            )
             return
         nevtimes = 0
         line = {"avgevoked": "k-", "avgspont": "k-"}
@@ -644,12 +660,12 @@ class PlotMapData():
         for trial in range(mdata.shape[0]):
             if self.verbose:
                 print("plotting events for trial: ", trial)
-            if events[trial] is None or len(events[trial]['aveventtb']) == 0:
+            if events[trial] is None or len(events[trial]["aveventtb"]) == 0:
                 # print(trial, evtype, result_names[evtype])
                 CP.cprint("r", "**** plot_avgevent_traces: no events....")
                 continue
             tb0 = events[trial]["aveventtb"]  # get from first trace
-            
+
             rate = np.mean(np.diff(tb0))
             tpre = 0.1 * np.max(tb0)
             tpost = np.max(tb0)
@@ -672,7 +688,9 @@ class PlotMapData():
                         )
                     continue
                 spont_dur = events[trial]["spont_dur"][itrace]
-                for jevent in evs[0]:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
+                for jevent in evs[
+                    0
+                ]:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
                     if evtype == "avgspont":
                         spont_ev_count += 1
                         if (
@@ -750,8 +768,8 @@ class PlotMapData():
         tb = tb[: len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-        
-        CP.cprint('c', '    plotmapdata: Fitting average event')
+
+        CP.cprint("c", "    plotmapdata: Fitting average event")
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -760,11 +778,11 @@ class PlotMapData():
             inittaus=self.Pars.taus,
             initdelay=tpre,
         )
-        CP.cprint('c', '        Event fitting completed')
-        Amplitude = self.Pars.MA.fitresult.values['amp']
-        tau1 = self.Pars.MA.fitresult.values['tau_1']
-        tau2 = self.Pars.MA.fitresult.values['tau_2']
-        bfdelay = self.Pars.MA.fitresult.values['fixed_delay']
+        CP.cprint("c", "        Event fitting completed")
+        Amplitude = self.Pars.MA.fitresult.values["amp"]
+        tau1 = self.Pars.MA.fitresult.values["tau_1"]
+        tau2 = self.Pars.MA.fitresult.values["tau_2"]
+        bfdelay = self.Pars.MA.fitresult.values["fixed_delay"]
         bfit = self.Pars.MA.avg_best_fit
         if self.Pars.sign == -1:
             amp = np.min(bfit)
@@ -978,6 +996,10 @@ class PlotMapData():
         sign = measure["sign"]
 
         upscale = 1.0
+        vmin = 0
+        vmax = 1
+        data = []
+
         if measuretype == "ZScore":
             data = measure[measuretype]
 
@@ -994,15 +1016,17 @@ class PlotMapData():
             vmin = 0.0
             vmax = np.max(data)
 
-        elif measuretype in ["A", "Q"]:
+        elif measuretype in ["A", "Q"] and measure["events"][0] is not None:
             events = measure["events"]
             nspots = len(measure["events"][0])  # on trial 0
-            if 'npulses' in list(measure['stimtimes'].keys()):
-                npulses = measure["stimtimes"]["npulses"][0]
+            if "npulses" in list(measure["stimtimes"].keys()):
+                npulses = measure["stimtimes"]["npulses"]
             else:
-                npulses =  len(measure["stimtimes"]["start"])
-
+                npulses = len(measure["stimtimes"]["start"])
+            if isinstance(npulses, list):
+                npulses = npulses[0]
             # data = np.zeros((measure['ntrials'], npulses, nspots))
+            print(npulses, nspots)
             data = np.zeros((npulses, nspots))
             if measure["stimtimes"] is not None:
                 twin_base = [
@@ -1013,7 +1037,10 @@ class PlotMapData():
                 stims = measure["stimtimes"]["start"]
                 for j in range(len(stims)):
                     twin_resp.append(
-                        [stims[j] + self.Pars.direct_window, stims[j] + self.Pars.response_window]
+                        [
+                            stims[j] + self.Pars.direct_window,
+                            stims[j] + self.Pars.response_window,
+                        ]
                     )
 
             rate = measure["rate"]
@@ -1024,13 +1051,16 @@ class PlotMapData():
                 for spot in range(nspots):  # for each spot
                     for ipulse in range(npulses):
                         if measuretype == "Q":
-                            if len(events[trial][spot]["measures"][0]["Q"]) > ipulse:  # there is only one, the first trial
-                                data[ipulse, spot] = events[trial][spot]["measures"][
-                                    0
-                                ]["Q"][ipulse]
+                            if not isinstance(events[trial]["measures"][spot], dict):
+                                continue
+                            if (
+                                len(events[trial]["measures"][spot]["Q"]) > ipulse
+                            ):  # there is only one, the first trial
+                                data[ipulse, spot] = events[trial]["measures"][spot][
+                                    "Q"
+                                ][ipulse]
                             continue
-                        smpki = events[trial][spot]["smpksindex"][0]
-                        # print('smpki: ', smpki)
+                        smpki = events[trial]["smpksindex"][spot]
                         tri = np.ndarray(0)
                         tev = twin_resp[ipulse]  # go through stimuli
                         iev0 = int(tev[0] / rate)
@@ -1047,8 +1077,9 @@ class PlotMapData():
                         for t in range(len(tri)):
                             if tri[t] in smpki:
                                 r = smpki.index(tri[t])  # find index
+                                # print(events[trial]["smpks"][spot], r)
                                 data[ipulse, spot] += (
-                                    sign * events[trial][spot]["smpks"][0][r]
+                                    sign * events[trial]["smpks"][spot][r]
                                 )
                                 nev_spots += 1
 
@@ -1200,7 +1231,10 @@ class PlotMapData():
             return vmaxin
 
     def display_position_maps(
-        self, dataset_name: Union[Path, str], result: dict, pars:object=None,
+        self,
+        dataset_name: Union[Path, str],
+        result: dict,
+        pars: object = None,
     ) -> bool:
 
         measures = ["ZScore", "Qr-Qb", "A", "Q"]
@@ -1251,7 +1285,15 @@ class PlotMapData():
         spotsize = 42e-6
         self.P = PH.Plotter(self.plotspecs, label=True, figsize=(10.0, 8.0))
         self.nreps = result["ntrials"]
-
+        now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
+        mpl.text(
+            0.96,
+            0.01,
+            s=now,
+            fontsize=6,
+            ha="right",
+            transform=self.P.figure_handle.transFigure,
+        )
         for measure in measures:
             if measure.startswith("empty"):
                 continue
@@ -1263,7 +1305,7 @@ class PlotMapData():
                 result["positions"],
                 measure=result,
                 measuretype=measuredict[measure],
-                pars=pars
+                pars=pars,
             )
         return True
 
@@ -1282,7 +1324,7 @@ class PlotMapData():
         plotmode="document",
     ) -> bool:
         if results is None or self.Pars.datatype is None:
-            CPcprint("r", f"NO Results in the call, from {str(dataset.name):s}")
+            CP.cprint("r", f"NO Results in the call, from {str(dataset.name):s}")
             return
 
         if (
@@ -1314,7 +1356,7 @@ class PlotMapData():
         #         mpl.show()
 
         # build a figure
-        self.nreps = results['ntrials']
+        self.nreps = results["ntrials"]
 
         l_c1 = 0.1  # column 1 position
         l_c2 = 0.50  # column 2 position
@@ -1381,13 +1423,15 @@ class PlotMapData():
             measure=results,
             measuretype=measuretype,
             vmaxin=self.newvmax,
-            imageHandle=None, # self.MT,
+            imageHandle=None,  # self.MT,
             imagefile=imagefile,
             angle=rotation,
             spotsize=spotsize,
             whichstim=whichstim,
             average=average,
         )
+        # print(np.min(self.Data.data_clean), np.max(self.Data.data_clean))
+        # exit()
         self.plot_stacked_traces(
             self.Data.tb,
             self.Data.data_clean,
@@ -1420,7 +1464,9 @@ class PlotMapData():
 
         if self.Data.photodiode is not None:
             self.plot_photodiode(
-                self.P.axdict["D"], self.Data.photodiode_timebase[0], self.Data.photodiode
+                self.P.axdict["D"],
+                self.Data.photodiode_timebase[0],
+                self.Data.photodiode,
             )
         # mpl.show()
         return True  # indicated that we indeed plotted traces.

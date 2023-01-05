@@ -292,7 +292,12 @@ class AnalyzeMap(object):
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.spotsize = self.AR.spotsize
         self.Data.tb = self.AR.time_base
-
+        # print(self.AR.traces.shape)
+        # print(self.Data.tb.shape)
+        # for i in range(self.AR.traces.shape[0]):
+        #     print(i)
+        #     mpl.plot(self.Data.tb, self.AR.traces.view(np.ndarray)[i,:])
+        # mpl.show()
         data = np.reshape(
             self.AR.traces,
             (
@@ -579,6 +584,10 @@ class AnalyzeMap(object):
             if self.Pars.baseline_flag:
                 self.Pars.baseline_subtracted = True
             # Now get some stats:
+            # print("min/max: ", np.min(data), np.max(data))
+            # for i in range(data.shape[1]):
+            #     mpl.plot(tb, data[0,i,:])
+            # mpl.show()
             self.Pars.global_SD = np.std(data)
             self.Pars.global_mean = np.mean(data)
             CP.cprint("g", f"    Global mean (SD):            {1e12*self.Pars.global_mean:7.1f}", end="")
@@ -759,8 +768,7 @@ class AnalyzeMap(object):
                 )
                 raise ValueError()
         # print('Position in analyze protocol: ', pos)
-        nr = 0
-
+        nr = 0        
         key1 = []
         key2 = []
         for ix in infokeys:
