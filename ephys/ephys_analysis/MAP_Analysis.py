@@ -30,7 +30,7 @@ class MAP_Analysis(IV_Analysis):
         if len(allprots["maps"]) == 0:
             print(f"No maps to analyze for {iday:d}")
             return
-        print("Analzying map: {str(file):s}")
+        print(f"Analzying map: {str(file):s}")
         datestr, slicestr, cellstr = self.make_cell(iday)
         slicecellstr = f"S{slicestr[-1]:s}C{cellstr[-1]:s}"
         self.celltype, self.celltype_changed = self.get_celltype(iday)
@@ -111,7 +111,7 @@ class MAP_Analysis(IV_Analysis):
         else:
             CP.cprint("magenta", f"database celltype: {self.celltype:s}")
 
-        # print("merging pdfs")
+
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
 
     def set_vc_taus(self, iday: int, path: Union[Path, str]):

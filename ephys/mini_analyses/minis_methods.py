@@ -133,6 +133,7 @@ class ClementsBekkers(MiniAnalyses):
         T = self.template.view(np.ndarray)
 
         self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
+
         if self.engine == "numba":
             self.Scale, self.Crit = nb_clementsbekkers(D, T)
             # print('numba')
@@ -227,9 +228,9 @@ class ClementsBekkers(MiniAnalyses):
         # Prepare a bunch of arrays we'll need later
         N = len(T)
         sumT = T.sum()
-        sumT2 = (T**2.0).sum()
+        sumT2 = (np.power(T, 2.0)).sum()
         sumD = self._rollingSum(D, N)
-        sumD2 = self._rollingSum(D**2.0, N)
+        sumD2 = self._rollingSum(np.power(D,2), N)
         sumTD = scipy.signal.correlate(D, T, mode="valid", method="direct")
 
         # sumTD2 = np.zeros_like(sumD)
@@ -238,17 +239,18 @@ class ClementsBekkers(MiniAnalyses):
         # print(np.mean(sumTD-sumTD2))
         # compute scale factor, offset at each location:
         ## compute scale factor, offset at each location:
-        scale = (sumTD - sumT * sumD / N) / (sumT2 - sumT * sumT / N)
-        offset = (sumD - scale * sumT) / N
+        scale = (sumTD - (sumT * sumD / N)) / (sumT2 - (np.power(sumT, 2) / N))
+        offset = (sumD - (scale * sumT)) / N
 
         ## compute SSE at every location
         SSE = (
             sumD2
-            + scale**2 * sumT2
-            + N * offset**2
-            - 2 * (scale * sumTD + offset * sumD - scale * offset * sumT)
+            + (np.power(scale, 2) * sumT2)
+            + (N * np.power(offset,2))
+            - 2.0 * ((scale * sumTD) + (offset * sumD) - (scale * offset * sumT))
         )
         ## finally, compute error and detection criterion
+
         stderror = np.sqrt(SSE / (N - 1))
         DetCrit = scale / stderror
         endtime = timeit.default_timer() - starttime

@@ -477,7 +477,7 @@ class IV_Analysis():
         if self.autoout:
             self.tempdir = Path("./temppdfs")  # use one folder and do not clear it
             # print("  in auto mode")
-            pdfname = str(self.analyzeddatapath) + "_" + self.day.replace(".", "_")
+            pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
             if slicecell is not None:
                 pdfname += f"_{slicecell:s}"
             else:
@@ -752,6 +752,7 @@ class IV_Analysis():
                     return
 
         dsday, nx = Path(datestr).name.split("_")
+        self.thisday = dsday
         thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
         if thisday < self.after or thisday > self.before:
             CP.cprint(
