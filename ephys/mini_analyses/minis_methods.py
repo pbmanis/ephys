@@ -325,7 +325,7 @@ class ClementsBekkers(MiniAnalyses):
         # mpl.show()
         # self.summarize(self.data)
         if verbose:
-            print("CB run time: {0:.4f} s".format(endtime))
+            print("    CB run time: {0:.4f} s".format(endtime))
 
 
 class AndradeJonas(MiniAnalyses):
@@ -425,7 +425,7 @@ class AndradeJonas(MiniAnalyses):
         self.runtime = endtime
         endtime = timeit.default_timer() - self.starttime
         if verbose:
-            print("AJ run time: {0:.4f} s".format(endtime))
+            print("    AJ run time: {0:.4f} s".format(endtime))
 
 
 class RSDeconvolve(MiniAnalyses):
@@ -496,7 +496,7 @@ class RSDeconvolve(MiniAnalyses):
         if dt is None:
             dt = 1
         if tau is None:
-            raise Exception("Must specify tau.")
+            raise Exception("expReconvolve: Must specify tau.")
         # x(k+1) = x(k) + dt * (f(k) - x(k)) / tau
         # OR: x[k+1] = (1-dt/tau) * x[k] + dt/tau * x[k]
         # print tau, dt
@@ -510,7 +510,7 @@ class RSDeconvolve(MiniAnalyses):
             # if 'values' in info[0]:
             # info[0]['values'] = info[0]['values'][:-1]
             # info[-1]['expDeconvolveTau'] = tau
-            return metaarray.MetaArray(d, info=info)
+            return MetaArray.MetaArray(d, info=info)
         else:
             return d
 
@@ -622,9 +622,9 @@ class ZCFinder(MiniAnalyses):
                     i, [int(x) for x in data_nostim if x < self.Criterion.shape[1]]
                 ]
 
-        print(f"ZC thr:  {self.threshold:.3f}  SDxthr: {self.sdthr:.3e}")
+        print(f"    ZC thr:  {self.threshold:.3f}  SDxthr: {self.sdthr:.3e}")
 
-        print('events[0]: ', self.events[0])
+        print('    events[0]: ', self.events[0])
         self.onsets = np.array(
             [x["index"] for x in self.events if self.sign * x["peak"] > self.sdthr]
         ).astype(int)
@@ -632,4 +632,4 @@ class ZCFinder(MiniAnalyses):
         # self.summarize(self.data)
         endtime = timeit.default_timer() - starttime
         if verbose:
-            print("ZC run time: {0:.4f} s".format(endtime))
+            print("    ZC run time: {0:.4f} s".format(endtime))
