@@ -124,7 +124,6 @@ class IV_Analysis():
 
         # selection of data for analysis
         self.day = args.day
-        print(type(args.before))
         self.before = DUP.parse(args.before)
         self.before_str = args.before
         self.after = DUP.parse(args.after)
@@ -313,9 +312,9 @@ class IV_Analysis():
             "artifact": self.artifactFilename,
             "exclusions": self.exclusions,
         }
-        print(f"\nPaths and files:")
-        for p in allpaths:
-            print(f"   {p:>20s}   {str(allpaths[p]):<s}")
+        # print(f"\nPaths and files:")
+        # for p in allpaths:
+        #     print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
     def _add_date(self, row, axis=1):
         row.day = str(Path(row.date).name)
@@ -521,7 +520,7 @@ class IV_Analysis():
                 mergeFile.append(PdfFileReader(open(fn, "rb")))
         with open(self.cell_pdfFilename, "wb") as fout:
             mergeFile.write(fout)
-        print(f"Wrote map pdf to : {str(self.cell_pdfFilename):s}")
+        CP.cprint("g", f"Wrote map pdf to : {str(self.cell_pdfFilename):s}")
         fns.pop(0)
         # remove temporary files
         for fn in fns:
@@ -537,6 +536,8 @@ class IV_Analysis():
                     mergeFile.append(PdfFileReader(open(fn, "rb")))
             with open(self.pdfFilename, "wb") as fout:
                 mergeFile.write(fout)
+        print("="*80)
+        print()
 
     def gather_protocols(
         self,
