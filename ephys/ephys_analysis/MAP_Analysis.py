@@ -101,7 +101,7 @@ class MAP_Analysis(IV_Analysis):
         # #                        print(x)
         #                         tasker.results[allprots['maps'][x]] = result
         if not self.replot:  # only save if we are NOT just replotting
-            print("Events written to : ", str(picklefilename))
+            CP.cprint("g", "Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
                 dill.dump(results, fh)
 
@@ -109,7 +109,7 @@ class MAP_Analysis(IV_Analysis):
         if self.celltype_changed:
             CP.cprint("yellow", f"cell annotated celltype: {self.celltype:s})")
         else:
-            CP.cprint("magenta", f"database celltype: {self.celltype:s}")
+            CP.cprint("magenta", f"Database celltype: {self.celltype:s}")
 
 
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
@@ -433,7 +433,7 @@ class MAP_Analysis(IV_Analysis):
         success : boolean
             true if there data was processed; otherwise False
         """
-        CP.cprint("g", "Entering IV_Analysis:analyze_map")
+        CP.cprint("g", "\nEntering IV_Analysis:analyze_map")
 
         mapname = allprots["maps"][i]
         if len(mapname) == 0:
@@ -498,7 +498,7 @@ class MAP_Analysis(IV_Analysis):
         else:
             pass  # already got the file
 
-        print("Plotmap: ", plotmap)
+        CP.cprint("c", f"Plotmap: {str(plotmap):s}")
         if plotmap:
             if self.celltype_changed:
                 celltype_text = f"{self.celltype:s} [revised]"
@@ -530,10 +530,10 @@ class MAP_Analysis(IV_Analysis):
                     plotmode=self.plotmode,
                     average=False,
                     rasterized=False,
+                    datatype=self.AM.datatype,
                 )  # self.AM.rasterized, firstonly=True, average=False)
-            print(f"Map: {str(mapname):s} done.")
-            print("=" * 80)
-            print()
+            print(f"Map analysis done: {str(mapname):s}")
+
             if mapok:
                 infostr = ""
                 # notes = self.df.at[iday,'notes']
