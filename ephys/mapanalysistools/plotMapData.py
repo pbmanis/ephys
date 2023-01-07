@@ -605,6 +605,7 @@ class PlotMapData:
         evtype: str,
         mdata: Union[np.ndarray, None] = None,
         trace_tb: Union[np.ndarray, None] = None,
+        datatype: Union[str, None] = None,
         events: Union[dict, None] = None,
         ax: Union[object, None] = None,
         scale: float = 1.0,
@@ -764,12 +765,15 @@ class PlotMapData:
             maxev = -minev
         self.Pars.MA.set_sign(self.Pars.sign)
         self.Pars.MA.set_dt_seconds(rate)
+        self.Pars.MA.set_datatype(datatype)
         avedat = np.mean(aved, axis=0)
         tb = tb[: len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-
-        CP.cprint("c", "    plotmapdata: Fitting average event")
+        # print(np.max(avedat))
+        # print(np.min(avedat))
+        # print(tpre)
+        # CP.cprint("c", "    plotmapdata: Fitting average event")
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -778,17 +782,30 @@ class PlotMapData:
             inittaus=self.Pars.taus,
             initdelay=tpre,
         )
-        CP.cprint("c", "        Event fitting completed")
+        # CP.cprint("c", "        Event fitting completed")
+ 
         Amplitude = self.Pars.MA.fitresult.values["amp"]
         tau1 = self.Pars.MA.fitresult.values["tau_1"]
         tau2 = self.Pars.MA.fitresult.values["tau_2"]
         bfdelay = self.Pars.MA.fitresult.values["fixed_delay"]
         bfit = self.Pars.MA.avg_best_fit
+        # print("self.Pars.MA.fitresult: ")
+        # print(self.Pars.MA.fitresult.fit_report())
+        # f = mpl.figure()
+        # mpl.plot(tb, avedat)
+        # mpl.plot(tb, bfit, 'r--')
+
+
+
         if self.Pars.sign == -1:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
-        txt = f"Amp: {scale*amp:.1f} tau1:{1e3*tau1:.2f} tau2: {1e3*tau2:.2f} (N={aved.shape[0]:d})"
+        txt = f"Amp: {scale*amp:.3e} tau1:{1e3*tau1:.2f} tau2: {1e3*tau2:.2f} (N={aved.shape[0]:d})"
+        # print(txt)
+        # print(f"Amplitude: {Amplitude:.3e}")
+        # mpl.show()
+        # exit()
         if evtype == "avgspont":
             srate = float(aved.shape[0]) / (
                 events[0]["spont_dur"][0] * mdata.shape[1]
@@ -1322,15 +1339,16 @@ class PlotMapData:
         average=False,
         trsel=None,
         plotmode="document",
+        datatype=None,
     ) -> bool:
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {str(dataset.name):s}")
             return
 
         if (
-            "_IC" in str(dataset.name)
-            or "_CC" in str(dataset.name)
-            or self.Pars.datatype == "I"
+            ("_IC" in str(dataset.name))
+            or ("_CC" in str(dataset.name))
+            or (self.Pars.datatype in ["I", "IC"])
         ):
             scf = 1e3
             label = "mV"  # mV
@@ -1338,7 +1356,7 @@ class PlotMapData:
             ("_VC" in str(dataset.name))
             or ("VGAT_5ms" in str(dataset.name))
             or ("_WCChR2" in str(dataset.name))
-            or (self.Pars.datatype == "V")
+            or (self.Pars.datatype in ["V", "VC"])
         ):
             scf = 1e12  # pA, vc
             label = "pA"
@@ -1430,8 +1448,7 @@ class PlotMapData:
             whichstim=whichstim,
             average=average,
         )
-        # print(np.min(self.Data.data_clean), np.max(self.Data.data_clean))
-        # exit()
+
         self.plot_stacked_traces(
             self.Data.tb,
             self.Data.data_clean,
@@ -1445,6 +1462,7 @@ class PlotMapData:
             evtype="avgevoked",
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
+            datatype = datatype,
             ax=self.P.axdict["C1"],
             events=results["events"],
             scale=scf,
@@ -1455,6 +1473,7 @@ class PlotMapData:
             evtype="avgspont",
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
+            datatype = datatype,
             ax=self.P.axdict["C2"],
             events=results["events"],
             scale=scf,

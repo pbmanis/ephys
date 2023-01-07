@@ -801,6 +801,7 @@ class AnalyzeMap(object):
                     "tb": tb,
                     "testplots": testplots,
                 },
+                datatype = self.Pars.datatype
             )
             events[jtrial] = res
         if self.verbose:
@@ -824,7 +825,7 @@ class AnalyzeMap(object):
             "ntrials": data.shape[0],
         }
 
-    def analyze_one_trial(self, data: np.ndarray, pars: dict = None) -> dict:
+    def analyze_one_trial(self, data: np.ndarray, pars: dict = None, datatype: str= None) -> dict:
         """ Analyze one trial in a protocol (one map; maps may have been repeated)
         
         analyze_one_trial calls
@@ -841,7 +842,9 @@ class AnalyzeMap(object):
         pars: dict
             Dictionary with the following entries: 
             rate, jtrial, tmaxev, evenstartthr, data-nostim, eventlist, nevents, tb, testplots
-                 
+        
+        datatype: str
+            Data type (IC, VC)
         """
         if self.verbose:
             print("   analyze one trial")
@@ -868,7 +871,7 @@ class AnalyzeMap(object):
         #             data[itarget], itarget, pars=pars
         #         )
             # print('Result keys no parallel: ', results.keys())
-        method = self.analyze_traces_in_trial(data, pars=pars)
+        method = self.analyze_traces_in_trial(data, pars=pars, datatype=datatype)
         method.identify_events(verbose=True) # order=order)
         method.summarize(data, verbose=True)
         if len(method.Summary.average.avgevent) == 0:
@@ -879,15 +882,14 @@ class AnalyzeMap(object):
             inittaus = self.Pars.taus)
         if method.fitted:
             results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
-            CP.cprint("c", 'Summarized....')
             if self.verbose:
-                print("Trial analyzed")
+                print("    Trial analyzed")
             return results
         else:
             return None
 
     def analyze_traces_in_trial(
-        self, data: np.ndarray,  pars: dict = None
+        self, data: np.ndarray,  pars: dict = None, datatype: str=None,
     ) -> dict:
         """
         Analyze the block of traces
@@ -899,11 +901,10 @@ class AnalyzeMap(object):
         data : 1D array length of trace
             The trace is for just one target, one trial
     
-        itarget : int
-            Target site for the trace to be analyzed
-    
-        pars : 
+        pars : dict
 
+        datatype: str 
+            Data type (IC or VC)
         Returns
         -------
         The method class that was used (and which holds the
@@ -937,6 +938,7 @@ class AnalyzeMap(object):
                 lpf=lpf,
                 hpf=hpf,
             )
+            aj.set_datatype(datatype)
             idata = data.view(np.ndarray)
             # This loop can be parallelized
  
@@ -966,6 +968,7 @@ class AnalyzeMap(object):
                 lpf=lpf,
                 hpf=hpf,
             )
+            cb.set_datatype(datatype)
             cb.set_cb_engine(engine=self.engine)
             cb._make_template()
             idata = data.view(np.ndarray)  # [jtrial, itarget, :]
