@@ -105,12 +105,13 @@ class IVSummary:
 
     def compute_iv(
         self,
-        threshold=-0.010,
-        bridge_offset=0.0,
-        tgap=0.0005,
-        plotiv=False,
-        full_spike_analysis=True,
-        to_peak=True,
+        threshold:float=-0.010,
+        bridge_offset:float=0.0,
+        tgap:float=0.0005,
+        plotiv:bool=False,
+        full_spike_analysis:bool=True,
+        max_spikeshape:int=2,
+        to_peak:bool=True,
     ) -> Union[None, object]:
         """
         Simple plot of spikes, FI and subthreshold IV
