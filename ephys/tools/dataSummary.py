@@ -63,7 +63,7 @@ usage: dataSummary [-h]
       -p, --pairs           handle pairs
 
 Example:
-python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -w --depth all --dry-run
+    python ephysanalysis/dataSummary.py   /Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/ -a 2017.04.16 -o pandas -f NF107_after_2018.04.16 -w --depth all --dry-run
 
 Note: the -w is essential for the process to actually occur...
 
@@ -71,7 +71,6 @@ Note: the -w is essential for the process to actually occur...
 import argparse
 import datetime
 import gc
-import math  # use to check nan value...
 import os
 import os.path
 import re
@@ -83,13 +82,14 @@ from collections import OrderedDict
 from io import StringIO
 from pathlib import Path
 from typing import Union
-
+from ephys.tools.parse_ages import ISO8601_age
 import dateutil.parser as DUP
 import MetaArray
 import numpy as np
 import pandas as pd
 from pylibrary.tools import cprint 
 from ..datareaders import acq4_reader
+
 
 CP = cprint.cprint
 
@@ -249,7 +249,7 @@ class DataSummary:
                 False  # set True to check out the protocols in detail
             )
         self.panda_string = ""
-
+        self.cell_id = ""
         # column definitions - may need to adjust if change data that is pasted into the output
         self.day_defs = [
             "date",
@@ -281,6 +281,7 @@ class DataSummary:
             "cell_type",
             "cell_location",
             "cell_important",
+            "cell_id",
         ]
         self.data_defs = [
             "data_incomplete",
@@ -540,18 +541,23 @@ class DataSummary:
             if self.verbose:
                 self.pstring = "Processing day[%3d/%3d]: %s " % (nd, len(days), day)
             self.AR.setProtocol(Path(self.basedir, day))
+            dir_list = Path(self.basedir).parts
+            day_list = Path(day).parts
+            n = len(dir_list)
+            day_list = day_list[n:]
+            # print("\nday_list: ", day_list)
+            # print("\nbasedir: ", self.basedir, day)
+
             self.day_index = self.AR.readDirIndex(Path(self.basedir, day))
             if self.day_index is None:
-                print("Day {0:s} is not managed (no .index file found)".format(day))
+                print("\nDay {0:s} is not managed (no .index file found)".format(day))
                 self.day_index = {}
                 continue
             self.day_index = self.day_index["."]
             # print('ind: ', ind)
             #  self.day_index = self.AR.readDirIndex(ind)
             # print('day index: ', self.day_index, "day: ", day)
-            self.day_index["date"] = str(day).strip()
-            # print('\nday index: ', self.day_index.keys())
-            # print('daydefs: ', self.day_defs)
+            self.day_index["date"] = str(Path(*day_list)).strip()
             # now add the rest of the index information to the daystring
             for k in self.day_defs:  # for all the keys
                 if k not in self.day_index.keys():
@@ -561,16 +567,21 @@ class DataSummary:
                 #     print(' ? k in day index: ', k)
                 if isinstance(self.day_index[k], bool):
                     self.day_index[k] = str(self.day_index[k])
-                if k in "sex":
-                    if self.day_index[k] not in ["M", "F", "m", "f", None, "", " "]:
+                if k in ["sex"]:  # make uppercase or maybe "U" or empty. Anything else is not valid for mice.
+                    self.day_index[k] = self.day_index[k].upper()
+                    if self.day_index[k] not in ["M", "F", "m", "f", None, "", " ", "U"]:
                         print("? sex: <" + self.day_index[k] + ">")
-                        return
-                if k in "age":
-                    chrs = str.maketrans("pPdDmMyY", "        ")
-                    self.day_index[k] = self.day_index[k].translate(
-                        chrs
-                    )  # strip characters
-                    # self.day_index[k] = int(self.day_index[k])
+                        exit()
+                if k in ["age"]:  # match ISO8601 date standards
+                    self.day_index[k] = ISO8601_age(agestr=self.day_index[k])
+                if k in ["weight"]:
+                    wt = self.day_index[k]
+                    if not isinstance(wt, str):
+                        self.day_index[k] = f"{wt:d}g"
+                    else:
+                        if len(wt) > 0 and wt[-1] not in ['g', 'G']:
+                            self.day_index[k] = wt+'g'
+
                 self.day_index[k].replace("\n", " ")
                 if len(self.day_index[k]) == 0:
                     self.day_index[k] = " "
@@ -670,9 +681,14 @@ class DataSummary:
                 # print('thisfile: ', thisfile)
                 cells.append("".join(m.groups(2)))
         for cell in cells:
-            print(clsp + "cell: ", cell)
+            #print("\n", clsp + "cell: ", cell)
             self.cstring = self.sstring + " %s" % cell
+            sparts = Path(self.sstring.split(" ")[0]).parts
             Printer(self.cstring)
+            bparts = Path(self.basedir).parts
+            nbase = len(bparts) # length of path components up to the actual date
+            self.cell_id = str(Path(str(Path(*sparts[nbase:])), self.cstring.split(" ")[-2], self.cstring.split(" ")[-1]))
+
             try:
                 self.cell_index = self.AR.readDirIndex(Path(thisslice, cell))[
                     "."
@@ -685,9 +701,10 @@ class DataSummary:
                 continue
             # print('\nCell Index: ', self.cell_index)
             self.cell_index["cell"] = cell
+            self.cell_index["id"] = self.cell_id
             for k in self.cell_defs:
                 ks = k.replace("cell_", "")
-                if ks not in self.cell_index.keys():
+                if ks not in list(self.cell_index.keys()):
                     self.cell_index[ks] = " "
                 if isinstance(self.cell_index[ks], bool):
                     self.cell_index[ks] = str(self.cell_index[ks])
@@ -883,6 +900,7 @@ class DataSummary:
                 ("images", self.imagestring),
                 ("annotated", False),
                 ("directory", self.basedir),
+                ("cell_id", self.cell_id),
             ]
         )
         self.outputString(ostring)
@@ -978,13 +996,18 @@ class DataSummary:
         """
         if self.dryrun:
             return
+        if len(self.panda_string) == 0:
+            return
         outfile = Path(self.outFilename)
+        excelfile = Path(self.outFilename).with_suffix('.xlsx')
         if self.outputMode == "pandas" and not self.append:
             print("\nOUTPUTTING DIRECTLY VIA PANDAS, extension is .pkl")
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
             if outfile.suffix != '.pkl':
                 outfile = outfile.with_suffix('.pkl')
             df.to_pickle(outfile)
+            print(f"Wrote NEW pandas dataframe to pickled file: {str(outfile):s}")
+ 
         elif self.outputMode == "pandas" and self.append:
             print("\nAPPENDING to EXISTING PANDAS DATAFRAME")
             # first save the original with a date-time string appended
@@ -1011,9 +1034,10 @@ class DataSummary:
             maindf = maindf.reset_index(level=0, drop=True)
             # maindf = maindf.reset_index()  # redo the indices so all in sequence
             maindf.to_pickle(outfile)
-        print(f"Wrote pandas dataframe to pickled file: {str(outfile):s}")
-        self.make_excel(df, outfile=outfile)
-        print(f"Wrote excel verion of dataframe to: {str(outfile):s}")
+            print(f"APPENDED pandas dataframe to pickled file: {str(outfile):s}")
+
+        self.make_excel(df, outfile=excelfile)
+        print(f"Wrote excel verion of dataframe to: {str(excelfile):s}")
 
 
 
@@ -1184,14 +1208,14 @@ def dir_recurse(ds, current_dir, args, indent=0):
     indent += 2
     sp = " " * indent
     for d in allsubdirs:
-        print(f"\n{sp:s}Subdir: {str(d.name):s}", "cyan")
+        Printer(f"\n{sp:s}Subdir: {str(d.name):s}", "cyan")
         indent = dir_recurse(ds, d, args, indent)
     indent -= 2
     if indent < 0:
         indent = 0
-    print(f"\n{' '*indent:s}All Protocols in dataset: \n")
+    Printer(f"\n{' '*indent:s}All Protocols in dataset: \n", "white")
     for prot in sorted(ds.all_dataset_protocols):
-        print(f"{' '*indent:s}    {prot:s}")
+        Printer(f"{' '*indent:s}    {prot:s}", "blue")
     return indent
 
 
@@ -1483,4 +1507,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    pass
+    #main()
