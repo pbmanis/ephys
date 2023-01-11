@@ -194,7 +194,7 @@ class MiniAnalyses:
         self.reset_filtering()
 
     def set_datatype(self, datatype:str):
-        CP.cprint("r", f"data type: {datatype:s}")
+        CP.cprint("c", f"data type: {datatype:s}")
         self.datatype = datatype
 
     def set_sign(self, sign: int = 1):
@@ -1076,7 +1076,7 @@ class MiniAnalyses:
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
-        CP.cprint("y", f"fitting: {str(params):s}")
+        # CP.cprint("y", f"fitting: {str(params):s}")
         self.fitresult = dexpmodel.fit(evfit, params, x=timebase, nan_policy="raise")
 
         self.peak_val = maxev

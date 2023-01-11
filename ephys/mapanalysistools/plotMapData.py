@@ -1007,29 +1007,25 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
-        # if vmaxin is not None:
-        #     vmax = vmaxin  # fixed
-        # else:
         sign = measure["sign"]
 
         upscale = 1.0
         vmin = 0
         vmax = 1
         data = []
-
         if measuretype == "ZScore":
             data = measure[measuretype]
 
             vmax = np.max(np.max(measure[measuretype]))
             vmin = np.min(np.min(measure[measuretype]))
-            # print('vmax: ', vmin, vmax)
             if vmax < 6.0:
-                vmax = 6.0  # force a fixed
+                vmax = 6.0  # force a fixed minimum scale
             scaler = PH.NiceScale(0.0, vmax)
             vmax = scaler.niceMax
 
         elif measuretype == "Qr":
             data = sign * (measure["Qr"] - measure["Qb"])
+            data  = np.clip(data, 0., np.inf)
             vmin = 0.0
             vmax = np.max(data)
 
@@ -1043,7 +1039,6 @@ class PlotMapData:
             if isinstance(npulses, list):
                 npulses = npulses[0]
             # data = np.zeros((measure['ntrials'], npulses, nspots))
-            print(npulses, nspots)
             data = np.zeros((npulses, nspots))
             if measure["stimtimes"] is not None:
                 twin_base = [
@@ -1065,9 +1060,23 @@ class PlotMapData:
             nev_spots = 0
             # print("event measures: ", events[0][0]["measures"])
             for trial in range(measure["ntrials"]):
+                skips = False
                 for spot in range(nspots):  # for each spot
                     for ipulse in range(npulses):
                         if measuretype == "Q":
+                            # try:  # repeated trials not implemented here.
+                            #     u = isinstance(events[trial]["measures"][spot])
+                            # except:
+                            #     if not skips:
+                            #         CP.cprint("r", f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d} and subsequent")
+                            #         skips = True
+                            #     continue
+                            u = events[trial]
+                            try:
+                                u = events[trial]["measures"][spot]
+                            except:
+                                CP.cprint("r", f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d}")
+                                continue
                             if not isinstance(events[trial]["measures"][spot], dict):
                                 continue
                             if (
@@ -1077,24 +1086,41 @@ class PlotMapData:
                                     "Q"
                                 ][ipulse]
                             continue
-                        smpki = events[trial]["smpksindex"][spot]
+                        try:
+                            x = events[trial]
+                        except:
+                            raise ValueError("Unable to store events On trial: ", trial)
+                        try:
+                            smpki =  events[trial]["smpksindex"][0][spot]
+                        except:
+                            try:
+                                smpki = events[trial]["smpksindex"][spot]
+                            except:
+                                continue
+                                print("on Spot: ", spot)
+                                print(smpki)
+                                smpki =  events[trial]["smpksindex"]
+                                raise ValueError(smpki)
                         tri = np.ndarray(0)
                         tev = twin_resp[ipulse]  # go through stimuli
                         iev0 = int(tev[0] / rate)
                         iev1 = int(tev[1] / rate)
-                        tri = np.concatenate(
-                            (
-                                tri.copy(),
-                                smpki[np.where((smpki >= iev0) & (smpki <= iev1))[0]],
-                            ),
-                            axis=0,
-                        ).astype(int)
+                        if not isinstance(smpki, (list, np.ndarray)):
+                            smpki = np.ndarray([smpki])
+                        idx = np.where((smpki >= iev0) & (smpki <= iev1))[0]
+                        if len(smpki) > 0:
+                            tri = np.concatenate(
+                                (
+                                    tri.copy(),
+                                    smpki[idx],
+                                ),
+                                axis=0,
+                            ).astype(int)
 
                         smpki = list(smpki)
                         for t in range(len(tri)):
                             if tri[t] in smpki:
                                 r = smpki.index(tri[t])  # find index
-                                # print(events[trial]["smpks"][spot], r)
                                 data[ipulse, spot] += (
                                     sign * events[trial]["smpks"][spot][r]
                                 )
@@ -1102,11 +1128,11 @@ class PlotMapData:
 
             vmin = 0.0
             vmax = np.max(data)
-            nev = len(np.where(data > 0.0)[0])
+            # nev = len(np.where(data > 0.0)[0])
             # print(nev, nev_spots)
 
-            if vmax == 0:
-                vmax = 1e-10
+        if vmax == 0:
+            vmax = 1e-10
         # print("vmax: ", vmax, "vmin : ", vmin)
 
         scaler = PH.NiceScale(vmin, vmax)
@@ -1154,7 +1180,10 @@ class PlotMapData:
             # print('spotcolors, edgecolors: ', spotcolors, edgecolors)
             order = np.argsort(
                 data[im]
-            )  # plot from smallest to largest (so largest on top)
+            )  
+            # plot from smallest to largest (so largest on top)
+
+
             # for i, p in enumerate(pos[order]):  # just checking - it appears in one map.
             #     if p[0] > 55.2 and p[1] < 3.45:
             #         print('wayward: ', i, p)
@@ -1162,6 +1191,8 @@ class PlotMapData:
             if self.nreps == 1:
                 # concentric circles (overlaid ellipses) showing the response measure for
                 # each stimulus. Organization is outside-in first to last stimulus
+                if len(order) > len(pos): # guess that this is one spot, multiple trials
+                    pos = np.tile(pos, (len(order), 1))
                 ec = collections.EllipseCollection(
                     radw,
                     radh,
@@ -1181,13 +1212,19 @@ class PlotMapData:
                 # these were averaged across repetitions (see Zscore, Q, etc above), so nreps is 1
                 # maybe later don't average and store ZScore per map trial.
                 # print(self.nreps)
-                nrep = 1
+                nreps = self.nreps # 1
                 ic = 0
                 npos = pos.shape[0]
-                dtheta = 360.0 / nrep
+                dtheta = 360.0 / nreps
                 ri = 0
-                rs = int(npos / nrep)
-                for nr in range(nrep):
+                rs = int(npos / nreps)
+                print("nrep: ", nreps, 'npos: ', npos)
+                print("ppos shape: ", pos.shape)
+                print("0: ", len(pos[ri : (ri + rs), 0]))
+                print("1: ", len(pos[ri : (ri + rs), 1]))
+                print("r: ", radw[ri : (ri + rs)] / 2.0)
+
+                for nr in range(nreps):
                     ec = wedges(
                         pos[ri : (ri + rs), 0],
                         pos[ri : (ri + rs), 1],

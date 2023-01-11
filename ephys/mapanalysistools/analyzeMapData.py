@@ -787,7 +787,7 @@ class AnalyzeMap(object):
 
         tmaxev = np.max(tb)  # msec
         for jtrial in range(data.shape[0]):  # all trials
-            CP.cprint('m', f"Analyzing Trial # {jtrial:4d}")
+            CP.cprint('g', f"Analyzing Trial # {jtrial:4d}")
             res = self.analyze_one_trial(
                 data[jtrial],
                 pars={
@@ -913,7 +913,7 @@ class AnalyzeMap(object):
         """
         if self.verbose:
             print("      analyze traces")
-        CP.cprint("m", f"     Analyzing {data.shape[0]:4d} traces")
+        CP.cprint("g", f"     Analyzing {data.shape[0]:4d} traces")
         idmax = int(self.Pars.analysis_window[1] / self.rate)
 
         # get the lpf and HPF settings - if they were used

@@ -70,6 +70,9 @@ class MAP_Analysis(IV_Analysis):
 
         foname += ".pkl"
         picklefilename = Path(self.analyzeddatapath, "events", foname)
+        # CP.cprint("m", f"Pickle filename: {str(picklefilename):s}")
+
+
         ###
         ### Parallel is done at lowest level of analyzing a trace, not at this top level
         ### can only have ONE parallel loop going (no nested ones allowed!)
@@ -100,16 +103,20 @@ class MAP_Analysis(IV_Analysis):
         #                         result = self.analyze_map(iday, i, x, allprots, plotmap)
         # #                        print(x)
         #                         tasker.results[allprots['maps'][x]] = result
-        if not self.replot:  # only save if we are NOT just replotting
-            CP.cprint("g", "Events written to :  {str(picklefilename):s}")
+        if self.recalculate_events:  # save the recalculated events to the events file
+            CP.cprint("g", f"Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
                 dill.dump(results, fh)
-
 
         if self.celltype_changed:
             CP.cprint("yellow", f"cell annotated celltype: {self.celltype:s})")
         else:
-            CP.cprint("magenta", f"Database celltype: {self.celltype:s}")
+            txt = self.celltype.strip()
+            print("celltype: ", self.celltype)
+            if len(txt) == 0 or txt == " " or txt is None:
+                CP.cprint("magenta", f"Database celltype: Not specified")
+            else:
+                CP.cprint("g", f"Database celltype: {txt:s}")
 
 
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
@@ -154,8 +161,8 @@ class MAP_Analysis(IV_Analysis):
                     print("   SIGN flip, set VC taus: ", end="")
 
             else:
-                CP.cprint("r", "Using default VC taus")
-                exit()
+                CP.cprint("r", "Using default VC taus for detection - likely no entry in excel file")
+                # exit()
         CP.cprint(
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
         )
@@ -433,28 +440,44 @@ class MAP_Analysis(IV_Analysis):
         success : boolean
             true if there data was processed; otherwise False
         """
-        CP.cprint("g", "\nEntering IV_Analysis:analyze_map")
+        CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
 
         mapname = allprots["maps"][i]
         if len(mapname) == 0:
             return None
 
         mapdir = Path(file, Path(mapname).name)
-
+        self.mapname = mapname
         if "_IC__" in str(mapdir.name) or "CC" in str(mapdir.name):
             scf = 1e3  # mV
         else:
             scf = 1e12  # pA, vc
-        if self.replot:
+        # plot the Z score, Charge and amplitude maps:
+        if self.mapsZQA_plot:
             CP.cprint(
                 "g",
-                f"IV_Analysis:analyze_map  Replotting from .pkl file: {str(picklefilename):s}",
+                f"MAP_Analysis:analyze_map  Replotting from .pkl file: {str(picklefilename):s}",
+            )
+            CP.cprint(
+                "g",
+                f"    Protocol: {mapname:s}",
             )
             with open(
                 picklefilename, "rb"
             ) as fh:  # read the previously analyzed data set
                 results = dill.load(fh)
             mapkey = Path("/".join(Path(mapname).parts[-4:]))
+            if str(mapkey) not in results.keys():
+                # try prepending path to data
+                mapkey = Path(self.rawdatapath, mapkey)
+                if str(mapkey) not in results.keys():
+                    CP.cprint("r", "**** Map key missing from result dictionary: ")
+                    CP.cprint("r", f"     {str(mapkey):s}")
+                    CP.cprint("r", f"     Known keys:")
+                    for k in results.keys():
+                        CP.cprint("r", f"     {str(k):s}")
+                    return
+
             result = results[str(mapkey)]  # get individual map result
 
         self.set_map_factors(iday, mapdir)
@@ -476,13 +499,13 @@ class MAP_Analysis(IV_Analysis):
         if self.artifactFilename is not None:
             self.AM.set_artifact_file(
                 Path(
-                    "/Users/pbmanis/Desktop/Python/mrk_nf107/datasets/NF107Ai32_Het",
+                    self.analyzeddatapath,
                     self.artifactFilename,
                 )
             )
         self.AM.set_taus(self.AM.Pars.taus)  # [1, 3.5]
 
-        if not self.replot:
+        if self.recalculate_events:
             CP.cprint(
                 "g", f"IV_Analysis:analyze_map  Running map analysis: {str(mapname):s}"
             )
@@ -498,7 +521,7 @@ class MAP_Analysis(IV_Analysis):
         else:
             pass  # already got the file
 
-        CP.cprint("c", f"Plotmap: {str(plotmap):s}")
+        # CP.cprint("c", f"Plotmap: {str(plotmap):s}")
         if plotmap:
             if self.celltype_changed:
                 celltype_text = f"{self.celltype:s} [revised]"
@@ -508,7 +531,7 @@ class MAP_Analysis(IV_Analysis):
             plotevents = True
             self.AM.Pars.overlay_scale = 0.0
             PMD.set_Pars_and_Data(self.AM.Pars, self.AM.Data)
-            if self.replot:
+            if self.mapsZQA_plot:
                 mapok = PMD.display_position_maps(
                     dataset_name=mapdir, result=result, pars=self.AM.Pars
                 )
@@ -520,7 +543,6 @@ class MAP_Analysis(IV_Analysis):
                 mapok = PMD.display_one_map(
                     mapdir,
                     results=results,  # self.AM.last_results,
-                    # justplot=self.replot,
                     imagefile=None,
                     rotation=0.0,
                     measuretype=measuretype,
@@ -579,7 +601,7 @@ class MAP_Analysis(IV_Analysis):
                     t_path.unlink()
                 pp = PdfPages(t_path)
                 # try:
-                print("***** Temp file to : ", t_path)
+                print("        ***** Temp file to : ", t_path)
                 mpl.savefig(
                     pp, format="pdf"
                 )  # use the map filename, as we will sort by this later

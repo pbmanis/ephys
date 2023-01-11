@@ -57,6 +57,8 @@ class cmdargs:
     artifactFilename: Union[str, Path, None] = None
     map_annotationFilename: Union[str, Path, None] = None
     map_pdfs: bool=False
+    iv_analysisFilename: Union[str, Path, None] = None
+    map_pdfs: bool=False
     extra_subdirectories: object = None
 
     day: str = "all"
@@ -79,7 +81,8 @@ class cmdargs:
     rasterize: bool = True
     update: bool = False
     noparallel: bool = True
-    replot: bool = False
+    mapsZQA_plot: bool = False
+    recalculate_events: bool = True
 
     # analysis parameters
     ivduration: float = 0.0
@@ -149,7 +152,8 @@ class IV_Analysis():
         self.rasterize = True
         self.update = args.update
         self.noparallel = args.noparallel
-        self.replot = args.replot
+        self.mapsZQA_plot = args.mapsZQA_plot
+        self.recalculate_events = args.recalculate_events
 
         # analysis parameters
         self.ivduration = args.ivduration
@@ -239,6 +243,17 @@ class IV_Analysis():
                 self.extra_subdirectories = self.experiment["extra_subdirectories"]
             else:
                 self.extra_subdirectories = None
+            
+            if (
+                "iv_analysisFilename" in list(self.experiment.keys())
+                and self.experiment["iv_analysisFilename"] is not None
+            ):
+                self.iv_analysisFilename = Path(
+                    self.analyzeddatapath, self.experiment["iv_analysisFilename"]
+                )
+            else:
+                self.iv_analysisFilename = None
+
             if ("artifactFilename" in list(self.experiment.keys())
                 and self.experiment["artifactFilename"] is not None):
                 self.artifactFilename = self.experiment["artifactFilename"]
@@ -300,21 +315,24 @@ class IV_Analysis():
         if self.pdfFilename is not None:
             self.pdfFilename.unlink(missing_ok=True)
 
+    def _show_paths(self):
         allpaths = {
-            "experiment": self.experiment,
-            "raw": self.rawdatapath,
-            "analyzed": self.analyzeddatapath,
+            "experiment name": self.experiment,
+            "raw data": self.rawdatapath,
+            "analyzed data": self.analyzeddatapath,
             "input": self.inputFilename,
             "pdf": self.pdfFilename,
-            "annotation": self.annotationFilename,
-            "map_annotation": self.map_annotationFilename,
+            "annotation (excel)": self.annotationFilename,
+            "map_annotation (excel)": self.map_annotationFilename,
             "extra_subdirectories": self.extra_subdirectories,
             "artifact": self.artifactFilename,
             "exclusions": self.exclusions,
+            "IVs (excel)": self.IVs,
+            "IV analysis (hdft)": self.iv_analysisFilename,
         }
-        # print(f"\nPaths and files:")
-        # for p in allpaths:
-        #     print(f"   {p:>20s}   {str(allpaths[p]):<s}")
+        print(f"\nPaths and files:")
+        for p in allpaths:
+            print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
     def _add_date(self, row, axis=1):
         row.day = str(Path(row.date).name)
@@ -495,7 +513,7 @@ class IV_Analysis():
             pdfname += f"_{celltype:s}"
             if self.iv_flag:
                 pdfname += f"_IVs"
-            elif self.replot:
+            elif self.mapsZQA_plot:
                 pdfname += f"_maps"  # tag if using other than zscore in the map plot
 
             pdfname = Path(pdfname)
@@ -511,7 +529,7 @@ class IV_Analysis():
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
-
+      
         # cell file merged
         mergeFile = PdfFileMerger()
         fns.insert(0, str(self.cell_pdfFilename))
@@ -608,7 +626,7 @@ class IV_Analysis():
         return allprots
 
     def make_cell(self, iday: int):
-        datestr = self.df.iloc[iday]["date"]
+        datestr = Path(self.df.iloc[iday]["date"]).name
         slicestr = str(Path(self.df.iloc[iday]["slice_slice"]).parts[-1])
         cellstr = str(Path(self.df.iloc[iday]["cell_cell"]).parts[-1])
         return (datestr, slicestr, cellstr)
@@ -630,6 +648,7 @@ class IV_Analysis():
             The dataframe for the experiments, as a Pandas frame
         datestr : Union[str, datetime.datetime]
             The date string we are looking for ("2017.04.19_000")
+            This should NOT have the full path to the data
         slicestr : str
             The slice string ("slice_000")
         cellstr : str
@@ -754,6 +773,7 @@ class IV_Analysis():
 
         dsday, nx = Path(datestr).name.split("_")
         self.thisday = dsday
+
         thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
         if thisday < self.after or thisday > self.before:
             CP.cprint(
@@ -764,6 +784,9 @@ class IV_Analysis():
         fullfile = Path(
             self.rawdatapath, self.make_cellstr(self.df, iday, shortpath=True)
         )
+        if not fullfile.is_dir():
+            fullfile = Path(self.df.iloc[iday]["data_directory"],  self.make_cellstr(self.df, iday, shortpath=True))
+
         if not fullfile.is_dir() and self.extra_subdirectories is not None:
             # try extra sub directories
             pathparts = fullfile.parts
@@ -773,7 +796,7 @@ class IV_Analysis():
                     day = Path(*pathparts[i:])
                     break
             if day is None:
-                CP.cprint("r", f"do_day: Day found in fileparts: {str(pathparts):s}")
+                CP.cprint("r", f"do_day: Day <None> found in fileparts: {str(pathparts):s}")
                 exit()
 
             for subdir in self.extra_subdirectories:
@@ -832,8 +855,9 @@ class IV_Analysis():
             return
         # CP.cprint("r", f"iv flag: {str(self.iv_flag):s}")
         if self.iv_flag:
-            self.df["IV"] = None
-            self.df["Spikes"] = None
+            if Path(self.iv_analysisFilename).suffix == ".h5":
+                self.df["IV"] = None
+                self.df["Spikes"] = None
             if pdf is not None:
                 self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(
@@ -970,7 +994,7 @@ class IV_Analysis():
         )  # storage for results; predefine the dicts.
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
-                r, nfiles = self.analyze_iv(iday=iday, i=i, x=x, file=file, allivs=allivs, nfile=nfiles, pdf=pdf)
+                r, nfiles = self.analyze_iv(iday=iday, i=i, x=x, file=file, allivs=allivs, nfiles=nfiles, pdf=pdf)
                 if self.dry_run:
                     continue
                 if r is None:
@@ -1021,24 +1045,32 @@ class IV_Analysis():
         self.df["annotated"] = self.df["annotated"].astype(int)
         self.df["expUnit"] = self.df["expUnit"].astype(int)
 
-        if len(allivs) > 0:
-            # with pickle:
-            # with open(Path(self.analyzeddatapath, 'IV_Analysis.pkl'), 'wb') as fh:
-            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 1, 'mtime': 1})
-            #
+        if len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".h5":
+
             # with hdf5:
+            # Note, reading this will be slow - it seems to be rather a large file.
             day, slice, cell = self.make_cell(iday=iday)
             keystring = str(
                 Path(Path(day).name, slice, cell)
             )  # the keystring is the cell.
             if self.n_analyzed == 0:
-                self.df.iloc[iday].to_hdf("IV_Analysis.h5", key=keystring, mode="w")
+                self.df.iloc[iday].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
-                self.df.iloc[iday].to_hdf("IV_Analysis.h5", key=keystring, mode="a")
-            self.df.iloc[iday]["IV"] = None
-            self.df.iloc[iday]["Spikes"] = None
+                self.df.iloc[iday].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
+            self.df.at[iday, "IV"] = None
+            self.df.at[iday, "Spikes"] = None
             self.n_analyzed += 1
             gc.collect()
+
+        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".pkl":
+            # with pickle and compression (must open with gzip, then read_pickle)
+            with open(self.iv_analysisFilename, 'wb') as fh:
+               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+
+        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".feather":
+            # with pickle and compression (must open with gzip, then read_pickle)
+            with open(self.iv_analysisFilename, 'wb') as fh:
+               self.df.to_feather(fh)
 
         # with open(Path(analyzeddatapath, 'events', foname), 'wb') as fh:
         #      dill.dump(results, fh)
@@ -1111,19 +1143,15 @@ class IV_Analysis():
                         self.df.at[iday, "IV"][protocol]["BridgeAdjust"] / 1e6
                     )
                 )
-            ctype = self.df.at[iday, "cell_type"]
+            ctype = self.df.at[iday, "cell_type"].lower()
             tgap = 0.0015
             tinit = True
             if ctype in [
                 "bushy",
-                "Bushy",
                 "d-stellate",
-                "D-stellate",
-                "Dstellate",
                 "octopus",
-                "Octopus",
             ]:
-                tgap = 0.0005
+                tgap = 0.0005  # shorten gap for measures for fast cell types
                 tinit = False
             EPIV.plot_mode(mode=self.IV_pubmode)
             plot_handle = EPIV.compute_iv(
