@@ -98,10 +98,11 @@ def make_tar_files(topdir):
             fo = Path(*d.parts[5:])
             tar.add(d, arcname=fo)
 
-
-
-
-if __name__ == '__main__':
+def main()
     topdir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Cerebellum"
     #make_tar_files(topdir)
     get_tar_info(topdir, nmax=0)
+
+
+if __name__ == '__main__':
+    main()

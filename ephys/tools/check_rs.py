@@ -20,7 +20,7 @@ import pyqtgraph as pg
 toppath = Path("/Volumes/Pegasus_002/ManisLab_Data3/")
 history = ["Kasten_Michael/Cerebellum", "Kasten_Michael/HK_collab_ICinj", "NF107Ai32_Het", "pbmlsps", ]
 hist_paths = [str(Path(toppath, h)) for h in history]
-print(hist_paths)
+# print(hist_paths)
 cprint = CP.cprint
 
 class Check_RS(pg.QtWidgets.QWidget):

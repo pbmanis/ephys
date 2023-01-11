@@ -79,10 +79,12 @@ def make_tar_day(topdir):
         for f in files:
             fp = Path(*f.parts[5:])
             tar.add(f, arcname=fp, recursive=False)
- 
 
-
-if __name__ == '__main__':
+def main():
     topdir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Cerebellum"
     make_tar_day(topdir)
     get_tar_info(make_tarname(topdir))
+
+
+if __name__ == '__main__':
+    main()
