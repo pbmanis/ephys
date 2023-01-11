@@ -154,11 +154,18 @@ def build_parser(experiments):
         help="Turn off parallel processing (used primarily for debugging)",
     )
     parser.add_argument(
-        "--replot",
+        "--mapZQA",
         action="store_true",
-        dest="replot",
-        help="Replot the data from previously analyzed dataset(s)",
+        dest="plot the maps of Z, Q and A",
+        help="Plot the maps from previously analyzed dataset(s)",
     )
+    parser.add_argument(
+        "--recalculate",
+        action="store_true",
+        dest="recalculate_events",
+        help="recalculate events files from the specified dataset(s)",
+    )
+
     parser.add_argument(
         "--ivdur",
         type=float,
