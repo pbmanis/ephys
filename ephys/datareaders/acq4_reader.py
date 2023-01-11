@@ -122,8 +122,7 @@ class acq4_reader:
         """
         self.importantFlag = flag
         CP.cprint('r', f"Important' flag was set: {flag:b}")
-        exit()
-
+       
     def setProtocol(self, pathtoprotocol: Union[str, Path, None] = None) -> None:
         """
         Parameters
@@ -1633,13 +1632,14 @@ def one_test():
 
 
 if __name__ == "__main__":
-    #one_test()
-    AR = acq4_reader()
-    datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
-    print(Path(datapath).is_file())
-    AR.setProtocol(datapath)
-    d = AR.getDataInfo(datapath)
-    print(d)
+    pass
+#one_test()
+    # AR = acq4_reader()
+    # datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
+    # print(Path(datapath).is_file())
+    # AR.setProtocol(datapath)
+    # d = AR.getDataInfo(datapath)
+    # print(d)
 
     # AR = acq4_reader()
     #
