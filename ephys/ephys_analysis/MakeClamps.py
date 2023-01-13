@@ -170,7 +170,7 @@ class MakeClamps:
                     "Vcs1"
                 ].capacitance_compensation
                 self.primarySignalLPF = self.nwbfile.acquisition["Vcs1"].electrode.filtering
-                self.primaryGain = self.nwbfile.acquistion["Vcs1"].gain
+                self.primaryGain = self.nwbfile.acquisition["Vcs1"].gain
             
             elif self.nwbfile.acquisition['Vcs1'].comments == "VC":
                 vacq = self.nwbfile.acquisition["Vcs1"]

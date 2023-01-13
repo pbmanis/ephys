@@ -273,10 +273,10 @@ class IV_Analysis():
         # get the input file (from dataSummary)
         self.df = pd.read_pickle(str(self.inputFilename))
         CP.cprint("g", f"Read in put file: {str(self.inputFilename):s}")
-        self.df[
-            "day"
-        ] = None  # self.df = self.df.assign(day=None)  # make sure we have short day available
-        self.df = self.df.apply(self._add_date, axis=1)
+        # self.df[
+        #     "day"
+        # ] = None  # self.df = self.df.assign(day=None)  # make sure we have short day available
+        # self.df = self.df.apply(self._add_date, axis=1)
         # self.df.drop_duplicates(['date', 'slice_slice', 'cell_cell', 'data_complete'],
         #      keep='first', inplace=True, ignore_index=True)
 
@@ -349,11 +349,11 @@ class IV_Analysis():
             if "_" not in day:
                 day = day + "_000"  # lambda x: (x['temp_f'] +  459.67) * 5 / 9
             # print(self.df.columns)
-            day_x = self.df.loc[self.df["day"] == day]
+            day_x = self.df.loc[self.df["date"] == day]
             if len(day_x) == 0:
-                print("day not found")
+                print("date not found: here are the valid dates:")
                 for dx in self.df.day.values:
-                    print(f"    day: {dx:s}")
+                    print(f"    date: {dx:s}")
             print("  ... Retrieved day: ", day_x)
             for iday in day_x.index:
                 self.do_day(iday, 0, pdf=self.pdfFilename)
@@ -987,20 +987,29 @@ class IV_Analysis():
             if ptype in ["stdIVs", "CCIV_long"]:  # just CCIV types
                 for prot in allprots[ptype]:
                     allivs.append(prot)  # combine into a new list
+        validivs = []
+        if self.exclusions is not None:
+            for p in allivs:  # first remove excluded protocols
+                if p not in self.exclusions:
+                    validivs.append(
+                        p
+                    )  # note we do not just remove as this messes up the iterator of the maps
+        else:
+            validivs = allivs
         nworkers = 16  # number of cores/threads to use
-        tasks = range(len(allivs))  # number of tasks that will be needed
+        tasks = range(len(validivs))  # number of tasks that will be needed
         results = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
-                r, nfiles = self.analyze_iv(iday=iday, i=i, x=x, file=file, allivs=allivs, nfiles=nfiles, pdf=pdf)
+                r, nfiles = self.analyze_iv(iday=iday, i=i, x=x, file=file, allivs=validivs, nfiles=nfiles, pdf=pdf)
                 if self.dry_run:
                     continue
                 if r is None:
                     continue
-                results["IV"][allivs[i]] = r["IV"]
-                results["Spikes"][allivs[i]] = r["Spikes"]
+                results["IV"][validivs[i]] = r["IV"]
+                results["Spikes"][validivs[i]] = r["Spikes"]
             results["IV"] = _cleanup_ivdata(results["IV"])
             results["Spikes"] = _cleanup_ivdata(results["Spikes"])
             if not self.dry_run:
@@ -1018,9 +1027,9 @@ class IV_Analysis():
             ) as tasker:
                 for i, x in tasker:
                     result, nfiles = self.analyze_iv(
-                        iday, i, x, file, allivs, nfiles, pdf=pdf
+                        iday, i, x, file, validivs, nfiles, pdf=pdf
                     )
-                    tasker.results[allivs[i]] = result
+                    tasker.results[validivs[i]] = result
             # reform the results for our database
             if self.dry_run:
                 return
@@ -1053,6 +1062,10 @@ class IV_Analysis():
             keystring = str(
                 Path(Path(day).name, slice, cell)
             )  # the keystring is the cell.
+            # pytables does not like the keystring starting with a number, or '.' in the string
+            # so put "d_" at start, and then replace '.' with '_'
+            # what a pain.
+            keystring = 'd_'+keystring.replace('.', '_')
             if self.n_analyzed == 0:
                 self.df.iloc[iday].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
