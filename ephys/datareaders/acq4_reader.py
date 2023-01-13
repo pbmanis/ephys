@@ -1258,7 +1258,7 @@ class acq4_reader:
         self.targets = [[]] * len(dirs)
         self.spotsize = 0.0
         rep = 0
-        tar = 0
+        target = 0
         supindex = (
             self._readIndex()
         )  # get protocol index (top level, dirType=ProtocolSequence)
@@ -1303,7 +1303,7 @@ class acq4_reader:
                 if ntargets > 1:
                     self.targets[i] = index["."][("Scanner", "targets")]
                 self.spotsize = index["."]["Scanner"]["spotSize"]
-                self.scannerinfo[(rep, tar)] = {
+                self.scannerinfo[(rep, target)] = {
                     "directory": d,
                     "rep": rep,
                     "pos": self.scannerpositions[i],
@@ -1335,9 +1335,9 @@ class acq4_reader:
             else:
                 pass
 
-            tar = tar + 1
-            if tar > ntargets:
-                tar = 0
+            target = target + 1
+            if target > ntargets:  # wrap for repetitions
+                target = 0
                 rep = rep + 1
         return True  # indicate protocol is all ok
 
