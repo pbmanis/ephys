@@ -258,6 +258,7 @@ class DataSummary:
             "species",
             "strain",
             "genotype",
+            "reporters",
             "age",
             "animal identifier",
             "sex",
@@ -280,6 +281,8 @@ class DataSummary:
             "cell_notes",
             "cell_type",
             "cell_location",
+            "cell_layer",
+            "cell_expression",
             "cell_important",
             "cell_id",
         ]
@@ -333,8 +336,9 @@ class DataSummary:
                 ("species", "{:>s}"),
                 ("strain", "{:>s}"),
                 ("genotype", "{:>12s}"),
+                ("reporters", "{:>12s}"),
                 ("age", "{:>5s}"),
-                ("animal identifier", "{:>6s}"),
+                ("animal identifier", "{:>8s}"),
                 ("sex", "{:>2s}"),
                 ("weight", "{:>5s}"),
                 ("solution", "{:>s}"),
@@ -349,7 +353,7 @@ class DataSummary:
             [("type", "{:>s}"), ("location", "{:>12s}"), ("orientation", "{:>5s}")]
         )
         self.cell_template = OrderedDict(
-            [("type", "{:>s}"), ("location", "{:>12s}"), ("important", "{:>s}")]
+            [("type", "{:>s}"), ("location", "{:>12s}"), ("layer", "{:>10s}"), ("expression", "{:2s}"), ("important", "{:>s}")]
         )
         self.data_template = OrderedDict(
             [
@@ -1109,12 +1113,16 @@ class DataSummary:
                 "bushy": "lightslategray",
                 "t-stellate": "thistle",
                 "l-stellate": "darkcyan",
+                "d-stellate": "thistle",
                 "stellate": "thistle",
                 "octopus": "darkgoldenrod",
                 
                 # cortical (uses some of the same colors)
                 "basket": "lightpink",
                 "chandelier": "sienna",
+                "fast spiking": "darksalmon",
+                "RS": "lightgreen",
+                "LTS": "paleturquoise",
 
                 # cerebellar
                 "Purkinje": "mediumorchid",
@@ -1191,7 +1199,7 @@ class DataSummary:
 
         df = df.style.apply(self.highlight_by_cell_type, axis=1)
         df.to_excel(writer, sheet_name = "Sheet1")
-        writer.save()
+        writer.close()
 
 
 def dir_recurse(ds, current_dir, args, indent=0):
@@ -1208,7 +1216,7 @@ def dir_recurse(ds, current_dir, args, indent=0):
     indent += 2
     sp = " " * indent
     for d in allsubdirs:
-        Printer(f"\n{sp:s}Subdir: {str(d.name):s}", "cyan")
+        Printer(f"\n{sp:s}Subdir: {str(d.name):s}", "yellow")
         indent = dir_recurse(ds, d, args, indent)
     indent -= 2
     if indent < 0:
