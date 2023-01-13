@@ -37,6 +37,7 @@ Note that FitRegion no longer attempts to plot.
 
 """
 
+import warnings
 from typing import Union
 
 import numpy as np
@@ -382,8 +383,6 @@ class Fitting:
         Exponential with offset, decay from starting value
         """
         yd = (p[0] + p[1]) - p[1] * np.exp(-x / p[2])
-        #        print yd.shape
-        #        print y.shape
         if y is None:
             return yd
         else:
@@ -399,9 +398,15 @@ class Fitting:
         as a gap at the start of the trace that is not included in the
         error function of the fit
         """
-        yd = p[0] + p[1] * np.exp(-x / p[2])
-        #        print yd.shape
-        #        print y.shape
+
+        try: 
+            yd = p[0] + p[1] * np.exp(-x / p[2])
+        except:
+            print('p: ', p)
+            print(np.min(x), np.max(x))
+            raise RuntimeWarning("exp problem")
+            exit()
+
         if y is None:
             return yd
         else:
@@ -812,7 +817,7 @@ class Fitting:
 
     def FitRegion(
         self,
-        whichdata,
+        whichdata:list,
         thisaxis:int,
         tdat:np.ndarray,
         ydat:np.ndarray,
@@ -822,6 +827,7 @@ class Fitting:
         fitFuncDer=None,
         fitPars=None,
         fixedPars=None,
+        tgap=0.0, # gap before fitting in seconds
         fitPlot=None,
         plotInstance=None,
         dataType="xy",
@@ -829,6 +835,7 @@ class Fitting:
         bounds=None,
         weights=None,
         constraints=(),
+        capture_error:bool=False,
     ):
         """
         **Arguments**
@@ -867,7 +874,6 @@ class Fitting:
             t1 = np.max(tdat)
         if t0 is None:
             t0 = np.min(tdat)
-
         func = self.fitfuncmap[fitFunc]
         if func is None:
             raise ValueError("FitRegion: unknown function %s" % (fitFunc))
@@ -877,6 +883,7 @@ class Fitting:
             tdat = np.array(tdat)
         if isinstance(ydat, list):
             ydat = np.array(ydat)
+
 
         xp = []
         xf = []
@@ -913,13 +920,20 @@ class Fitting:
                     tx, dy = self.getClipData(tdat, ydat, t0, t1)
                 else:
                     tx, dy = self.getClipData(tdat, ydat[record, :], t0, t1)
+
                 # print 'Fitting.py: block, type, Fit data: ', block, dataType
                 # print tx.shape
                 # print dy.shape
                 tx = np.array(tx)
                 tx = tx - t0
                 dy = np.array(dy)
-                # print("t0, t1, mintx: ", t0, t1, np.min(tx))
+                if tgap > 0:
+                    dt = np.mean(np.diff(tx))
+                    igap = int(tgap/dt)
+                    tx = tx[igap:]
+                    dy = dy[igap:]
+                # print(t0, t1)
+
                 yn.append(names)
                 if not any(tx):
                     print("Fitting.py: No data in clipping window")
@@ -965,16 +979,17 @@ class Fitting:
                         jac=None,
                         hess=None,
                         hessp=None,
-                       # bounds=bounds,
+                        bounds=bounds,
                         constraints=constraints,
                         tol=None,
                         callback=None,
                         options={"maxiter": func[2], "disp": False},
                     )
+
                     plsq = res.x
                     # print "    method:", method
                     # print "    bounds:", bounds
-                    # print "    result:", plsq
+                    # print( "    result:", plsq)
 
                 # next section is replaced by the code above - kept here for reference if needed...
                 # elif method == 'fmin' or method == 'simplex':

@@ -50,7 +50,7 @@ class RmTauAnalysis:
         self.Spikes = None
         self.dataPlot = None
         self.baseline = None
-        self.rmp = []
+        self.rmp = None
         self.taum_fitted = {}
         self.taum_bounds = []
         self.analysis_summary = {}
@@ -122,7 +122,7 @@ class RmTauAnalysis:
         )
 
     def analyze(
-        self, rmpregion=[0.0, 0.05], tauregion=[0.1, 0.125], to_peak=False, tgap=0.0
+        self, rmpregion=[0.0, 0.05], tauregion=[0.1, 0.125], to_peak=False, tgap=0.0005
     ):
 
         # print("rmpregion: ", rmpregion)
@@ -136,6 +136,7 @@ class RmTauAnalysis:
         r_ss = self.Clamps.tstart + 0.9 * stepdur  # steady-state region
         self.ivss_analysis(time_window=[r_ss, self.Clamps.tend])
         self.ivpk_analysis(time_window=[self.Clamps.tstart, r_pk])  # peak region
+        print("r_ss: ", r_ss, self.Clamps.tend)
         self.tau_h(
             self.tauh_voltage,
             peak_timewindow=[r_pk, r_ss], # self.Clamps.tstart, r_pk],
@@ -174,7 +175,7 @@ class RmTauAnalysis:
             Define the voltage range _below_ RMP for the traces that will be fit to obtain tau_m.
 
         tgap: float (sec)
-            gap for the fitting to start (e.g., initial points to ignore)
+            gap for the fitting to start (e.g., duration of initial points to ignore)
 
         Return
         ------
@@ -192,7 +193,7 @@ class RmTauAnalysis:
             print("time_window: ", time_window)
             print("PEAK TIME: ", peak_time)
         Func = "exp1"  # single exponential fit with DC offset.
-        if self.rmp == []:
+        if self.rmp is None:
             self.rmp_analysis(time_window=self.baseline)
 
         Fits = Fitting.Fitting()  # get a fitting instance
@@ -269,8 +270,12 @@ class RmTauAnalysis:
             
 
             if peak_time:
-                vtr1 = traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)]
-                ipeak = np.argmin(vtr1)
+                # find the peak of the hyperpolarization of the trace to do the fit. 
+                # We account for a short time after the pulse (tgap) before actually
+                # finding the minimum, then reset the end time of the fit to the following
+                # peak negativity.
+                vtr1 = traces[k][int((time_window[0]+tgap) / dt) : int(time_window[1] / dt)]
+                ipeak = np.argmin(vtr1)+int(tgap/dt)
                 time_window[1] = (ipeak * dt) + time_window[0]
                 vtr2 = traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)]
                 v0 = vtr2[0]
@@ -283,6 +288,13 @@ class RmTauAnalysis:
                     print("initial estimate for tau: (pts, time)", m, m*dt)
                 taubounds[0] = 0.0002
                 taubounds[1] = np.min((time_window[1]-time_window[0], 100.))
+                # ensure that the bounds are ordered and have some range
+                if taubounds[1] < 10.0*taubounds[0]:
+                    taubounds[1] = taubounds[0]*10.0
+                if debug:
+                    print("timewindow: ", time_window)
+                    print("taubounds: ", taubounds)
+
                 tau_init = m * dt
                 if tau_init >= taubounds[0] and tau_init <= taubounds[1]:
                     initpars[2] = tau_init
@@ -304,8 +316,10 @@ class RmTauAnalysis:
                 fitFunc=Func,
                 fitPars=initpars,
                 fixedPars=[tgap],
+                tgap = tgap,
                 method="SLSQP",
                 bounds=[(-0.1, 0.0), (-0.05, 0.05), (taubounds)],
+                capture_error = True,
             )
 
             if not fparx:
@@ -664,7 +678,8 @@ class RmTauAnalysis:
         ipk_start = pk_voltages[itrace].argmin()
         ipk_start += int(peak_timewindow[0] / self.Clamps.sample_rate[itrace])  # get starting index as well
         pk_time = self.Clamps.time_base[ipk_start]+self.Clamps.tstart
-
+        if pk_time > self.Clamps.tend:
+            pk_time = self.Clamps.tend - 0.050
         if not self.Spikes.spikes_counted:
             self.analyzeSpikes()
 
@@ -674,16 +689,12 @@ class RmTauAnalysis:
         # prepare to fit
         initpars = [-80.0 * 1e-3, -10.0 * 1e-3, 50.0 * 1e-3]
         bounds = [(-0.15, 0.0), (-0.1, 0.1), (0, 5.0)]
+
         v_rmp = self.ivbaseline[itrace]
         itaucmd = self.Clamps.commandLevels[itrace]
         if itaucmd is None or np.fabs(itaucmd) < 1e-11:
             return  # don't attempt to fit a tiny current
         whichaxis = 0
-        # print("whicdata: ", whichdata)
-        # print(steadystate_timewindow, pk_time)
-        # import matplotlib.pyplot as mpl
-        # mpl.plot(self.Clamps.time_base, self.Clamps.traces.view(np.ndarray)[0])
-        # mpl.show()
         (fpar, xf, yf, names) = Fits.FitRegion(
             whichdata,
             whichaxis,
