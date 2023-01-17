@@ -290,7 +290,7 @@ class GetAllIVs:
                 if select not in ["any", "*"]:
                     df_i = df_i[df_i["cell_type"] == select]
                 sLength = len(df_i["date"])
-                df_i['age'] = ISO8601_age(df_i['age'])
+                df_i['age'] = ISO8601_age(df_i['age'].values[0])
 
                 df_i = df_i.assign(source=expts[i])
                 df_i.reset_index(drop=True)
