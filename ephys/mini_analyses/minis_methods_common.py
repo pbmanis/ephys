@@ -192,6 +192,7 @@ class MiniAnalyses:
         self.notch = notch
         self.notch_Q = notch_Q
         self.reset_filtering()
+        self.set_datatype("VC")
 
     def set_datatype(self, datatype:str):
         CP.cprint("c", f"data type: {datatype:s}")
