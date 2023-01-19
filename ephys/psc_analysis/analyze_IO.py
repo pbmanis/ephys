@@ -75,11 +75,11 @@ def analyze_IO(
         PSC.analysis_summary[f"psc_stim_amplitudes"][i] = 1e6 * np.array(
             [k for k in idat[i].keys()]
         )
-        period = PSC.pulse_train["period"]
-        if isinstance(period, list):
-            stimintvl.append(period[0])
+        if isinstance(PSC.pulse_train["period"], list):
+            stimintvl.append(PSC.pulse_train["period"][0])
         else:
-            stimintvl.append(period)
+            stimintvl.append(PSC.pulse_train["period"])
+            
 
     stim_dt = np.diff(PSC.pulse_train["start"])
     # PSC.analysis_summary['psc_stim_amplitudes'] = 1e6*np.array(stim_io)
@@ -87,5 +87,6 @@ def analyze_IO(
     PSC.analysis_summary["ppf_dt"] = np.array(stim_dt)
     PSC.analysis_summary["stim_times"] = PSC.pulse_train["start"]
     PSC.analysis_summary["window"] = [PSC.T0, PSC.T1]
+    print(dir(PSC))
     PSC.analysis_summary["Group"] = PSC.Group
     return True
