@@ -450,7 +450,6 @@ class acq4_reader:
         self.indent = 0
         self.textline = ""
         t = self._parse_index(index)
-        print("Index: \n", t)
         return
 
     def getIndex_text(self, index: Union[list, tuple, dict, bytes]):

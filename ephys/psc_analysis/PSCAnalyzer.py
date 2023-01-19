@@ -60,6 +60,8 @@ class PSCAnalyzer:
         ----------
         datapath: path to the data protocol (Path or string)
 
+        df: pandas dataframe with information about the cells. 
+        
         plot: boolean (default: True)
             Flag to control plotting of the data
 
@@ -86,9 +88,9 @@ class PSCAnalyzer:
             -0.0741
         )  # in V  - this is the Cl eq potential to minize GABA interference
         self.NMDA_delay = 0.050  # delay in s to make measurement
+
         if df is not None:
             date = str(Path(*self.datapath.parts[:-3]))
-            # print("datapath: ", date)
             group = df[df['date'] == date]["Group"]
             if len(group) == 0:
                 self.Group = ""
@@ -96,6 +98,8 @@ class PSCAnalyzer:
                 self.Group = group.values[0]
             # print(self.group)
             # exit()
+        else:
+            raise ValueError("df should not be NONE in analyze_IO")
 
     def setup(
         self,

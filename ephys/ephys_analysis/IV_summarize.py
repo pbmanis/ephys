@@ -1,4 +1,4 @@
-"""IV_summarize:
+"""IV_Summarize:
 A module to summarize data from individual cells generated through from IV_analysis
 in the ephys.ephys_analysis library. IV_Analysis in turn computes results from individual
 protocols using ephys_analysis RMTauSummary and SpikeSummary
@@ -290,7 +290,7 @@ class GetAllIVs:
                 if select not in ["any", "*"]:
                     df_i = df_i[df_i["cell_type"] == select]
                 sLength = len(df_i["date"])
-                df_i['age'] = ISO8601_age(df_i['age'])
+                df_i['age'] = ISO8601_age(df_i['age'].values[0])
 
                 df_i = df_i.assign(source=expts[i])
                 df_i.reset_index(drop=True)
