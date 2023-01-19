@@ -841,7 +841,7 @@ class acq4_reader:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
         # CP.cprint("r", f"Mode: {self.mode:s}")
-        assert self.mode is not None
+        # assert self.mode is not None
         if self.mode is None:
             units = "A"  # just fake it
             self.mode = "VC"

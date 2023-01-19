@@ -154,6 +154,8 @@ def analyze_PPF(
 
         da1 = measure_func(UT.trim_psc(i_pp1, dt=sinterval, artifact_duration=deadtime, sign=artifact_sign))
         da2 = measure_func(UT.trim_psc(i_pp2, dt=sinterval, artifact_duration=deadtime, sign=artifact_sign))
+        if da1.magnitude == 0.0:
+            continue
         ppf_tr = da2.magnitude / da1.magnitude  # get facilitation for this trace and interval
         ppf_dat[Stim_Intvl[mi]].append(ppf_tr)  # accumulate
         ppf_traces_T1[Stim_Intvl[mi]].append(tb_ref)
