@@ -60,8 +60,8 @@ import pandas as pd
 import pylibrary.plotting.plothelpers as PH
 import scipy.stats
 import seaborn as sns
-from pylibrary.tools import cprint as CP
 from ephys.tools.parse_ages import ISO8601_age
+from pylibrary.tools import cprint as CP
 
 rcParams = matplotlib.rcParams
 rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
@@ -82,13 +82,16 @@ def get_computer():
 
 computer_name = get_computer()
 
-# iv measures to track:
+# measures and metadata to track for the IV analysis:
 iv_measures = [
     "Date",
     "Cell_ID",
-    "coding",
+    "cell_expression",
     "Animal_ID",
-    "Group",
+    "code",
+    "sex",
+    "age",
+    #  "Group",
     "protocol",
     "Rin",
     "RMP",
@@ -97,14 +100,40 @@ iv_measures = [
     "tauh_tau",
 ]
 
-# spike measures to track (including indexing (Date, Coding: Cell_ID, Animal_ID, etc.)
+ylabels = {
+    "Rin": r"M$\Omega$",
+    "RMP": "mV",
+    "taum": 'sec',
+    "tauh_bovera": "AU",
+    "tauh_tau": 'sec',
+    "AP1_HalfWidth": 'ms',
+    "AP1_HalfWidth_interpolated": 'ms',
+    "AP2_HalfWidth": "ms",
+    #'AP2_HalfWidth_interpolated',
+    "peak_V": "V",
+    "AHP_Depth": "mV",
+    "peaktotrough": "mV",
+    "spikethreshold": "A",
+    "AP1_Latency": "ms",
+    "AP2_Latency": "ms",
+    "Ibreak": "A",
+    "Irate": "spk/s",
+    "FiringRate_1p5T": 'spk/s',
+    "AdaptRatio": "AU",
+    "maxrate": "spk/s",
+    "FR_Slope": "spk/s/A",
+}
+# spike measures to track
+# includes metadata (Date, Coding: Cell_ID, Animal_ID, etc.)
 spike_measures = [
     "Date",
     "Cell_ID",
-    "coding",
+    "cell_expression",  # from the acq4 metadata
     "Animal_ID",
-    "Group",
+    #   "Group",
+    "code",
     "age",
+    "sex",
     "protocol",
     "AP1_HalfWidth",
     "AP1_HalfWidth_interpolated",
@@ -123,15 +152,17 @@ spike_measures = [
     "FR_Slope",
 ]
 
-# parameters in the tracked items that should not be averaged numerically
+# categorical data and metadata in the tracked items that should not be averaged numerically
 no_average = [
     "Date",
-    "coding",
+    "cell_expression",
     "Cell_ID",
     "Animal_ID",
-    "Group",
+    #    "Group",
     "protocol",
     "age",
+    "sex",
+    "code",
 ]
 
 palette = {
@@ -151,15 +182,15 @@ paxes = dict.fromkeys(spike_measures)
 paxes["AdaptRatio"] = [0.0, 10.0]
 paxes["AP1_Latency"] = [0, 100]
 paxes["AP2_Latency"] = [0, 150]
-paxes["AP1_HalfWidth_interpolated"] = [0, 4]
-paxes["AP2_HalfWidth_interpolated"] = [0, 4]
-paxes["AP1_HalfWidth"] = [0, 4]
-paxes["AP2_HalfWidth"] = [0, 4]
-paxes["AHP_Depth"] = [0, 25]
-paxes["FiringRate_1p5T"] = [0, 100]
+paxes["AP1_HalfWidth_interpolated"] = [0, 2]
+paxes["AP2_HalfWidth_interpolated"] = [0, 2]
+paxes["AP1_HalfWidth"] = [0, 2]
+paxes["AP2_HalfWidth"] = [0, 2]
+paxes["AHP_Depth"] = [0, 20]
+paxes["FiringRate_1p5T"] = [0, 40]
 paxes["Ibreak"] = [-0.00, 1.0]
 paxes["Irate"] = [0, 10.00]
-paxes["peak_V"] = [-0.040, 0.080]
+paxes["peak_V"] = [-0.010, 0.060]
 paxes["peaktotroughT"] = [0, 0.040]
 paxes["peaktotrough"] = [0, 0.040]
 paxes["spikethreshold"] = [0, None]
@@ -214,8 +245,9 @@ class GetAllIVs:
 
         self.dfs = None
         self.rainbowcolors = None
-        self.code_names = ["A", "B"]
-        self.codecolors = OrderedDict(
+
+        self.set_code_metaname("genotype")  # set a default code to break down results
+        codecolors = OrderedDict(
             [
                 ("A", "limegreen"),
                 ("B", "violet"),
@@ -230,9 +262,29 @@ class GetAllIVs:
                 ("?", "red"),
             ]
         )
-        self.codes = list(self.codecolors.keys())
+        self.set_code_colors(codecolors)
         self.iv_dataframe = None
         self.spike_dataframe = None
+
+    def set_code_colors(self, codecolors: dict):
+        """assign codes to colors using a dict.
+        This map will replace the original code list and codes
+
+        Args:
+            codecolors (dict): A list of codes and their colors:
+            for example: {'control': 'black', 'experimental': 'red', '?': 'blue', "ND": 'blue'}
+
+        """
+        self.codecolors = codecolors
+        self.code_names = list(self.codecolors.keys())
+
+    def set_code_metaname(self, metaname: str = "genotype"):
+        """pick out the column from the dataSummary table that is used to pull the "code" from the data
+        The name should be the name of one of the columns
+        Args:
+            metaname (str): column name
+        """
+        self.code_metaname = metaname
 
     def set_experiments(self, experiments: Union[dict, list]):
         """experiments is the dict for experiments - paths, etc. each dict entry has a
@@ -241,16 +293,29 @@ class GetAllIVs:
             experiment_coding_dictionary]
 
         For example, experiments might contain
-            "Ank2B": {
-                "datadisk": "/Volumes/Pegasus_002/Kasten_Michael/Maness_Ank2_PFC_stim",  # where to find the data
-                "directory": "ANK2",  # directory (here, relative) to look for excel and pkl files
-                "resultdisk": "ANK2",  # directory to store results
-                "db_directory": "ANK2",  # directory to store database
-                "datasummary": "Intrinsics",  # name of the file generated by datasummary
-                "IVs": "ANK2_NEX_IVs",  # name of the excel sheet generated by (IV_Analysis) with the data
-                "coding_file": "Intrinsics.xlsx",  # name of the excel workbook that holds the codes
-                "coding_sheet": "codes",  # name of the sheet in the workbook that has the code mapping (Date, slice_slice, cell_cell, code)
 
+        '''
+            rawdatadisk = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim"
+            resultdisk = "/Users/pbmanis/Desktop/Python/ank2/ank2_datasets"
+            experiments = {
+                "Ank2B": {
+                    "rawdatapath": rawdatadisk,
+                    "databasepath": resultdisk,# location of database files (summary, coding, annotation)
+                    "analyzeddatapath": resultdisk, # analyzed data set directory
+                    "directory": "", # directory for the raw data, under rawdatadisk
+                    "pdfFilename": "Ank2B_IVs.pdf", # PDF figure output file
+                    "db_directory": "ANK2",
+                    "datasummaryFilename": "Intrinsics",
+                    "iv_analysisFilename": "ANK2_NEX_IVs.pkl",
+                    "coding_file": None,
+                    "coding_sheet": None,
+                    "annotationFilename": None,
+                    "maps": None,
+                    "extra_subdirectories": ["Rig2(PBM)/L23_intrinsic", "Rig4(MRK)/L23_intrinsic"], # directories to include in analysis under rawdatadisk
+                    "skip_subdirectories": ["Rig4(MRK)/mEPSCs", "Rig4(MRK)/PSCs"]  # directories to skip in this type of analysis
+                }
+            }
+            '''
         Experiments can have multiple entries as well, which are selected by using '+' when specifying the
         "-E" option from the command line (e.g., 'nf107_nihl+nf107_control')
         Args:
@@ -261,9 +326,15 @@ class GetAllIVs:
 
     def build_dataframe(self):
         """Build pandas data frame from selected experiments
+        This function builds a new pandas dataframe ("self.dfs") that
+        is the result of merging multiple experiments.
+        An intermediate file is written to disk in excel format for viewing.
 
         Args:
             None
+
+        Modifies:
+            Creates self.dfs, the dataframe of merged experiments.
         """
 
         self.dfs = pd.DataFrame()
@@ -274,23 +345,30 @@ class GetAllIVs:
                 expts = [self.experiment]
             for i in range(len(expts)):
                 cprint("g", f"Analyzing experiment: {str(expts[i]):s}")
-                self.basedir = Path(self.experiments[expts[i]]["datadisk"])
+                self.basedir = Path(self.experiments[expts[i]]["rawdatapath"])
                 self.inputFilename = Path(
-                    self.experiments[expts[i]]["directory"],
-                    self.experiments[expts[i]]["datasummary"],
+                    self.experiments[expts[i]]["databasepath"],
+                    self.experiments[expts[i]]["iv_analysisFilename"],
                 ).with_suffix(".pkl")
-                self.outputPath = Path(self.experiments[expts[i]]["directory"])
+                self.outputPath = Path(self.experiments[expts[i]]["databasepath"])
                 coding_f = self.experiments[expts[i]]["coding_file"]
-                df_c = pd.read_excel(
-                    Path(self.experiments[expts[i]]["directory"], coding_f),
-                    sheet_name=self.experiments[expts[i]]["coding_sheet"],
+                if self.experiments[expts[i]]["coding_sheet"] is not None:
+                    df_c = pd.read_excel(
+                        Path(self.experiments[expts[i]]["databasepath"], coding_f),
+                        sheet_name=self.experiments[expts[i]]["coding_sheet"],
+                    )
+                else:
+                    df_c = None
+                # read the pickled output from the iv analysis.
+                df_i = pd.read_pickle(
+                    self.inputFilename,
+                    compression={"method": "gzip", "compresslevel": 5, "mtime": 1},
                 )
-                df_i = pd.read_pickle(self.inputFilename)
                 select = self.celltype
                 if select not in ["any", "*"]:
                     df_i = df_i[df_i["cell_type"] == select]
                 sLength = len(df_i["date"])
-                df_i['age'] = ISO8601_age(df_i['age'].values[0])
+                df_i["age"] = ISO8601_age(df_i["age"].values[0])
 
                 df_i = df_i.assign(source=expts[i])
                 df_i.reset_index(drop=True)
@@ -302,6 +380,8 @@ class GetAllIVs:
                         right_on=["Date", "slice_slice", "cell_cell"],
                     )
                     df_i.coding = df_i.coding.str.strip()
+                else:
+                    df_i.coding = df_i.cell_expression
                 self.dfs = pd.concat((self.dfs, df_i))
         self.dfs = self.dfs.reset_index(drop=True)
         self.rainbowcolors = iter(
@@ -312,11 +392,39 @@ class GetAllIVs:
             "g",
             "All data loaded, intermediate date file iv_summarize_intermediate_datafile.xlsx written",
         )
-
         return
 
+    
+    def print_census(self, df_accum):
+        """Print out a census of the mice in the accumlated data set
+        This is a bit too specific at the moment, but gives the exp date,
+        animal information, code, cell ID, and number of protocols run.
+        A summary of counts by sex and code is generated, but this is TOO specific.
+
+        Args:
+            df_accum (_type_): _description_
+        """
+        # print(df_accum.columns)
+        ident = list(set(df_accum['Animal_ID']))
+        cell_ids = list(df_accum['Cell_ID'].values)
+        counts = {'M_GFP+': 0, 'M_GFP-':0, 'F_GFP+': 0, 'F_GFP-':0}
+        n_male_gp = 0
+        n_female_gm = 0
+        n_male_gp = 0
+        n_female_gm = 0
+        for idn in sorted(cell_ids):
+            an = df_accum[df_accum['Cell_ID'] == idn]
+
+            print(str(Path(an.Date.values[0]).name), an.Animal_ID.values[0], an.sex.values[0], an.code.values[0], an.Cell_ID.values[0], len(an.protocol.values[0]), an.protocol.values[0])
+            # assemble count key:
+            ckey = f"{an.sex.values[0]:s}_{an.code.values[0]:s}"
+            counts[ckey] += 1
+        print("Counts: ",counts)
+
+
+
     def run(self):
-        """Run with current parameters and build a summary plot of the measurements."""
+        """Generate a summary with current parameters and build a summary plot of the measurements."""
         if self.dfs is None:
             self.build_dataframe()
 
@@ -343,16 +451,16 @@ class GetAllIVs:
         # now do the FI curves and the two subfigures
         # along with their analyses
         self.plot_FI(self.PFig)
-        P1 = self.plot_IV_info(self.mode, parentFigure=self.PFig)
-        P2 = self.plot_spike_info(self.mode, parentFigure=self.PFig)
+        P1 = self.plot_IV_info(self.mode, code=self.code_metaname, parentFigure=self.PFig)
+        P2 = self.plot_spike_info(self.mode, code=self.code_metaname, parentFigure=self.PFig)
         mpl.show()
 
-
-
     def set_protocols(self, protocols: list):
-        """Set the list of protocols that we will use for the analysis.
+        """Set the list of protocols that are selected for the analysis.
+        Only protocols with names in this list will be summarized.
+
         This should be called at the "user" level according to the names
-        of the relevant protocols in the dataset
+        of the relevant protocols in the dataset.
 
         Args:
             protocols (list): protocol names. Use ['*'] to use all protocols in
@@ -368,7 +476,8 @@ class GetAllIVs:
             prot (Union[Path, str]): protocol to selct form list of prototcols
 
         Returns:
-            _type_: _description_
+            bool: True if the protocol name is in the list of protocols we are analyzing,
+            False otherwise.
         """
         if self.protocols[0] == "*":
             return True
@@ -388,25 +497,23 @@ class GetAllIVs:
 
         ncells = 0
         legcodes = []
-
+        print("FI Plot")
         for idx in self.dfs.index:
-
-            dx = self.dfs.at[idx, "Spikes"]  # get the spikes dict
-            code = self.dfs.at[idx, "coding"]
+            # print("   ", self.dfs.columns)
+            dx = self.dfs.iloc[idx]["Spikes"]  # get the spikes dict
+            code = self.dfs.iloc[idx][self.code_metaname]
             if isinstance(code, list):
                 code = code[0]
-
             if code not in self.code_names:
                 continue
             color = self.codecolors[code]
-
+            if dx is None:
+                continue  # no data to analyze
             if isinstance(dx, dict):  # convert to 1-element list
                 dx = [dx]
             for dv in dx:
                 for fidata in dv.keys():
-                    if not isinstance(fidata, Path):
-                        cprint("r", f"fidata is not path:  {str(fidata):s}")
-                        continue  # fidata = Path(fidata)
+                    firawdata = Path(self.dfs.iloc[idx].data_directory, fidata)
                     if not self.select_protocols(fidata):
                         continue
                     if code not in legcodes:
@@ -430,8 +537,8 @@ class GetAllIVs:
         )
         PF.axdict["A"].set_xlabel("I (nA)")
         PF.axdict["A"].set_ylabel("Firing Rate (Hz)")
-        plotcodes = list(set(legcodes).intersection(set(self.codes)))
-        cprint("r", f"plotcodes: {str(plotcodes):s}")
+        plotcodes = list(set(legcodes).intersection(set(self.code_names)))
+        cprint("r", f"plotcodes: {str(plotcodes):s}, legcodes")
         h, l = PF.axdict["A"].get_legend_handles_labels()
         PF.axdict["A"].legend(h, l, fontsize=6, loc="upper left")
         return
@@ -444,7 +551,8 @@ class GetAllIVs:
         accumulator: dict,
         func: object = np.nanmean,
     ):
-        """Get spike values averaged (or smallest) from one protocol/measurement in one cell
+        """Get spike values averaged (or smallest for some parameters)
+        from one protocol/measurement in one cell
         accumulate the measures in the accumulator (dict of measures), using lists.
 
         Args:
@@ -479,24 +587,25 @@ class GetAllIVs:
         proto: str,
         Cell_ID: str,
         Animal_ID: str,
-        coding: str,
-        Group: str,
+        sex: str,
+        code: str,
+        # Group: str,
         day,
         accumulator: dict,
     ):
         """Get the spike data for the specified cell
-        and protocol in the dataframe
-        computes the mean or min of the parameter as needed if there are multiple measures
+        and protocol in the dataframe.
+        Computes the mean or min of the parameter as needed if there are multiple measures
         within the protocol.
         The accumulator dict has keys indicating the Cell_ID, etc.
         Args:
-            dspk (dict): spike dictionary for one cell
+            dspk (dict): Spike dictionary for one cell
             dfi (dict): FI dictionary (IV) for one cell
             proto (str): Protocol name within the dict to use
         """
         cellmeas = dspk[proto]
         tracekeys = list(cellmeas["spikes"].keys())
-        print("get_protocol_spike: ", Cell_ID)
+        # print("get_protocol_spike: ", Cell_ID)
         for m in spike_measures:
             if (
                 m == "spikethreshold"
@@ -543,10 +652,12 @@ class GetAllIVs:
                     accumulator[m].append(day)
                 if m == "Animal_ID":
                     accumulator[m].append(Animal_ID)
-                if m == "Group":
-                    accumulator[m].append(Group)
-                if m == "coding":
-                    accumulator[m].append(coding)
+                if m == "sex":
+                    accumulator[m].append(sex)
+                # if m == "Group":
+                #     accumulator[m].append(Group)
+                if m == "code":
+                    accumulator[m].append(code)
                 if m == "protocol":
                     accumulator[m].append(proto)
                 if m == "Ibreak":
@@ -563,15 +674,14 @@ class GetAllIVs:
         for m in measures:
             if m in no_average:
                 if m == "Cell_ID":
-                    print(accumulator[m])
                     accumulator[m] = accumulator[m][0]
                 if m == "Date":
                     accumulator[m] = accumulator[m][0]
                 if m == "Animal_ID":
                     accumulator[m] = accumulator[m][0]
-                if m == "Group":
+                if m == "sex":
                     accumulator[m] = accumulator[m][0]
-                if m == "coding":
+                if m == "code":
                     accumulator[m] = accumulator[m][0]
                 if m == "protocol":
                     accumulator[m] = [Path(k).name for k in accumulator[m]]
@@ -599,7 +709,7 @@ class GetAllIVs:
 
         assert mode in ["OU", "EU"]
 
-        Accumulator = pd.DataFrame(spike_measures)
+        # Accumulator = pd.DataFrame(spike_measures)
         dates = self.dfs.date.unique()
 
         # for each mouse (day) :: Observational Unit AND Experimental Unit
@@ -608,19 +718,18 @@ class GetAllIVs:
 
         OU_accumulator = []
         for day in dates:
-            Day_accumulator = []
             for idx in self.dfs.index[
                 self.dfs["date"] == day
             ]:  # for each cell in that day: Observational UNIT
                 Cell_accumulator = self.make_emptydict(spike_measures)
                 Cell_ID = self.make_cell(idx)
-                coding = self.dfs.at[idx, "coding"]
-                Group = self.dfs.at[idx, "Group"]
-                Animal_ID = self.dfs.at[idx, "ID"]
+                code = self.dfs.iloc[idx][self.code_metaname]
+                Animal_ID = self.dfs.iloc[idx]["animal identifier"]
+                sex = self.dfs.iloc[idx]["sex"]
                 ages = self.make_emptydict(spike_measures)
-                dspk = self.dfs.at[idx, "Spikes"]  # get the Spikes dict
-                dfi = self.dfs.at[idx, "IV"]
-                day_label = self.dfs.at[idx, "date"][:-4]
+                dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
+                dfi = self.dfs.iloc[idx]["IV"]
+                day_label = self.dfs.iloc[idx]["date"][:-4]
                 if pd.isnull(dspk) or len(dspk) == 0:  # nothing in the Spikes column
                     continue
                 for proto in dspk.keys():
@@ -630,19 +739,19 @@ class GetAllIVs:
                         proto,
                         Cell_ID=Cell_ID,
                         Animal_ID=Animal_ID,
-                        Group=Group,
-                        coding=coding,
+                        # Group=Group,
+                        code=code,
+                        sex = sex,
                         day=day,
                         accumulator=Cell_accumulator,
                     )
-
                 Cell_accumulator = self._get_cell_means(
                     Cell_accumulator,
                     spike_measures,
                 )  # get mean values for the cell
                 OU_accumulator.append(Cell_accumulator)
-
-        return OU_accumulator
+        accumulator = pd.DataFrame(OU_accumulator)
+        return accumulator
 
         # if mode == "EU":  # mean by day
         #     for m in spike_measures:
@@ -655,16 +764,16 @@ class GetAllIVs:
         #         else:
         #             OU_accumulator[m] = np.nanmean(OU_accumulator[m])  # average across all cells in the day
         #     Accumulator = pd.concat((Accumulator, OU_accumulator), ignore_index=True)
-        #     # code = self.dfs.at[idx, "coding"]
-        #     # exp_unit = self.dfs.at[idx, "Date"]
+        #     # code = self.dfs.iloc[idx][self.code_metaname]
+        #     # exp_unit = self.dfs.iloc[idx]["Date"]
         #     # spike_hues[m].append(code)
         #     # Cell_IDs[m].append(exp_unit)
         # elif mode == "OU":  # or mean from each individual cell
         #     Accumulator = pd.concat((Accumulator, pd.DataFrame(OU_accumulator)), ignore_index=True)
-        #     # code = self.dfs.at[idx, "coding"]
-        #     # obs_unit = self.dfs.at[idx, "Date"]
-        #     # sl = self.dfs.at[idx, "slice_slice"]
-        #     # cell = self.dfs.at[idx, "cell_cell"]
+        #     # code = self.dfs.iloc[idx][self.code_metaname]
+        #     # obs_unit = self.dfs.iloc[idx]["Date"]
+        #     # sl = self.dfs.iloc[idx]["slice_slice"]
+        #     # cell = self.dfs.iloc[idx]["cell_cell"]
         #     # spike_hues[m].extend([code] * len(OU_accumulator[m]))
         #     # Cell_IDs[m].extend([Cell_ID])
         # else:
@@ -684,9 +793,158 @@ class GetAllIVs:
         # ofile = Path(f"R_{self.experiment}_Spikes_{self.celltype:s}_{self.mode}.csv")
         # ofile.write_text(ot)
 
-        return Accumulator
+        # return Accumulator
 
-    def plot_spike_info(self, mode, coding="code", parentFigure=None):
+    def nancount(self, a):
+        return(int(len(~np.isnan(a))))
+
+    def plot_summary_info(self, datatype:str, mode, code:str, pax:object, parentFigure=None):
+        if datatype == 'spike':
+            df_accum = self._get_spike_info(mode)
+            use_measures = spike_measures
+            paxx = paxes
+        elif datatype == 'iv':
+            use_measures = iv_measures
+            df_accum = self._get_iv_info(mode)
+            paxx = paxesb
+        df_accum = df_accum[df_accum.code != ' ']  # remove unidentified groups
+        df_accum.replace([np.inf, -np.inf], np.nan, inplace=True)
+        
+        self.print_census(df_accum)
+
+        code_by_param = {}  # dict of all the codes available for a parameter we measure
+        
+        for param in use_measures:
+            all_codes = {}
+            with pd.option_context("mode.use_inf_as_null", True):
+                df_accum = df_accum.dropna(subset=[param, self.code_metaname], how="all")
+            # get all of the code values in the dataframe, from the selected column
+            no_code = df_accum.iloc[0]['code'] == []
+            if no_code:
+                codes = []
+            else:
+               codes = list(set(df_accum['code']))
+            code_by_param[param] = codes
+
+
+            if (
+                param not in no_average
+                and len(codes) > 1
+                and len(code_by_param[param][0]) > 1
+                and len(code_by_param[param][1]) > 1
+            ):
+
+                group_1 = df_accum[df_accum.code == code_by_param[param][0]][param].values
+                group_2 = df_accum[df_accum.code == code_by_param[param][1]][param].values
+                if self.nancount(group_1) > 0 and self.nancount(group_2) > 0:
+
+                    print(f"\nParam: {param:<20s}:")
+                    print("group1: ", group_1)
+                    print("group2: ", group_2)
+                    t, p = scipy.stats.ttest_ind(
+                        group_1,
+                        group_2,
+
+                        equal_var=False,
+                        nan_policy="omit",
+                    )
+                    print(f"        t={t:.3f}  p={p:.4f}")
+                    print(
+                        f"        A: mean={np.nanmean(group_1):8.3f} std={np.nanstd(group_1):8.3f}, N={self.nancount(group_1):d}"
+                    )
+                    print(
+                        f"        B: mean={np.nanmean(group_2):8.3f} std={np.nanstd(group_2):8.3f}, N={self.nancount(group_2):d}"
+                    )
+
+                    # KW
+                    if len(code_by_param.keys()) == 4:
+                        group_3 = df_accum[df_accum.code == code[3]][param].values
+                        group_4 = df_accum[df_accum.code == code[4]][param].values
+                        if self.nancount(group_3) > 0 and self.nancount(group_4) > 0:
+                            if (
+                                len(group_3) > 0
+                                and len(group_4) > 0
+                            ):
+                                s, p = scipy.stats.kruskal(
+                                    group_1,
+                                    group_2,
+                                    group_3,
+                                    group_4,
+                                )
+                                print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
+                        elif len(code_by_param[param]) == 3:
+                            group_3 = df_accum[df_accum.code == code[3]][param].values
+                            if self.nancount(group_3) > 0:
+
+                                s, p = scipy.stats.kruskal(
+                                    group_1,
+                                    group_2,
+                                    group_3,
+                                )
+                                print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
+                else:
+                    if param not in no_average:
+                        print(
+                            "\nEmpty data set for at least one category for param = ", param
+                        )
+            print("=" * 80)
+
+        iax = 0
+        for i, measure in enumerate(use_measures):
+            if measure is None or measure in no_average or len(codes) == 0:
+                print("s    > Skipping plotting measure: ", measure, measure in no_average, len(codes))
+                continue
+            yd = df_accum[measure].replace([np.inf], np.nan)
+            x = pd.Series(df_accum["code"])
+            sex = pd.Series(df_accum["sex"])
+            iasort = x.argsort()
+            if np.all(np.isnan(yd)):
+                iax += 1
+                continue  # skip plot if no data
+
+            dfm = pd.DataFrame({"Group": x, "measure": yd, "group": x, "sex": sex})
+            sns.violinplot(
+                data=dfm,
+                x="Group",
+                y="measure",
+                ax=pax[iax],
+                order=[code_by_param[param][0], code_by_param[param][1]],
+                palette=self.codecolors,
+                inner=None,
+                saturation=1.0,
+            )
+            mpl.setp(pax[iax].collections, alpha=0.3)
+            orders = sorted([code_by_param[param][0], code_by_param[param][1]])
+            # sns.swarmplot(data=dfm, x='Group', y='measure', ax=pax[i], order=['A', 'B'], hue="Group", palette=self.codecolors, edgecolor='grey', size=2.5)
+            for sex, marker, edgecolor, color in zip(['M', 'F'], ['s', 'o'], ['k', 'w'], ['k', 'b']):
+                dfm_persex = dfm[dfm["sex"] == sex]
+                sns.stripplot(
+                    data=dfm_persex,
+                    x="Group",
+                    y="measure",
+                    ax=pax[iax],
+                    hue="sex",
+                    marker=marker,
+                    edgecolor=edgecolor,
+                    linewidth=0.5,
+                    dodge=True,
+                    hue_order=['M', 'F'],
+                    palette=[color]*2, # self.codecolors,
+                    #self.codecolors,
+
+                    size=2.5,
+                )
+            # sns.boxplot(data = dfm, x='Group', y="measure",  ax=pax[i], palette=self.codecolors, orient='v', width=0.5, saturation=1.0)
+            pax[iax].set_title(measure, fontsize=8)  # .replace('_', '\_'))
+            pax[iax].set_ylabel(ylabels[measure], fontsize=7)
+            pax[iax].set_ylim(paxx[measure])
+
+  
+            iax += 1
+        return df_accum
+
+
+    def plot_spike_info(self, mode, code="genotype", parentFigure=None):
         """Break down the spike analysis and make a set of plots
 
         Args:
@@ -720,110 +978,9 @@ class GetAllIVs:
         self.Pspikes.figure_handle.suptitle(
             "{0:s}   {1:s}".format(self.experiment, self.celltype)
         )
-        accumulator = self._get_spike_info(mode)
-        dcomp = pd.DataFrame(accumulator)
-
-        gps = {}
-        for param in spike_measures:
-            groups = {}
-            with pd.option_context("mode.use_inf_as_null", True):
-                dcomp = dcomp.dropna(subset=[param, "coding"], how="all")
-            #    print('dcomp: ', param, '\n', dcomp)
-            codes = list(set(dcomp["coding"]))
-            for code in codes:
-                if code not in list(groups.keys()):
-                    new_code = code
-                    groups[new_code] = (
-                        dcomp[(dcomp["coding"] == new_code)][param]
-                        .replace(np.inf, np.nan)
-                        .dropna(how="all")
-                    )
-            gps[param] = groups
-
-            if (
-                param not in no_average
-                and len(gps[param]["A"]) > 1
-                and len(gps[param]["B"]) > 1
-            ):
-                t, p = scipy.stats.ttest_ind(
-                    gps[param]["A"], gps[param]["B"], equal_var=False, nan_policy="omit"
-                )
-                print(f"\nParam: {param:<20s}:", end="")
-                print(f"        t={t:.3f}  p={p:.4f}")
-                print(
-                    f"        A: mean={np.mean(gps[param]['A']):8.3f} std={np.std(gps[param]['A']):8.3f}, N={len(gps[param]['A']):d}"
-                )
-                print(
-                    f"        B: mean={np.mean(gps[param]['B']):8.3f} std={np.std(gps[param]['B']):8.3f}, N={len(gps[param]['B']):d}"
-                )
-
-                # KW
-                if "AA" in gps[param].keys() and "AAA" in gps[param].keys():
-                    if len(gps[param]["AA"]) > 0 and len(gps[param]["AAA"]) > 0:
-                        s, p = scipy.stats.kruskal(
-                            gps[param]["B"],
-                            gps[param]["A"],
-                            gps[param]["AA"],
-                            gps[param]["AAA"],
-                        )
-                        print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
-                    elif len(gps[param]["AA"]) > 0 and len(gps[param]["AAA"]) == 0:
-                        s, p = scipy.stats.kruskal(
-                            gps[param]["B"],
-                            gps[param]["A"],
-                            gps[param]["AA"],
-                        )
-                        print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
-            else:
-                if param not in no_average:
-                    print(
-                        "\nEmpty data set for at least one category for param = ", param
-                    )
-            print("=" * 80)
-
-        iax = 0
-        for i, measure in enumerate(spike_measures):
-            if measure is None or measure in no_average:
-                print("skipping plotting measure: ", measure)
-                continue
-            yd = dcomp[measure].replace([np.inf], np.nan)
-
-            x = pd.Series(dcomp["coding"])
-            iasort = x.argsort()
-            if np.all(np.isnan(yd)):
-                iax += 1
-                continue  # skip plot if no data
-
-            dfm = pd.DataFrame({"Group": x, "measure": yd, "group": x})
-            sns.violinplot(
-                data=dfm,
-                x="Group",
-                y="measure",
-                ax=pax[iax],
-                order=["A", "B"],
-                palette=palette,
-                inner=None,
-                saturation=1.0,
-            )
-            mpl.setp(pax[iax].collections, alpha=0.3)
-            # sns.swarmplot(data=dfm, x='Group', y='measure', ax=pax[i], order=['A', 'B'], hue="Group", palette=palette, edgecolor='grey', size=2.5)
-            sns.stripplot(
-                data=dfm,
-                x="Group",
-                y="measure",
-                ax=pax[iax],
-                hue="Group",
-                order=["A", "B"],
-                palette=palette,
-                edgecolor="grey",
-                size=2.5,
-            )
-            # sns.boxplot(data = dfm, x='Group', y="measure",  ax=pax[i], palette=palette, orient='v', width=0.5, saturation=1.0)
-            pax[iax].set_title(measure, fontsize=7)  # .replace('_', '\_'))
-
-            pax[iax].set_ylim(paxes[measure])
-
-            iax += 1
+        
+        df_accum = self.plot_summary_info(datatype='spike', mode=mode, code=code,
+            pax=pax, parentFigure=parentFigure)
 
         iax = 0
         for i, measure in enumerate(spike_measures):
@@ -833,151 +990,20 @@ class GetAllIVs:
                 if pax[iax].get_legend() is not None:
                     mpl.setp(pax[iax].get_legend().get_texts(), fontsize="5")
                     pax[iax].legend(bbox_to_anchor=(1.02, 1.0))
+                    handles, labels = pax[iax].get_legend_handles_labels()
+                    # print("labels: ", labels)
+                    handles = [handles[1], handles[3]]
+                    labels = [labels[2], labels[3]]
+                    pax[iax].legend(handles, labels, bbox_to_anchor=(1.02, 1.5), fontsize=8)
             else:
                 if pax[iax].get_legend() is not None:
                     pax[iax].get_legend().remove()
             iax += 1
 
-        self.spike_dataframe = dcomp
+        self.spike_dataframe = df_accum
         return self.Pspikes
 
-    # def _get_measures(self, spikedict, fidict, age):
-    #     """Get the spike data from all of the protocols
-    #     in the spike dict
-
-    #     Args:
-    #         spikedict (dictionary): spike analysis from this protocol
-    #         fidict (dictionary): fi analysis from this protocol
-    #         ages (_type_): _description_
-
-    #     Returns:
-    #         _type_: _description_
-    #     """
-    #     cellmeas = self.make_emptydict(spike_measures)
-    #     for protocol in spikedict.keys():  # for every protocol in the Spikes dict
-    #         if not isinstance(protocol, Path):  # ooops, skip that one
-    #             continue
-    #         if not self.select_protocols(u):
-    #             continue
-    #         for m in spike_measures:
-    #             if m is None:
-    #                 continue
-    #             age[m].append(age)
-    #             if m == "spikethreshold":
-    #                 fi = fidict[protocol]["FI_Curve"]
-    #                 firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[0]
-    #                 if len(firstsp) > 0:
-    #                     firstsp = firstsp[0]
-    #                     cellmeas[m].append(fi[0][firstsp] * 1e12)  # convert to pA
-    #                 else:
-    #                     cellmeas[m].append(np.nan)
-    #             elif m == "maxrate":
-    #                 fi = fidict[protocol]["FI_Curve"]
-    #                 firstsp = np.where((fi[1] > 0) & (fi[0] > 0))[
-    #                     0
-    #                 ]  # spikes and positive current together
-    #                 if len(firstsp) > 0 and np.max(
-    #                     fi[1] >= 2e-9
-    #                 ):  # spikes and minimum current injection
-    #                     cellmeas[m].append(
-    #                         np.max(fi[1][firstsp]) / fidict[protocol]["pulseDuration"]
-    #                     )  # convert to spikes/second
-    #                 else:
-
-    #                     cellmeas[m].append(np.nan)
-    #             elif m == "Ibreak":
-    #                 fig = fidict[protocol]["FI_Growth"]
-    #                 if len(fig) > 0:
-    #                     par = fig[0]["parameters"]
-    #                     if len(par) > 0 and len(par[0]) > 0:
-    #                         cellmeas[m].append(par[0][1])
-    #             elif m == "Irate":
-    #                 fig = fidict[protocol]["FI_Growth"]
-    #                 if len(fig) > 0:
-    #                     par = fig[0]["parameters"]
-    #                     if len(par) > 0 and len(par[0]) > 0:
-    #                         cellmeas[m].append(par[0][4])
-    #             elif m == "FR_Slope":  # get slope from near-threshold firing
-    #                 rate_spks = []
-    #                 rate_i = []
-    #                 fidata = fidict[protocol]["FI_Curve"]
-    #                 for fsp in range(len(fidata[0])):
-    #                     if fsp not in spikedict.keys():
-    #                         continue
-    #                     nspkx = len(spikedict[fsp])
-    #                     if nspkx > 0 and fidata[0][fsp] > 0.0:
-    #                         if len(rate_spks) < 3:
-    #                             rate_spks.append(
-    #                                 nspkx / fidict[protocol]["pulseDuration"]
-    #                             )
-    #                             rate_i.append(fidata[0][fsp] * 1e9)
-    #                 if len(rate_i) > 0:
-
-    #                     p = np.polyfit(rate_i, rate_spks, 1)
-    #                     cellmeas[m].append(p[0])  # store slope from fit
-    #             else:
-
-    #                 if m in list(d[u].keys()):  #  and m not in measures_fromspikes:
-    #                     cellmeas[m].append(d[u][m])
-
-    #                 else:  # loop through traces
-    #                     xm = []
-    #                     spkdata = spikedict[protocol]["spikes"]
-    #                     for tr in spkdata.keys():  # each trace with spikes
-    #                         for spk in spkdata[tr]:
-    #                             if m in spikedict[protocol]["spikes"][tr][spk].keys():
-    #                                 if (
-    #                                     spikedict[protocol]["spikes"][tr][spk][m]
-    #                                     is not None
-    #                                 ):
-    #                                     xm.append(
-    #                                         spikedict[protocol]["spikes"][tr][spk][m]
-    #                                     )
-
-    #                     if len(xm) > 0:
-    #                         cellmeas[m].append(np.nanmean(xm))
-    #     return cellmeas
-
-    # def plot_age(self):
-    #
-    #     self.P_age = PH.regular_grid(3, 4, order='columns', figsize=(8, 5.), showgrid=False,
-    #             verticalspacing=0.08, horizontalspacing=0.08,
-    #             margins={'leftmargin': 0.12, 'rightmargin': 0.05, 'topmargin': 0.08, 'bottommargin': 0.05},
-    #             labelposition=(-0.05, 1.05), parent_figure=None, panel_labels=None)
-    #     pax_age = self.P_age.axarr.ravel()
-    #     self.P_age.figure_handle.suptitle('{0:s}   {1:s}'.format(args.experiment, args.celltype))
-    #
-    #     accumulator = self.make_emptydict(measures)
-    #     spike_hues = self.make_emptydict(measures)
-    #     for idx in self.dfs.index:  # for every entry in the table
-    #
-    #         cellmeas = self.make_emptydict(measures)
-    #         ages =  self.make_emptydict(measures)
-    #         d = self.dfs.at[idx, 'Spikes']  # get the Spikes dict
-    #         day = self.dfs.at[idx, 'date'][:-4]
-    #
-    #         for u in d.keys():  # for every protocol in the Spikes dict
-    #             if not isinstance(u, Path):  # ooops, skip that one
-    #                 continue
-    #             for m in measures:
-    #                 if 'FI_Curve' not in list(d[u].keys()):  # protocol needs an FI_Curve analysis
-    #                     continue
-    #                 ages[m].append(self.get_age(idx))
-    #                 pax_age[i].plot(ages[m], yd, 'o')
-    #                 pax_age[i].set_xlim(0, 150.)
-    #                 if m in list(paxes.keys()):
-    #                     pax_age[i].set_ylim(paxes[m])
-    #                 elif m in list(paxesb.keys()):
-    #                     pax_age[i].set_ylim(paxesb[m])
-    #
-    #                 pax_age[i].set_title(m, fontsize=7)
-    #
-    #                 if pax_age[i].get_legend() is not None:
-    #                     mpl.setp(pax_age[i].get_legend().get_texts(), fontsize='6')
-    #         # print('spike_hues: ', spike_hues)
-    #
-    #
-
+    
     def _get_iv_parameter(
         self,
         measure: str,
@@ -1012,8 +1038,10 @@ class GetAllIVs:
         proto: str,
         Cell_ID: str,
         Animal_ID: str,
-        coding: str,
-        Group: str,
+        code: str,
+        age: str,
+        sex: str,
+        # Group: str,
         day,
         accumulator: dict,
     ):
@@ -1028,6 +1056,9 @@ class GetAllIVs:
             proto (str): Protocol name within the dict to use
         """
         cellmeas = dfi[proto]
+        cellmeas["age"] = age
+        cellmeas["code"] = code
+        cellmeas["sex"] = sex
         tracekeys = list(cellmeas.keys())
         for m in iv_measures:
             if m not in no_average:
@@ -1046,10 +1077,14 @@ class GetAllIVs:
                     accumulator[m].append(day)
                 if m == "Animal_ID":
                     accumulator[m].append(Animal_ID)
-                if m == "Group":
-                    accumulator[m].append(Group)
-                if m == "coding":
-                    accumulator[m].append(coding)
+                if m == "sex":
+                    accumulator[m].append(sex)
+                if m == "age":
+                    accumulator[m].append(age)
+                # if m == "Group":
+                #     accumulator[m].append(Group)
+                if m == "code":
+                    accumulator[m].append(code)
                 if m == "protocol":
                     accumulator[m].append(proto)
                 if m == "Ibreak":
@@ -1094,14 +1129,17 @@ class GetAllIVs:
             ]:  # for each cell in that day: Observational UNIT
                 Cell_accumulator = self.make_emptydict(iv_measures)
                 Cell_ID = self.make_cell(idx)
-                coding = self.dfs.at[idx, "coding"]
-                Group = self.dfs.at[idx, "Group"]
-                Animal_ID = self.dfs.at[idx, "ID"]
+                code = self.dfs.iloc[idx][self.code_metaname]
+                if code == ' ' or pd.isnull(code):
+                    continue
+                sex = self.dfs.iloc[idx]["sex"]
+                Animal_ID = self.dfs.iloc[idx]["animal identifier"]
+                age = self.dfs.iloc[idx]["age"]
                 ages = self.make_emptydict(iv_measures)
-                dspk = self.dfs.at[idx, "Spikes"]  # get the Spikes dict
-                dfi = self.dfs.at[idx, "IV"]
+                dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
+                dfi = self.dfs.iloc[idx]["IV"]
 
-                day_label = self.dfs.at[idx, "date"][:-4]
+                day_label = self.dfs.iloc[idx]["date"][:-4]
                 if pd.isnull(dspk) or len(dspk) == 0:  # nothing in the Spikes column
                     continue
                 for proto in dspk.keys():
@@ -1111,8 +1149,10 @@ class GetAllIVs:
                         proto,
                         Cell_ID=Cell_ID,
                         Animal_ID=Animal_ID,
-                        Group=Group,
-                        coding=coding,
+                        # Group=Group,
+                        sex=sex,
+                        age=age,
+                        code=code,
                         day=day,
                         accumulator=Cell_accumulator,
                     )
@@ -1123,140 +1163,19 @@ class GetAllIVs:
                 )  # get mean values for the cell
                 OU_accumulator.append(Cell_accumulator)
 
-        return OU_accumulator
+        return pd.DataFrame(OU_accumulator)
 
-    def plot_IV_info(self, mode, parentFigure=None):
+    def plot_IV_info(self, mode, code, parentFigure=None):
         """
         Mode can be OU for observational unit (CELL) or EU for experimental Unit
         (Animal)
         """
-        #         ### IV
-        EU_accumulator = self.make_emptydict(iv_measures)
-        EU_iv_hues = self.make_emptydict(iv_measures)
-        EU_Cell_IDs = self.make_emptydict(iv_measures)
 
         modestring = "Unit = Experiment (animal)"
         if mode == "OU":
             modestring = "Unit = Observational (cell)"
         cprint("c", f"Accumulating by mode: {modestring:s}")
-        dates = self.dfs.date.unique()
-        accumulator = self._get_iv_info(mode)
-        dcomp = pd.DataFrame(accumulator)
-        # for each mouse (day) :: Biological Unit AND Experimental Unit
-        # for day in dates:
-        #     OU_accumulator = self.make_emptydict(iv_measures)  #
-        #     for idx in self.dfs.index[
-        #         self.dfs["date"] == day
-        #     ]:  # for each cell in that day: Observational UNIT
-        #         div = self.dfs.at[idx, "IV"]  # get the IV dict
-        #         day = self.dfs.at[idx, "date"][:-4]
-        #         cellmeas = self.make_emptydict(iv_measures)
-        #         if pd.isnull(div):
-        #             continue
-        #         print("div.keys: ", div.keys())
-        #         for u in div.keys():
-        #             if not isinstance(u, Path):
-        #                 continue
-        #             for m in iv_measures:
-        #                 if m not in list(div[u].keys()):
-        #                     continue
-        #                 if div[u][m] is not None:
-        #                     cellmeas[m].append(div[u][m])
-        #                 else:
-        #                     continue  # cellmeas[m].append(np.nan)
-        #                 # cellmeas[m] = [x for x in cellmeas[m] if x != None] if
-        #                 # day in self.coding:
-        #                 #     iv_hue[m].append(self.coding[day][1]) else:
-        #                 # iv_hue[m].append('Z')
-
-        #         for m in OU_accumulator.keys():
-        #             ms = cellmeas[m]
-        #             if len(cellmeas[m]) == 0:
-        #                 ms = np.nan
-        #             else:
-        #                 ms = np.nanmean(cellmeas[m])
-        #             OU_accumulator[m].append(ms)  # accumulate average within the cell
-        #     # now accumulate the experimental units (mean for each DAY)
-        #     for m in iv_measures:
-        #         if mode == "EU":  # mean by day
-        #             EU_accumulator[m].append(np.nanmean(OU_accumulator[m]))
-        #             code = self.dfs.at[idx, "coding"]
-        #             exp_unit = self.dfs.at[idx, "Date"]
-        #             EU_iv_hues[m].append(code)
-        #             EU_Cell_IDs[m].append(exp_unit)
-        #         elif mode == "OU":  # or meany from each individual cell
-        #             EU_accumulator[m].extend(OU_accumulator[m])
-        #             code = self.dfs.at[idx, "coding"]
-        #             obs_unit = self.dfs.at[idx, "Date"]
-        #             sl = self.dfs.at[idx, "slice_slice"]
-        #             cell = self.dfs.at[idx, "cell_cell"]
-        #             EU_iv_hues[m].extend([code] * len(OU_accumulator[m]))
-        #             EU_Cell_IDs[m].extend(
-        #                 [f"{str(obs_unit):s}_{sl:s}_{cell:s}"] * len(OU_accumulator[m])
-        #             )
-
-        gps = {}
-        for param in iv_measures:
-            groups = {}
-            with pd.option_context("mode.use_inf_as_null", True):
-                dcomp = dcomp.dropna(subset=[param, "coding"], how="all")
-
-            codes = list(set(dcomp["coding"]))
-            for code in codes:
-                if code not in list(groups.keys()):
-                    new_code = code
-                    groups[new_code] = (
-                        dcomp[(dcomp["coding"] == new_code)][param]
-                        .replace(np.inf, np.nan)
-                        .dropna(how="all")
-                    )
-
-            gps[param] = groups
-            if (
-                param not in no_average
-                and len(gps[param]["A"]) > 1
-                and len(gps[param]["B"]) > 1
-            ):
-
-                t, p = scipy.stats.ttest_ind(
-                    gps[param]["A"], gps[param]["B"], equal_var=False, nan_policy="omit"
-                )
-                print(f"\nParam: {param:>20s}:", end="")
-                print(f"        t={t:.3f}  p={p:.4f}")
-                print(
-                    f"        A: mean={np.mean(gps[param]['A']):8.3f} std={np.std(gps[param]['A']):8.3f}, N={len(gps[param]['A']):d}"
-                )
-                print(
-                    f"        B: mean={np.mean(gps[param]['B']):8.3f} std={np.std(gps[param]['B']):8.3f}, N={len(gps[param]['B']):d}"
-                )
-
-                if (
-                    len(gps[param]["A"]) > 0
-                    and len(gps[param]["B"] > 0)
-                    and "AA" in gps[param].keys()
-                    and "AAA" in gps[param].keys()
-                ):
-                    s, p = scipy.stats.kruskal(
-                        gps[param]["A"],
-                        gps[param]["B"],
-                        gps[param]["AA"],
-                        gps[param]["AAA"],
-                    )
-                    print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
-                elif (
-                    len(gps[param]["A"]) > 0
-                    and len(gps[param]["B"] > 0)
-                    and "AA" in gps[param].keys()
-                    and "AAA" not in gps[param].keys()
-                ):
-                    s, p = scipy.stats.kruskal(
-                        gps[param]["A"],
-                        gps[param]["B"],
-                        gps[param]["AA"],
-                    )
-                    print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
-                print("=" * 80)
-
+        
         self.Pb = PH.regular_grid(
             2,
             3,
@@ -1280,59 +1199,36 @@ class GetAllIVs:
             f"{self.experiment:s}   {self.celltype:s} BY: {modestring:s}"
         )
 
+        df_accum = self.plot_summary_info(datatype='iv', mode=mode, code=code,
+            pax = paxb, parentFigure=parentFigure)
+
+       
         iax = 0
         for i, measure in enumerate(iv_measures):
             if measure in no_average:
                 continue
 
-            x = pd.Series(dcomp["coding"])
-            yd = dcomp[measure].replace([np.inf], np.nan)
-            iasort = x.argsort()
-            if np.all(np.isnan(yd)):
-                iax += 1
-                continue  # skip plot if no data
-
-            dfm = pd.DataFrame({"Group": x, "measure": yd, "group": x})
-            # df_iv = df_iv[df_iv[measure].replace([np.inf], np.nan)]
-            sns.violinplot(
-                data=dfm,
-                x="Group",
-                y="measure",
-                ax=paxb[iax],
-                order=["A", "B"],
-                palette=palette,
-                inner=None,
-            )
-            mpl.setp(paxb[iax].collections, alpha=0.3)
-            # sns.swarmplot(data=y, x='coding', y=m, ax=paxb[i], hue="coding", order=['A', 'B'], palette=palette, size=2.5)
-            sns.stripplot(
-                data=dfm,
-                x="Group",
-                y="measure",
-                ax=paxb[iax],
-                hue="Group",
-                order=["A", "B"],
-                palette=palette,
-                size=2.5,
-            )
-            paxb[iax].set_title(measure, fontsize=7)  # .replace('_', '\_'))
-            paxb[iax].set_ylim(paxesb[measure])
+          
             if measure == "Rin":
                 if paxb[iax].get_legend() is not None:
                     mpl.setp(paxb[iax].get_legend().get_texts(), fontsize="6")
                     paxb[iax].legend(bbox_to_anchor=(-0.35, 1.0))
+                    handles, labels = paxb[iax].get_legend_handles_labels()
+                    # print("labels: ", labels)
+                    handles = [handles[1], handles[3]]
+                    labels = [labels[2], labels[3]]
+                    paxb[iax].legend(handles, labels, bbox_to_anchor=(-0.35, 1.0), fontsize=7)
                     # ap1l = d[u]['AP1_Latency'] ap1hw = d[u]['AP1_HalfWidth']
                     # apthr = d[u]['FiringRate_1p5T']
             else:
                 paxb[iax].get_legend().remove()
             iax += 1
 
-        self.iv_dataframe = dcomp
+        self.iv_dataframe = df_accum
         return self.Pb
 
     def get_age(self, idx):
-        # print(self.dfs.columns)
-        age = self.dfs.at[idx, "age"]
+        age = self.dfs.iloc[idx]["age"]
         if isinstance(age, str):
             if age[0] in ["p", "P"]:
                 age = int(age[1:])
@@ -1382,7 +1278,6 @@ def _make_short_name(row):
 
 
 def checkforprotocol(df, index, protocol: str):
-    # print(row.data_complete)
     prots = df.data_complete[index].split(",")
     prots2 = df.data_incomplete[index].split(",")
     prots.extend([p.split(".")[0] for p in prots2])
@@ -1423,14 +1318,15 @@ def get_protocols_from_datasheet(
     df["shortdate"] = df.apply(_make_short_name, axis=1)
     df["cell_name"] = df.apply(get_cell_name, axis=1)
     # read the code dataframe (excel sheet)
-    code_df = pd.read_excel(code_file, sheet_name=code_sheet)
-    # be sure types are correct
-    for coln in ["age", "ID", "Group"]:
-        code_df[coln] = code_df[coln].astype(str)
-    code_df = code_df.drop("age", axis="columns")
-    dfm = pd.merge(
-        df, code_df, left_on="shortdate", right_on="Date", how="left"
-    )  # codes are by date only
+    # code_df = pd.read_excel(code_file, sheet_name=code_sheet)
+    # # be sure types are correct
+    # for coln in ["age", "ID", "Group", "sex", "cell_expression"]:
+    #     code_df[coln] = code_df[coln].astype(str)
+    # code_df = code_df.drop("age", axis="columns")
+    # dfm = pd.merge(
+    #     df, code_df, left_on="shortdate", right_on="Date", how="left"
+    # )  # codes are by date only
+    dfm = df
     dfm["iv_name"] = ""
     # print("dfm columns: ", dfm.columns)
     # make an empty dataframe with defined columns

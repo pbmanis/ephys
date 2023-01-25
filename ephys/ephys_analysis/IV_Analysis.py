@@ -119,6 +119,7 @@ class IV_Analysis():
         self.annotationFilename = None
         self.map_annotationFilename = None
         self.extra_subdirectories = None
+        self.skip_subdirectories = None
         self.artifactFilename = None
         self.pdfFilename = None
         self.exclusions = None
@@ -236,6 +237,7 @@ class IV_Analysis():
             else:
                 self.map_annotationFilename = None
 
+            # handle directories to include or skip
             if (
                 "extra_subdirectories" in list(self.experiment.keys())
                 and self.experiment["extra_subdirectories"] is not None
@@ -243,7 +245,13 @@ class IV_Analysis():
                 self.extra_subdirectories = self.experiment["extra_subdirectories"]
             else:
                 self.extra_subdirectories = None
-            
+            if (
+                "skip_subdirectories" in list(self.experiment.keys())
+                and self.experiment["skip_subdirectories"] is not None
+            ):
+                self.skip_subdirectories = self.experiment["skip_subdirectories"]
+            else:
+                self.skip_subdirectories = None
             if (
                 "iv_analysisFilename" in list(self.experiment.keys())
                 and self.experiment["iv_analysisFilename"] is not None
@@ -356,7 +364,7 @@ class IV_Analysis():
                     print(f"    date: {dx:s}")
             print("  ... Retrieved day: ", day_x)
             for iday in day_x.index:
-                self.do_day(iday, 0, pdf=self.pdfFilename)
+                self.do_day(iday, pdf=self.pdfFilename)
 
         # get the complete protocols:
         # Only returns a dataframe if there is more than one entry
@@ -364,11 +372,11 @@ class IV_Analysis():
         else:
             if self.pdfFilename is None:
                 for n, iday in enumerate(range(len(self.df.index))):
-                    self.do_day(iday, n)
+                    self.do_day(iday, pdf=None)
             else:
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, iday in enumerate(range(len(self.df.index))):
-                        self.do_day(iday, n, pdf=pdf)
+                        self.do_day(iday, pdf=pdf)
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -476,23 +484,25 @@ class IV_Analysis():
         for fn in fns:  # delete the files in the tempdir
             Path(fn).unlink(missing_ok=True)
 
-    def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None):
+    def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None, pdf=None):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
         """
-        if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
-            return
         if self.dry_run:
             return
+        if not self.merge_flag or pdf is None:
+            return
+        if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
+            return
+
         # check autooutput and reset pdfFilename if true:
         # CP.cprint("c",
         #     f"Merging pdfs at {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
         # )
-        if self.merge_flag:
-            self.tempdir = Path("./temppdfs")  # use one folder and do not clear it
+
+        self.tempdir = Path("./temppdfs")  # use one folder and do not clear it
         if self.autoout:
-            self.tempdir = Path("./temppdfs")  # use one folder and do not clear it
             # print("  in auto mode")
             pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
             if slicecell is not None:
@@ -674,9 +684,6 @@ class IV_Analysis():
             cf = df.query(
                 f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}" & map == "{dprot:s}"'
             )
-        # self._testing_counter += 1
-        # if self._testing_counter > self._testing_count:
-        #     exit()
         return cf
 
     def get_celltype(self, iday):
@@ -696,21 +703,6 @@ class IV_Analysis():
         """
         original_celltype = self.df.at[iday, "cell_type"]
         datestr, slicestr, cellstr = self.make_cell(iday)
-        # fullfile = Path(self.rawdatapath, self.make_cellstr(self.df, iday))
-        #        prots = [x for x in fullfile.glob('*') if x.is_dir()]
-        # protocols = self.df.iloc[iday]
-        # allprots = self.gather_protocols(protocols["data_complete"].split(", "), protocols)
-        # print(f"   map Annotation filename:  {str(self.map_annotationFilename):s}")
-
-        # if self.map_annotationFilename is not None and len(allprots["maps"]) > 0:  # get from annotation file
-        #     cell_df = self.find_cell(
-        #         self.map_annotations, datestr, slicestr, cellstr, allprots["maps"][0]
-        #     )
-        #     if not cell_df.empty:
-        #         celltype = cell_df["cell_type"].values[0]
-        #         if not isinstance(celltype, str):
-        #             CP.cprint("cyan", f"   Map annotated celltype: {celltype:s} (original: {original_celltype:s}")
-        #             celltype = original_celltype
 
         if self.annotated_dataframe is None:
             return original_celltype, None
@@ -748,7 +740,7 @@ class IV_Analysis():
                     )
                 return original_celltype, False
 
-    def do_day(self, iday: int, nout: int = 0, pdf=None):
+    def do_day(self, iday: int, pdf=None):
         """
         Do analysis on a day's data
         Runs all cells in the day, unless slicecell has been specified - then
@@ -759,6 +751,7 @@ class IV_Analysis():
         iday : int
             index into pandas database for the day to be analyzed
 
+        pdf : bool, default=False
 
         """
         datestr, slicestr, cellstr = self.make_cell(iday)
@@ -781,13 +774,29 @@ class IV_Analysis():
                 f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
             )
             return
+        celltype, celltypechanged = self.get_celltype(iday)
+        
         fullfile = Path(
-            self.rawdatapath, self.make_cellstr(self.df, iday, shortpath=True)
-        )
+            self.rawdatapath, self.df.iloc[iday].cell_id) # self.make_cellstr(self.df, iday, shortpath=False)
+        #)
+        # print("fullfile: ", fullfile, fullfile.is_dir())
+        if self.skip_subdirectories is not None:
+            # skip matching subdirectories
+            for skip in self.skip_subdirectories:
+                # print(f"Checking skip = {skip:s} with {str(fullfile):s}")
+                if str(fullfile).find(skip) >= 0:
+                    ffparts = fullfile.parts
+                    fftail = str(Path(*ffparts[len(self.rawdatapath.parts)-1:]))
+                    CP.cprint(
+                        "r",
+                        f"SKIPPING data/date: {fftail:s}  containing: {skip:s}",
+                    )
+                    return  # skip this data set
+
         if not fullfile.is_dir():
             fullfile = Path(self.df.iloc[iday]["data_directory"],  self.make_cellstr(self.df, iday, shortpath=True))
 
-        if not fullfile.is_dir() and self.extra_subdirectories is not None:
+        if self.extra_subdirectories is not None:
             # try extra sub directories
             pathparts = fullfile.parts
             day = None
@@ -798,7 +807,6 @@ class IV_Analysis():
             if day is None:
                 CP.cprint("r", f"do_day: Day <None> found in fileparts: {str(pathparts):s}")
                 exit()
-
             for subdir in self.extra_subdirectories:
                 fullfile = Path(self.rawdatapath, subdir, day)
                 if fullfile.is_dir():
@@ -806,7 +814,8 @@ class IV_Analysis():
         if not fullfile.is_dir():
             CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
             exit()
-        celltype, celltypechanged = self.get_celltype(iday)
+
+
         prots = self.df.iloc[iday]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[iday])
 
@@ -822,12 +831,20 @@ class IV_Analysis():
             print(self.df.iloc[iday])
             print("*" * 40)
             print()
+            self.merge_pdfs(celltype, pdf=pdf)
             return
 
         elif fullfile.is_dir() and len(allprots) == 0:
             CP.cprint("m", "   Cell found, but no protocols were found")
             return
-
+        elif fullfile.is_dir() and len(allprots) > 0:
+            for prottype in allprots.keys():
+                for prot in allprots[prottype]:
+                    ffile = Path(self.df.iloc[iday].data_directory, prot)
+                    if not ffile.is_dir():
+                        CP.cprint("r", f"file/protocol day={iday:d} not found: {str(ffile):s}")
+                        print(prottype,  prot)
+                        exit()
         else:
             msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(allprots['maps']):4d} map protocols"
@@ -850,9 +867,7 @@ class IV_Analysis():
             print("All protocols: ")
             print([allprots[p] for p in allprots.keys()])
 
-        if self.merge_flag and pdf is not None:
-            self.merge_pdfs(celltype)
-            return
+        # self.merge_pdfs(celltype, pdf=pdf)
         # CP.cprint("r", f"iv flag: {str(self.iv_flag):s}")
         if self.iv_flag:
             if Path(self.iv_analysisFilename).suffix == ".h5":
@@ -861,12 +876,9 @@ class IV_Analysis():
             if pdf is not None:
                 self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(
-                iday=iday, file=fullfile, allprots=allprots, celltype=celltype, pdf=pdf
+                iday=iday, allprots=allprots, celltype=celltype, pdf=pdf
             )
-            if pdf is not None:
-                self.merge_pdfs(
-                    celltype
-                )  # do not do this until all the parallel processing for the day is done.
+            self.merge_pdfs(celltype, pdf=pdf)  
             gc.collect()
 
         if self.vc_flag:
@@ -876,13 +888,12 @@ class IV_Analysis():
             if pdf is not None:
                 self.make_tempdir()
             self.analyze_maps(iday=iday, file=fullfile, allprots=allprots, celltype=celltype, pdf=pdf)
-            if pdf is not None:
-                self.merge_pdfs(celltype)
+            self.merge_pdfs(celltype, pdf=pdf)
 
     
 
     def analyze_ivs(
-        self, iday, file: Union[Path, str], allprots: dict, celltype: str, pdf=None
+        self, iday, allprots: dict, celltype: str, pdf=None,
     ):
         """
         Overall analysis of IV protocols for one day
@@ -895,6 +906,9 @@ class IV_Analysis():
         allprots : dict
             dictionary of protocols for the day/slice/cell
 
+        pdf : None
+            if not none, then is the pdffile to write the data to
+
         Returns
         -------
         Nothing - generates pdfs and updates the pickled database file.
@@ -903,7 +917,7 @@ class IV_Analysis():
             "c",
             f"analyze ivs for index: {iday: d} ({str(self.df.at[iday, 'date']):s} )",
         )
-
+        file = Path(self.df.iloc[iday].data_directory, self.df.iloc[iday].cell_id)
         if "IV" not in self.df.columns.values:
             self.df = self.df.assign(IV=None)
         if "Spikes" not in self.df.columns.values:
@@ -1129,7 +1143,10 @@ class IV_Analysis():
         sp_result = {}
 
         fpath = Path(file, protocol)
+        
         if not fpath.is_dir():
+            print("file: ", file)
+            print("protocol: ", protocol)
             CP.cprint("r", f"File not found (analyze_iv)!! {str(fpath):s}")
             exit()
 
@@ -1233,7 +1250,7 @@ class IV_Analysis():
             gc.collect()
             return None, 0
 
-    def analyze_vcs(self, iday: int, allprots: dict):
+    def analyze_vcs(self, iday: int, allprots: dict, pdf=None):
         """
         Overall analysis of VC protocols
         Incomplete - mostly just plots the data
@@ -1276,7 +1293,10 @@ class IV_Analysis():
                         #     pdf.savefig(dpi=300)
                         mpl.close(EPVC.IVFigure)
                     mpl.close(EPVC.IVFigure)
-        self.merge_pdfs()
+        celltype = self.df.iloc[iday].cell_type
+        if len(celltype) == 0:
+            celltype = 'unknown'
+        self.merge_pdfs(celltype=celltype, pdf=pdf)
 
 
 

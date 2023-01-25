@@ -263,6 +263,7 @@ class DataSummary:
             "animal identifier",
             "sex",
             "weight",
+            "reporters",
             "solution",
             "internal",
             "temperature",
