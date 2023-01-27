@@ -1,18 +1,26 @@
-#!/usr/bin/env python3
-from __future__ import print_function
-
 """
 Brige balance tool
-Version 0.1
+Version 0.2
 
 Graphical interface
 Part of Ephysanalysis package
 
 Usage:
 bridge datadir dbfile
+
+Requires:
+Bridge Correction File. this is a Pandas Pickled database with 3 columns:
+Cell_ID, Protocol, BridgeValue
+
+If the Bridge Correction File does not exist, then you need to create it with "bridge_tool.py -db name_of_main_database"
+This will NOT overwrite an existing Bridge Correction file, but will append new rows with the bridge value set to 0
+for all cell_id/protocol files that are present in the main database but not in the bridge file.
+
+
 """
 
 import argparse
+import functools
 import os
 import pathlib
 import sys
@@ -23,40 +31,166 @@ import pandas as pd
 import pyqtgraph as pg
 from pylibrary.tools import cprint as CP
 from pyqtgraph.parametertree import Parameter, ParameterTree
+import pyqtgraph.dockarea as PGD
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+
 
 from .. import ephys_analysis as EP
+from .. import datareaders as DR
 
 cprint = CP.cprint
-# datadir = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het'
-# dbfile = 'NF107Ai32Het_bcorr2.pkl'
+
+# known data dirs by experiment:
+
+experiments = {"nf107": {
+                'datadir':'/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32Het',
+                'dbfile': '/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het_BridgeCorrections.xlsx'
+                },
+            }
+
+pg.setConfigOption('antialias', True)
 
 
-class Bridge(pg.QtWidgets.QMainWindow):
+
+class Bridge():
     """
     Visual adjustment of bridge balance on acq4 data sets. 
     Writes out to the database
     """
-    def __init__(self, args):
-        super().__init__()
-        self.setWindowTitle("Bridge Balance")
-        self.datadir = Path(args.datadir)
-        self.dbFilename = Path(args.dbfile)
+    def __init__(self, args, *kwargs):
+       
+        self.datadir = experiments[args.datadir]['datadir']
+        self.dbFilename = experiments[args.datadir]['dbfile']
         self.day = args.day
-        self.df = pd.read_pickle(str(self.dbFilename))
-        if "IV" not in self.df.columns.values:
-            print(
-                "The Brige Balance Tool requires that IVs have been created and run against the database"
-            )
-            exit(1)
+        self.df = pd.read_excel(str(self.dbFilename))
+        
         self.AR = (
-            EP.acq4_reader.acq4_reader()
+            DR.acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
         self.SP = EP.SpikeAnalysis.SpikeAnalysis()
         self.RM = EP.RmTauAnalysis.RmTauAnalysis()
         self.curves = []
         self.n_adjusted = 0
         self.this_cell = 0
+        self.zoom_mode = False
+        
+        self.app = pg.mkQApp()
+        self.app.setStyle("fusion")
+        self.app.setStyleSheet("QLabel{font-size: 11pt;} QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
+        self.app.setStyleSheet("QTreeWidgetItem{font-size: 9pt;}") #  QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
+        # Apply dark theme to Qt application
 
+        pg.setConfigOption('background', 'k')
+        pg.setConfigOption('foreground', 'w')
+        # QtWidgets.QWidget.__init__(self)
+        self.win = pg.QtWidgets.QMainWindow()
+        self.DockArea = PGD.DockArea()
+        self.win.setCentralWidget(self.DockArea)
+        self.win.setWindowTitle("Bridge Balance Corrector V0.3")
+        self.win.resize(1600, 1024)
+        self.fullscreen_widget = None
+
+        self.Dock_Controls = PGD.Dock("Controls", size=(200, 200))
+        
+        self.Dock_Table = PGD.Dock("Table", size=(400, 400))
+        self.Dock_Viewer = PGD.Dock("Viewer", size=(1280, 400))
+        self.DockArea.addDock(self.Dock_Controls, "left")
+        self.DockArea.addDock(self.Dock_Viewer, "right", self.Dock_Controls)
+        self.DockArea.addDock(self.Dock_Table, "bottom", self.Dock_Viewer)
+
+        self.table = pg.TableWidget(sortable=False)
+        self.table.setFont(QtGui.QFont('Arial', 10))
+
+        self.Dock_Table.addWidget(self.table)
+        # self.Dock_Table.raiseDock()
+        self.setup_controls_and_window()
+        # populate the table
+        table_data = self.df.T.to_dict()
+        self.table.setData(table_data)
+        # self.table.resizeRowsToContents()
+        self.table.itemDoubleClicked.connect(
+            functools.partial(self.on_double_Click, self.table)
+        )
+        self.win.show()
+
+    def setup_controls_and_window(self, parent=None):
+
+        self.controls = [
+            {"name": "Update Database", "type": "action"},
+            {"name": "Next Cell", "type": "action"},
+            {"name": "Zero Bridge", "type": "action"},
+            {"name": "Zoom", "type": "action"},
+            {"name": "Unzoom", "type": "action"},
+            {"name": "Quit", "type": "action"},
+        ]
+        self.ptree = ParameterTree()
+        self.ptreedata = Parameter.create(
+            name="Controls", type="group", children=self.controls
+        )
+        self.ptree.setParameters(self.ptreedata)
+        self.ptree.setMaximumWidth(3200)
+        self.ptree.setMinimumWidth(150)
+        self.Dock_Controls.addWidget(self.ptree)  # 
+        
+        self.dataplot = pg.PlotWidget(title="Trace Plots")
+        self.Dock_Viewer.addWidget(self.dataplot, rowspan=5, colspan=1)
+        self.dataplot.setXRange(-5.0, 2.5, padding=0.2)
+        self.dataplot.setContentsMargins(10, 10, 10, 10)
+
+        self.w1 = Slider(-20.0, 40.0, scalar=1.0)
+
+        self.Dock_Controls.addWidget(self.w1)
+        self.w1.slider.valueChanged.connect(self.update_data)
+
+    def command_dispatcher(self, param, changes):
+        """
+        Dispatcher for the commands from parametertree path[0] will be the
+        command name path[1] will be the parameter (if there is one) path[2]
+        will have the subcommand, if there is one data will be the field data
+        (if there is any)
+        """
+        for param, change, data in changes:
+            path = self.ptreedata.childPath(param)
+
+            if path[0] == "Quit":
+                print("Quitting")
+                exit()
+            if path[0] == "Update Database":
+                self.save_database()
+            if path[0] == "Next Cell":
+                self.next_cell()
+            if path[0] == "Zero Bridge":
+                self.zero_bridge()
+            if path[0] == "Zoom":
+                self.zoom_mode = True
+                self.zoom()
+            if path[0] == "UnZoom":
+                self.zoom_mode = False
+                self.zoom()
+ 
+
+    def on_double_Click(self, w):
+        """
+        Double click gets the selected row and then does an analysis
+        """
+        index = w.selectionModel().currentIndex()
+        self.selected_index_row = index.row()
+        self.analyze_from_table(index.row())
+        print("index: ", index.row)
+
+    def get_table_data(self, index_row):
+        value = index_row
+        print("value: ", value)
+        print(self.df.iloc[value])
+        return self.df.iloc[value]
+
+    def analyze_from_table(self, index):
+        selected = self.get_table_data(index)
+        print(selected)
+
+        if selected is None:
+            return
+  
     def setProtocol(self, date, sliceno, cellno, protocolName):
         # create an IV protocol path:
         self.newbr = 0.0
@@ -83,7 +217,7 @@ class Bridge(pg.QtWidgets.QMainWindow):
         """
         Zoom to ~10 mV +/- and 5 msec before, 10 msec after first step
         """
-        if self.button_zoom_toggle.isChecked():
+        if self.zoom_mode:
             t0 = self.AR.tstart * 1e3
             ts = t0 - 5
             te = t0 + 10
@@ -342,113 +476,10 @@ class Bridge(pg.QtWidgets.QMainWindow):
             f"Saving database so far ({(self.n_adjusted - 1):d} entries with Bridge Adjustment)"
         )
         self.update_database()
-        self.df.to_pickle(str(self.dbFilename))  # now update the database
+        # self.df.to_excel(str(self.dbFilename))  # now update the database
         self.n_adjusted = 0
 
-    def set_window(self, parent=None):
-        super(Bridge, self).__init__(parent=parent)
-        self.win = pg.GraphicsWindow(title="Bridge Balance Tool")
-        self.main_layout = pg.QtGui.QGridLayout()
-        self.main_layout.setSpacing(8)
-        self.win.setLayout(self.main_layout)
-        self.win.resize(1280, 800)
-        self.win.setWindowTitle("No File")
-        self.buttons = pg.QtGui.QGridLayout()
-
-        # self.buttons = pg.QtGui.QVBoxLayout(self)
-
-        self.button_do_valid_ivs = pg.QtGui.QPushButton("Setup Valid IVs")
-        self.buttons.addWidget(self.button_do_valid_ivs, stretch=2)
-        self.button_do_valid_ivs.clicked.connect(self.setupValidIVs)
-
-        self.button_save_and_load = pg.QtGui.QPushButton("Save and load Next")
-        self.buttons.addWidget(self.button_save_and_load, stretch=2)
-        self.button_save_and_load.clicked.connect(self.save)
-
-        self.button_skip = pg.QtGui.QPushButton("Skip this IV")
-        self.buttons.addWidget(self.button_skip, stretch=2)
-        self.button_skip.clicked.connect(self.skip)
-
-        self.button_save_db = pg.QtGui.QPushButton("Save Database")
-        self.buttons.addWidget(self.button_save_db, stretch=2)
-        self.button_save_db.clicked.connect(self.save_database)
-
-        self.exhausted_label = pg.QtGui.QLabel(self)
-        self.exhausted_label.setAutoFillBackground(True)
-        palette = pg.QtGui.QPalette()
-        palette.setColor(pg.QtGui.QPalette.Window, pg.QtCore.Qt.gray)
-        self.exhausted_label.setPalette(palette)
-        self.exhausted_label.setAlignment(pg.QtCore.Qt.AlignRight)
-        self.exhausted_label.setText(f"Remaining: 0")
-        self.buttons.addWidget(self.exhausted_label, stretch=2)
-        
-        spacerItem0 = pg.QtGui.QSpacerItem(
-            0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
-        )
-        self.buttons.addItem(spacerItem0)
-
-        self.button_next_cell = pg.QtGui.QPushButton("Next Cell")
-        self.buttons.addWidget(self.button_next_cell, stretch=2)
-        self.button_next_cell.clicked.connect(self.next_cell)
-        
-        self.bzero = pg.QtGui.QPushButton("Zero Bridge")
-        self.buttons.addWidget(self.bzero, stretch=2)
-        self.bzero.clicked.connect(self.zero_bridge)
-
-        self.button_zoom_toggle = pg.QtGui.QPushButton("Zoom/unzoom")
-        self.button_zoom_toggle.setCheckable(True)
-        self.button_zoom_toggle.setChecked(False)
-        self.buttons.addWidget(self.button_zoom_toggle, stretch=10)
-        self.button_zoom_toggle.clicked.connect(self.zoom)
-
-        self.button_list_IVs = pg.QtGui.QPushButton("List Valid IVs")
-        self.buttons.addWidget(self.button_list_IVs, stretch=2)
-        self.button_list_IVs.clicked.connect(self.printAllValidIVs)
-        self.br_label = pg.QtGui.QLabel(self)
-
-        self.button_print_current = pg.QtGui.QPushButton("Print Current Info")
-        self.buttons.addWidget(self.button_print_current, stretch=2)
-        self.button_print_current.clicked.connect(self.printCurrent)
-
-        spacerItem1 = pg.QtGui.QSpacerItem(
-            0, 200, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
-        )
-        self.buttons.addItem(spacerItem1)
-
-        self.button_quit = pg.QtGui.QPushButton("Quit")
-        self.buttons.addWidget(self.button_quit, stretch=10)
-        self.button_quit.clicked.connect(self.quit)
-
-        spacerItem = pg.QtGui.QSpacerItem(
-            0, 10, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
-        )
-        self.buttons.addItem(spacerItem)
-
-        self.br_label = pg.QtGui.QLabel(self)
-        self.br_label.setAutoFillBackground(True)
-        palette = pg.QtGui.QPalette()
-        palette.setColor(pg.QtGui.QPalette.Window, pg.QtCore.Qt.gray)
-        self.br_label.setPalette(palette)
-        self.br_label.setAlignment(pg.QtCore.Qt.AlignRight)
-        self.br_label.setText(f"Bridge: 0.0 Mohm")
-        self.buttons.addWidget(self.br_label, stretch=2)
-
-        self.dataplot = pg.PlotWidget()
-        self.dlayout = pg.QtGui.QGridLayout()
-        self.dlayout.addWidget(self.dataplot, 0, 0, 10, 8)
-
-        self.sliderpane = pg.QtGui.QVBoxLayout(self)
-        self.w1 = Slider(-20.0, 40.0, scalar=1.0)
-        self.sliderpane.addWidget(self.w1)
-
-        self.main_layout.addLayout(self.buttons, 0, 0, 10, 1)
-        # self.main_layout.addLayout(self.reports, 1, 0, 10, 1)
-        self.main_layout.addLayout(self.sliderpane, 10, 1, 1, 8)
-        self.main_layout.addLayout(self.dlayout, 0, 1, 10, 8)
-        self.w1.slider.valueChanged.connect(self.update_data)
-        self.main_layout.setColumnStretch(0, 0)  # reduce width of LHS column of buttons
-        self.main_layout.setColumnStretch(1, 20)  # and stretch out the data dispaly
-        self.main_layout.setColumnStretch(2, 0)  # and stretch out the data dispaly
+    
 
     def update_traces(self):
         print(f"Update traces, br: {self.protocolBridge:f}")
@@ -485,12 +516,54 @@ class Bridge(pg.QtWidgets.QMainWindow):
                 self.AR.time_base * 1e3,
                 self.AR.traces[i, :] * 1e3 - (self.cmd[i] * self.newbr),
             )
+class DoubleSlider(pg.QtWidgets.QSlider):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.decimals = 5
+        self._max_int = 10 ** self.decimals
+
+        super().setMinimum(0)
+        super().setMaximum(self._max_int)
+
+        self._min_value = 0.0
+        self._max_value = 1.0
+
+    @property
+    def _value_range(self):
+        return self._max_value - self._min_value
+
+    def value(self):
+        return float(super().value()) / self._max_int * self._value_range + self._min_value
+
+    def setValue(self, value):
+        super().setValue(int((value - self._min_value) / self._value_range * self._max_int))
+
+    def setMinimum(self, value):
+        if value > self._max_value:
+            raise ValueError("Minimum limit cannot be higher than maximum")
+
+        self._min_value = value
+        self.setValue(self.value())
+
+    def setMaximum(self, value):
+        if value < self._min_value:
+            raise ValueError("Minimum limit cannot be higher than maximum")
+
+        self._max_value = value
+        self.setValue(self.value())
+
+    def minimum(self):
+        return self._min_value
+
+    def maximum(self):
+        return self._max_value
 
 
 class FloatSlider(pg.Qt.QtWidgets.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
-        self._multi = 10 ** decimals
+        self._multi = 10.0 ** float(decimals)
         self.setMinimum(self.minimum())
         self.setMaximum(self.maximum())
 
@@ -499,11 +572,11 @@ class FloatSlider(pg.Qt.QtWidgets.QSlider):
 
     def setMinimum(self, value):
         self.min_val = value
-        return super(FloatSlider, self).setMinimum(value * self._multi)
+        return super(FloatSlider, self).setMinimum(int(value * self._multi))
 
     def setMaximum(self, value):
         self.max_val = value
-        return super(FloatSlider, self).setMaximum(value * self._multi)
+        return super(FloatSlider, self).setMaximum(int(value * self._multi))
 
     def setValue(self, value):
         super(FloatSlider, self).setValue(int((value - self.min_val) * self._multi))
@@ -512,19 +585,19 @@ class FloatSlider(pg.Qt.QtWidgets.QSlider):
 class Slider(pg.Qt.QtWidgets.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
-        self.verticalLayout = pg.QtGui.QVBoxLayout(self)
-        self.label = pg.QtGui.QLabel(self)
-        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignHCenter)
-        self.horizontalLayout = pg.QtGui.QHBoxLayout()
-        spacerItem = pg.QtGui.QSpacerItem(
-            0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
+        self.verticalLayout = pg.QtWidgets.QVBoxLayout(self)
+        self.label = pg.QtWidgets.QLabel(self)
+        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
+        self.horizontalLayout = pg.QtWidgets.QHBoxLayout()
+        spacerItem = pg.QtWidgets.QSpacerItem(
+            0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
         )
         self.horizontalLayout.addItem(spacerItem)
-        self.slider = FloatSlider(self, decimals=2)
-        self.slider.setOrientation(pg.QtCore.Qt.Vertical)
+        self.slider = FloatSlider(self, decimals = 2)
+        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Horizontal)
         self.horizontalLayout.addWidget(self.slider)
-        spacerItem1 = pg.QtGui.QSpacerItem(
-            0, 20, pg.QtGui.QSizePolicy.Expanding, pg.QtGui.QSizePolicy.Minimum
+        spacerItem1 = pg.QtWidgets.QSpacerItem(
+            0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
         )
         self.horizontalLayout.addItem(spacerItem1)
         self.verticalLayout.addLayout(self.horizontalLayout)
@@ -590,22 +663,9 @@ def main():
 
     args = parser.parse_args()
 
-    app = pg.mkQApp()
-    app.setStyle("fusion")
     BR = Bridge(args)
-    # app.aboutToQuit.connect(BR.quit)  # prevent python exception when closing window with system control
-    BR.set_window()
-    BR.show()
-
-    # BR.setProtocol(args.date, args.slice, args.cell, args.IV)
-    # BR.analyzeIVProtocol()
-
-    # BR.set_window()
-    # BR.show()
-    # ptreedata.sigTreeStateChanged.connect(BR.process_changes)  # connect parameters to their updates
-
-    if sys.flags.interactive == 0:
-        app.exec()
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
+        QtWidgets.QApplication.instance().exec()
 
 
 if __name__ == "__main__":
