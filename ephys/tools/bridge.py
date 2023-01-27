@@ -180,38 +180,41 @@ class Bridge():
 
     def get_table_data(self, index_row):
         value = index_row
-        print("value: ", value)
-        print(self.df.iloc[value])
+
         return self.df.iloc[value]
 
     def analyze_from_table(self, index):
         selected = self.get_table_data(index)
-        print(selected)
-
         if selected is None:
             return
-  
-    def setProtocol(self, date, sliceno, cellno, protocolName):
-        # create an IV protocol path:
+        print(selected)
+        self.protocolPath = Path(selected.data_directory, selected.Cell_ID, selected.Protocol)
         self.newbr = 0.0
         self.protocolBridge = 0.0
-        self.date = date
-        self.slice = sliceno
-        self.cell = cellno
-        if not "_" in date:
-            self.date = date + "_000"
-        if isinstance(sliceno, int):
-            self.slice = "slice_{0:03d}".format(sliceno)
-        if isinstance(cellno, int):
-            self.cell = "cell_{0:03d}".format(cellno)
-        self.protocolName = protocolName
-        self.protocolPath = Path(
-            self.datadir, self.date, self.slice, self.cell, self.protocolName
-        )
-        self.protocolKey = Path(self.date, self.slice, self.cell, self.protocolName)
-        if not self.protocolPath.is_dir():
-            cprint("r", f"Protocol directory not found: {str(self.protocolPath):s}")
-            exit(1)
+        self.analyzeIVProtocol()
+
+  
+    # def setProtocol(self, date, sliceno, cellno, protocolName):
+    #     # create an IV protocol path:
+    #     self.newbr = 0.0
+    #     self.protocolBridge = 0.0
+    #     self.date = date
+    #     self.slice = sliceno
+    #     self.cell = cellno
+    #     if not "_" in date:
+    #         self.date = date + "_000"
+    #     if isinstance(sliceno, int):
+    #         self.slice = "slice_{0:03d}".format(sliceno)
+    #     if isinstance(cellno, int):
+    #         self.cell = "cell_{0:03d}".format(cellno)
+    #     self.protocolName = protocolName
+    #     self.protocolPath = Path(
+    #         self.datadir, self.date, self.slice, self.cell, self.protocolName
+    #     )
+    #     self.protocolKey = Path(self.date, self.slice, self.cell, self.protocolName)
+    #     if not self.protocolPath.is_dir():
+    #         cprint("r", f"Protocol directory not found: {str(self.protocolPath):s}")
+    #         exit(1)
 
     def zoom(self):
         """
@@ -484,7 +487,7 @@ class Bridge():
     def update_traces(self):
         print(f"Update traces, br: {self.protocolBridge:f}")
         self.dataplot.setTitle(
-            f"{str(self.protocolKey):s} {self.protocolBridge:.2f}")
+            f"{str(self.protocolPath):s} {self.protocolBridge:.2f}")
         self.newbr = self.protocolBridge / 1e6  # convert to megaohms
         self.w1.slider.setValue(self.newbr)
         cmdindxs = np.unique(self.AR.commandLevels)  # find the unique voltages
@@ -495,6 +498,7 @@ class Bridge():
         for c in self.curves:
             c.clear()
         self.curves = []
+        self.dataplot.clear()
         for i, d in enumerate(self.AR.traces):
             self.curves.append(
                 self.dataplot.plot(
