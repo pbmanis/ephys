@@ -822,6 +822,7 @@ class acq4_reader:
             # if i == 0:
             #     pp.pprint(info)
             cmd = self.getClampCommand(tr)
+            
             self.traces.append(tr)
             self.trace_index.append(i)
             trx.append(tr.view(np.ndarray))
@@ -922,7 +923,7 @@ class acq4_reader:
         self.tstart = 0.0
         self.tend = np.max(self.time_base)
         self.commandLevels = np.array([0.0])
-
+        print("checking index")
         if index is not None:
             seqparams = index["."]["sequenceParams"]
             # print('sequence params: ', seqparams)
@@ -999,7 +1000,7 @@ class acq4_reader:
         stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
         return self._getPulses(stimuli)
 
-    def getBlueLaserTimes(self) -> dict:
+    def getLaserBlueTimes(self) -> dict:
         """
         Get laser pulse times  - handling multiple possible configurations (ugly)
         """
@@ -1021,7 +1022,8 @@ class acq4_reader:
                 print(supindex["."]["devices"]["PockelCell"]["channels"].keys())
                 raise ValueError("Unable to parse devices PockeCell")
         stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
-        return self._getPulses(stimuli)
+        self.LaserBlueTimes = self._getPulses(stimuli)
+        return True
 
     def _getPulses(self, stimuli: dict) -> dict:
         if "PulseTrain" in stimuli.keys():
@@ -1161,10 +1163,10 @@ class acq4_reader:
 
         reps = ("protocol", "repetitions")
         foundLaser = False
-        self.LaserBlueRaw = []
+        self.LaserBlue_Raw = []
         self.LaserBlue_pCell = []
-        self.LBR_sample_rate = []
-        self.LBR_time_base = []
+        self.LaserBlue_sample_rate = []
+        self.LaserBlue_time_base = []
         for i, d in enumerate(dirs):
             fn = Path(d, "Laser-Blue-raw.ma")
             if not fn.is_file():
@@ -1172,7 +1174,7 @@ class acq4_reader:
                 return False
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
-            self.LaserBlueRaw.append(lbr.view(np.ndarray)[0])  # shutter
+            self.LaserBlue_Raw.append(lbr.view(np.ndarray)[0])  # shutter
             try:
                 self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1])  # pCell
             except:
@@ -1184,18 +1186,19 @@ class acq4_reader:
                 else:
                     pcell = EM.MetaArray(file=fn)
                     self.LaserBlue_pCell.append(pcell.view(np.ndarray)[0])
-            self.LBR_time_base.append(lbr.xvals("Time"))
+            self.LaserBlue_time_base.append(lbr.xvals("Time"))
             try:
                 sr = info[1]["DAQ"]["Shutter"]["rate"]
             except:
                 print("Info keys is missing requested DAQ.Shutter.rate: ", info[1]["DAQ"].keys())
                 exit(1)
-            self.LBR_sample_rate.append(sr)
-        self.LaserBlue_info = info
-        self.LaserBlueRaw = np.array(self.LaserBlueRaw)
+            self.LaserBlue_sample_rate.append(sr)
+        self.LaserBlue_Info = info
+        self.LaserBlue_Raw = np.array(self.LaserBlue_Raw)
         self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
-        self.LBR_sample_rate = np.array(self.LBR_sample_rate)
-        self.LBR_time_base = np.array(self.LBR_time_base)
+        self.LaserBlue_sample_rate = np.array(self.LaserBlue_sample_rate)
+        self.LaserBlue_time_base = np.array(self.LaserBlue_time_base)
+        self.LaserBlue_times = self.getLaserBlueTimes()
         return True
 
     def getPhotodiode(self) -> bool:
@@ -1236,26 +1239,49 @@ class acq4_reader:
         self.Photodiode_time_base = np.array(self.Photodiode_time_base)
         return True
 
-    def getBlueLaserShutter(self) -> dict:
+    def _getWaveGeneratorWidget(self, parent_device:str="", channels:str = None, device: str=None):
         supindex = self._readIndex()
-        stimuli = supindex["."]["devices"]["Laser-Blue-raw"]["channels"]["Shutter"][
-            "waveGeneratorWidget"
-        ]["stimuli"]
+        if channels is not None and device is not None:
+            stimuli = supindex["."]["devices"][parent_device][channels][device][
+                "waveGeneratorWidget"
+                ]["stimuli"]
+        else:
+            print("parent: ", parent_device)
+            print(supindex["."]["devices"][parent_device])
+            stimuli = supindex["."]["devices"][parent_device][
+                "waveGeneratorWidget"
+                ]["stimuli"]
         times = []
-        shutter = {}
-        shutter["start"] = stimuli["Pulse"]["start"]["value"]
-        shutter["duration"] = stimuli["Pulse"]["length"]["value"]
-        shutter["type"] = stimuli["Pulse"]["type"]
+        waveinfo = {}
+        waveinfo["start"] = stimuli["Pulse"]["start"]["value"]
+        waveinfo["duration"] = stimuli["Pulse"]["length"]["value"]
+        waveinfo["type"] = stimuli["Pulse"]["type"]
+        return waveinfo
+
+    def getBlueLaserShutter(self) -> dict:
+        shutter = self._getWaveGeneratorWidget(parent_device="Laser-Blue-raw",
+            channels="channels",
+            device="Shutter")
         return shutter
+        # supindex = self._readIndex()
+        # stimuli = supindex["."]["devices"]["Laser-Blue-raw"]["channels"]["Shutter"][
+        #     "waveGeneratorWidget"
+        # ]["stimuli"]
+        # times = []
+        # shutter = {}
+        # shutter["start"] = stimuli["Pulse"]["start"]["value"]
+        # shutter["duration"] = stimuli["Pulse"]["length"]["value"]
+        # shutter["type"] = stimuli["Pulse"]["type"]
+        # return shutter
 
     def getScannerPositions(self, dataname: str = "Laser-Blue-raw.ma") -> bool:
         dirs = self.subDirs(self.protocol)
-        self.scannerpositions = np.zeros((len(dirs), 2))
-        self.scannerCamera = {}
-        self.scannerinfo = {}
-        self.sequenceparams = {}
-        self.targets = [[]] * len(dirs)
-        self.spotsize = 0.0
+        self.scanner_positions = np.zeros((len(dirs), 2))
+        self.scanner_camera = {}
+        self.scanner_info = {}
+        self.scanner_sequenceparams = {}
+        self.scanner_targets = [[]] * len(dirs)
+        self.scanner_spotsize = 0.0
         rep = 0
         target = 0
         supindex = (
@@ -1290,7 +1316,7 @@ class acq4_reader:
             ]  # just fill in one rep. SOme files may be missing the protocol/repetitions entry for some reason
         pars["sequence1"]["index"] = reps
         pars["sequence2"]["index"] = ntargets
-        self.sequenceparams = pars
+        self.scanner_sequenceparams = pars
         for i, d in enumerate(
             dirs
         ):  # now run through the subdirectories : all of dirType 'Protocol'
@@ -1298,14 +1324,14 @@ class acq4_reader:
                 currdir=Path(self.protocol, Path(d).name)
             )  # subdirectories _nnn or _nnn_mmm or ...
             if index is not None and "Scanner" in index["."].keys():
-                self.scannerpositions[i] = index["."]["Scanner"]["position"]
+                self.scanner_positions[i] = index["."]["Scanner"]["position"]
                 if ntargets > 1:
-                    self.targets[i] = index["."][("Scanner", "targets")]
-                self.spotsize = index["."]["Scanner"]["spotSize"]
-                self.scannerinfo[(rep, target)] = {
+                    self.scanner_targets[i] = index["."][("Scanner", "targets")]
+                self.scanner_spotsize = index["."]["Scanner"]["spotSize"]
+                self.scanner_info[(rep, target)] = {
                     "directory": d,
                     "rep": rep,
-                    "pos": self.scannerpositions[i],
+                    "pos": self.scanner_positions[i],
                 }
             # elif ('Scanner', 'targets') in index['.']:
             #     print('found "(Scanner, targets)" in index')
@@ -1325,12 +1351,12 @@ class acq4_reader:
             #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             if (
                 "Camera" in supindex["."]["devices"].keys()
-                and len(self.scannerCamera) == 0
+                and len(self.scanner_camera) == 0
             ):  # read the camera outline
                 cindex = self._readIndex(
                     currdir=Path(self.protocol, Path(d).name, "Camera")
                 )
-                self.scannerCamera = cindex
+                self.scanner_camera = cindex
             else:
                 pass
 
