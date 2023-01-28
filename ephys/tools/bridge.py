@@ -99,15 +99,14 @@ class Bridge():
         self.DockArea.addDock(self.Dock_Table, "bottom", self.Dock_Viewer)
 
         self.table = pg.TableWidget(sortable=False)
-        self.table.setFont(QtGui.QFont('Arial', 10))
+        self.table.setFont(QtGui.QFont('Arial', 11))
 
         self.Dock_Table.addWidget(self.table)
-        # self.Dock_Table.raiseDock()
         self.setup_controls_and_window()
         # populate the table
         table_data = self.df.T.to_dict()
         self.table.setData(table_data)
-        # self.table.resizeRowsToContents()
+        self.table.resizeRowsToContents()
         self.table.itemDoubleClicked.connect(
             functools.partial(self.on_double_Click, self.table)
         )
@@ -121,6 +120,7 @@ class Bridge():
             {"name": "Zero Bridge", "type": "action"},
             {"name": "Zoom", "type": "action"},
             {"name": "Unzoom", "type": "action"},
+            # {"name": "Br Slider", "type": "sliderParameter"}
             {"name": "Quit", "type": "action"},
         ]
         self.ptree = ParameterTree()
@@ -128,7 +128,7 @@ class Bridge():
             name="Controls", type="group", children=self.controls
         )
         self.ptree.setParameters(self.ptreedata)
-        self.ptree.setMaximumWidth(3200)
+        self.ptree.setMaximumWidth(320)
         self.ptree.setMinimumWidth(150)
         self.Dock_Controls.addWidget(self.ptree)  # 
         
@@ -141,6 +141,7 @@ class Bridge():
 
         self.Dock_Controls.addWidget(self.w1)
         self.w1.slider.valueChanged.connect(self.update_data)
+        self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
 
     def command_dispatcher(self, param, changes):
         """
@@ -482,6 +483,9 @@ class Bridge():
         # self.df.to_excel(str(self.dbFilename))  # now update the database
         self.n_adjusted = 0
 
+    def rescale(self):
+        vb = self.dataplot.getViewBox()
+        vb.enableAutoRange(enable=True)
     
 
     def update_traces(self):
@@ -507,6 +511,7 @@ class Bridge():
                     pen=pg.intColor(colindxs[i], len(cmdindxs), maxValue=255),
                 )
             )
+        self.rescale()
 
     def update_data(self):
         a = self.w1.x
@@ -520,6 +525,7 @@ class Bridge():
                 self.AR.time_base * 1e3,
                 self.AR.traces[i, :] * 1e3 - (self.cmd[i] * self.newbr),
             )
+            self.rescale()
 class DoubleSlider(pg.QtWidgets.QSlider):
 
     def __init__(self, *args, **kwargs):
