@@ -136,7 +136,7 @@ class RmTauAnalysis:
         r_ss = self.Clamps.tstart + 0.9 * stepdur  # steady-state region
         self.ivss_analysis(time_window=[r_ss, self.Clamps.tend])
         self.ivpk_analysis(time_window=[self.Clamps.tstart, r_pk])  # peak region
-        print("r_ss: ", r_ss, self.Clamps.tend)
+        # print("r_ss: ", r_ss, self.Clamps.tend)
         self.tau_h(
             self.tauh_voltage,
             peak_timewindow=[r_pk, r_ss], # self.Clamps.tstart, r_pk],
