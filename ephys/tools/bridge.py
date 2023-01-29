@@ -52,6 +52,34 @@ experiments = {"nf107": {
 
 pg.setConfigOption('antialias', True)
 
+# To make slider handle bigger:
+sliderStyle = """ 
+    QSlider{}
+    min-height: 300px;
+    max-height: 300px;
+    min-width: 50;
+    max-width: 50;
+    background: #353535;
+    }
+    QSlider::groove:vertical {
+
+        background-color: darkgray;
+        border: 1px solid;
+        height: 300px;
+        width: 10px;
+        margin: 0px;
+        alignment: center;
+        }
+
+    QSlider::handle:vertical {
+        background-color: red;
+
+        border: 1px solid;
+        height: 3px;
+        width: 150px;
+        margin: -30px -20px;
+        }
+    """
 
 
 class Bridge():
@@ -87,10 +115,29 @@ class Bridge():
         self.zoom_mode = False
         self.updated = [] # a list of rows that have been updated since last save
         self.header_map = {}
+        dark_palette = QtGui.QPalette()
+        white = QtGui.QColor(255, 255, 255)
+        black = QtGui.QColor(0, 0, 0)
+        red = QtGui.QColor(255, 0, 0)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(53, 53, 53))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.WindowText, white)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(53, 53, 53))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor(53, 53, 53))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, white)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, white)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Text, white)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(53, 53, 53))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.ButtonText, white)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.BrightText, red)
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor(42, 130, 218))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(42, 130, 218))
+        dark_palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, black)
+
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
-        self.app.setStyleSheet("QLabel{font-size: 11pt;} QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
+        self.app.setStyleSheet("QLabel{font-size: 11pt;} QText{font-size: 11pt;} {QWidget{font-size: 9pt;}")
         self.app.setStyleSheet("QTreeWidgetItem{font-size: 9pt;}") #  QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
+        self.app.setPalette(dark_palette)
         # Apply dark theme to Qt application
 
         pg.setConfigOption('background', 'k')
@@ -160,7 +207,7 @@ class Bridge():
         self.dataplot.setXRange(-5.0, 2.5, padding=0.2)
         self.dataplot.setContentsMargins(10, 10, 10, 10)
 
-        self.w1 = Slider(-20.0, 40.0, scalar=1.0)
+        self.w1 = Slider(-20.0, 20.0, scalar=1.0)
 
         self.Dock_Controls.addWidget(self.w1)
         self.w1.slider.valueChanged.connect(self.update_data_from_slider)
@@ -603,22 +650,27 @@ class FloatSlider(pg.Qt.QtWidgets.QSlider):
 class Slider(pg.Qt.QtWidgets.QWidget):
     def __init__(self, minimum, maximum, scalar=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
-        self.verticalLayout = pg.QtWidgets.QVBoxLayout(self)
         self.label = pg.QtWidgets.QLabel(self)
-        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self.horizontalLayout = pg.QtWidgets.QHBoxLayout()
+
         spacerItem = pg.QtWidgets.QSpacerItem(
             0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
         )
+
+        self.verticalLayout = pg.QtWidgets.QVBoxLayout(self)
+        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        self.horizontalLayout = pg.QtWidgets.QHBoxLayout()
         self.horizontalLayout.addItem(spacerItem)
+
         self.slider = FloatSlider(self, decimals = 2)
-        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Horizontal)
-        self.horizontalLayout.addWidget(self.slider)
-        spacerItem1 = pg.QtWidgets.QSpacerItem(
-            0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
-        )
-        self.horizontalLayout.addItem(spacerItem1)
-        self.verticalLayout.addLayout(self.horizontalLayout)
+        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Vertical) # Horizontal)
+        self.slider.setStyleSheet(sliderStyle)
+        self.verticalLayout.addWidget(self.slider)
+        # spacerItem1 = pg.QtWidgets.QSpacerItem(
+        #     0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
+        # )
+        # self.horizontalLayout.addItem(spacerItem1)
+        # self.verticalLayout.addLayout(self.horizontalLayout)
         self.resize(self.sizeHint())
 
         self.minimum = minimum * scalar

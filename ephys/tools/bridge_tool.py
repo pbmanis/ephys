@@ -127,6 +127,7 @@ def make_new_bridge_corr(old_bridge_name, new_bridge_name, main_df_name):
                             "BridgeResistance": bridge_resistance,
                             "BridgeAdjust(ohm)": oldvalue,
                             "TrueResistance": bridge_resistance + oldvalue, 
+                            "update_date": "",
                             "data_directory": main_df.iloc[idx]["data_directory"],
                         }
                     )
