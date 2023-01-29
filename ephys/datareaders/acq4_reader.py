@@ -923,7 +923,6 @@ class acq4_reader:
         self.tstart = 0.0
         self.tend = np.max(self.time_base)
         self.commandLevels = np.array([0.0])
-        print("checking index")
         if index is not None:
             seqparams = index["."]["sequenceParams"]
             # print('sequence params: ', seqparams)
