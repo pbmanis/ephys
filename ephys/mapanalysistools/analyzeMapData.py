@@ -262,8 +262,8 @@ class AnalyzeMap(object):
         if self.Pars.datatype == "I":
             self.Pars.stepi = 2.0
         # otherwise use the default, which is set in the init routine
-
-        self.Pars.stimtimes = self.AR.getBlueLaserTimes()
+        self.AR.getLaserBlueTimes()
+        self.Pars.stimtimes = self.AR.LaserBlueTimes
         if self.Pars.stimtimes is not None:
             self.Pars.twin_base = [
                 0.0,
@@ -290,7 +290,7 @@ class AnalyzeMap(object):
         self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
         self.AR.getScannerPositions()
         self.Pars.ar_tstart = self.AR.tstart
-        self.Pars.spotsize = self.AR.spotsize
+        self.Pars.spotsize = self.AR.scanner_spotsize
         self.Data.tb = self.AR.time_base
         # print(self.AR.traces.shape)
         # print(self.Data.tb.shape)
@@ -313,7 +313,7 @@ class AnalyzeMap(object):
                 protocolFilename.name, endtime - starttime
             )
         )
-        return data, self.AR.time_base, self.AR.sequenceparams, self.AR.scannerinfo
+        return data, self.AR.time_base, self.AR.scanner_sequenceparams, self.AR.scanner_info
 
     def set_analysis_windows(self):
         pass
@@ -1234,7 +1234,7 @@ class AnalyzeMap(object):
         meanpddata = self.AR.Photodiode.mean(
             axis=0
         )  # get the average PD signal that was recorded
-        shutter = self.AR.getBlueLaserShutter()
+        shutter = self.AR.getLaserBlueShutter()
         dt = np.mean(np.diff(self.Data.tb))
         # if meanpddata is not None:
         #     Util = EP.Utility.Utility()
