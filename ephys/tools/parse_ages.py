@@ -1,3 +1,4 @@
+import re
 # clean up the age string to match (mostly) the ISO standard
 def ISO8601_age(agestr):
     """Convert somewhat random age designators to ISO standard, e.g.:
@@ -28,13 +29,16 @@ def ISO8601_age(agestr):
     if 'D' not in agestr:
         agestr = agestr + "D"
     if agestr == "PD":
-        agestr = "P9999D"  # no age specified
+        agestr = "P0D"  # no age specified
     if q:
         agestr = agestr + " ?"  # add back modifiers
     if ish:
         agestr = agestr + " ish"
     return agestr
 
+def age_as_int(agestr):
+    astr = re.sub('\D', '', agestr)
+    return(int(astr))
 
 # old version
 def parse_ages(agestr:str):
