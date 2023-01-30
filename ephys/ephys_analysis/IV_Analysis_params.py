@@ -156,7 +156,7 @@ def build_parser(experiments):
     parser.add_argument(
         "--mapZQA",
         action="store_true",
-        dest="plot the maps of Z, Q and A",
+        dest="mapZQA_plot",
         help="Plot the maps from previously analyzed dataset(s)",
     )
     parser.add_argument(
