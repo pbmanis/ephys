@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Union
 
 import dill
+import ephys.mapanalysistools as mapanalysistools
 import matplotlib
 import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import numpy as np
@@ -12,53 +13,58 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
+from ephys.ephys_analysis.IV_Analysis import IV_Analysis
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 
-from ephys.ephys_analysis.IV_Analysis import IV_Analysis
-import ephys.mapanalysistools as mapanalysistools
-
 PMD = mapanalysistools.plotMapData.PlotMapData()
+
 
 class MAP_Analysis(IV_Analysis):
     def __init__(self, args):
         super().__init__(args)
         print(self._testing_counter)
 
-    def analyze_maps(self, iday:int, file:Union[Path, str], celltype:str, allprots:dict, pdf=None):
+    def analyze_maps(
+        self, iday: int, celltype: str, allprots: dict, pdf=None
+    ):
         if len(allprots["maps"]) == 0:
             print(f"No maps to analyze for {iday:d}")
             return
-        print(f"Analzying map: {str(file):s}")
+        CP.cprint(
+            "c",
+            f"Analyze MAPS for index: {iday: d} ({str(self.df.at[iday, 'date']):s} )",
+        )
+        file = Path(self.df.iloc[iday].data_directory, self.df.iloc[iday].cell_id)
         datestr, slicestr, cellstr = self.make_cell(iday)
         slicecellstr = f"S{slicestr[-1]:s}C{cellstr[-1]:s}"
         self.celltype, self.celltype_changed = self.get_celltype(iday)
+        CP.cprint(
+            "c",
+            f"      {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+        )
+
         if self.dry_run:
             print(
-                "Would process day: {0:s} slice: {1:s} cell: {2:s}".format(
-                    datestr, slicestr, cellstr
+                "MAP_Analysis:analyze_maps: DRY_RUN"
                 )
-            )
+
 
             print("       Celltype: {0:s}".format(celltype))
             print("   with {0:4d} protocols".format(len(allprots["maps"])))
             for i, p in enumerate(allprots["maps"]):
-                print("      {0:d}. {1:s}".format(i + 1, str(p.name)))
-            return
+                print(f"      {i+1:d}. {Path(p).name:s}")
 
         validmaps = []
         for p in allprots["maps"]:  # first remove excluded protocols
             if self.exclusions is None or str(p) not in self.exclusions:
-                validmaps.append(
-                    p
-                )  # note we do not just remove as this messes up the iterator of the maps
+                validmaps.append(p)
         allprots["maps"] = validmaps
         nworkers = 16  # number of cores/threads to use
         tasks = range(len(allprots["maps"]))  # number of tasks that will be needed
         results = dict()  # storage for results
         result = [None] * len(tasks)  # likewise
-        self.make_tempdir()  # clean up temporary directory
         plotmap = True
         foname = "%s~%s~%s" % (datestr, slicestr, cellstr)
         if self.signflip:
@@ -70,20 +76,18 @@ class MAP_Analysis(IV_Analysis):
 
         foname += ".pkl"
         picklefilename = Path(self.analyzeddatapath, "events", foname)
-        # CP.cprint("m", f"Pickle filename: {str(picklefilename):s}")
-
-
+        CP.cprint("m", f"      Analyzed data filename: {str(picklefilename):s}")
+        if self.dry_run:
+            return
+    
+        self.make_tempdir()  # clean up temporary directory
         ###
         ### Parallel is done at lowest level of analyzing a trace, not at this top level
-        ### can only have ONE parallel loop going (no nested ones allowed!)
         ###
-        # if self.noparallel:  # just serial...
-        for i, x in enumerate(tasks):
+        for protocol, x in enumerate(tasks):
             result = self.analyze_map(
                 iday,
-                file=file,
-                i=i,
-                x=x,
+                i_protocol=protocol,
                 allprots=allprots,
                 plotmap=plotmap,
                 measuretype=self.measuretype,
@@ -117,7 +121,6 @@ class MAP_Analysis(IV_Analysis):
                 CP.cprint("magenta", f"Database celltype: Not specified")
             else:
                 CP.cprint("g", f"Database celltype: {txt:s}")
-
 
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
 
@@ -161,7 +164,10 @@ class MAP_Analysis(IV_Analysis):
                     print("   SIGN flip, set VC taus: ", end="")
 
             else:
-                CP.cprint("r", "Using default VC taus for detection - likely no entry in excel file")
+                CP.cprint(
+                    "r",
+                    "Using default VC taus for detection - likely no entry in excel file",
+                )
                 # exit()
         CP.cprint(
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
@@ -244,7 +250,7 @@ class MAP_Analysis(IV_Analysis):
             # else:
             #     print("using default stimdur")
 
-    def set_map_factors(self, iday: int, path: Union[Path, str]):
+    def set_map_factors(self, iday: int, path_to_map: Union[Path, str]):
         """
         Configure signs, scale factors and E/IPSP/C template shape
         Rules:
@@ -278,33 +284,34 @@ class MAP_Analysis(IV_Analysis):
             self.high_Cl = True  # flips sign for detection
             # print(' HIGH Chloride cell ***************')
         # read the mapdir protocol
-        protodir = Path(self.rawdatapath, path)
+        protodir = Path(self.rawdatapath, path_to_map)
+        print("protodir: ", protodir)
         try:
             assert protodir.is_dir()
             protocol = self.AM.AR.readDirIndex(str(protodir))
             record_mode = protocol["."]["devices"]["MultiClamp1"]["mode"]
         except:
-            if path.match("*_VC_*"):
+            if path_to_map.match("*_VC_*"):
                 record_mode = "VC"
-            elif path.match("*_IC_*"):
+            elif path_to_map.match("*_IC_*"):
                 record_mode = "IC"
             else:
                 raise ValueError("Cant figure record mode")
 
-        self.set_stimdur(iday, path)
+        self.set_stimdur(iday, path_to_map)
 
-        if (path.match("*_VC_*") or record_mode == "VC") and not self.rawdatapath.match(
+        if (path_to_map.match("*_VC_*") or record_mode == "VC") and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSC
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [1e-3, 3e-3]  # fast events
-            self.set_vc_taus(iday, path)
+            self.set_vc_taus(iday, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
-            self.set_vc_threshold(iday, path)
+            self.set_vc_threshold(iday, path_to_map)
 
-        elif (path.match("*_VC_*") or record_mode == "VC") and self.rawdatapath.match(
+        elif (path_to_map.match("*_VC_*") or record_mode == "VC") and self.rawdatapath.match(
             "*VGAT_*"
         ):  # inhibitory PSC
             self.AM.datatype = "V"
@@ -316,36 +323,36 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
             self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.threshold = self.threshold  # low threshold
-            self.set_vc_taus(iday, path)
+            self.set_vc_taus(iday, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
-            self.set_vc_threshold(iday, path)
+            self.set_vc_threshold(iday, path_to_map)
             print("sign: ", self.AM.Pars.sign)
 
-        elif path.match("*_CA_*") and record_mode == "VC":  # cell attached (spikes)
+        elif path_to_map.match("*_CA_*") and record_mode == "VC":  # cell attached (spikes)
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1  # trigger on negative current
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [0.5e-3, 0.75e-3]  # fast events
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
-            self.set_vc_taus(iday, path)
-            self.set_vc_threshold(iday, path)
+            self.set_vc_taus(iday, path_to_map)
+            self.set_vc_threshold(iday, path_to_map)
 
         elif (
-            path.match("*_IC_*") and record_mode in ["IC", "I=0"]
-            ) and not self.rawdatapath.match(
-                "*VGAT_*"
-            ):  # excitatory PSP
+            path_to_map.match("*_IC_*") and record_mode in ["IC", "I=0"]
+        ) and not self.rawdatapath.match(
+            "*VGAT_*"
+        ):  # excitatory PSP
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
-            self.set_cc_taus(iday, path)
-            self.set_cc_threshold(iday, path)
+            self.set_cc_taus(iday, path_to_map)
+            self.set_cc_threshold(iday, path_to_map)
 
-        elif path.match("*_IC_*") and self.rawdatapath.match(
-                "*VGAT_*"
-            ):  # inhibitory PSP
+        elif path_to_map.match("*_IC_*") and self.rawdatapath.match(
+            "*VGAT_*"
+        ):  # inhibitory PSP
             print("IPSP detector!!!")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
             self.AM.Pars.scale_factor = 1e3
@@ -353,12 +360,12 @@ class MAP_Analysis(IV_Analysis):
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  #
             self.AM.Pars.analysis_window = [0, 0.999]
-            self.set_cc_taus(iday, path)
-            self.set_cc_threshold(iday, path)
+            self.set_cc_taus(iday, path_to_map)
+            self.set_cc_threshold(iday, path_to_map)
 
-        elif path.match("VGAT_*") and not (
-                path.match("*_IC_*") or path.match("*_VC_*") or path.match("*_CA_*")
-            ):  # VGAT but no mode information
+        elif path_to_map.match("VGAT_*") and not (
+            path_to_map.match("*_IC_*") or path_to_map.match("*_VC_*") or path_to_map.match("*_CA_*")
+        ):  # VGAT but no mode information
             if record_mode in ["IC", "I=0"]:
                 self.AM.datatype = "I"
                 if self.high_Cl:
@@ -381,11 +388,11 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.threshold = self.threshold  # setthreshold...
 
             if self.AM.datatype == "V":
-                self.set_vc_taus(iday, path)
-                self.set_vc_threshold(iday, path)
+                self.set_vc_taus(iday, path_to_map)
+                self.set_vc_threshold(iday, path_to_map)
             else:
-                self.set_cc_taus(iday, path)
-                self.set_cc_threshold(iday, path)
+                self.set_cc_taus(iday, path_to_map)
+                self.set_cc_threshold(iday, path_to_map)
 
         else:
             print("Undetermined map factors - add to the function!")
@@ -404,26 +411,24 @@ class MAP_Analysis(IV_Analysis):
     def analyze_map(
         self,
         iday: int,
-        i: int,
-        x: object,
-        file: Union[Path, str],
+        i_protocol: int,
         allprots: dict,
-        plotmap: bool=False,
+        plotmap: bool = False,
         measuretype: str = "ZScore",
         verbose: bool = False,
         picklefilename: Union[Path, str, None] = None,
     ) -> Union[None, dict]:
         """
-        Analyze the ith map in the allprots dict of maps
+        Analyze the i_protocol th map in the allprots dict of maps
         This routine is designed so that it can be called for parallel processing.
 
         Parameters
         ----------
         iday : int
             index to the day in the pandas database
-        i : int
+        i_protocol : int
             index into the list of map protocols for this cell/day
-        x : str
+        protocol_name : str
             name of protocol
         allprots : dict
             dictionary containing parsed protocols for this day/slice/cell
@@ -441,18 +446,20 @@ class MAP_Analysis(IV_Analysis):
             true if there data was processed; otherwise False
         """
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
-
-        mapname = allprots["maps"][i]
-        if len(mapname) == 0:
+        print(allprots["maps"][i_protocol])
+        self.map_name = allprots["maps"][i_protocol]
+        if len(self.map_name) == 0:
             return None
-
-        mapdir = Path(file, Path(mapname).name)
-        self.mapname = mapname
+        print("protocolname: ", self.map_name)
+        mapdir = Path(self.df.iloc[iday].data_directory, self.map_name)
+        if not mapdir.is_dir():
+            raise ValueError(f"Map name did not resolve to directory: {str(mapdir):s}")
         if "_IC__" in str(mapdir.name) or "CC" in str(mapdir.name):
             scf = 1e3  # mV
         else:
             scf = 1e12  # pA, vc
         # plot the Z score, Charge and amplitude maps:
+        print(self.mapsZQA_plot)
         if self.mapsZQA_plot:
             CP.cprint(
                 "g",
@@ -460,13 +467,13 @@ class MAP_Analysis(IV_Analysis):
             )
             CP.cprint(
                 "g",
-                f"    Protocol: {mapname:s}",
+                f"    Protocol: {self.map_name:s}",
             )
             with open(
                 picklefilename, "rb"
             ) as fh:  # read the previously analyzed data set
                 results = dill.load(fh)
-            mapkey = Path("/".join(Path(mapname).parts[-4:]))
+            mapkey = Path("/".join(Path(self.map_name).parts[-4:]))
             if str(mapkey) not in results.keys():
                 # try prepending path to data
                 mapkey = Path(self.rawdatapath, mapkey)
@@ -507,7 +514,7 @@ class MAP_Analysis(IV_Analysis):
 
         if self.recalculate_events:
             CP.cprint(
-                "g", f"IV_Analysis:analyze_map  Running map analysis: {str(mapname):s}"
+                "g", f"MAP_Analysis:analyze_map  Running map analysis: {str(self.map_name):s}"
             )
             result = self.AM.analyze_one_map(
                 mapdir, noparallel=self.noparallel, verbose=verbose
@@ -554,7 +561,7 @@ class MAP_Analysis(IV_Analysis):
                     rasterized=False,
                     datatype=self.AM.datatype,
                 )  # self.AM.rasterized, firstonly=True, average=False)
-            print(f"Map analysis done: {str(mapname):s}")
+            print(f"Map analysis done: {str(self.map_name):s}")
 
             if mapok:
                 infostr = ""
