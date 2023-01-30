@@ -342,27 +342,42 @@ class IV_Analysis():
         for p in allpaths:
             print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
-    def _add_date(self, row, axis=1):
-        row.day = str(Path(row.date).name)
-        return row
+
 
     def run(self):
         # select a date:
         self.n_analyzed = 0
+        def _add_day(row):
+            row.day = str(Path(row.date).name)
+            cell_id = Path(row.date).parts[-1]
+            daystr = Path(
+                row.day,
+                row.slice_slice,
+                row.cell_cell,
+            )
+            row.cell_id = str(cell_id)
+            return row
+        
+        self.df = self.df.assign(day="")
+        self.df = self.df.assign(cell_id = "")
+        self.df = self.df.apply(_add_day, axis=1) # add a day (short name)
+        
+
         if self.day != "all":  # specified day
             day = str(self.day)
             print(
                 f"Looking for day: {day:s} in database from {str(self.inputFilename):s}"
             )
             if "_" not in day:
-                day = day + "_000"  # lambda x: (x['temp_f'] +  459.67) * 5 / 9
+                day = day + "_000"
             # print(self.df.columns)
-            day_x = self.df.loc[self.df["date"] == day]
+            day_x = self.df.loc[self.df.day == day]
+            # print(self.df.columns)
             if len(day_x) == 0:
                 print("date not found: here are the valid dates:")
-                for dx in self.df.day.values:
-                    print(f"    date: {dx:s}")
-            print("  ... Retrieved day: ", day_x)
+                for dx in self.df.date.values:
+                    print(f"    day: {dx:s}")
+            # print("  ... Retrieved day:\n", day_x)
             for iday in day_x.index:
                 self.do_day(iday, pdf=self.pdfFilename)
 
@@ -775,7 +790,6 @@ class IV_Analysis():
             )
             return
         celltype, celltypechanged = self.get_celltype(iday)
-        
         fullfile = Path(
             self.rawdatapath, self.df.iloc[iday].cell_id) # self.make_cellstr(self.df, iday, shortpath=False)
         #)
@@ -796,7 +810,7 @@ class IV_Analysis():
         if not fullfile.is_dir():
             fullfile = Path(self.df.iloc[iday]["data_directory"],  self.make_cellstr(self.df, iday, shortpath=True))
 
-        if self.extra_subdirectories is not None:
+        if self.extra_subdirectories is not None and not fullfile.is_dir():
             # try extra sub directories
             pathparts = fullfile.parts
             day = None
@@ -811,9 +825,10 @@ class IV_Analysis():
                 fullfile = Path(self.rawdatapath, subdir, day)
                 if fullfile.is_dir():
                     break
-        if not fullfile.is_dir():
-            CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
-            exit()
+
+            if not fullfile.is_dir():
+                CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
+                return
 
 
         prots = self.df.iloc[iday]["data_complete"]
@@ -821,9 +836,9 @@ class IV_Analysis():
 
         if self.dry_run:
             print(
-                f"\nWould process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
+                f"\nIV_Analysis:do_day:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
             )
-            print(f"        fullpath {str(fullfile):s}")
+            print(f"        with fullpath {str(fullfile):s}")
 
         if not fullfile.is_dir():
             CP.cprint("r", "   But that cell was not found.")
@@ -854,8 +869,8 @@ class IV_Analysis():
                 for i, p in enumerate(sorted(prots)):
                     if p in allprots["maps"]:
                         print("      {0:d}. {1:s}".format(i + 1, str(p.name)))
-        if self.dry_run:
-            return
+        # if self.dry_run:
+        #     return
 
         if self.verbose:
             for k in list(allprots.keys()):
@@ -869,6 +884,8 @@ class IV_Analysis():
 
         # self.merge_pdfs(celltype, pdf=pdf)
         # CP.cprint("r", f"iv flag: {str(self.iv_flag):s}")
+        
+        # DISPATCH according to requested analysis:
         if self.iv_flag:
             if Path(self.iv_analysisFilename).suffix == ".h5":
                 self.df["IV"] = None
@@ -887,8 +904,9 @@ class IV_Analysis():
         if self.map_flag:
             if pdf is not None:
                 self.make_tempdir()
-            self.analyze_maps(iday=iday, file=fullfile, allprots=allprots, celltype=celltype, pdf=pdf)
+            self.analyze_maps(iday=iday, allprots=allprots, celltype=celltype, pdf=pdf)
             self.merge_pdfs(celltype, pdf=pdf)
+            gc.collect()
 
     
 
