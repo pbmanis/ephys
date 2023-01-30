@@ -141,7 +141,7 @@ class PoissonScore:
     normalizationTable = None
 
     @classmethod
-    def score(cls, ev, rate, tMax=None, normalize=True, **kwds):
+    def score(cls, ev, rate:float, tMax:float=None, normalize:bool=True, **kwds):
         """
         Compute poisson score for a set of events.
         ev must be a list of record arrays. Each array describes a set of events; only required field is 'time'
@@ -170,7 +170,7 @@ class PoissonScore:
             try:
                 pi = 1.0 / pi0
             except:
-                print("pi: ", pi0)
+                print("pi0: ", pi0)
                 pi = 1
             ## apply extra score for uncommonly large amplitudes
             ## (note: by default this has no effect; see amplitudeScore)
@@ -186,8 +186,9 @@ class PoissonScore:
             # score =  1.0 / (1.0 - mpp)
 
         # n = len(ev)
-        if normalize:
-            ret = cls.mapScore(score, rate * tMax * nSets)
+        if normalize and rate > 0:
+            # print("rate, tmax, nsets: ", rate, tMax, nSets)
+            ret = cls.mapScore(x=score, n=rate * tMax * nSets)
         else:
             ret = score
         if np.isscalar(ret):
@@ -208,7 +209,7 @@ class PoissonScore:
         return np.ones(len(events))
 
     @classmethod
-    def mapScore(cls, x, n, nEvents=10000):
+    def mapScore(cls, x:float, n:int, nEvents=10000):
         """
         Map score x to probability given we expect n events per set
         """
@@ -217,7 +218,6 @@ class PoissonScore:
             print("generating table")
             cls.normalizationTable = cls.generateNormalizationTable(nEvents=nEvents)
             cls.extrapolateNormTable()
-
         nind = max(0, np.log(n) / np.log(2))
         n1 = np.clip(int(np.floor(nind)), 0, cls.normalizationTable.shape[1] - 2)
         n2 = n1 + 1
@@ -860,7 +860,6 @@ if __name__ == "__main__":
             scorePlots = []
             repScorePlots = []
             for title, fn in algorithms:
-                print("title: ", title)
                 if first:
                     label = win.addLabel(title, angle=-90, rowspan=len(tests))
                 plt = win.addPlot()
@@ -928,7 +927,7 @@ if __name__ == "__main__":
                     score2 = fn(
                         spont, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev
                     )
-                    print(score1)
+
                     scores[k, :, j] = score1[0], score2[0]
                     plots[k].plot(
                         x=[j],
