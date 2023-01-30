@@ -1257,7 +1257,7 @@ class acq4_reader:
         waveinfo["type"] = stimuli["Pulse"]["type"]
         return waveinfo
 
-    def getBlueLaserShutter(self) -> dict:
+    def getLaserBlueShutter(self) -> dict:
         shutter = self._getWaveGeneratorWidget(parent_device="Laser-Blue-raw",
             channels="channels",
             device="Shutter")
