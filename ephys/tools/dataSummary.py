@@ -142,7 +142,7 @@ class DataSummary:
         update=False,
         pairflag=False,
         device="MultiClamp1.ma",
-        excludedir:str="",
+        excludedirs:list=[],
 
     ):
         """
@@ -206,8 +206,8 @@ class DataSummary:
                  database by appending them at the end
         verbose: bool (default: False)
             Provide extra print out during analysis for debugging.
-        excludedir: str (default:"")
-            Name of a directory to exclude from the summary
+        excludedir: list(default:[])
+            A list of the names of the directories to exclude from the summary
 
         Note that if neither before or after are specified, the entire directory is read.
         """
@@ -231,7 +231,7 @@ class DataSummary:
         self.device = device
         self.append = append
         self.all_dataset_protocols = [] # a list of ALL protocols found in the dataset
-        self.excludedir = excludedir
+        self.excludedirs = excludedirs
         self.daylist = None
         self.index = 0
         # flags - for debugging and verbosity
@@ -1203,22 +1203,22 @@ class DataSummary:
         writer.close()
 
 
-def dir_recurse(ds, current_dir, args, indent=0):
+def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
     files = sorted(list(current_dir.glob("*")))
-    alldatadirs = [f for f in files if f.is_dir() and str(f.name).startswith("20") and str(f.name) != args.exclude]
+    alldatadirs = [f for f in files if f.is_dir() and str(f.name).startswith("20") and str(f.name) not in exclude_list]
     sp = " " * indent
     for d in alldatadirs:
         Printer(f"{sp:s}Data: {str(d.name):s}", "green")
     ds.getDay(alldatadirs)
-    # if args.output in ["pandas"]:
+
     if len(alldatadirs) > 0:
         ds.write_string_pandas()
-    allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20") and str(f.name) != args.exclude]
+    allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20") and str(f.name) not in exclude_list]
     indent += 2
     sp = " " * indent
     for d in allsubdirs:
         Printer(f"\n{sp:s}Subdir: {str(d.name):s}", "yellow")
-        indent = dir_recurse(ds, d, args, indent)
+        indent = dir_recurse(ds, d, exclude_list=exclude_list, indent=indent)
     indent -= 2
     if indent < 0:
         indent = 0
@@ -1366,12 +1366,12 @@ def main():
         update=args.update,
         pairflag=args.pairflag,
         device=args.device,
-        excludedir=args.exclude,
+        excludedirs=args.exclude,
     )
 
     if args.outputFilename is not None:
         print("Writing to output, recurively through directories ")
-        dir_recurse(ds, ds.basedir, args)
+        dir_recurse(ds, ds.basedir, args.exclude)
         
         exit()
         files = list(ds.basedir.glob("*"))
