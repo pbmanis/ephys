@@ -8,5 +8,7 @@ from . import minicalcs
 from . import digital_filters
 from . import check_rs
 from . import boundrect
+from . import display_acq4
+
 
 
