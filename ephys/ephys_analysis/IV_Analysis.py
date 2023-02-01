@@ -349,20 +349,16 @@ class IV_Analysis():
         self.n_analyzed = 0
         def _add_day(row):
             row.day = str(Path(row.date).name)
-            cell_id = Path(row.date).parts[-1]
             daystr = Path(
                 row.day,
                 row.slice_slice,
                 row.cell_cell,
             )
-            row.cell_id = str(cell_id)
             return row
         
         self.df = self.df.assign(day="")
-        self.df = self.df.assign(cell_id = "")
         self.df = self.df.apply(_add_day, axis=1) # add a day (short name)
         
-
         if self.day != "all":  # specified day
             day = str(self.day)
             print(
@@ -370,28 +366,27 @@ class IV_Analysis():
             )
             if "_" not in day:
                 day = day + "_000"
-            # print(self.df.columns)
-            day_x = self.df.loc[self.df.day == day]
-            # print(self.df.columns)
-            if len(day_x) == 0:
+            cells_in_day = self.df.loc[self.df.day == day]
+
+            if len(cells_in_day) == 0:
                 print("date not found: here are the valid dates:")
                 for dx in self.df.date.values:
                     print(f"    day: {dx:s}")
             # print("  ... Retrieved day:\n", day_x)
-            for iday in day_x.index:
-                self.do_day(iday, pdf=self.pdfFilename)
+            for icell in cells_in_day.index:  # for all the cells in the day
+                self.do_cell(icell, pdf=self.pdfFilename)
 
         # get the complete protocols:
         # Only returns a dataframe if there is more than one entry
         # Otherwise, it is like a series or dict
         else:
             if self.pdfFilename is None:
-                for n, iday in enumerate(range(len(self.df.index))):
-                    self.do_day(iday, pdf=None)
+                for n, icell in enumerate(range(len(self.df.index))):
+                    self.do_cell(icell, pdf=None)
             else:
                 with PdfPages(self.pdfFilename) as pdf:
-                    for n, iday in enumerate(range(len(self.df.index))):
-                        self.do_day(iday, pdf=pdf)
+                    for n, icell in enumerate(range(len(self.df.index))):
+                        self.do_cell(icell, pdf=pdf)
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -440,9 +435,9 @@ class IV_Analysis():
                 sheet_name="Sheet1",
             )
 
-    def make_cellstr(self, df: object, iday: int, shortpath: bool = False):
+    def make_cellstr(self, df: object, icell: int, shortpath: bool = False):
         """
-        Make a day string including slice and cell from the iday index in the pandas datafram df
+        Make a day string including slice and cell from the icell index in the pandas datafram df
         Example result:
             s = self.make_cellstr (df, 1)
             s: '2017.01.01_000/slice_000/cell_001'  # Mac/linux path string
@@ -451,7 +446,7 @@ class IV_Analysis():
         ----------
         df : Pandas dataframe instance
 
-        iday : int (no default)
+        icell : int (no default)
             index into pandas dataframe instance
 
         returns
@@ -460,20 +455,20 @@ class IV_Analysis():
         """
 
         if shortpath:
-            day = Path(df.iloc[iday]["date"]).parts[-1]
-            daystr = Path(
+            day = Path(df.iloc[icell]["date"]).parts[-1]
+            cellstr = Path(
                 day,
-                Path(df.iloc[iday]["slice_slice"]).name,
-                Path(df.iloc[iday]["cell_cell"]).name,
+                Path(df.iloc[icell]["slice_slice"]).name,
+                Path(df.iloc[icell]["cell_cell"]).name,
             )
         else:
-            daystr = Path(
-                df.iloc[iday]["date"],
-                Path(df.iloc[iday]["slice_slice"]).name,
-                Path(df.iloc[iday]["cell_cell"]).name,
+            cellstr = Path(
+                df.iloc[icell]["date"],
+                Path(df.iloc[icell]["slice_slice"]).name,
+                Path(df.iloc[icell]["cell_cell"]).name,
             )
         # print("make_cellstr: ", daystr)
-        return daystr
+        return cellstr
 
     """
     Handle the temporary directory pdf accumulation and merging.
@@ -650,10 +645,10 @@ class IV_Analysis():
                 allprots["VCIVs"].append(c)
         return allprots
 
-    def make_cell(self, iday: int):
-        datestr = Path(self.df.iloc[iday]["date"]).name
-        slicestr = str(Path(self.df.iloc[iday]["slice_slice"]).parts[-1])
-        cellstr = str(Path(self.df.iloc[iday]["cell_cell"]).parts[-1])
+    def make_cell(self, icell: int):
+        datestr = Path(self.df.iloc[icell]["date"]).name
+        slicestr = str(Path(self.df.iloc[icell]["slice_slice"]).parts[-1])
+        cellstr = str(Path(self.df.iloc[icell]["cell_cell"]).parts[-1])
         return (datestr, slicestr, cellstr)
 
     def find_cell(
@@ -701,12 +696,12 @@ class IV_Analysis():
             )
         return cf
 
-    def get_celltype(self, iday):
+    def get_celltype(self, icell):
         """Find the type of the cell associated with this entry
 
         Parameters
         ----------
-        iday : int
+        icell : int
             The index into the table
 
         Returns
@@ -716,8 +711,8 @@ class IV_Analysis():
             If the celltype changed in annotation, the bool value will be True,
             otherwise False
         """
-        original_celltype = self.df.at[iday, "cell_type"]
-        datestr, slicestr, cellstr = self.make_cell(iday)
+        original_celltype = self.df.at[icell, "cell_type"]
+        datestr, slicestr, cellstr = self.make_cell(icell)
 
         if self.annotated_dataframe is None:
             return original_celltype, None
@@ -755,7 +750,7 @@ class IV_Analysis():
                     )
                 return original_celltype, False
 
-    def do_day(self, iday: int, pdf=None):
+    def do_cell(self, icell: int, pdf=None):
         """
         Do analysis on a day's data
         Runs all cells in the day, unless slicecell has been specified - then
@@ -763,13 +758,13 @@ class IV_Analysis():
 
         Parameters
         ----------
-        iday : int
+        icell : int
             index into pandas database for the day to be analyzed
 
         pdf : bool, default=False
 
         """
-        datestr, slicestr, cellstr = self.make_cell(iday)
+        datestr, slicestr, cellstr = self.make_cell(icell)
         if len(self.slicecell) >= 2:
             slicen = "slice_%03d" % int(self.slicecell[1])
             if slicestr != slicen:
@@ -789,9 +784,9 @@ class IV_Analysis():
                 f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
             )
             return
-        celltype, celltypechanged = self.get_celltype(iday)
+        celltype, celltypechanged = self.get_celltype(icell)
         fullfile = Path(
-            self.rawdatapath, self.df.iloc[iday].cell_id) # self.make_cellstr(self.df, iday, shortpath=False)
+            self.rawdatapath, self.df.iloc[icell].cell_id) # self.make_cellstr(self.df, icell, shortpath=False)
         #)
         # print("fullfile: ", fullfile, fullfile.is_dir())
         if self.skip_subdirectories is not None:
@@ -808,7 +803,7 @@ class IV_Analysis():
                     return  # skip this data set
 
         if not fullfile.is_dir():
-            fullfile = Path(self.df.iloc[iday]["data_directory"],  self.make_cellstr(self.df, iday, shortpath=True))
+            fullfile = Path(self.df.iloc[icell]["data_directory"],  self.make_cellstr(self.df, icell, shortpath=True))
 
         if self.extra_subdirectories is not None and not fullfile.is_dir():
             # try extra sub directories
@@ -819,7 +814,7 @@ class IV_Analysis():
                     day = Path(*pathparts[i:])
                     break
             if day is None:
-                CP.cprint("r", f"do_day: Day <None> found in fileparts: {str(pathparts):s}")
+                CP.cprint("r", f"do_cell: Day <None> found in fileparts: {str(pathparts):s}")
                 exit()
             for subdir in self.extra_subdirectories:
                 fullfile = Path(self.rawdatapath, subdir, day)
@@ -831,19 +826,19 @@ class IV_Analysis():
                 return
 
 
-        prots = self.df.iloc[iday]["data_complete"]
-        allprots = self.gather_protocols(prots.split(", "), self.df.iloc[iday])
+        prots = self.df.iloc[icell]["data_complete"]
+        allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
 
         if self.dry_run:
             print(
-                f"\nIV_Analysis:do_day:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
+                f"\nIV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
             )
             print(f"        with fullpath {str(fullfile):s}")
 
         if not fullfile.is_dir():
             CP.cprint("r", "   But that cell was not found.")
             print("*" * 40)
-            print(self.df.iloc[iday])
+            print(self.df.iloc[icell])
             print("*" * 40)
             print()
             self.merge_pdfs(celltype, pdf=pdf)
@@ -855,15 +850,15 @@ class IV_Analysis():
         elif fullfile.is_dir() and len(allprots) > 0:
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
-                    ffile = Path(self.df.iloc[iday].data_directory, prot)
+                    ffile = Path(self.df.iloc[icell].data_directory, prot)
                     if not ffile.is_dir():
-                        CP.cprint("r", f"file/protocol day={iday:d} not found: {str(ffile):s}")
+                        CP.cprint("r", f"file/protocol day={icell:d} not found: {str(ffile):s}")
                         print(prottype,  prot)
                         exit()
         else:
             msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(allprots['maps']):4d} map protocols"
-            msg += f"  Electrode: {self.df.iloc[iday]['internal']:s}"
+            msg += f"  Electrode: {self.df.iloc[icell]['internal']:s}"
             CP.cprint("g", msg)
             if self.map_flag:
                 for i, p in enumerate(sorted(prots)):
@@ -893,33 +888,33 @@ class IV_Analysis():
             if pdf is not None:
                 self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(
-                iday=iday, allprots=allprots, celltype=celltype, pdf=pdf
+                icell=icell, allprots=allprots, celltype=celltype, pdf=pdf
             )
             self.merge_pdfs(celltype, pdf=pdf)  
             gc.collect()
 
         if self.vc_flag:
-            self.analyze_vcs(iday, allprots)
+            self.analyze_vcs(icell, allprots)
 
         if self.map_flag:
             if pdf is not None:
                 self.make_tempdir()
-            self.analyze_maps(iday=iday, allprots=allprots, celltype=celltype, pdf=pdf)
+            self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
             self.merge_pdfs(celltype, pdf=pdf)
             gc.collect()
 
     
 
     def analyze_ivs(
-        self, iday, allprots: dict, celltype: str, pdf=None,
+        self, icell, allprots: dict, celltype: str, pdf=None,
     ):
         """
-        Overall analysis of IV protocols for one day
+        Overall analysis of IV protocols for one cell in the day
 
         Parameters
         ----------
-        iday : int
-            index into Pandas database
+        icell : int
+            index into Pandas database for the selected cell
 
         allprots : dict
             dictionary of protocols for the day/slice/cell
@@ -933,9 +928,11 @@ class IV_Analysis():
         """
         CP.cprint(
             "c",
-            f"analyze ivs for index: {iday: d} ({str(self.df.at[iday, 'date']):s} )",
+            f"analyze ivs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}  cell: ({str(self.df.iloc[icell].cell_id):s} )",
         )
-        file = Path(self.df.iloc[iday].data_directory, self.df.iloc[iday].cell_id)
+        cell_directory = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id )
+        print("file: ", cell_directory)
+        print("Cell id: ", f"cell: {str(self.df.iloc[icell].cell_id):s} ")
         if "IV" not in self.df.columns.values:
             self.df = self.df.assign(IV=None)
         if "Spikes" not in self.df.columns.values:
@@ -943,7 +940,7 @@ class IV_Analysis():
 
         CP.cprint(
             "c",
-            f"      {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+            f"      Cell: {str(cell_directory):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
         # clean up data in IV and SPikes : remove Posix
@@ -1035,7 +1032,7 @@ class IV_Analysis():
         )  # storage for results; predefine the dicts.
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
-                r, nfiles = self.analyze_iv(iday=iday, i=i, x=x, file=file, allivs=validivs, nfiles=nfiles, pdf=pdf)
+                r, nfiles = self.analyze_iv(icell=icell, i=i, x=x, cell_directory=cell_directory, allivs=validivs, nfiles=nfiles, pdf=pdf)
                 if self.dry_run:
                     continue
                 if r is None:
@@ -1045,13 +1042,13 @@ class IV_Analysis():
             results["IV"] = _cleanup_ivdata(results["IV"])
             results["Spikes"] = _cleanup_ivdata(results["Spikes"])
             if not self.dry_run:
-                self.df.at[iday, "IV"] = results[
+                self.df.at[icell, "IV"] = results[
                     "IV"
                 ]  # everything in the RM analysis_summary structure
-                self.df.at[iday, "Spikes"] = results[
+                self.df.at[icell, "Spikes"] = results[
                     "Spikes"
                 ]  # everything in the SP analysus_summary structure
-        #            print(self.df.at[iday, 'IV'])
+        #            print(self.df.at[icell, 'IV'])
         else:
             result = [None] * len(tasks)  # likewise
             with mp.Parallelize(
@@ -1059,7 +1056,7 @@ class IV_Analysis():
             ) as tasker:
                 for i, x in tasker:
                     result, nfiles = self.analyze_iv(
-                        iday, i, x, file, validivs, nfiles, pdf=pdf
+                        icell, i, x, cell_directory, validivs, nfiles, pdf=pdf
                     )
                     tasker.results[validivs[i]] = result
             # reform the results for our database
@@ -1076,10 +1073,10 @@ class IV_Analysis():
             #            print('riv: ', riv)
 
             self.df.at[
-                iday, "IV"
+                icell, "IV"
             ] = riv  # everything in the RM analysis_summary structure
             self.df.at[
-                iday, "Spikes"
+                icell, "Spikes"
             ] = rsp  # everything in the SP analysus_summary structure
 
         # foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
@@ -1090,7 +1087,7 @@ class IV_Analysis():
 
             # with hdf5:
             # Note, reading this will be slow - it seems to be rather a large file.
-            day, slice, cell = self.make_cell(iday=iday)
+            day, slice, cell = self.make_cell(icell=icell)
             keystring = str(
                 Path(Path(day).name, slice, cell)
             )  # the keystring is the cell.
@@ -1099,11 +1096,11 @@ class IV_Analysis():
             # what a pain.
             keystring = 'd_'+keystring.replace('.', '_')
             if self.n_analyzed == 0:
-                self.df.iloc[iday].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
+                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
-                self.df.iloc[iday].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
-            self.df.at[iday, "IV"] = None
-            self.df.at[iday, "Spikes"] = None
+                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
+            self.df.at[icell, "IV"] = None
+            self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
             gc.collect()
 
@@ -1122,10 +1119,10 @@ class IV_Analysis():
 
     def analyze_iv(
         self,
-        iday: int,
+        icell: int,
         i: int,
         x: int,
-        file: Union[Path, str],
+        cell_directory: Union[Path, str],
         allivs: list,
         nfiles: int,
         pdf: None,
@@ -1136,7 +1133,7 @@ class IV_Analysis():
 
         Parameters
         ----------
-        iday : int
+        icell : int
             index into Pandas database for the day
         i : int
             index into the list of protocols
@@ -1160,17 +1157,17 @@ class IV_Analysis():
         iv_result = {}
         sp_result = {}
 
-        fpath = Path(file, protocol)
+        protocol_directory = Path(cell_directory, protocol)
         
-        if not fpath.is_dir():
-            print("file: ", file)
+        if not protocol_directory.is_dir():
+            print("cell directory: ", cell_directory)
             print("protocol: ", protocol)
-            CP.cprint("r", f"File not found (analyze_iv)!! {str(fpath):s}")
+            CP.cprint("r", f"protocol directory not found (analyze_iv)!! {str(protocol_directory):s}")
             exit()
 
         if self.iv_select["duration"] > 0.0:
             EPIV = EP.IVSummary.IV(
-                str(fpath),
+                str(protocol_directory),
                 plot=True,
             )
             check = EPIV.iv_check(duration=self.iv_select["duration"])
@@ -1178,20 +1175,20 @@ class IV_Analysis():
                 gc.collect()
                 return (None, 0)  # skip analysis
         if not self.dry_run:
-            print(f"      IV analysis for {str(fpath):s}")
-            EPIV = EP.IVSummary.IVSummary(fpath, plot=True)
+            print(f"      IV analysis for {str(protocol_directory):s}")
+            EPIV = EP.IVSummary.IVSummary(protocol_directory, plot=True)
             br_offset = 0.0
             if (
-                not pd.isnull(self.df.at[iday, "IV"])
-                and protocol in self.df.at[iday, "IV"]
-                and "--Adjust" in self.df.at[iday, protocol]["BridgeAdjust"]
+                not pd.isnull(self.df.at[icell, "IV"])
+                and protocol in self.df.at[icell, "IV"]
+                and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
             ):
                 print(
                     "Bridge: {0:.2f} Mohm".format(
-                        self.df.at[iday, "IV"][protocol]["BridgeAdjust"] / 1e6
+                        self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
                     )
                 )
-            ctype = self.df.at[iday, "cell_type"].lower()
+            ctype = self.df.at[icell, "cell_type"].lower()
             tgap = 0.0015
             tinit = True
             if ctype in [
@@ -1213,20 +1210,20 @@ class IV_Analysis():
             sp_result = EPIV.SP.analysis_summary
             result["IV"] = iv_result
             result["Spikes"] = sp_result
-            ctype = self.df.at[iday, "cell_type"]
-            annot = self.df.at[iday, "annotated"]
+            ctype = self.df.at[icell, "cell_type"]
+            annot = self.df.at[icell, "annotated"]
             if annot:
                 ctwhen = "[revisited]"
             else:
                 ctwhen = "[original]"
             # print("Checking for figure, plothandle is: ", plot_handle)
             if plot_handle is not None:
-                shortpath = fpath.parts
+                shortpath = protocol_directory.parts
                 shortpath = str(Path(*shortpath[4:]))
                 plot_handle.suptitle(
                     "{0:s}\nType: {1:s} {2:s}".format(
                         shortpath,  # .replace("_", "\_"),
-                        self.df.at[iday, "cell_type"],
+                        self.df.at[icell, "cell_type"],
                         ctwhen,
                     ),
                     fontsize=8,
@@ -1252,30 +1249,30 @@ class IV_Analysis():
             print("Dry Run: would analyze %s" % Path(self.rawdatapath, protocol))
             br_offset = 0
 
-            if self.df.at[iday, "IV"] == {} or pd.isnull(self.df.at[iday, "IV"]):
+            if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):
                 print("   current database has no IV data set for this file")
-            elif protocol not in list(self.df.at[iday, "IV"].keys()):
+            elif protocol not in list(self.df.at[icell, "IV"].keys()):
                 print(
                     "Protocol {0:s} not found in day: {1:s}".format(
-                        str(protocol), self.df.at[iday, "date"]
+                        str(protocol), self.df.at[icell, "date"]
                     )
                 )
-            elif "BridgeAdjust" in self.df.at[iday, "IV"][protocol].keys():
-                br_offset = self.df.at[iday, "IV"][protocol]["BridgeAdjust"]
+            elif "BridgeAdjust" in self.df.at[icell, "IV"][protocol].keys():
+                br_offset = self.df.at[icell, "IV"][protocol]["BridgeAdjust"]
                 print("   with Bridge: {0:.2f}".format(br_offset / 1e6))
             else:
                 print("... has no bridge, will use 0")
             gc.collect()
             return None, 0
 
-    def analyze_vcs(self, iday: int, allprots: dict, pdf=None):
+    def analyze_vcs(self, icell: int, allprots: dict, pdf=None):
         """
         Overall analysis of VC protocols
         Incomplete - mostly just plots the data
 
         Parameters
         ----------
-        iday : int
+        icell : int
             index into Pandas database for the day
 
         allprots : dict
@@ -1311,7 +1308,7 @@ class IV_Analysis():
                         #     pdf.savefig(dpi=300)
                         mpl.close(EPVC.IVFigure)
                     mpl.close(EPVC.IVFigure)
-        celltype = self.df.iloc[iday].cell_type
+        celltype = self.df.iloc[icell].cell_type
         if len(celltype) == 0:
             celltype = 'unknown'
         self.merge_pdfs(celltype=celltype, pdf=pdf)
