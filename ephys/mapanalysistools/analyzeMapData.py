@@ -32,6 +32,7 @@ import pyqtgraph.multiprocess as mp
 import scipy.ndimage
 import scipy.signal
 from ephys.mapanalysistools import plotMapData as PMD
+from ephys.mapanalysistools import compute_scores
 from ephys.mini_analyses import minis_methods
 
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
@@ -87,6 +88,7 @@ class AnalysisPars:
     notch_freqs: list = field(default_factory=def_notch)  # list of notch frequencies
     notch_Q: float = 90.0  # Q value for notch filters (sharpness)
     fix_artifact_flag: bool = True  # flag enabling removeal of artifacts
+    artifact_file: Union[Path, None] = None
     ar_start: float = 0.10 # starting time for stimuli
     stimtimes: dict=field(
         default_factory=def_stimtimes)
@@ -159,7 +161,7 @@ class AnalyzeMap(object):
         self.template_file = None
 
         self.methodname = "aj"  # default event detector
-        
+        self.set_methodname(self.methodname)
         self.MA = minis.minis_methods.MiniAnalyses()  # get a minianalysis instance
         self.Pars.MA = self.MA  # instance may be needed for plotting
         self.reset_filtering()
@@ -194,7 +196,7 @@ class AnalyzeMap(object):
     def set_methodname(self, methodname):
         if methodname.lower() in ["aj"]:
             self.methodname = "aj"
-            self.engine = "pythonn"
+            self.engine = "python"
         elif methodname.lower() in ["cb"]:
             self.methodname = "cb"
             self.engine = "numba"  # set this as the default
@@ -245,14 +247,14 @@ class AnalyzeMap(object):
         self.Pars.noderivative_artifact = suppr
 
     def set_artifact_file(self, filename):
-        self.template_file = Path("template_data_" + filename + ".pkl")
+        self.template_file = filename
 
     def readProtocol(
         self, protocolFilename, records=None, sparsity=None, getPhotodiode=False
     ):
         starttime = timeit.default_timer()
         self.protocol = protocolFilename
-        CP.cprint("g", f"Reading Protocol: {str(protocolFilename):s}")
+        CP.cprint("g", f"Reading Protocol:: {str(protocolFilename):s}")
         self.AR.setProtocol(protocolFilename)
         if not protocolFilename.is_dir() or not self.AR.getData():
             CP.cprint("r", f"**** No data found in protocol: {str(protocolFilename):s}")
@@ -338,43 +340,8 @@ class AnalyzeMap(object):
         Qb = 1e6 * np.sum(data[tbindx]) / (twin_base[1] - twin_base[0])  # baseline
         return Qr, Qb
 
-    def ZScore(
-        self,
-        tb: np.ndarray,
-        data: np.ndarray,
-        twin_base: list = [0, 0.1],
-        twin_resp: list = [[0.101, 0.130]],
-    ) -> float:
-        """
-        Compute a Z-Score on the currents, comparing
-        the mean and standard deviation during the baseline
-        with the mean in a response window
-        # abs(post.mean() - pre.mean()) / pre.std()
-        """
-        # get indices for the integration windows
-        tbindx = np.where((tb >= twin_base[0]) & (tb < twin_base[1]))
-        trindx = np.where((tb >= twin_resp[0]) & (tb < twin_resp[1]))
-        mpost = np.mean(data[trindx])  # response
-        mpre = np.mean(data[tbindx])  # baseline
-        try:
-            zs = np.fabs((mpost - mpre) / np.std(data[tbindx]))
-        except:
-            zs = 0
-        return zs
 
-    def Imax(
-        self,
-        tb: np.ndarray,
-        data: np.ndarray,
-        twin_base: list = [0, 0.1],
-        twin_resp: list = [[0.101, 0.130]],
-        sign: int = 1,
-    ) -> float:
 
-        tbindx = np.where((tb >= twin_base[0]) & (tb < twin_base[1]))
-        trindx = np.where((tb >= twin_resp[0]) & (tb < twin_resp[1]))
-        mpost = np.max(sign * data[trindx])  # response goes negative...
-        return mpost
 
     def select_events(
         self,
@@ -661,7 +628,7 @@ class AnalyzeMap(object):
             return None
         self.last_dataset = dataset
         if self.Pars.fix_artifact_flag:
-            self.Data.data_clean, self.avgdata = self.fix_artifacts(self.data)
+            self.Data.data_clean, self.avgdata = self.fix_artifacts(self.data, AR=self.AR)
             if self.verbose:
                 CP.cprint("c", "        Fixing Artifacts")
         else:
@@ -730,7 +697,7 @@ class AnalyzeMap(object):
         pmax = len(list(info.keys()))
         Qr = np.zeros((nstim, data.shape[1]))  # data shape[1] is # of targets
         Qb = np.zeros((nstim, data.shape[1]))
-        Zscore = np.zeros((nstim, data.shape[1]))
+        zscore = np.zeros((nstim, data.shape[1]))
         I_max = np.zeros((nstim, data.shape[1]))
         pos = np.zeros((data.shape[1], 2))
         infokeys = list(info.keys())
@@ -742,14 +709,14 @@ class AnalyzeMap(object):
                     twin_base=self.Pars.twin_base,
                     twin_resp=self.Pars.twin_resp[s],
                 )
-                Zscore[s, t] = self.ZScore(
+                zscore[s, t] = compute_scores.ZScore(
                     tb,
                     mdata[t, :],
                     twin_base=self.Pars.twin_base,
                     twin_resp=self.Pars.twin_resp[s],
                 )
                 I_max[s, t] = (
-                    self.Imax(
+                    compute_scores.Imax(
                         tb,
                         data[0, t, :],
                         twin_base=self.Pars.twin_base,
@@ -812,7 +779,7 @@ class AnalyzeMap(object):
             "method": self.methodname,
             "Qr": Qr,
             "Qb": Qb,
-            "ZScore": Zscore,
+            "ZScore": zscore,
             "I_max": I_max,
             "positions": pos,
             "stimtimes": self.Pars.stimtimes,
@@ -1222,19 +1189,21 @@ class AnalyzeMap(object):
 
 
 
-    def fix_artifacts(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def fix_artifacts(self, data: np.ndarray, AR: Union[object, None] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Use a template to subtract the various transients in the signal...
         """
+        if AR == None:
+            AR = self.AR
         testplot = False
         CP.cprint('c', "Fixing artifacts")
         avgd = data.copy()
         while avgd.ndim > 1:
             avgd = np.mean(avgd, axis=0)
-        meanpddata = self.AR.Photodiode.mean(
+        meanpddata = AR.Photodiode.mean(
             axis=0
         )  # get the average PD signal that was recorded
-        shutter = self.AR.getLaserBlueShutter()
+        shutter = AR.getLaserBlueShutter()
         dt = np.mean(np.diff(self.Data.tb))
         # if meanpddata is not None:
         #     Util = EP.Utility.Utility()
@@ -1275,7 +1244,7 @@ class AnalyzeMap(object):
         else:
             CP.cprint("w", f"   Artifact template: {str(template_file):s}")
             CP.cprint("w", f"   Current Working Dir: {os.getcwd():s}")
-            with open(Path(os.getcwd(), 'datasets', 'artifact_templates', template_file), "rb") as fh:
+            with open(template_file, "rb") as fh:
                 d = pickle.load(fh)
             ct_SR = np.mean(np.diff(d["t"]))
 

@@ -427,6 +427,7 @@ class MiniAnalyses:
             data = self.NotchData(data, notch=self.notch, notch_Q=self.notch_Q)
         self.data = data
         self.timebase = self.timebase[jmin:jmax]
+        self.template_tmax = np.max(self.timebase)
 
     def moving_average(self, a, n: int = 3) -> Tuple[np.array, int]:
         ret = np.cumsum(a, dtype=float)
