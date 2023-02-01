@@ -87,6 +87,7 @@ iv_measures = [
     "Date",
     "Cell_ID",
     "cell_expression",
+    "genotype",
     "Animal_ID",
     "code",
     "sex",
@@ -129,6 +130,7 @@ spike_measures = [
     "Date",
     "Cell_ID",
     "cell_expression",  # from the acq4 metadata
+    "genotype",
     "Animal_ID",
     #   "Group",
     "code",
@@ -156,6 +158,7 @@ spike_measures = [
 no_average = [
     "Date",
     "cell_expression",
+    "genotype",
     "Cell_ID",
     "Animal_ID",
     #    "Group",
@@ -263,6 +266,9 @@ class GetAllIVs:
             ]
         )
         self.set_code_colors(codecolors)
+        self.markercode = None
+        self.markerfills = None
+        self.marker_names = None
         self.iv_dataframe = None
         self.spike_dataframe = None
 
@@ -277,6 +283,21 @@ class GetAllIVs:
         """
         self.codecolors = codecolors
         self.code_names = list(self.codecolors.keys())
+    
+    def set_code_markerfill(self, markercode:str=None, markerfills: dict=None):
+        """assign marker fills symbols using a dict.
+        This map will replace the original code list and codes
+
+        Args:
+            marker_code: What parameter in the database is used to set the marker fills 
+                for example: "cell_expression"
+            markerfills (dict): A list of codes and their colors
+                for example: {'GFP+': 'filled', 'GFP-': 'open'}
+
+        """
+        self.markercode = markercode
+        self.markerfills = markerfills
+        self.marker_names = list(self.markerfills.keys())
 
     def set_code_metaname(self, metaname: str = "genotype"):
         """pick out the column from the dataSummary table that is used to pull the "code" from the data
@@ -407,7 +428,8 @@ class GetAllIVs:
         # print(df_accum.columns)
         ident = list(set(df_accum['Animal_ID']))
         cell_ids = list(df_accum['Cell_ID'].values)
-        counts = {'M_GFP+': 0, 'M_GFP-':0, 'F_GFP+': 0, 'F_GFP-':0}
+        # counts = {'M_GFP+': 0, 'M_GFP-':0, 'F_GFP+': 0, 'F_GFP-':0}
+        counts = {'M_WT': 0, 'M_FF':0, 'F_WT': 0, 'F_FF':0}
         n_male_gp = 0
         n_female_gm = 0
         n_male_gp = 0
@@ -589,6 +611,8 @@ class GetAllIVs:
         Animal_ID: str,
         sex: str,
         code: str,
+        genotype: str,
+        cell_expression: str,
         # Group: str,
         day,
         accumulator: dict,
@@ -654,8 +678,11 @@ class GetAllIVs:
                     accumulator[m].append(Animal_ID)
                 if m == "sex":
                     accumulator[m].append(sex)
-                # if m == "Group":
-                #     accumulator[m].append(Group)
+                if m == 'genotype':
+                    accumulator[m].append(genotype)
+                if m == "cell_expression":
+                    accumulator[m].append(cell_expression)
+
                 if m == "code":
                     accumulator[m].append(code)
                 if m == "protocol":
@@ -681,7 +708,11 @@ class GetAllIVs:
                     accumulator[m] = accumulator[m][0]
                 if m == "sex":
                     accumulator[m] = accumulator[m][0]
+                if m == 'genotype':
+                    accumulator[m] = accumulator[m][0]
                 if m == "code":
+                    accumulator[m] = accumulator[m][0]
+                if m == "cell_expression":
                     accumulator[m] = accumulator[m][0]
                 if m == "protocol":
                     accumulator[m] = [Path(k).name for k in accumulator[m]]
@@ -725,6 +756,8 @@ class GetAllIVs:
                 Cell_ID = self.make_cell(idx)
                 code = self.dfs.iloc[idx][self.code_metaname]
                 Animal_ID = self.dfs.iloc[idx]["animal identifier"]
+                genotype = self.dfs.iloc[idx]["genotype"]
+                cell_expression = self.dfs.iloc[idx]["cell_expression"]
                 sex = self.dfs.iloc[idx]["sex"]
                 ages = self.make_emptydict(spike_measures)
                 dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
@@ -741,6 +774,8 @@ class GetAllIVs:
                         Animal_ID=Animal_ID,
                         # Group=Group,
                         code=code,
+                        genotype=genotype,
+                        cell_expression = cell_expression,
                         sex = sex,
                         day=day,
                         accumulator=Cell_accumulator,
@@ -798,6 +833,10 @@ class GetAllIVs:
     def nancount(self, a):
         return(int(len(~np.isnan(a))))
 
+    def group_em(self, row):
+        row.grouping = f"{row.sex:s}_{row.genotype:s}"
+        return row
+        
     def plot_summary_info(self, datatype:str, mode, code:str, pax:object, parentFigure=None):
         if datatype == 'spike':
             df_accum = self._get_spike_info(mode)
@@ -809,38 +848,43 @@ class GetAllIVs:
             paxx = paxesb
         df_accum = df_accum[df_accum.code != ' ']  # remove unidentified groups
         df_accum.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df_accum = df_accum.assign(grouping="")  # assign some groupings
+        df_accum = df_accum.apply(self.group_em, axis=1)
         
         self.print_census(df_accum)
 
         code_by_param = {}  # dict of all the codes available for a parameter we measure
-        
+        code_name = "grouping"
+        print(df_accum.columns)
+        print(df_accum.grouping.values)
+        usecode = "grouping" # or "code"
         for param in use_measures:
             all_codes = {}
             with pd.option_context("mode.use_inf_as_null", True):
-                df_accum = df_accum.dropna(subset=[param, self.code_metaname], how="all")
+                df_accum = df_accum.dropna(subset=[param, code_name], how="all")
             # get all of the code values in the dataframe, from the selected column
-            no_code = df_accum.iloc[0]['code'] == []
+            no_code = df_accum.iloc[0][usecode] == []
             if no_code:
                 codes = []
             else:
-               codes = list(set(df_accum['code']))
+               codes = list(set(df_accum[usecode]))  # use grouping for the "code"
             code_by_param[param] = codes
 
 
             if (
                 param not in no_average
-                and len(codes) > 1
+                and len(codes) == 1
                 and len(code_by_param[param][0]) > 1
                 and len(code_by_param[param][1]) > 1
             ):
 
-                group_1 = df_accum[df_accum.code == code_by_param[param][0]][param].values
-                group_2 = df_accum[df_accum.code == code_by_param[param][1]][param].values
+                group_1 = df_accum[df_accum[usecode] == code_by_param[param][0]][param].values
+                group_2 = df_accum[df_accum[usecode] == code_by_param[param][1]][param].values
                 if self.nancount(group_1) > 0 and self.nancount(group_2) > 0:
 
                     print(f"\nParam: {param:<20s}:")
-                    print("group1: ", group_1)
-                    print("group2: ", group_2)
+                    print("group1: ", code_by_param[param][0], group_1)
+                    print("group2: ", code_by_param[param][1], group_2)
                     t, p = scipy.stats.ttest_ind(
                         group_1,
                         group_2,
@@ -858,8 +902,8 @@ class GetAllIVs:
 
                     # KW
                     if len(code_by_param.keys()) == 4:
-                        group_3 = df_accum[df_accum.code == code[3]][param].values
-                        group_4 = df_accum[df_accum.code == code[4]][param].values
+                        group_3 = df_accum[df_accum[usecode] == code[3]][param].values
+                        group_4 = df_accum[df_accum[usecode] == code[4]][param].values
                         if self.nancount(group_3) > 0 and self.nancount(group_4) > 0:
                             if (
                                 len(group_3) > 0
@@ -873,7 +917,7 @@ class GetAllIVs:
                                 )
                                 print(f"Krwukal-Wallis: H:{s:.6f}   p={p:.6f}\n")
                         elif len(code_by_param[param]) == 3:
-                            group_3 = df_accum[df_accum.code == code[3]][param].values
+                            group_3 = df_accum[df_accum[usecode] == code[3]][param].values
                             if self.nancount(group_3) > 0:
 
                                 s, p = scipy.stats.kruskal(
@@ -890,46 +934,56 @@ class GetAllIVs:
             print("=" * 80)
 
         iax = 0
+
+
         for i, measure in enumerate(use_measures):
             if measure is None or measure in no_average or len(codes) == 0:
                 print("s    > Skipping plotting measure: ", measure, measure in no_average, len(codes))
                 continue
+            df_accum = df_accum.assign(grouping="")
+            df_accum = df_accum.apply(self.group_em, axis=1)
             yd = df_accum[measure].replace([np.inf], np.nan)
-            x = pd.Series(df_accum["code"])
+            x = pd.Series(df_accum[usecode])
             sex = pd.Series(df_accum["sex"])
+            grouping = pd.Series(df_accum["grouping"])
+            # print("grouping: ", grouping)
+
             iasort = x.argsort()
             if np.all(np.isnan(yd)):
                 iax += 1
                 continue  # skip plot if no data
-
-            dfm = pd.DataFrame({"Group": x, "measure": yd, "group": x, "sex": sex})
+            groups = sorted(list(set(grouping)))
+            # print("Groups: ", groups)
+            dfm = pd.DataFrame({"Group": x, "measure": yd, "sex": sex})
             sns.violinplot(
                 data=dfm,
                 x="Group",
                 y="measure",
                 ax=pax[iax],
-                order=[code_by_param[param][0], code_by_param[param][1]],
-                palette=self.codecolors,
+                hue="sex",
+                order=groups, # [code_by_param[param][0], code_by_param[param][1]],
+                # palette=self.codecolors,
                 inner=None,
                 saturation=1.0,
+
             )
             mpl.setp(pax[iax].collections, alpha=0.3)
             orders = sorted([code_by_param[param][0], code_by_param[param][1]])
             # sns.swarmplot(data=dfm, x='Group', y='measure', ax=pax[i], order=['A', 'B'], hue="Group", palette=self.codecolors, edgecolor='grey', size=2.5)
-            for sex, marker, edgecolor, color in zip(['M', 'F'], ['s', 'o'], ['k', 'w'], ['k', 'b']):
-                dfm_persex = dfm[dfm["sex"] == sex]
-                sns.stripplot(
-                    data=dfm_persex,
+            # for sex, marker, edgecolor, color in zip(['M', 'F'], ['s', 'o'], ['k', 'w'], ['k', 'b']):
+            #     dfm_persex = dfm[dfm["sex"] == sex]
+            sns.stripplot(
+                    data=dfm,
                     x="Group",
                     y="measure",
                     ax=pax[iax],
                     hue="sex",
-                    marker=marker,
-                    edgecolor=edgecolor,
+                    # marker=marker,
+                    # edgecolor=edgecolor,
                     linewidth=0.5,
                     dodge=True,
-                    hue_order=['M', 'F'],
-                    palette=[color]*2, # self.codecolors,
+                    order=groups, # ['M', 'F'],
+                    # palette=[color]*2, # self.codecolors,
                     #self.codecolors,
 
                     size=2.5,
@@ -938,6 +992,8 @@ class GetAllIVs:
             pax[iax].set_title(measure, fontsize=8)  # .replace('_', '\_'))
             pax[iax].set_ylabel(ylabels[measure], fontsize=7)
             pax[iax].set_ylim(paxx[measure])
+            pax[iax].tick_params(axis='x', labelsize=8, labelrotation=45.0)
+    
 
   
             iax += 1
@@ -986,19 +1042,21 @@ class GetAllIVs:
         for i, measure in enumerate(spike_measures):
             if measure in no_average:
                 continue
+            pax[iax].tick_params(axis='x', labelsize=8, labelrotation=45.0)
             if measure == "AdaptRatio":
                 if pax[iax].get_legend() is not None:
                     mpl.setp(pax[iax].get_legend().get_texts(), fontsize="5")
                     pax[iax].legend(bbox_to_anchor=(1.02, 1.0))
-                    handles, labels = pax[iax].get_legend_handles_labels()
-                    # print("labels: ", labels)
-                    handles = [handles[1], handles[3]]
-                    labels = [labels[2], labels[3]]
-                    pax[iax].legend(handles, labels, bbox_to_anchor=(1.02, 1.5), fontsize=8)
+                    # handles, labels = pax[iax].get_legend_handles_labels()
+                    # # print("labels: ", labels)
+                    # handles = [handles[1], handles[3]]
+                    # labels = [labels[2], labels[3]]
+                    # pax[iax].legend(handles, labels, bbox_to_anchor=(1.02, 1.5), fontsize=8)
             else:
                 if pax[iax].get_legend() is not None:
                     pax[iax].get_legend().remove()
-            iax += 1
+                iax += 1
+            
 
         self.spike_dataframe = df_accum
         return self.Pspikes
@@ -1039,6 +1097,8 @@ class GetAllIVs:
         Cell_ID: str,
         Animal_ID: str,
         code: str,
+        genotype: str,
+        cell_expression: str,
         age: str,
         sex: str,
         # Group: str,
@@ -1059,6 +1119,8 @@ class GetAllIVs:
         cellmeas["age"] = age
         cellmeas["code"] = code
         cellmeas["sex"] = sex
+        cellmeas["genotype"] = genotype
+        cellmeas["cell_expression"] = cell_expression
         tracekeys = list(cellmeas.keys())
         for m in iv_measures:
             if m not in no_average:
@@ -1085,6 +1147,10 @@ class GetAllIVs:
                 #     accumulator[m].append(Group)
                 if m == "code":
                     accumulator[m].append(code)
+                if m == "genotype":
+                    accumulator[m].append(genotype)
+                if m == "cell_expression":
+                    accumulator[m].append(cell_expression)
                 if m == "protocol":
                     accumulator[m].append(proto)
                 if m == "Ibreak":
@@ -1133,6 +1199,8 @@ class GetAllIVs:
                 if code == ' ' or pd.isnull(code):
                     continue
                 sex = self.dfs.iloc[idx]["sex"]
+                genotype = self.dfs.iloc[idx]["genotype"]
+                cell_expression = self.dfs.iloc[idx]["cell_expression"]
                 Animal_ID = self.dfs.iloc[idx]["animal identifier"]
                 age = self.dfs.iloc[idx]["age"]
                 ages = self.make_emptydict(iv_measures)
@@ -1149,10 +1217,11 @@ class GetAllIVs:
                         proto,
                         Cell_ID=Cell_ID,
                         Animal_ID=Animal_ID,
-                        # Group=Group,
                         sex=sex,
                         age=age,
                         code=code,
+                        genotype=genotype,
+                        cell_expression=cell_expression,
                         day=day,
                         accumulator=Cell_accumulator,
                     )
@@ -1213,11 +1282,12 @@ class GetAllIVs:
                 if paxb[iax].get_legend() is not None:
                     mpl.setp(paxb[iax].get_legend().get_texts(), fontsize="6")
                     paxb[iax].legend(bbox_to_anchor=(-0.35, 1.0))
-                    handles, labels = paxb[iax].get_legend_handles_labels()
-                    # print("labels: ", labels)
-                    handles = [handles[1], handles[3]]
-                    labels = [labels[2], labels[3]]
-                    paxb[iax].legend(handles, labels, bbox_to_anchor=(-0.35, 1.0), fontsize=7)
+                    # handles, labels = paxb[iax].get_legend_handles_labels()
+                    # print(handles)
+                    # # print("labels: ", labels)
+                    # handles = [handles[1], handles[3]]
+                    # labels = [labels[2], labels[3]]
+                    # paxb[iax].legend(handles, labels, bbox_to_anchor=(-0.35, 1.0), fontsize=7)
                     # ap1l = d[u]['AP1_Latency'] ap1hw = d[u]['AP1_HalfWidth']
                     # apthr = d[u]['FiringRate_1p5T']
             else:
