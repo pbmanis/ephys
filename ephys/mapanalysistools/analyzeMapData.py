@@ -516,6 +516,7 @@ class AnalyzeMap(object):
         if data.ndim == 3:
             if self.Pars.notch_flag:
                 CP.cprint("g", f"    analyzeMapData (3dim): Notch Filtering Enabled: {str(self.Pars.notch_freqs):s}")
+            
             data2 = data.copy()
             for r in range(data2.shape[0]):
                 for t in range(data2.shape[1]):
@@ -525,14 +526,13 @@ class AnalyzeMap(object):
                         data2[r, t, :imax] = filtfunc(
                             b, a, data2[r, t, :imax]
                         )
-                        CP.cprint('g', f"    LPF applied at {self.Pars.LPF:.1f}")
-                        self.Pars.LPF_applied = True
+
+
                     if self.Pars.HPF_flag and not self.Pars.HPF_applied:
                         data2[r, t, :imax] = filtfunc(
                             bh, ah, data2[r, t, :imax]
                         )
-                        self.Pars.HPF_applied = True
-                        CP.cprint('g', f"    HPF applied at {self.Pars.HPF:.1f}")
+
                     if self.Pars.notch_flag and not self.Pars.notch_applied:
                         data2[r, t, :imax] = FILT.NotchFilterZP(
                             data2[r, t, :imax],
@@ -545,8 +545,10 @@ class AnalyzeMap(object):
             if self.Pars.notch_flag:
                 self.Pars.notch_applied = True
             if self.Pars.LPF_flag:
+                CP.cprint('g', f"    LPF applied at {self.Pars.LPF:.1f}")
                 self.Pars.LPF_applied = True
             if self.Pars.HPF_flag:
+                CP.cprint('g', f"    HPF applied at {self.Pars.HPF:.1f}")
                 self.Pars.HPF_applied = True
             if self.Pars.baseline_flag:
                 self.Pars.baseline_subtracted = True
@@ -686,6 +688,8 @@ class AnalyzeMap(object):
 
         """
         CP.cprint("g", "    Analyzing protocol")
+        print(self.Pars)
+        print("-"*40)
         rate = self.rate
         mdata = np.mean(data, axis=0)  # mean across ALL reps
         #        rate = rate*1e3  # convert rate to msec

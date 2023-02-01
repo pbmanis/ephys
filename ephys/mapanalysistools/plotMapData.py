@@ -16,6 +16,7 @@ import pylibrary.tools.cprint as CP
 import scipy.ndimage
 import scipy.signal
 import seaborn
+# import montager as MT
 from matplotlib import colors as mcolors
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Wedge
@@ -258,11 +259,11 @@ class PlotMapData:
         r, c = PH.getLayoutDimensions(len(self.images), pref="height")
         f, ax = mpl.subplots(r, c)
         self.figure_handle = f
-        f.suptitle(self.celldir.replace(r"_", r"\_"), fontsize=9)
+        f.suptitle(self.celldir, fontsize=9) # .replace(r"_", r"\_"), fontsize=9)
         ax = ax.ravel()
         PH.noaxes(ax)
         for i, img in enumerate(self.imagedata):
-            fna, fne = os.path.split(self.images[i])
+            fne = Path(self.images[i]).name
             imfig = ax[i].imshow(self.gamma_correction(img, 2.2))
             PH.noaxes(ax[i])
             ax[i].set_title(fne.replace(r"_", r"\_"), fontsize=8)
@@ -397,10 +398,24 @@ class PlotMapData:
         mdata: np.ndarray,
         title: str,
         results: dict,
+        zscore_threshold: Union[list, None] = None,
         ax: Union[object, None] = None,
         trsel: Union[int, None] = None,
     ) -> None:
+        """Plot the data traces in a stacked array
 
+        Args:
+            tb (np.ndarray): timebase
+            mdata (np.ndarray): map data to plot (traces, 2d array)
+            title (str): text tile for plot
+            results (dict): The results dictionary to use
+            zscore_threshold (float, None): whether to clip by zscores. None plots all traces, 
+                a float value only plots those traces where the zscore to ANY stimulus
+                exceeds the float value
+            ax (Union[object, None], optional): _description_. Defaults to None.
+            trsel (Union[int, None], optional): _description_. Defaults to None.
+        """
+        print("stacked trace title: ", title)
         # assert not self.plotted_em['stack']
         CP.cprint("c", "    Starting stack plot")
         now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
@@ -418,6 +433,10 @@ class PlotMapData:
             f, ax = mpl.subplots(1, 1)
             self.figure_handle = f
         events = results["events"]
+
+        if zscore_threshold is not None:
+            zs = np.max(np.array(results['ZScore']), axis=0)
+
         # print('event keys: ', events.keys())
         nevtimes = 0
         spont_ev_count = 0
@@ -425,7 +444,8 @@ class PlotMapData:
         itmax = int(self.Pars.analysis_window[1] / dt)
 
         if trsel is not None:
-            for j in range(mdata.shape[0]):
+            # only plot the selected traces
+            for jtrial in range(mdata.shape[0]):
                 if tb.shape[0] > 0 and mdata[jtrial, trsel, :].shape[0] > 0:
                     ax.plot(
                         tb[:itmax],
@@ -450,7 +470,7 @@ class PlotMapData:
                 weight="normal",
                 font="Arial",
             )
-            mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
+            mpl.suptitle(str(Path(*Path(title).parts[-5:])), fontsize=8) # .replace(r"_", r"\_"), fontsize=8)
             self.plot_timemarker(ax)
 
             ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
@@ -464,7 +484,10 @@ class PlotMapData:
             evtr = events[itrial][
                 "event_trace_list"
             ]  # of course it is the same for every entry.
+            iplot_tr = 0
             for itrace in range(mdata.shape[1]):
+                if zscore_threshold is not None and zs[itrace] < zscore_threshold:
+                    continue
                 smpki = events[itrial]["smpksindex"][itrace]
                 pktimes = events[itrial]["peaktimes"][itrace]
                 # print(itrace, smpki)
@@ -518,7 +541,7 @@ class PlotMapData:
 
                         ax.plot(
                             tb[tsi],
-                            ms * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            ms * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=ck,
                             markersize=2,
@@ -528,7 +551,7 @@ class PlotMapData:
                         )
                         ax.plot(
                             tb[tri],
-                            mr * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            mr * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cr,
                             markersize=2,
@@ -538,7 +561,7 @@ class PlotMapData:
                         )
                         ax.plot(
                             tb[ts2i],
-                            ms2 * self.Pars.scale_factor + self.Pars.stepi * itrace,
+                            ms2 * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cg,
                             markersize=2,
@@ -546,8 +569,12 @@ class PlotMapData:
                             zorder=0,
                             rasterized=self.rasterized,
                         )
+                iplot_tr += 1
         for itrial in range(mdata.shape[0]):
+            iplot_tr = 0
             for itrace in range(mdata.shape[1]):
+                if zscore_threshold is not None and zs[itrace] < zscore_threshold:
+                    continue
                 if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
                     if crflag[itrial]:
                         alpha = 1.0
@@ -558,15 +585,16 @@ class PlotMapData:
                     ax.plot(
                         tb[:itmax],
                         mdata[itrial, itrace, :itmax] * self.Pars.scale_factor
-                        + self.Pars.stepi * itrace,
+                        + self.Pars.stepi * iplot_tr,
                         linewidth=lw,
                         rasterized=False,
                         zorder=10,
                         alpha=alpha,
                     )
+                iplot_tr += 1
         CP.cprint("c", f"        Spontaneous Event Count: {spont_ev_count:d}")
 
-        mpl.suptitle(str(title).replace(r"_", r"\_"), fontsize=8)
+        mpl.suptitle(str(title), fontsize=8) # .replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
         ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
 
@@ -606,7 +634,8 @@ class PlotMapData:
         mdata: Union[np.ndarray, None] = None,
         trace_tb: Union[np.ndarray, None] = None,
         datatype: Union[str, None] = None,
-        events: Union[dict, None] = None,
+        results: Union[dict, None] = None,
+        zscore_threshold: Union[float, None] = None,
         ax: Union[object, None] = None,
         scale: float = 1.0,
         label: str = "pA",
@@ -615,6 +644,7 @@ class PlotMapData:
         # ensure we don't plot more than once...
         # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
+        events = results['events']
         if self.plotted_em["avgax"][0] == 0:
             self.plotted_em["avgax"][1] = ax
         elif self.plotted_em["avgax"][0] == 1:
@@ -665,6 +695,7 @@ class PlotMapData:
                 # print(trial, evtype, result_names[evtype])
                 CP.cprint("r", "**** plot_avgevent_traces: no events....")
                 continue
+            
             tb0 = events[trial]["aveventtb"]  # get from first trace
 
             rate = np.mean(np.diff(tb0))
@@ -676,11 +707,13 @@ class PlotMapData:
             ptfivems = int(0.0005 / rate)
             pwidth = int(0.0005 / rate / 2.0)
             # for itrace in events[trial].keys():  # traces in the evtype list
+            iplot_tr = 0
             for itrace in range(mdata.shape[1]):  # traces in the evtype list
                 if events is None or trial not in list(events.keys()):
                     if self.verbose:
                         print(f"     NO EVENTS in trace: {itrace:4d}")
                     continue
+
                 evs = events[trial][result_names[evtype]][itrace]
                 if len(evs) == 0:  # skip trace if there are NO events
                     if self.verbose:
@@ -734,7 +767,10 @@ class PlotMapData:
                             evtype,
                         )
                     if len(evdata) > 0:
-                        ave.append(evdata)
+                        if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
+                            ave.append(evdata)
+                        else: # zscore_threshold == None:  # accept all comers.
+                            ave.append(evdata)
                         npev += 1
                         # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
                         if self.verbose:
@@ -801,7 +837,7 @@ class PlotMapData:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
-        txt = f"Amp: {scale*amp:.3e} tau1:{1e3*tau1:.2f} tau2: {1e3*tau2:.2f} (N={aved.shape[0]:d})"
+        txt = f"Amp: {scale*amp:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
         # print(txt)
         # print(f"Amplitude: {Amplitude:.3e}")
         # mpl.show()
@@ -867,6 +903,7 @@ class PlotMapData:
     def plot_average_traces(
         self,
         ax: object,
+        results: dict,
         tb: Union[np.ndarray, None],
         mdata: Union[np.ndarray, None],
         color: str = "k",
@@ -1272,7 +1309,7 @@ class PlotMapData:
         if imageHandle is not None and imagefile is not None:
             axp.set_aspect("equal")
         axp.set_aspect("equal")
-        title = measuretype.replace(r"_", r"\_")
+        title = measuretype# .replace(r"_", r"\_")
         if whichstim >= 0:
             stima = r"Stim \# "
             title += f", {stima:s} {whichstim:d} Only"
@@ -1370,6 +1407,7 @@ class PlotMapData:
         imagefile=None,
         rotation=0.0,
         measuretype=None,
+        zscore_threshold:Union[float, None]=None,
         plotevents=True,
         rasterized=False,
         whichstim=-1,
@@ -1377,6 +1415,7 @@ class PlotMapData:
         trsel=None,
         plotmode="document",
         datatype=None,
+        imagedata = None,
     ) -> bool:
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {str(dataset.name):s}")
@@ -1434,21 +1473,24 @@ class PlotMapData:
                     ("E", {"pos": [0.47, 0.45, 0.05, 0.85]}),
                     #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
                 ]
-            )  # a1 is cal bar
+            )  # a1 is SCALE bar
+            panelmap = {"A": "A", "A1": "A1", "B": "B", "C1": "C1", "C2": "C2", "D": "D", "E": "E"}
         if plotmode == "publication":
             self.plotspecs = OrderedDict(
                 [
-                    ("A", {"pos": [0.45, 0.35, 0.58, 0.4]}),
-                    ("A1", {"pos": [0.82, 0.012, 0.58, 0.4]}),  # scale bar
-                    ("B", {"pos": [0.1, 0.78, 0.40, 0.1]}),
-                    ("C1", {"pos": [0.1, 0.36, 0.05, 0.25]}),
-                    ("C2", {"pos": [0.52, 0.36, 0.05, 0.25]}),
+                    ("A", {"pos": [0.1, 0.35, 0.58, 0.4]}),
+                    ("B", {"pos": [0.48, 0.35, 0.58, 0.4]}),
+                    ("B1", {"pos": [0.85, 0.012, 0.58, 0.4]}),  # scale bar
+                    ("C", {"pos": [0.1, 0.78, 0.40, 0.1]}),
                     ("D", {"pos": [0.1, 0.78, 0.32, 0.05]}),
-                    ("E", {"pos": [0.1, 0.78, 0.45, 0.125]}),
+                    ("E1", {"pos": [0.1, 0.36, 0.05, 0.22]}),
+                    ("E2", {"pos": [0.52, 0.36, 0.05, 0.22]}),
+                    # ("F", {"pos": [0.1, 0.78, 0.45, 0.125]}),
                     #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
                 ]
             )  # a1 is cal bar
-
+            panelmap = {"A": "B", "A1": "B1", "F": "A", "C1": "E1", "C2": "E2", "D": "D", "E": "C"}
+        self.panelmap = panelmap
         self.P = PH.Plotter(self.plotspecs, label=False, figsize=(10.0, 8.0))
 
         self.plot_hist(self.P.axdict["B"], results)  # PSTH
@@ -1462,7 +1504,7 @@ class PlotMapData:
 
         ident = 0
         if ident == 0:
-            cbar = self.P.axdict["A1"]
+            cbar = self.P.axdict[panelmap["A1"]]
         else:
             cbar = None
         idm = self.mapfromid[ident]
@@ -1472,7 +1514,7 @@ class PlotMapData:
         if self.Pars.overlay_scale > 0.0:
             self.newvmax = self.Pars.overlay_scale
         self.newvmax = self.plot_map(
-            self.P.axdict["A"],
+            self.P.axdict[panelmap["A"]],
             cbar,
             results["positions"],
             measure=results,
@@ -1486,22 +1528,40 @@ class PlotMapData:
             average=average,
         )
 
-        self.plot_stacked_traces(
-            self.Data.tb,
-            self.Data.data_clean,
-            dataset,
-            results,
-            ax=self.P.axdict["E"],
-            trsel=trsel,
-        )  # stacked on right
+        if plotmode == "document":
+            self.plot_stacked_traces(
+                self.Data.tb,
+                self.Data.data_clean,
+                dataset,
+                results=results,
+                ax=self.P.axdict[panelmap["E"]],
+                zscore_threshold=zscore_threshold,
+                trsel=trsel,
+            )  # stacked on right
+            
+        else:
+            # plot average of all the traces for which score is above threshold
+            if zscore_threshold is not None:
+                zs = np.max(np.array(results['ZScore']), axis=0)
+                i_zscore = np.where(zs > zscore_threshold)[0]
+                d = np.mean(self.Data.data_clean.squeeze()[i_zscore, :], axis=0)
+                dt = np.mean(np.diff(self.Data.tb))
+                itmax = int(self.Pars.ar_tstart / dt)
+                print(itmax)
+                print(self.Data.tb.shape)
+                self.P.axdict[panelmap["E"]].plot(self.Data.tb[:itmax], d[:itmax])
+        self.P.axdict[panelmap["E"]].set_xlim(0, self.Pars.ar_tstart)
+        PH.nice_plot(self.P.axdict[panelmap["E"]], direction="outward",
+                ticklength=3, position=-0.03)
 
         self.plot_avgevent_traces(
             evtype="avgevoked",
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
             datatype = datatype,
-            ax=self.P.axdict["C1"],
-            events=results["events"],
+            ax=self.P.axdict[panelmap["C1"]],
+            results = results,
+            zscore_threshold=zscore_threshold,
             scale=scf,
             label=label,
             rasterized=rasterized,
@@ -1511,8 +1571,9 @@ class PlotMapData:
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
             datatype = datatype,
-            ax=self.P.axdict["C2"],
-            events=results["events"],
+            ax=self.P.axdict[panelmap["C2"]],
+            results = results,
+            zscore_threshold=zscore_threshold,
             scale=scf,
             label=label,
             rasterized=rasterized,
@@ -1520,9 +1581,13 @@ class PlotMapData:
 
         if self.Data.photodiode is not None:
             self.plot_photodiode(
-                self.P.axdict["D"],
+                self.P.axdict[panelmap["D"]],
                 self.Data.photodiode_timebase[0],
                 self.Data.photodiode,
             )
+            self.P.axdict[panelmap["D"]].set_xlim(0, self.Pars.ar_tstart)
+            PH.nice_plot(self.P.axdict[panelmap["D"]], direction="outward",
+                ticklength=3, position=-0.03)
+        
         # mpl.show()
         return True  # indicated that we indeed plotted traces.
