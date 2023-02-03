@@ -636,6 +636,7 @@ class PlotMapData:
         datatype: Union[str, None] = None,
         results: Union[dict, None] = None,
         zscore_threshold: Union[float, None] = None,
+        plot_minmax:Union[list, None] = None,  # put bounds on amplitude of events that are plotted
         ax: Union[object, None] = None,
         scale: float = 1.0,
         label: str = "pA",
@@ -767,6 +768,9 @@ class PlotMapData:
                             evtype,
                         )
                     if len(evdata) > 0:
+                        if plot_minmax is not None:  # only plot events that fall in an ampltidue window
+                            if (np.min(evdata) < plot_minmax[0]) or (np.max(evdata) > plot_minmax[1]):
+                                continue # 
                         if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
                             ave.append(evdata)
                         else: # zscore_threshold == None:  # accept all comers.
@@ -970,30 +974,31 @@ class PlotMapData:
         angle=0,
         spotsize=42e-6,
         cellmarker=False,
+        cell_position:Union[list, str] = None,
         whichstim=-1,
         average=False,
         pars=None,
     ):
 
-        sf = 1.0  # could be 1e-6 ? data in Meters? scale to mm.
+        sf = 1.0  # everything is scaled in meters
         cmrk = 50e-6 * sf  # size, microns
         linewidth = 0.2
         npos = pos.shape[0]
         npos += 1  # need to count up one more to get all of the points in the data
-        pos = pos[:npos, :] * 1e3  # clip unused positions
+        pos = pos[:npos, :]  # clip unused positions
 
         pz = [np.mean(pos[:, 0]), np.mean(pos[:, 1])]
         if imageHandle is not None and imagefile is not None:
             imageInfo = imageHandle.imagemetadata[0]
             # compute the extent for the image, offsetting it to the map center position
-            ext_left = imageInfo["deviceTransform"]["pos"][0] * 1e3  # - pz[0]
+            ext_left = imageInfo["deviceTransform"]["pos"][0]  # - pz[0]
             ext_right = (
                 ext_left
                 + imageInfo["region"][2]
                 * imageInfo["deviceTransform"]["scale"][0]
                 * 1e3
             )
-            ext_bottom = imageInfo["deviceTransform"]["pos"][1] * 1e3  # - pz[1]
+            ext_bottom = imageInfo["deviceTransform"]["pos"][1]  # - pz[1]
             ext_top = (
                 ext_bottom
                 + imageInfo["region"][3]
@@ -1030,7 +1035,7 @@ class PlotMapData:
                 cmap=setMapColors("gray"),
             )
 
-        spotsize = 1e3 * spotsize
+        # spotsize = spotsize
         # print(measure.keys())
         # print(measuretype)
         if measuretype in ["A", "Q"]:
@@ -1180,12 +1185,8 @@ class PlotMapData:
             whichmeasures = [0]
             data[0] = np.mean(data)  # just
         else:
-            # print("else... ", len(data))
             whichmeasures = range(len(data))
-        # print(whichstim, whichmeasures, average)
         norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
-        # red_rgba = matplotlib.colors.to_rgba('r')
-        # black_rgba = matplotlib.colors.to_rgba('k')
         cmx = matplotlib.cm.ScalarMappable(norm=norm, cmap=cm_sns)
         axp.set_facecolor([0.75, 0.75, 0.75])
         for (
@@ -1194,12 +1195,6 @@ class PlotMapData:
             whichmeasures
         ):  # there may be multiple measure[measuretype]s (repeated stimuli of different kinds) in a map
             # note circle size is radius, and is set by the laser spotsize (which is diameter)
-            # print("spotsizes size: ", spotsizes.shape)
-            # print("im: ", im)
-            # print("spotsizes: ", spotsizes)
-            # print("whichmeasures: ", whichmeasures)
-            # print( ", measuretype)
-            # print("reps: ", self.nreps)
             radw = np.ones(pos.shape[0]) * spotsizes[im]
             radh = np.ones(pos.shape[0]) * spotsizes[im]
             if measuretype in ["Qr", "Imax"]:
@@ -1212,19 +1207,10 @@ class PlotMapData:
                 if measuretype == "ZScore" and em < 1.96:
                     spotcolors[i][3] = em / 1.96  # scale down
                 edgecolors[i] = matplotlib.colors.to_rgba([0.6, 0.6, 0.6, 0.5])
-                # edgecolors[i] = matplotlib.colors.to_rgba([0.2, 0.2, 0.2, 0.5])
-                #     print(' .. ', spotcolors[i])
-            # print('spotcolors, edgecolors: ', spotcolors, edgecolors)
             order = np.argsort(
                 data[im]
             )  
             # plot from smallest to largest (so largest on top)
-
-
-            # for i, p in enumerate(pos[order]):  # just checking - it appears in one map.
-            #     if p[0] > 55.2 and p[1] < 3.45:
-            #         print('wayward: ', i, p)
-            #   colors = self.clip_colors(colors, [1., 1., 1., 1.])
             if self.nreps == 1:
                 # concentric circles (overlaid ellipses) showing the response measure for
                 # each stimulus. Organization is outside-in first to last stimulus
@@ -1248,19 +1234,12 @@ class PlotMapData:
                 # make arcs within the circle, each arc is for different trial
                 # these were averaged across repetitions (see Zscore, Q, etc above), so nreps is 1
                 # maybe later don't average and store ZScore per map trial.
-                # print(self.nreps)
                 nreps = self.nreps # 1
                 ic = 0
                 npos = pos.shape[0]
                 dtheta = 360.0 / nreps
                 ri = 0
                 rs = int(npos / nreps)
-                print("nrep: ", nreps, 'npos: ', npos)
-                print("ppos shape: ", pos.shape)
-                print("0: ", len(pos[ri : (ri + rs), 0]))
-                print("1: ", len(pos[ri : (ri + rs), 1]))
-                print("r: ", radw[ri : (ri + rs)] / 2.0)
-
                 for nr in range(nreps):
                     ec = wedges(
                         pos[ri : (ri + rs), 0],
@@ -1280,7 +1259,10 @@ class PlotMapData:
             axp.plot(
                 [0.0, 0.0], [-cmrk, cmrk], "-", color="r"
             )  # cell centered coorinates
-
+        # if cell_position is not None:
+        #     axp.plot([cell_position[0], cell_position[0]],
+        #               [cell_position[1], cell_position[1]],
+        #               marker = 'X', color='y', markersize=6)
         tickspace = scaler.tickSpacing
         try:
             ntick = 1 + int(vmax / tickspace)
@@ -1302,7 +1284,6 @@ class PlotMapData:
             #     c2.ax, tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0}
             # )
         # axp.scatter(pos[:,0], pos[:,1], s=2, marker='.', color='k', zorder=4)
-        axr = 250.0
         axp.set_facecolor([0.0, 0.0, 0.0])
         axp.set_xlim(xlim)
         axp.set_ylim(ylim)
@@ -1315,7 +1296,6 @@ class PlotMapData:
             title += f", {stima:s} {whichstim:d} Only"
         if average:
             title += ", Average"
-        # axp.set_title(title)
         if vmaxin is None:
             return vmax
         else:
@@ -1405,17 +1385,21 @@ class PlotMapData:
         dataset,
         results,
         imagefile=None,
-        rotation=0.0,
-        measuretype=None,
+        rotation:float=0.0,
+        measuretype:str=None,
         zscore_threshold:Union[float, None]=None,
         plotevents=True,
-        rasterized=False,
-        whichstim=-1,
-        average=False,
+        rasterized:bool=False,
+        whichstim:int=-1,
+        average:bool=False,
         trsel=None,
-        plotmode="document",
+        plotmode:str="document",
         datatype=None,
         imagedata = None,
+        cell_position: Union[list, None] = None,
+        plot_minmax: Union[list, None] = None,
+        cal_height: Union[float, None] = None,
+
     ) -> bool:
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {str(dataset.name):s}")
@@ -1526,9 +1510,10 @@ class PlotMapData:
             spotsize=spotsize,
             whichstim=whichstim,
             average=average,
+            cell_position = cell_position,
         )
 
-        if plotmode == "document":
+        if plotmode == "document":  # always show all responses/events, regardless of amplitude
             self.plot_stacked_traces(
                 self.Data.tb,
                 self.Data.data_clean,
@@ -1539,20 +1524,53 @@ class PlotMapData:
                 trsel=trsel,
             )  # stacked on right
             
-        else:
+        else: # plotmode is "publication"
             # plot average of all the traces for which score is above threshold
+            # and amplitude is in a specified range (to eliminate spikes)
             if zscore_threshold is not None:
                 zs = np.max(np.array(results['ZScore']), axis=0)
                 i_zscore = np.where(zs > zscore_threshold)[0]
-                d = np.mean(self.Data.data_clean.squeeze()[i_zscore, :], axis=0)
+                plotable = self.Data.data_clean.squeeze()[i_zscore, :]
+                if plot_minmax is not None:
+                    # print("minmax: ", plot_minmax)
+                    # print(np.min(plotable), np.max(plotable))
+                    iplot = np.where((np.min(plotable, axis=1) > plot_minmax[0]) & (np.max(plotable, axis=1) < plot_minmax[1]))[0]
+
+                    # print("iplot: ", iplot)
+                    plotable = plotable[iplot, :]
+                d = np.mean(plotable, axis=0)
                 dt = np.mean(np.diff(self.Data.tb))
                 itmax = int(self.Pars.ar_tstart / dt)
-                print(itmax)
-                print(self.Data.tb.shape)
-                self.P.axdict[panelmap["E"]].plot(self.Data.tb[:itmax], d[:itmax])
+                self.P.axdict[panelmap["E"]].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
         self.P.axdict[panelmap["E"]].set_xlim(0, self.Pars.ar_tstart)
         PH.nice_plot(self.P.axdict[panelmap["E"]], direction="outward",
                 ticklength=3, position=-0.03)
+        ylims = self.P.axdict[panelmap["E"]].get_ylim()
+        PH.referenceline(self.P.axdict[panelmap["E"]], 0.)
+        if cal_height == None:
+            self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11,
+        else:
+            cal_height = 1e-12*cal_height
+        PH.calbar(
+                self.P.axdict[panelmap["E"]],
+                calbar=[
+                    np.max(self.Data.tb[:itmax]) - 0.1,
+                    ylims[0]*0.9,
+                    0.05,
+                    cal_height
+                ],
+                scale=[1e3, 1e12],
+                axesoff=True,
+                orient="left",
+                unitNames={"x": "ms", "y": "pA"},
+                fontsize=11,
+                weight="normal",
+                font="Arial",
+            )
+
+        # PH.calbar(self.P.axdict[panelmap["E"]], calbar=[20e-3, ylim[0]*0.8, 0.05e-3, 100e-12],
+        #     scale=[1e-3, 1e-12], 
+        #     unitNames={"x": 'pA', "y": 'ms'})
 
         self.plot_avgevent_traces(
             evtype="avgevoked",
@@ -1562,6 +1580,7 @@ class PlotMapData:
             ax=self.P.axdict[panelmap["C1"]],
             results = results,
             zscore_threshold=zscore_threshold,
+            plot_minmax=plot_minmax,
             scale=scf,
             label=label,
             rasterized=rasterized,
@@ -1574,6 +1593,7 @@ class PlotMapData:
             ax=self.P.axdict[panelmap["C2"]],
             results = results,
             zscore_threshold=zscore_threshold,
+            plot_minmax=plot_minmax,
             scale=scf,
             label=label,
             rasterized=rasterized,

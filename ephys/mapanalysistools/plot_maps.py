@@ -1,6 +1,3 @@
-from __future__ import print_function
-#!/usr/bin/python
-
 """
 Simple adjunct routine to plot LSPS/CRACM maps with traces, over cell image if possible.
 Reuqires acq4_reader. 
@@ -9,9 +6,9 @@ Takes advantage of acq4_reader code to access all data and attributes.
 
 
 """
-import os
-import re
+
 import itertools
+from typing import Union
 import argparse
 from collections import OrderedDict
 from pathlib import Path
@@ -25,24 +22,23 @@ import scipy.ndimage as SND
 
 import pylibrary.plotting.plothelpers as PH
 import seaborn as sns
-import ephys.datareaders.acq4_reader as ARC
+import ephys.datareaders as DR
 import MetaArray as EM
 from pyqtgraph import configfile
 from pylibrary.plotting import picker
 import scipy.ndimage
 import numpy as np
-import datetime
-import pprint
 import textwrap as WR
-import collections
+
 import tifffile as tf
-import ephys.ephys_analysis.boundrect as BR
-import ephys.mapanalysistools.digital_filters as FILT
+import ephys.tools.boundrect as BR
+import ephys.tools.digital_filters as FILT
 import mahotas as MH
-import nf107.set_expt_paths as set_expt_paths
-set_expt_paths.get_computer()
-experiments = set_expt_paths.get_experiments()
-exclusions = set_expt_paths.get_exclusions()
+
+
+# set_expt_paths.get_computer()
+# experiments = set_expt_paths.get_experiments()
+# exclusions = set_expt_paths.get_exclusions()
 
 class ScannerInfo(object):
     """
@@ -53,19 +49,20 @@ class ScannerInfo(object):
         BRI = BR.BoundRect()
         self.AR = AR  # save the acq4_reader instance for access to the data
         self.AR.getScannerPositions()
-        self.scannerpositions = np.array(AR.scannerpositions)
-        pos = self.AR.scannerCamera['frames.ma']['transform']['pos']
-        scale = self.AR.scannerCamera['frames.ma']['transform']['scale']
-        region = self.AR.scannerCamera['frames.ma']['region']
-        self.binning = self.AR.scannerCamera['frames.ma']['binning']
+        self.scanner_positions = np.array(AR.scanner_positions)
+        pos = self.AR.scanner_camera['frames.ma']['transform']['pos']
+        scale = self.AR.scanner_camera['frames.ma']['transform']['scale']
+        region = self.AR.scanner_camera['frames.ma']['region']
+        self.binning = self.AR.scanner_camera['frames.ma']['binning']
         scale = list(scale)
         scale[0] = scale[0]/self.binning[0]
         scale[1] = scale[1]/self.binning[1]
         self.scale = scale
-        if self.AR.spotsize is not None:
-            print ('Spot Size: {0:0.3f} microns'.format(self.AR.spotsize*1e6))
+        if self.AR.scanner_spotsize is not None:
+            pass
+        # print ('Spot Size: {0:0.3f} microns'.format(self.AR.scanner_spotsize*1e6))
         else:
-            self.AR.spotsize=50.
+            self.AR.scanner_spotsize=50.
 
         self.camerabox = [[pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]],
                [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[3]],
@@ -73,9 +70,9 @@ class ScannerInfo(object):
                [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[1]],
                [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
            ]
-        scannerbox = BRI.getRectangle(self.AR.scannerpositions)
+        scannerbox = BRI.getRectangle(self.AR.scanner_positions)
         if scannerbox is None:  # likely just one point
-            pt = self.AR.scannerpositions
+            pt = self.AR.scanner_positions
             fp = np.array([[pt[0][0]], [pt[0][1]]])
             scannerbox = fp
         else:
@@ -86,12 +83,12 @@ class ScannerInfo(object):
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
         
 
-class MapTraces(object):
+class PlotMaps(object):
     def __init__(self):
         self.cell = None
         self.datasets = OrderedDict()
         self.image = None
-        self.AR = ARC.acq4_reader()
+        self.AR = DR.acq4_reader.acq4_reader()
         self.outputfn = None
         self.invert = True
         self.vmax = 20000.
@@ -177,36 +174,71 @@ class MapTraces(object):
             if k == 'ticks':
                 self.ticks = pdict[k]
 
-    def plot_maps(self, protocols, traces=None, linethickness=1.0):
+    def plot_maps(self, protocols, traces=None, linethickness:float=1.0, 
+            figure:Union[object, None]=None,
+            ax:object=None, ax2:object=None):
         """
         Plot map or superimposed maps...
         """
         print('plot_maps')
-        self.figure = mpl.figure()
-        # print(dir(self.figure))
-        self.figure.set_size_inches(14., 8.)
-        if traces is None:
-            self.ax = self.figure.add_subplot('111')
-            print('set ax')
+        if figure is None:
+            self.figure = mpl.figure()
+            # print(dir(self.figure))
+            self.figure.set_size_inches(14., 8.)
+            if traces is None:
+                self.ax = self.figure.add_subplot('111')
+                print('set ax')
+            else:
+                self.ax = self.figure.add_subplot('121')
+                self.ax2 = self.figure.add_subplot('122')
+                sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
+                print('set ax and ax2')
         else:
-            self.ax = self.figure.add_subplot('121')
-            self.ax2 = self.figure.add_subplot('122')
-            sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
-            print('set ax and ax2')
+            self.ax = ax
+            self.ax2 = ax2
+            self.figure=figure
+
         # self.ax3 = self.figure.add_subplot('133')
         self.data = dict.fromkeys(list(protocols.keys()))
-        cols = ['r', 'b', 'c', 'g']
         self.traces = traces
+        self.mapplot_traces(ax, protocols.linethickness)
+
+        cp = self.cell.parts
+        cellname = '/'.join(cp[-4:])
+        self.figure.suptitle(cellname, fontsize=11)
+        self.fig2 = None
+        if self.outputfn is not None:
+            mpl.savefig(self.outputfn)
+        # mpl.show()
+
+    def plot_scanner_locations(self, ax, scpos:Union[list, np.ndarray]=None, marker='o',
+        size=4, color='r', alpha=0.7):
+        self.scp = scpos
+        scp = self.scp
+        xmin = np.min(scp[:,0])
+        xmax = np.max(scp[:,0])
+        ymin = np.min(scp[:,1])
+        ymax = np.max(scp[:,1])
+        # print(xmin, ymin, xmax, ymax)
+        ax.scatter(scp[:,0], scp[:,1], s=size, c=color, marker=marker, alpha=alpha, picker=5)
+
+    def mapplot_traces(self, ax: object, protocols:list, linethickness:float=1.0):
+        cols = ['r', 'b', 'c', 'g']
 
         for i, p in enumerate(protocols):
             prot = protocols[p]
             self.datasets[p] = []
             if i == 0:
                 self.setProtocol(prot, self.image)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
+                self.show_traces(self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
             else:
                 self.setProtocol(prot)
-                self.show_traces(self.figure, self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
+                self.show_traces(self.ax, pcolor=cols[i], name=p, linethickness=linethickness)
+
+        x1, x2 = self.ax.get_xlim()
+        y1, y2 = self.ax.get_ylim()
+        self.XY = [self.get_XYlims()]
+        # set events here
         if self.traces is not None:
             for tr in self.traces:
                 self.handle_event(index=tr)
@@ -221,23 +253,14 @@ class MapTraces(object):
         # self.figure.canvas.mpl_connect('button_press_event', self.picker.pickEvent)
         # self.figure.canvas.mpl_connect('pick_event', self.picker.pickEvent)
         # self.figure.canvas.mpl_connect('motion_notify_event', self.picker.onMouseMotion)
-        x1, x2 = self.ax.get_xlim()
-        y1, y2 = self.ax.get_ylim()
-        self.XY = [self.get_XYlims()]
-        cp = self.cell.parts
-        cellname = '/'.join(cp[-4:])
-        self.figure.suptitle(cellname, fontsize=11)
-        self.fig2 = None
-        if self.outputfn is not None:
-            mpl.savefig(self.outputfn)
-        # mpl.show()
 
+    
     def get_XYlims(self):
         x1, x2 = self.ax.get_xlim()
         y1, y2 = self.ax.get_ylim()
         return([x1, y1, x2, y2])
         
-    def show_traces(self, f, ax, pcolor='r', linethickness=0.5, name=None):
+    def show_traces(self, ax, pcolor='r', linethickness=0.5, name=None):
 
         self.cell.glob('*')
         # imageplotted = False
@@ -248,7 +271,6 @@ class MapTraces(object):
         supindex = self.AR.readDirIndex(currdir=self.cell)
     
         self.SI = ScannerInfo(self.AR)
-        print(self.SI.boxw)
         
         if self.invert:
             cmap = 'gist_gray_r'
@@ -279,14 +301,8 @@ class MapTraces(object):
         if self.window:
             ax.set_xlim(self.xlim)
             ax.set_ylim(self.ylim)
-        self.scp = self.SI.scannerpositions
-        scp = self.scp
-        xmin = np.min(scp[:,0])
-        xmax = np.max(scp[:,0])
-        ymin = np.min(scp[:,1])
-        ymax = np.max(scp[:,1])
-        # print(xmin, ymin, xmax, ymax)
-        ax.scatter(scp[:,0], scp[:,1], s=4, c='c', marker='o', alpha=0.3, picker=5)
+        self.plot_scanner_spots(ax=ax, scpos = self.SI.scanner_positions)
+
         print('getdata: ', name, self.datasets)
         d = self.AR.getData()
         if name is not None:
@@ -350,8 +366,8 @@ class MapTraces(object):
         self.mx += movex
         self.my += movey
         
-        # print(dir(MT.calbartext))
-        # calxy = MT.calbartext.get_position()
+        # print(dir(PMap.calbartext))
+        # calxy = PMap.calbartext.get_position()
         calxy = [0, 0]
         calxy[0] = x0 + xl[1]*(movex+self.mx)*0.001
         calxy[1] = y0 + yl[1]*(movey+self.my)*0.001 - yl[1]*0.015
@@ -386,7 +402,7 @@ class MapTraces(object):
 
     def handle_event(self, index):
         # print('handle event index: ', index)
-        # print(self.SI.scannerpositions[index,:])
+        # print(self.SI.scanner_positions[index,:])
         if self.ax2 is None:
             return
         if index in self.indicesplotted:
@@ -403,7 +419,7 @@ class MapTraces(object):
             #         ystep=ystep, ythick=0.5, tscale=False)
         # self.xscale*3.5e-5*self.tb+xoff, (y_scale*(vdat[self.im0:self.im1]-zero))+yoff, color=pcolor, linewidth=0.3)
         trn = self.traces.index(index)+1
-        self.ax.text(self.SI.scannerpositions[index][0], self.SI.scannerpositions[index][1],
+        self.ax.text(self.SI.scanner_positions[index][0], self.SI.scanner_positions[index][1],
                 f"{trn:d}", fontsize=9, horizontalalignment='center')
         self.ax2.text(0., ystep,
                 f"{trn:d}", fontsize=9, horizontalalignment='right')
@@ -421,8 +437,10 @@ def main():
                         'cartwheel',
                         'unknown', 'all']
     parser = argparse.ArgumentParser(description='Plot maps with traces on top')
+    parser.add_argument('-b', '--basepath', type=str, dest='basepath',
+                        default='', help="enter the base path to the dataset")
     parser.add_argument('-E', '--experiment', type=str, dest='experiment',
-                        choices = list(set_expt_paths.experiments.keys()), default='None', nargs='?', const='None',
+                        default='None', nargs='?', const='None',
                         help='Select Experiment to analyze')
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
                         choices=cellchoices,
@@ -432,25 +450,24 @@ def main():
                         
     args = parser.parse_args()
     experimentname = args.experiment 
-    basepath = Path(experiments[experimentname]['disk'])
-    # basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
+    basepath = args.basepath 
 
-    MT = MapTraces()
+    PMap = PlotMaps()
 
     if args.celltype == 'lsps':
         cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
         image = '../image_001.tif'
-        MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+        PMap.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
         prots = [cell]
 
-        MT.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
+        PMap.setPars({'invert': False, 'vmax': 30000, 'xscale': 1.5, 'yscale': 0.05, 'calbar': [0.5, 5000.e-12]})  # calbar in ms, pA
+        PMap.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 20.e-3], 'twin': [0.25, 0.5],
                  'ioff': -0.0})  # calbar in ms, pA
         cell1 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_000')
         cell2 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_001')
         cell3 = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_CC_testmap_MAX_002')
         cell_vc = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.08_000/slice_001/cell_000/LSPS_dendrite_VC_testmap_MAX_000')
-        MT.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
+        PMap.setPars({'invert': True, 'vmin': 1000, 'vmax': 18000, 'xscale': 6, 'yscale': 1.5, 'calbar': [0.5, 200e-12], 'twin': [0.25, 0.5],
                  })
         image = '../image_002.tif'
         prots = [cell1, cell2, cell3]
@@ -458,7 +475,7 @@ def main():
 
     # cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
  #    image = '../image_001.tif'
- #    MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
+ #    PMap.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
  #    prots = [cell]
 
     """
@@ -487,28 +504,25 @@ def main():
                 pars[n] = dc[n].values[0]
         return pars
 
-
-        
     def line_select_callback(eclick, erelease):
         'eclick and erelease are the press and release events'
-        
-        
+
         if eclick.button == MBB.MouseButton.LEFT and erelease.button== MBB.MouseButton.LEFT:
             x1, y1 = eclick.xdata, eclick.ydata
             x2, y2 = erelease.xdata, erelease.ydata
             print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
             print(" The button you used were: %s %s" % (eclick.button, erelease.button))
-            MT.XY.append([x1, y1, x2, y2])
+            PMap.XY.append([x1, y1, x2, y2])
         elif eclick.button == MBB.MouseButton.RIGHT:
-            if len(MT.XY) == 0:
+            if len(PMap.XY) == 0:
                 return
-            # print(MT.XY)
-            x1, y1, x2, y2 = MT.XY.pop()
+            # print(PMap.XY)
+            x1, y1, x2, y2 = PMap.XY.pop()
         xl = sorted([x1, x2])
         yl = sorted([y1, y2])
-        MT.ax.set_xlim(xl)
-        MT.ax.set_ylim(yl)
-        MT.reposition_cal()
+        PMap.ax.set_xlim(xl)
+        PMap.ax.set_ylim(yl)
+        PMap.reposition_cal()
         mpl.draw()
 
 
@@ -523,51 +537,51 @@ def main():
             print(' RectangleSelector activated.')
             toggle_selector.RS.set_active(True)
         elif event.key in ['p', 'P']:
-            xylims = MT.get_XYlims()
+            xylims = PMap.get_XYlims()
             print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
-            if MT.calbarobj is not None:
-                print(MT.calbarobj[0].get_xydata())
+            if PMap.calbarobj is not None:
+                print(PMap.calbarobj[0].get_xydata())
         elif event.key in ['s', 'S']:
-            xylims = MT.get_XYlims()
+            xylims = PMap.get_XYlims()
             print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
-            mpl.savefig(MT.outputfn)
+            mpl.savefig(PMap.outputfn)
             exit()
         elif event.key in ['z', 'Z']:
-            MT.cmin = SND.minimum(MT.image_data)
-            MT.cmax = SND.maximum(MT.image_data)
-            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            PMap.cmin = SND.minimum(PMap.image_data)
+            PMap.cmax = SND.maximum(PMap.image_data)
+            PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
         elif event.key in ['+']:
-            MT.cmax -= 500
-            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            PMap.cmax -= 500
+            PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
         elif event.key in ['-']:
-            MT.cmax += 500
-            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            PMap.cmax += 500
+            PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
         elif event.key in ['u', 'U']:
-            MT.cmin += 200
-            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            PMap.cmin += 200
+            PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
         elif event.key in ['d', 'D']:
-            MT.cmin -= 200
-            MT.imageax.set_clim(MT.cmin, MT.cmax)
+            PMap.cmin -= 200
+            PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
         
         elif event.key in ['right', '\x1b[C']:
-            MT.reposition_cal(movex=-1)  # move right
+            PMap.reposition_cal(movex=-1)  # move right
         elif event.key in ['left', '\x1b[D']:
-            MT.reposition_cal(movex=1)  # move left
+            PMap.reposition_cal(movex=1)  # move left
         elif event.key in ['up', '\x1b[A']:
-            MT.reposition_cal(movey=1)
+            PMap.reposition_cal(movey=1)
         elif event.key in ['down', '\x1b[B']:
-            MT.reposition_cal(movey=-1)
+            PMap.reposition_cal(movey=-1)
         elif event.key in ['h', 'H']: 
-            MT.reposition_cal(home=True)  # home
+            PMap.reposition_cal(home=True)  # home
         else:
             pass
         mpl.draw()
@@ -584,14 +598,14 @@ def main():
         cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
         image = '../' + str(dc['image'].values[0]) + '.tif'
         pars = makepars(dc)
-        MT.setPars(pars)
-        MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
+        PMap.setPars(pars)
+        PMap.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
+        PMap.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
 
-        MT.setProtocol(cell, image=image)
+        PMap.setProtocol(cell, image=image)
         print('calling plot_maps')
-        MT.plot_maps(prots, linethickness=1.0)
+        PMap.plot_maps(prots, linethickness=1.0)
 
     for cellname in docell:
         if cellname in ['unknown', 'all']:
@@ -610,7 +624,7 @@ def main():
             # print(dir(MT))
             rectprops = dict(facecolor='yellow', edgecolor = 'black',
                              alpha=0.2, fill=True)
-            toggle_selector.RS = RectangleSelector(MT.ax, line_select_callback,
+            toggle_selector.RS = RectangleSelector(PMap.ax, line_select_callback,
                                                    drawtype='box', useblit=True,
                                                    button=[1, 3],  # don't use middle button
                                                    minspanx=1e-5, minspany=1e-5,

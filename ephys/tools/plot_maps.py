@@ -1117,7 +1117,7 @@ def main():
         return
     shiftkey = False
     
-    table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
+    table = pd.read_excel('../mrk-data-nf107/datasetsNF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
         parnames = ['offset', 'cellpos', 'angle', 'experiment', 'invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q', 'cellID', 'map']
