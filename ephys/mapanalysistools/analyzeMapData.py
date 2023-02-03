@@ -89,6 +89,7 @@ class AnalysisPars:
     notch_Q: float = 90.0  # Q value for notch filters (sharpness)
     fix_artifact_flag: bool = True  # flag enabling removeal of artifacts
     artifact_file: Union[Path, None] = None
+    artifact_file_path: Union[Path, None] = None
     ar_start: float = 0.10 # starting time for stimuli
     stimtimes: dict=field(
         default_factory=def_stimtimes)
@@ -189,7 +190,10 @@ class AnalyzeMap(object):
         self.Pars.LPF_applied = False
         self.Pars.HPF_applied = False
         self.Pars.notch_applied = False
-        
+    
+    def set_artifactfile_path(self, artpath):
+        self.Pars.artifact_file_path = artpath
+
     def set_baseline(self, bl):
         self.pars.baseline_flag = bl
 
@@ -1246,8 +1250,8 @@ class AnalyzeMap(object):
         if ptype is None:
             lbr = np.zeros_like(avgd)
         else:
+            template_file = Path(self.Pars.artifact_file_path, template_file)
             CP.cprint("w", f"   Artifact template: {str(template_file):s}")
-            CP.cprint("w", f"   Current Working Dir: {os.getcwd():s}")
             with open(template_file, "rb") as fh:
                 d = pickle.load(fh)
             ct_SR = np.mean(np.diff(d["t"]))
