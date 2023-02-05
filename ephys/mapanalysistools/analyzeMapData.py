@@ -567,11 +567,16 @@ class AnalyzeMap(object):
             CP.cprint("g", f" ({1e12*self.Pars.global_SD:7.1f}) pA")
     
             trimdata = self._remove_outliers(data, self.Pars.global_trim_scale)
-            self.Pars.global_trimmed_SD = np.std(trimdata)
-            self.Pars.global_trimmed_median  = np.median(trimdata)
-            CP.cprint("g", f"    Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
-            CP.cprint("g", f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
-    
+            if len(trimdata) > 0:
+                self.Pars.global_trimmed_SD = np.std(trimdata)
+                self.Pars.global_trimmed_median  = np.median(trimdata)
+                CP.cprint("g", f"    Global Trimmed median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
+                CP.cprint("g", f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
+            else:
+                self.Pars.global_trimmed_SD = np.std(data)
+                self.Pars.global_trimmed_median  = np.median(data)
+                CP.cprint("g", f"    Global [not Trimmed] median (SD):  {1e12*self.Pars.global_trimmed_median:7.1f}", end="")
+                CP.cprint("g", f" ({1e12*self.Pars.global_trimmed_SD:7.1f}) pA")
              
         elif data.ndim == 2:
             raise ValueError("Filtering for 2d data is disabled? ")

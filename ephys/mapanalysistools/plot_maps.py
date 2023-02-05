@@ -53,7 +53,8 @@ class ScannerInfo(object):
         pos = self.AR.scanner_camera['frames.ma']['transform']['pos']
         scale = self.AR.scanner_camera['frames.ma']['transform']['scale']
         region = self.AR.scanner_camera['frames.ma']['region']
-        self.binning = self.AR.scanner_camera['frames.ma']['binning']
+        binning = self.AR.scanner_camera['frames.ma']['binning']
+        self.binning = binning
         scale = list(scale)
         scale[0] = scale[0]/self.binning[0]
         scale[1] = scale[1]/self.binning[1]
@@ -63,25 +64,27 @@ class ScannerInfo(object):
         # print ('Spot Size: {0:0.3f} microns'.format(self.AR.scanner_spotsize*1e6))
         else:
             self.AR.scanner_spotsize=50.
-
-        self.camerabox = [[pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]],
-               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[3]],
-               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[3]],
-               [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[1]],
-               [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
-           ]
+        x0 = pos[0] + scale[0]*region[0]/binning[0]
+        x1 = pos[0] + scale[0]*(region[0]+region[2])/binning[0]
+        y0 = pos[1] + scale[1]*region[1]/binning[1]
+        y1 = pos[1] + scale[1]*(region[1]+region[3])/binning[1]
+        self.camerabox = [[x0, y0], [x0, y1], [x1, y1], [x1, y0], [x0, y0]]
+        # self.camerabox = [[pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]],
+        #        [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[3]],
+        #        [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[3]],
+        #        [pos[0] + scale[0]*region[2], pos[1] + scale[1]*region[1]],
+        #        [pos[0] + scale[0]*region[0], pos[1] + scale[1]*region[1]]
+        #    ]
         scannerbox = BRI.getRectangle(self.AR.scanner_positions)
         if scannerbox is None:  # likely just one point
             pt = self.AR.scanner_positions
             fp = np.array([[pt[0][0]], [pt[0][1]]])
             scannerbox = fp
         else:
-            fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2,1)
-        # print('fp: ', fp)
+            fp = np.array([scannerbox[0][0], scannerbox[1][0]]).reshape(2,1)
         scannerbox = np.append(scannerbox, fp, axis=1)
         self.scboxw = np.array(scannerbox)        
         self.boxw = np.swapaxes(np.array(self.camerabox), 0, 1)
-        
 
 class PlotMaps(object):
     def __init__(self):

@@ -279,10 +279,13 @@ class PlotMapData:
         scale: float = 1e6,
         autorotate: bool = False,
         angle: float = 0.0,
+        units: str='radians'
     ) -> np.ndarray:
         """
-        Angle is in radians
+        Angle is in radians unless otherwise specified
         """
+        if units == 'degrees': # convert to radians
+            angle = 360.*angle/(2.0*np.pi)
         poslist = [
             tuple(
                 [sign[0] * p[0] * scale * scaleCorr, sign[1] * p[1] * scale * scaleCorr]
@@ -352,7 +355,7 @@ class PlotMapData:
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
-            for j, jtrace in enumerate(events[itrial]["onsets"]):
+            for j, jtrace in enumerate(events[itrial]["onsespeedts"]):
                 nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
@@ -954,12 +957,14 @@ class PlotMapData:
         if len(tb) > 0 and len(np.mean(pddata, axis=0)) > 0:
             ax.plot(
                 tb,
-                np.mean(pddata, axis=0),
+                np.mean(pddata, axis=0)*1e3,
                 color,
                 rasterized=self.rasterized,
                 linewidth=0.6,
             )
         ax.set_xlim(0.0, self.Pars.ar_tstart - 0.001)
+        ax.set_ylabel("P (mW)", fontsize=10)
+        ax.set_xlabel("Time (s)", fontsize=10)
 
     def plot_map(
         self,
@@ -987,7 +992,6 @@ class PlotMapData:
         npos += 1  # need to count up one more to get all of the points in the data
         pos = pos[:npos, :]  # clip unused positions
 
-        pz = [np.mean(pos[:, 0]), np.mean(pos[:, 1])]
         if imageHandle is not None and imagefile is not None:
             imageInfo = imageHandle.imagemetadata[0]
             # compute the extent for the image, offsetting it to the map center position
@@ -1338,7 +1342,7 @@ class PlotMapData:
                 ("ZScore", {"pos": [0.07, 0.3, 0.55, 0.3], "labelpos": (0.5, 1.05)}),
                 (
                     "ZScore-Cbar",
-                    {"pos": [0.4, 0.012, 0.55, 0.3], "labelpos": (0, 1.05)},
+                    {"pos": [0.4, 0.012, 0.55, 0.3], "labelpos": (-0.05, 1.05)},
                 ),  # scale bar
                 ("Qr-Qb", {"pos": [0.52, 0.3, 0.55, 0.3], "labelpos": (0.5, 1.05)}),
                 (
@@ -1423,15 +1427,6 @@ class PlotMapData:
         else:
             scf = 1.0
             label = "AU"
-        # f, ax = mpl.subplots(2,2)
-        #         ax = ax.ravel()
-        #         for k, s in enumerate(['I_max', 'ZScore', 'Qr', 'Qb']):
-        #             for i in results[s]:
-        #                 ax[k].scatter(np.arange(len(i)), i, s=5)
-        #                 ax[k].set_title(s)
-        #             if s in ['Qb', 'Qr']:
-        #                 ax[k].set_ylim(-0.20, np.max(i))
-        #         mpl.show()
 
         # build a figure
         self.nreps = results["ntrials"]
@@ -1457,27 +1452,56 @@ class PlotMapData:
                     ("E", {"pos": [0.47, 0.45, 0.05, 0.85]}),
                     #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
                 ]
-            )  # a1 is SCALE bar
-            panelmap = {"A": "A", "A1": "A1", "B": "B", "C1": "C1", "C2": "C2", "D": "D", "E": "E"}
-        if plotmode == "publication":
+            )
+            scale_bar = "A1"
+            evoked_panel = "C1"
+            spont_panel = "C2"
+            trace_panel = "E"
+            hist_panel = "B"
+            map_panel = "A"
+            photodiode_panel = "D"
+            slice_image_panel = None
+            cell_image_panel = None
+
+        elif plotmode == "publication":
+            label_fsize = 16
             self.plotspecs = OrderedDict(
                 [
-                    ("A", {"pos": [0.1, 0.35, 0.58, 0.4]}),
-                    ("B", {"pos": [0.48, 0.35, 0.58, 0.4]}),
-                    ("B1", {"pos": [0.85, 0.012, 0.58, 0.4]}),  # scale bar
-                    ("C", {"pos": [0.1, 0.78, 0.40, 0.1]}),
-                    ("D", {"pos": [0.1, 0.78, 0.32, 0.05]}),
-                    ("E1", {"pos": [0.1, 0.36, 0.05, 0.22]}),
-                    ("E2", {"pos": [0.52, 0.36, 0.05, 0.22]}),
-                    # ("F", {"pos": [0.1, 0.78, 0.45, 0.125]}),
-                    #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
-                ]
-            )  # a1 is cal bar
-            panelmap = {"A": "B", "A1": "B1", "F": "A", "C1": "E1", "C2": "E2", "D": "D", "E": "C"}
-        self.panelmap = panelmap
-        self.P = PH.Plotter(self.plotspecs, label=False, figsize=(10.0, 8.0))
+                    ("A1", {"pos": [0.05, 0.25, 0.58, 0.4], "labelpos": [-0.12, 0.95], "fontsize": label_fsize}),
+                    ("A2", {"pos": [0.35, 0.25, 0.58, 0.4], "fontsize": label_fsize}),
+                    ("B", {"pos": [0.65, 0.25, 0.58, 0.4], "fontsize": label_fsize}),
+                    ("B1", {"pos": [0.94, 0.012, 0.68, 0.2], "labelpos": [-1, 1.1], "fontsize": label_fsize}),  # scale bar
+                    ("C", {"pos": [0.1, 0.78, 0.42, 0.18], "labelpos": [-0.03, 1.05], "fontsize": label_fsize}),
+                    ("D", {"pos": [0.1, 0.78, 0.36, 0.03], "labelpos": [-0.03, 1.2], "fontsize": label_fsize}),
+                    ("E1", {"pos": [0.1, 0.36, 0.05, 0.22], "fontsize": label_fsize}),
+                    ("E2", {"pos": [0.52, 0.36, 0.05, 0.22], "fontsize": label_fsize}),
 
-        self.plot_hist(self.P.axdict["B"], results)  # PSTH
+                ]
+            )  # b1 is cal bar
+            scale_bar = "B1"
+            trace_panel = "C"
+            evoked_panel = "E1"
+            spont_panel = "E2"
+            hist_panel = None
+            map_panel = "B"
+            photodiode_panel = "D"
+            slice_image_panel = 'A1'
+            cell_image_panel = 'A2'
+        # self.panelmap = panelmap
+        self.panels = {'scale_bar': scale_bar,
+                        'trace_panel': trace_panel,
+                        'evoked_panel': evoked_panel,
+                        'spont_panel': spont_panel,
+                        'hist_panel': hist_panel,
+                        'map_panel': map_panel,
+                        'photodiode_panel': photodiode_panel,
+                        'slice_image_panel': slice_image_panel,
+                        'cell_image_panel': cell_image_panel,
+                    }
+        self.P = PH.Plotter(self.plotspecs, label=False, fontsize=10, figsize=(10.0, 8.0))
+
+        if hist_panel is not None:
+            self.plot_hist(self.P.axdict[hist_panel], results)  # PSTH
         # if imagefile is not None:
         #     self.MT.get_image(imagefile)
         #     self.MT.load_images()
@@ -1488,17 +1512,19 @@ class PlotMapData:
 
         ident = 0
         if ident == 0:
-            cbar = self.P.axdict[panelmap["A1"]]
+            cbar = self.P.axdict[scale_bar]
         else:
             cbar = None
         idm = self.mapfromid[ident]
 
         spotsize = self.Pars.spotsize
+        dt = np.mean(np.diff(self.Data.tb))
+        itmax = int(self.Pars.ar_tstart / dt)
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.0:
             self.newvmax = self.Pars.overlay_scale
         self.newvmax = self.plot_map(
-            self.P.axdict[panelmap["A"]],
+            self.P.axdict[map_panel],
             cbar,
             results["positions"],
             measure=results,
@@ -1519,40 +1545,37 @@ class PlotMapData:
                 self.Data.data_clean,
                 dataset,
                 results=results,
-                ax=self.P.axdict[panelmap["E"]],
+                ax=self.P.axdict[trace_panel],
                 zscore_threshold=zscore_threshold,
                 trsel=trsel,
             )  # stacked on right
+            trpanel = "E"
             
-        else: # plotmode is "publication"
+        elif plotmode is "publication":
             # plot average of all the traces for which score is above threshold
             # and amplitude is in a specified range (to eliminate spikes)
             if zscore_threshold is not None:
                 zs = np.max(np.array(results['ZScore']), axis=0)
                 i_zscore = np.where(zs > zscore_threshold)[0]
                 plotable = self.Data.data_clean.squeeze()[i_zscore, :]
+                plotable = plotable[:, :itmax]
                 if plot_minmax is not None:
-                    # print("minmax: ", plot_minmax)
-                    # print(np.min(plotable), np.max(plotable))
                     iplot = np.where((np.min(plotable, axis=1) > plot_minmax[0]) & (np.max(plotable, axis=1) < plot_minmax[1]))[0]
-
-                    # print("iplot: ", iplot)
                     plotable = plotable[iplot, :]
                 d = np.mean(plotable, axis=0)
-                dt = np.mean(np.diff(self.Data.tb))
-                itmax = int(self.Pars.ar_tstart / dt)
-                self.P.axdict[panelmap["E"]].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
-        self.P.axdict[panelmap["E"]].set_xlim(0, self.Pars.ar_tstart)
-        PH.nice_plot(self.P.axdict[panelmap["E"]], direction="outward",
+                self.P.axdict[trace_panel].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
+
+        self.P.axdict[trace_panel].set_xlim(0, self.Pars.ar_tstart)
+        PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
                 ticklength=3, position=-0.03)
-        ylims = self.P.axdict[panelmap["E"]].get_ylim()
-        PH.referenceline(self.P.axdict[panelmap["E"]], 0.)
+        ylims = self.P.axdict[trace_panel].get_ylim()
+        PH.referenceline(self.P.axdict[trace_panel], 0.)
         if cal_height == None:
             self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11,
         else:
             cal_height = 1e-12*cal_height
         PH.calbar(
-                self.P.axdict[panelmap["E"]],
+                self.P.axdict[trace_panel],
                 calbar=[
                     np.max(self.Data.tb[:itmax]) - 0.1,
                     ylims[0]*0.9,
@@ -1577,7 +1600,7 @@ class PlotMapData:
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
             datatype = datatype,
-            ax=self.P.axdict[panelmap["C1"]],
+            ax=self.P.axdict[evoked_panel],
             results = results,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
@@ -1590,7 +1613,7 @@ class PlotMapData:
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
             datatype = datatype,
-            ax=self.P.axdict[panelmap["C2"]],
+            ax=self.P.axdict[spont_panel],
             results = results,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
@@ -1601,12 +1624,12 @@ class PlotMapData:
 
         if self.Data.photodiode is not None:
             self.plot_photodiode(
-                self.P.axdict[panelmap["D"]],
+                self.P.axdict[photodiode_panel],
                 self.Data.photodiode_timebase[0],
                 self.Data.photodiode,
             )
-            self.P.axdict[panelmap["D"]].set_xlim(0, self.Pars.ar_tstart)
-            PH.nice_plot(self.P.axdict[panelmap["D"]], direction="outward",
+            self.P.axdict[photodiode_panel].set_xlim(0, self.Pars.ar_tstart)
+            PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
                 ticklength=3, position=-0.03)
         
         # mpl.show()
