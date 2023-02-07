@@ -1,6 +1,6 @@
 """
 CursorPlot just plots some data with cursors, and allows you to pick off values (times, amplitudes) from the
-traces. This is meant to be used as a module that is called from within another module (see
+ttraces. This is meant to be used as a module that is called from within another module (see
 PSCAnalyzer for an example of usage).
 """
 import os
