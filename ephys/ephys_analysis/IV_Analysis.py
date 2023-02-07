@@ -34,7 +34,7 @@ import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
-from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 
 import ephys.ephys_analysis as EP
 import ephys.ephys_analysis.IV_Analysis_Params as AnalysisParams
@@ -262,7 +262,7 @@ class IV_Analysis():
             else:
                 self.iv_analysisFilename = None
 
-            if ("artifactFilename" in list(self.experiment.keys())
+            if ("artifactFilename" in list(self.experiment.keys()) 
                 and self.experiment["artifactFilename"] is not None):
                 self.artifactFilename = self.experiment["artifactFilename"]
             else:
@@ -271,7 +271,7 @@ class IV_Analysis():
         else:
             raise ValueError('Experiment was not specified"')
 
-        if self.artifactFilename is not None and len(self.artifactFilename) > 0:
+        if self.artifactFilename is not None and len(self.artifactFilename) > 0 :
             self.artifactFilename = Path(self.analyzeddatapath, self.artifactFilename)
             if not self.annotationFilename.is_file():
                 raise FileNotFoundError
@@ -478,7 +478,7 @@ class IV_Analysis():
         """
         Make a temporary directory; if the directory exists, just clean it out
         """
-        self.tempdir = Path("./temppdfs")
+        self.tempdir = Path(self.analyzeddatapath, "temppdfs")
         if not self.tempdir.is_dir():
             self.tempdir.mkdir(mode=0o755, exist_ok=True)
         else:
@@ -499,6 +499,7 @@ class IV_Analysis():
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
         """
+        print(self.merge_flag, pdf, self.pdfFilename, self.autoout)
         if self.dry_run:
             return
         if not self.merge_flag or pdf is None:
@@ -511,7 +512,6 @@ class IV_Analysis():
         #     f"Merging pdfs at {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
         # )
 
-        self.tempdir = Path("./temppdfs")  # use one folder and do not clear it
         if self.autoout:
             # print("  in auto mode")
             pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
@@ -545,20 +545,21 @@ class IV_Analysis():
         fns = sorted(
             list(self.tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
+        print("FNS: ", fns)
         if len(fns) == 0:
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
       
         # cell file merged
-        mergeFile = PdfFileMerger()
+        mergeFile = PdfMerger()
         fns.insert(0, str(self.cell_pdfFilename))
         for i, fn in enumerate(fns):
             if Path(fn).is_file():
-                mergeFile.append(PdfFileReader(open(fn, "rb")))
+                mergeFile.append(PdfReader(open(fn, "rb")))
         with open(self.cell_pdfFilename, "wb") as fout:
             mergeFile.write(fout)
-        CP.cprint("g", f"Wrote map pdf to : {str(self.cell_pdfFilename):s}")
+        CP.cprint("g", f"Wrote output pdf to : {str(self.cell_pdfFilename):s}")
         fns.pop(0)
         # remove temporary files
         for fn in fns:
@@ -566,12 +567,12 @@ class IV_Analysis():
 
         # main file merge
         if self.pdfFilename is not None:
-            mergeFile = PdfFileMerger()
+            mergeFile = PdfMerger()
             fns = [str(self.pdfFilename), str(self.cell_pdfFilename)]
             for i, fn in enumerate(fns):
                 fn = Path(fn)
                 if fn.is_file() and fn.stat().st_size > 0:
-                    mergeFile.append(PdfFileReader(open(fn, "rb")))
+                    mergeFile.append(PdfReader(open(fn, "rb")))
             with open(self.pdfFilename, "wb") as fout:
                 mergeFile.write(fout)
         print("="*80)
@@ -882,7 +883,7 @@ class IV_Analysis():
         
         # DISPATCH according to requested analysis:
         if self.iv_flag:
-            if Path(self.iv_analysisFilename).suffix == ".h5":
+            if self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
                 self.df["IV"] = None
                 self.df["Spikes"] = None
             if pdf is not None:
@@ -931,8 +932,8 @@ class IV_Analysis():
             f"analyze ivs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}  cell: ({str(self.df.iloc[icell].cell_id):s} )",
         )
         cell_directory = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id )
-        print("file: ", cell_directory)
-        print("Cell id: ", f"cell: {str(self.df.iloc[icell].cell_id):s} ")
+        CP.cprint("m", f"file: {str(cell_directory):s}")
+        CP.cprint("m", f"Cell id: {str(self.df.iloc[icell].cell_id):s} ")
         if "IV" not in self.df.columns.values:
             self.df = self.df.assign(IV=None)
         if "Spikes" not in self.df.columns.values:
@@ -1083,7 +1084,7 @@ class IV_Analysis():
         self.df["annotated"] = self.df["annotated"].astype(int)
         self.df["expUnit"] = self.df["expUnit"].astype(int)
 
-        if len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".h5":
+        if len(allivs) > 0 and self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
 
             # with hdf5:
             # Note, reading this will be slow - it seems to be rather a large file.
@@ -1203,7 +1204,7 @@ class IV_Analysis():
                 threshold=self.spike_threshold,
                 bridge_offset=br_offset,
                 tgap=tgap,
-                plotiv=False,
+                plotiv=True,
                 full_spike_analysis=True,
             )
             iv_result = EPIV.RM.analysis_summary
@@ -1216,7 +1217,7 @@ class IV_Analysis():
                 ctwhen = "[revisited]"
             else:
                 ctwhen = "[original]"
-            # print("Checking for figure, plothandle is: ", plot_handle)
+            print("Checking for figure, plothandle is: ", plot_handle)
             if plot_handle is not None:
                 shortpath = protocol_directory.parts
                 shortpath = str(Path(*shortpath[4:]))
