@@ -255,6 +255,20 @@ class PlotMapData:
         self.Pars = pars
         self.Data = data
 
+    def gamma_correction(self, image, gamma=2.2, imagescale=np.power(2, 16)):
+        if gamma == 0.0:
+            return image
+        imagescale= float(imagescale)
+        # print('iscale, gamma: ', imagescale, gamma)
+        try:
+            imr = image/imagescale
+            corrected = (np.power(imr, (1. / gamma)))*imagescale
+        except:
+            print('image minm: ', np.min(image), '  max: ', np.max(image))
+            print('any neg or zero? ', np.any(image <= 0.))
+            raise ValueError
+        return corrected
+
     def show_images(self, show: bool = True) -> None:
         r, c = PH.getLayoutDimensions(len(self.images), pref="height")
         f, ax = mpl.subplots(r, c)
@@ -355,7 +369,7 @@ class PlotMapData:
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
-            for j, jtrace in enumerate(events[itrial]["onsespeedts"]):
+            for j, jtrace in enumerate(events[itrial]["onsets"]):
                 nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
@@ -601,7 +615,7 @@ class PlotMapData:
         self.plot_timemarker(ax)
         ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
 
-    def get_calbar_Yscale(self, amp: float):
+    def get_calbar_Yscale(self, amp: float) -> float:
         """
         Pick a scale for the calibration bar based on the amplitude to be represented
         """
@@ -646,6 +660,11 @@ class PlotMapData:
         rasterized: bool = False,
     ) -> None:
         # ensure we don't plot more than once...
+        # modified so that events that are "positive" (meaning the detection picked uip
+        # an event that was on a + baseline...) are removed from the plot. 
+        # the criteria is > 0 pA at the minimum of the average
+        # those traces are then removed from the single event plots and
+        # the average is recomputed.
         # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
         events = results['events']
@@ -712,6 +731,7 @@ class PlotMapData:
             pwidth = int(0.0005 / rate / 2.0)
             # for itrace in events[trial].keys():  # traces in the evtype list
             iplot_tr = 0
+
             for itrace in range(mdata.shape[1]):  # traces in the evtype list
                 if events is None or trial not in list(events.keys()):
                     if self.verbose:
@@ -771,34 +791,46 @@ class PlotMapData:
                             evtype,
                         )
                     if len(evdata) > 0:
+                        append = False
                         if plot_minmax is not None:  # only plot events that fall in an ampltidue window
                             if (np.min(evdata) < plot_minmax[0]) or (np.max(evdata) > plot_minmax[1]):
                                 continue # 
                         if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
-                            ave.append(evdata)
+                            append = True
+                        elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
+                            append=False
                         else: # zscore_threshold == None:  # accept all comers.
+                            append = True
+                        if append:
                             ave.append(evdata)
-                        npev += 1
+                            npev += 1
                         # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
-                        if self.verbose:
-                            CP.cprint("green", "   Plotting")
-                        ax.plot(
-                            tb[: len(evdata)] * 1e3,
-                            scale * evdata,
-                            line[evtype],
-                            linewidth=0.15,
-                            alpha=0.25,
-                            rasterized=False,
-                        )
-                        minev = np.min([minev, np.min(scale * evdata)])
-                        maxev = np.max([maxev, np.max(scale * evdata)])
-            # print(f"      {evtype:s} Event Count in AVERAGE: {spont_ev_count:d}, len ave: {len(ave):d}")
+
+                            ax.plot(
+                                tb[: len(evdata)] * 1e3,
+                                scale * evdata,
+                                line[evtype],
+                                linewidth=0.15,
+                                alpha=0.25,
+                                rasterized=False,
+                            )
+                            minev = np.min([minev, np.min(scale * evdata)])
+                            maxev = np.max([maxev, np.max(scale * evdata)])
+                # print(f"      {evtype:s} Event Count in AVERAGE: {spont_ev_count:d}, len ave: {len(ave):d}")
 
         # print('evtype: ', evtype, '  nev plotted: ', npev, ' nevoked: ', evoked_ev_count)
         # print('maxev, minev: ', maxev, minev)
         nev = len(ave)
         aved = np.asarray(ave)
         if (len(aved) == 0) or (aved.shape[0] == 0) or (nev == 0):
+            if evtype == 'avgevoked':
+                evname = "evoked"
+            elif evtype == 'avgspont':
+                evname = "spontaneous"
+            else:
+                raise ValueError("plotMapData:plotAvgEventTraces: evtype not recognized: ", evtype)
+            PH.noaxes(ax)
+            ax.text(0.5, 0.5, f"No {evname:s} events", fontsize=12, ha="center", va="center")
             return
         if self.verbose:
             CP.cprint("red", f"aved shape is {str(aved.shape):s}")
@@ -837,8 +869,6 @@ class PlotMapData:
         # f = mpl.figure()
         # mpl.plot(tb, avedat)
         # mpl.plot(tb, bfit, 'r--')
-
-
 
         if self.Pars.sign == -1:
             amp = np.min(bfit)
@@ -1467,11 +1497,11 @@ class PlotMapData:
             label_fsize = 16
             self.plotspecs = OrderedDict(
                 [
-                    ("A1", {"pos": [0.05, 0.25, 0.58, 0.4], "labelpos": [-0.12, 0.95], "fontsize": label_fsize}),
-                    ("A2", {"pos": [0.35, 0.25, 0.58, 0.4], "fontsize": label_fsize}),
-                    ("B", {"pos": [0.65, 0.25, 0.58, 0.4], "fontsize": label_fsize}),
-                    ("B1", {"pos": [0.94, 0.012, 0.68, 0.2], "labelpos": [-1, 1.1], "fontsize": label_fsize}),  # scale bar
-                    ("C", {"pos": [0.1, 0.78, 0.42, 0.18], "labelpos": [-0.03, 1.05], "fontsize": label_fsize}),
+                    ("A1", {"pos": [0.05, 0.25, 0.6, 0.38], "labelpos": [-0.12, 0.95], "fontsize": label_fsize}),
+                    ("A2", {"pos": [0.35, 0.25, 0.6, 0.38], "labelpos": [-0.12, 0.95], "fontsize": label_fsize}),
+                    ("B", {"pos": [0.65, 0.25, 0.6, 0.38], "labelpos": [-0.12, 0.95], "fontsize": label_fsize}),
+                    ("B1", {"pos": [0.94, 0.012, 0.7, 0.2], "labelpos": [-1, 1.1], "fontsize": label_fsize}),  # scale bar
+                    ("C", {"pos": [0.1, 0.78, 0.41, 0.17], "labelpos": [-0.03, 1.05], "fontsize": label_fsize}),
                     ("D", {"pos": [0.1, 0.78, 0.36, 0.03], "labelpos": [-0.03, 1.2], "fontsize": label_fsize}),
                     ("E1", {"pos": [0.1, 0.36, 0.05, 0.22], "fontsize": label_fsize}),
                     ("E2", {"pos": [0.52, 0.36, 0.05, 0.22], "fontsize": label_fsize}),
@@ -1519,7 +1549,7 @@ class PlotMapData:
 
         spotsize = self.Pars.spotsize
         dt = np.mean(np.diff(self.Data.tb))
-        itmax = int(self.Pars.ar_tstart / dt)
+        itmax = int(self.Pars.ar_tstart / dt) - 1
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.0:
             self.newvmax = self.Pars.overlay_scale
@@ -1562,8 +1592,10 @@ class PlotMapData:
                 if plot_minmax is not None:
                     iplot = np.where((np.min(plotable, axis=1) > plot_minmax[0]) & (np.max(plotable, axis=1) < plot_minmax[1]))[0]
                     plotable = plotable[iplot, :]
-                d = np.mean(plotable, axis=0)
-                self.P.axdict[trace_panel].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
+                    print(f"plotMapData:DisplayOneMap:publication mode: Averaging {len(iplot):d} traces, min/max = ", plot_minmax)
+                if len(plotable) > 0:
+                    d = np.mean(plotable, axis=0)
+                    self.P.axdict[trace_panel].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
 
         self.P.axdict[trace_panel].set_xlim(0, self.Pars.ar_tstart)
         PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
@@ -1571,9 +1603,10 @@ class PlotMapData:
         ylims = self.P.axdict[trace_panel].get_ylim()
         PH.referenceline(self.P.axdict[trace_panel], 0.)
         if cal_height == None:
-            self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11,
+            cal_height = self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11
         else:
             cal_height = 1e-12*cal_height
+        print(cal_height)
         PH.calbar(
                 self.P.axdict[trace_panel],
                 calbar=[
