@@ -87,7 +87,7 @@ class AnalysisPars:
     notch_applied: bool = False
     notch_freqs: list = field(default_factory=def_notch)  # list of notch frequencies
     notch_Q: float = 90.0  # Q value for notch filters (sharpness)
-    fix_artifact_flag: bool = True  # flag enabling removeal of artifacts
+    fix_artifact_flag: bool = False  # flag enabling removeal of artifacts
     artifact_file: Union[Path, None] = None
     artifact_file_path: Union[Path, None] = None
     ar_start: float = 0.10 # starting time for stimuli
@@ -260,7 +260,7 @@ class AnalyzeMap(object):
         self.protocol = protocolFilename
         CP.cprint("g", f"Reading Protocol:: {str(protocolFilename):s}")
         self.AR.setProtocol(protocolFilename)
-        if not protocolFilename.is_dir() or not self.AR.getData():
+        if not protocolFilename.is_dir() or not self.AR.getData(allow_partial=True):
             CP.cprint("r", f"**** No data found in protocol: {str(protocolFilename):s}")
             return None, None, None, None
         # print('Protocol: ', protocolFilename)
@@ -295,6 +295,12 @@ class AnalyzeMap(object):
 
         self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
         self.AR.getScannerPositions()
+        print("scanner shape, min and max limits")
+        print(self.AR.scanner_positions.shape)
+        print(np.min(self.AR.scanner_positions[:,0]), np.min(self.AR.scanner_positions[:,1]))
+        print(np.max(self.AR.scanner_positions[:,0]), np.max(self.AR.scanner_positions[:,1]))
+        print("-"*40)
+
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.spotsize = self.AR.scanner_spotsize
         self.Data.tb = self.AR.time_base
@@ -1213,6 +1219,7 @@ class AnalyzeMap(object):
         avgd = data.copy()
         while avgd.ndim > 1:
             avgd = np.mean(avgd, axis=0)
+        print(AR.Photodiode)
         meanpddata = AR.Photodiode.mean(
             axis=0
         )  # get the average PD signal that was recorded
