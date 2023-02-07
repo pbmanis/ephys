@@ -27,19 +27,19 @@ class MAP_Analysis(IV_Analysis):
         print(self._testing_counter)
 
     def analyze_maps(
-        self, iday: int, celltype: str, allprots: dict, pdf=None
+        self, icell: int, celltype: str, allprots: dict, pdf=None
     ):
         if len(allprots["maps"]) == 0:
-            print(f"No maps to analyze for {iday:d}")
+            print(f"No maps to analyze for {icell:d}")
             return
         CP.cprint(
             "c",
-            f"Analyze MAPS for index: {iday: d} ({str(self.df.at[iday, 'date']):s} )",
+            f"Analyze MAPS for index: {icell: d} ({str(self.df.at[icell, 'date']):s} )",
         )
-        file = Path(self.df.iloc[iday].data_directory, self.df.iloc[iday].cell_id)
-        datestr, slicestr, cellstr = self.make_cell(iday)
+        file = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id)
+        datestr, slicestr, cellstr = self.make_cell(icell)
         slicecellstr = f"S{slicestr[-1]:s}C{cellstr[-1]:s}"
-        self.celltype, self.celltype_changed = self.get_celltype(iday)
+        self.celltype, self.celltype_changed = self.get_celltype(icell)
         CP.cprint(
             "c",
             f"      {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
@@ -86,7 +86,7 @@ class MAP_Analysis(IV_Analysis):
         ###
         for protocol, x in enumerate(tasks):
             result = self.analyze_map(
-                iday,
+                icell,
                 i_protocol=protocol,
                 allprots=allprots,
                 plotmap=plotmap,
@@ -104,7 +104,7 @@ class MAP_Analysis(IV_Analysis):
         #             else:
         #                 with mp.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
         #                     for i, x in tasker:
-        #                         result = self.analyze_map(iday, i, x, allprots, plotmap)
+        #                         result = self.analyze_map(icell, i, x, allprots, plotmap)
         # #                        print(x)
         #                         tasker.results[allprots['maps'][x]] = result
         if self.recalculate_events:  # save the recalculated events to the events file
@@ -124,9 +124,9 @@ class MAP_Analysis(IV_Analysis):
 
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
 
-    def set_vc_taus(self, iday: int, path: Union[Path, str]):
+    def set_vc_taus(self, icell: int, path: Union[Path, str]):
         """ """
-        datestr, slicestr, cellstr = self.make_cell(iday)
+        datestr, slicestr, cellstr = self.make_cell(icell)
         # print(self.map_annotationFilename)
         # print(self.map_annotations)
         if self.map_annotationFilename is not None:
@@ -173,8 +173,8 @@ class MAP_Analysis(IV_Analysis):
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
         )
 
-    def set_cc_taus(self, iday: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(iday)
+    def set_cc_taus(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations,
@@ -196,8 +196,8 @@ class MAP_Analysis(IV_Analysis):
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
         )
 
-    def set_vc_threshold(self, iday: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(iday)
+    def set_vc_threshold(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
@@ -217,8 +217,8 @@ class MAP_Analysis(IV_Analysis):
                 print("    Using default threshold", end=" ")
         print(f"      Threshold: {self.AM.Pars.threshold:6.1f}")
 
-    def set_cc_threshold(self, iday: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(iday)
+    def set_cc_threshold(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
@@ -230,8 +230,8 @@ class MAP_Analysis(IV_Analysis):
             else:
                 print("using default cc threshold")
 
-    def set_stimdur(self, iday: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(iday)
+    def set_stimdur(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
@@ -250,7 +250,7 @@ class MAP_Analysis(IV_Analysis):
             # else:
             #     print("using default stimdur")
 
-    def set_map_factors(self, iday: int, path_to_map: Union[Path, str]):
+    def set_map_factors(self, icell: int, path_to_map: Union[Path, str]):
         """
         Configure signs, scale factors and E/IPSP/C template shape
         Rules:
@@ -268,8 +268,8 @@ class MAP_Analysis(IV_Analysis):
         -------
         Nothing - modifies the analyzeMap object.
         """
-        notes = self.df.at[iday, "notes"]
-        internal_sol = self.df.at[iday, "internal"]
+        notes = self.df.at[icell, "notes"]
+        internal_sol = self.df.at[icell, "internal"]
         self.internal_Cs = False
         self.high_Cl = False
         csstr = re.compile("(Cs|Cesium|Cs)", re.IGNORECASE)
@@ -298,7 +298,7 @@ class MAP_Analysis(IV_Analysis):
             else:
                 raise ValueError("Cant figure record mode")
 
-        self.set_stimdur(iday, path_to_map)
+        self.set_stimdur(icell, path_to_map)
 
         if (path_to_map.match("*_VC_*") or record_mode == "VC") and not self.rawdatapath.match(
             "*VGAT_*"
@@ -307,9 +307,9 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [1e-3, 3e-3]  # fast events
-            self.set_vc_taus(iday, path_to_map)
+            self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
-            self.set_vc_threshold(iday, path_to_map)
+            self.set_vc_threshold(icell, path_to_map)
 
         elif (path_to_map.match("*_VC_*") or record_mode == "VC") and self.rawdatapath.match(
             "*VGAT_*"
@@ -323,9 +323,9 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
             self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.threshold = self.threshold  # low threshold
-            self.set_vc_taus(iday, path_to_map)
+            self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
-            self.set_vc_threshold(iday, path_to_map)
+            self.set_vc_threshold(icell, path_to_map)
             print("sign: ", self.AM.Pars.sign)
 
         elif path_to_map.match("*_CA_*") and record_mode == "VC":  # cell attached (spikes)
@@ -334,8 +334,8 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [0.5e-3, 0.75e-3]  # fast events
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
-            self.set_vc_taus(iday, path_to_map)
-            self.set_vc_threshold(iday, path_to_map)
+            self.set_vc_taus(icell, path_to_map)
+            self.set_vc_threshold(icell, path_to_map)
 
         elif (
             path_to_map.match("*_IC_*") and record_mode in ["IC", "I=0"]
@@ -347,8 +347,8 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
-            self.set_cc_taus(iday, path_to_map)
-            self.set_cc_threshold(iday, path_to_map)
+            self.set_cc_taus(icell, path_to_map)
+            self.set_cc_threshold(icell, path_to_map)
 
         elif path_to_map.match("*_IC_*") and self.rawdatapath.match(
             "*VGAT_*"
@@ -360,8 +360,8 @@ class MAP_Analysis(IV_Analysis):
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  #
             self.AM.Pars.analysis_window = [0, 0.999]
-            self.set_cc_taus(iday, path_to_map)
-            self.set_cc_threshold(iday, path_to_map)
+            self.set_cc_taus(icell, path_to_map)
+            self.set_cc_threshold(icell, path_to_map)
 
         elif path_to_map.match("VGAT_*") and not (
             path_to_map.match("*_IC_*") or path_to_map.match("*_VC_*") or path_to_map.match("*_CA_*")
@@ -388,11 +388,11 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.threshold = self.threshold  # setthreshold...
 
             if self.AM.datatype == "V":
-                self.set_vc_taus(iday, path_to_map)
-                self.set_vc_threshold(iday, path_to_map)
+                self.set_vc_taus(icell, path_to_map)
+                self.set_vc_threshold(icell, path_to_map)
             else:
-                self.set_cc_taus(iday, path_to_map)
-                self.set_cc_threshold(iday, path_to_map)
+                self.set_cc_taus(icell, path_to_map)
+                self.set_cc_threshold(icell, path_to_map)
 
         else:
             print("Undetermined map factors - add to the function!")
@@ -410,7 +410,7 @@ class MAP_Analysis(IV_Analysis):
 
     def analyze_map(
         self,
-        iday: int,
+        icell: int,
         i_protocol: int,
         allprots: dict,
         plotmap: bool = False,
@@ -424,7 +424,7 @@ class MAP_Analysis(IV_Analysis):
 
         Parameters
         ----------
-        iday : int
+        icell : int
             index to the day in the pandas database
         i_protocol : int
             index into the list of map protocols for this cell/day
@@ -451,7 +451,7 @@ class MAP_Analysis(IV_Analysis):
         if len(self.map_name) == 0:
             return None
         print("protocolname: ", self.map_name)
-        mapdir = Path(self.df.iloc[iday].data_directory, self.map_name)
+        mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
         if not mapdir.is_dir():
             raise ValueError(f"Map name did not resolve to directory: {str(mapdir):s}")
         if "_IC__" in str(mapdir.name) or "CC" in str(mapdir.name):
@@ -487,7 +487,7 @@ class MAP_Analysis(IV_Analysis):
 
             result = results[str(mapkey)]  # get individual map result
 
-        self.set_map_factors(iday, mapdir)
+        self.set_map_factors(icell, mapdir)
         if self.LPF > 0:
             self.AM.set_LPF(self.LPF)
         if self.HPF > 0:
@@ -565,21 +565,21 @@ class MAP_Analysis(IV_Analysis):
 
             if mapok:
                 infostr = ""
-                # notes = self.df.at[iday,'notes']
+                # notes = self.df.at[icell,'notes']
                 if self.internal_Cs:
                     if self.high_Cl:
                         infostr += "Hi-Cl Cs, "
                     elif self.internal_Cs:
                         infostr += "Norm Cs, "
                 else:
-                    infostr += self.df.at[iday, "internal"] + ", "
+                    infostr += self.df.at[icell, "internal"] + ", "
 
-                temp = self.df.at[iday, "temperature"]
+                temp = self.df.at[icell, "temperature"]
                 if temp == "room temperature":
                     temp = "RT"
                 infostr += "{0:s}, ".format(temp)
-                infostr += "{0:s}, ".format(self.df.at[iday, "sex"].upper())
-                infostr += "{0:s}".format(str(self.df.at[iday, "age"]).upper())
+                infostr += "{0:s}, ".format(self.df.at[icell, "sex"].upper())
+                infostr += "{0:s}".format(str(self.df.at[icell, "age"]).upper())
                 # ftau1 = np.nanmean(np.array(result['events'][0]['fit_tau1']))
                 # ftau2 = np.nanmean(np.array(result['events'][0]['fit_tau2']))
                 # famp = np.nanmean(np.array(result['events'][0]['fit_amp']))
