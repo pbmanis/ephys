@@ -1226,7 +1226,7 @@ class acq4_reader:
             fn = Path(d, "Photodiode.ma")
             if not fn.is_file():
                 print(" acq4_reader.getPhotodiode: File not found: ", fn)
-                return False
+                continue
             pdr = EM.MetaArray(file=fn)
             info = pdr[0].infoCopy()
             self.Photodiode.append(pdr.view(np.ndarray)[0])
@@ -1283,6 +1283,7 @@ class acq4_reader:
         self.scanner_spotsize = 0.0
         rep = 0
         target = 0
+        n_valid_targets = 0
         supindex = (
             self._readIndex()
         )  # get protocol index (top level, dirType=ProtocolSequence)
@@ -1332,6 +1333,7 @@ class acq4_reader:
                     "rep": rep,
                     "pos": self.scanner_positions[i],
                 }
+                n_valid_targets += 1
             # elif ('Scanner', 'targets') in index['.']:
             #     print('found "(Scanner, targets)" in index')
             #     #print ('scanner targets: ', index['.'][('Scanner', 'targets')])
@@ -1341,12 +1343,12 @@ class acq4_reader:
             #     self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             else:
                 print(
-                    "Scanner information not found in index: ",
+                    f"Scanner information for point {i:d} not found in index: ",
                     d,
                     "\n",
                     index["."].keys(),
                 )
-                return False  # protocol is short...
+                continue  # protocol is short...
             #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             if (
                 "Camera" in supindex["."]["devices"].keys()
@@ -1363,6 +1365,10 @@ class acq4_reader:
             if target > ntargets:  # wrap for repetitions
                 target = 0
                 rep = rep + 1
+        # print(n_valid_targets)
+        # adjust so only valid targets are included
+        self.scanner_positions = self.scanner_positions[:n_valid_targets, :]
+        # print(self.scanner_positions.shape)
         return True  # indicate protocol is all ok
 
     def getImage(self, filename: Union[str, Path, None] = None) -> dict:
