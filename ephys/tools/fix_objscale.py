@@ -155,6 +155,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         print('obj img: ', objective.images)
         if objective.images[0] is not None:
             images = SQP(objective.images)[0]
+            print("images: ", images)
             for img in images:
                 print("img: ", img)
                 imagefiles.append(f"image_{int(img[0]):03d}.tif")
@@ -309,26 +310,25 @@ class FixObjective(pg.QtWidgets.QWidget):
 
     def set_window(self, parent=None):
         super(FixObjective, self).__init__(parent=parent)
-        self.win = pg.QtGui.QMainWindow()
+        self.win = pg.QtWidgets.QMainWindow()
         self.win.setWindowTitle("FixObjective")
-        self.dockArea = PGD.DockArea()
-
-        layout = pg.QtGui.QGridLayout()
-        layout.setSpacing(8)
-        self.win.setCentralWidget(self.dockArea)
+        self.DockArea = PGD.DockArea()
+        self.win.setCentralWidget(self.DockArea)
+        self.win.resize(1600, 1024)
+        self.fullscreen_widget = None
         self.win.setWindowTitle("Model DataTables/FileSelector")
         win_wid = 1024
         win_ht = 512
-        self.win.resize(1024, 512)
+        par_wid = self.ptreewid
+        self.ptreewid = 250
         self.win.setWindowTitle("No File")
 
-        self.buttons = pg.QtGui.QGridLayout()
+        # self.buttons = pg.QtGui.QGridLayout()
         self.build_ptree()
-        self.buttons.addWidget(self.ptree)
-        self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
-
+        # self.buttons.addWidget(self.ptree)
+ 
         # Initial Dock Arrangment
-        par_wid = self.ptreewid
+
         
         self.Dock_Params = PGD.Dock("Params", size=(par_wid, win_ht))
         self.Dock_Params.addWidget(self.ptree)
@@ -339,9 +339,10 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.textbox.setText("(.index file)")
         self.Dock_Report.addWidget(self.textbox)
 
-        self.dockArea.addDock(self.Dock_Params, "left")
-        self.dockArea.addDock(self.Dock_Report, "right", self.Dock_Params)
-
+        self.DockArea.addDock(self.Dock_Params, "left")
+        self.DockArea.addDock(self.Dock_Report, "right", self.Dock_Params)
+        self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
+# 
         self.win.show()
 
     def quit(self):
@@ -349,7 +350,7 @@ class FixObjective(pg.QtWidgets.QWidget):
 
 
 def main():
-    app = pg.QtGui.QApplication([])
+    app = pg.QtWidgets.QApplication([])
     app.setStyle("fusion")
     FO = FixObjective(app)
     app.aboutToQuit.connect(
@@ -358,7 +359,7 @@ def main():
     FO.set_window()
 
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
-        pg.QtGui.QApplication.instance().exec()
+        pg.QtWidgets.QApplication.instance().exec()
 
 
 # old command line version
