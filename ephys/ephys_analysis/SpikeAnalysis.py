@@ -173,7 +173,7 @@ class SpikeAnalysis():
                 continue
             spikes = np.array(spikes)
             self.spikes[i] = spikes
-           # print 'found %d spikes in trace %d' % (len(spikes), i)
+           print 'found %d spikes in trace %d' % (len(spikes), i)
             self.spikeIndices[i] = [np.argmin(np.fabs(self.Clamps.time_base-t)) for t in spikes]
             self.spikecount[i] = len(spikes)
             self.fsl[i] = (spikes[0] - self.Clamps.tstart)*1e3

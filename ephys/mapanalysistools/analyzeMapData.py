@@ -1219,7 +1219,6 @@ class AnalyzeMap(object):
         avgd = data.copy()
         while avgd.ndim > 1:
             avgd = np.mean(avgd, axis=0)
-        print(AR.Photodiode)
         meanpddata = AR.Photodiode.mean(
             axis=0
         )  # get the average PD signal that was recorded

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from __future__ import print_function
+from pathlib import Path
 # encoding: utf-8
 """
 readdatac.py
@@ -325,11 +325,13 @@ class ReadDatac:
         """
         nf, ext = os.path.splitext(self.fullfile)
         self.notefile = nf + '.NOT'
-        
         self.expInfo = OrderedDict()
+        if not Path(self.notefile).is_file():
+            return None
+    
         with open(self.notefile) as f:
             content = f.readlines()
-        f.close()
+
         block = 0  # block counter
         next_protocol = None
         current_protocol = None
@@ -390,6 +392,7 @@ class ReadDatac:
                     current_protocol = next_protocol # update the loaded protocol
                     firstrec = record
                     block += 1
+        return block  # number of blocks
         
     def print_datac_note(self, indent):
         """
@@ -776,7 +779,7 @@ class GetClamps():
         else:
             self.traces[0,mainch,:] = self.traces[0,mainch,:]
 
-        self.traces = MetaArray(self.traces, info=info)
+        self.traces = MetaArray.MetaArray(self.traces, info=info)
         self.spikecount = np.zeros(len(recs))
         self.rgnrmp = [0, 0.005]
 
@@ -820,9 +823,11 @@ def plotonefile(filename, datamode='CC'):
                 txt += dfile.expInfo[i]['time']
             #    dfile.plotcurrentrecs(i, title=txt)
             #mpl.show()
-            mpl.figure()
+            fig, ax = mpl.subplots(1,2)
             for j in range(cl.traces.shape[0]):
-                mpl.plot(cl.time_base, cl.traces[j])
+                ax[0].plot(cl.time_base, cl.traces[j])
+            for j in range(cl.traces.shape[0]):
+                ax[1].plot(cl.time_base, cl.traces[j])
             mpl.show()
             if i > 3:
                 exit(1)
@@ -855,7 +860,7 @@ def example_dir_scan(searchstr, protocol='iv2.stm'):
     Scan a directory and plot the traces from the first protocol
     that matches the search string
     """
-    fns = glob.glob(searchstr)
+    fns = Path(searchstr).glob("*")
     for fn in fns:
         df = printNotes(fn, indent=5)
         if df is None:
@@ -867,9 +872,34 @@ def example_dir_scan(searchstr, protocol='iv2.stm'):
                 break  
     mpl.show()
 
+def show_file_recs(file, rec_start, rec_end, datamode='CC'):
+    fn = Path(file)
+    if fn.is_file():
+        dfile = ReadDatac(datamode=datamode)
+        dfile.read_datac_header(fn)
+        dfile.readrecords(range(rec_start, rec_end))
+        cl = GetClamps(dfile)
+        cl.getClampData(1, verbose=True)
+        # if dfile.err == 0:
+        #     txt = dfile.expInfo[i]['Protocol'] + ' ' '[R:%d-%d] ' % (dfile.expInfo[i]['R'],dfile.expInfo[i]['Rend'])
+        #     txt += dfile.expInfo[i]['time']
+        #    dfile.plotcurrentrecs(i, title=txt)
+        #mpl.show()
+        fig, ax = mpl.subplots(2,1)
+        print(cl.traces.shape)
+        tr = cl.traces.view(np.ndarray)
+        cmd = cl.cmd_wave.view(np.ndarray)
+        for j in range(tr.shape[0]):
+            ax[0].plot(cl.time_base, tr[j,:], linewidth=0.5)
+            ax[1].plot(cl.time_base, cmd[j,:], linewidth=0.5)
+        mpl.show()
+        dfile.close()
+        mpl.show()
 
 if __name__ == '__main__':
-    example_dir_scan(searchstr='/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
+    #example_dir_scan(searchstr='/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
+    pass
+
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '11SEP96H.HWF'), datamode='CC')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '26AUG96B.HWF'), datamode='CC')
     #plotonefile(os.path.join('/Users/pbmanis/Documents/data/datac', '07FEB96H.JSR'), datamode='VC')
