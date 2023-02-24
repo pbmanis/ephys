@@ -89,6 +89,7 @@ import numpy as np
 import pandas as pd
 from pylibrary.tools import cprint 
 from ..datareaders import acq4_reader
+from ..tools import parse_layers
 
 
 CP = cprint.cprint
@@ -704,9 +705,14 @@ class DataSummary:
             if self.cell_index is None:
                 self.cell_index = {}  # directory is not managed, so skip
                 continue
-            # print('\nCell Index: ', self.cell_index)
             self.cell_index["cell"] = cell
             self.cell_index["id"] = self.cell_id
+            if "notes" not in self.cell_index.keys():
+                self.cell_index["notes"] = ""
+            # probably better to set this manually in acq4. Too many permutations to consider.
+            # if "cell_layer" not in self.cell_index.keys() or len(self.cell_index["cell_layer"]) == 0:
+            #     self.cell_index["cell_layer"] = self.regularize_layer(self.cell_index["notes"])
+
             for k in self.cell_defs:
                 ks = k.replace("cell_", "")
                 if ks not in list(self.cell_index.keys()):
@@ -1138,6 +1144,18 @@ class DataSummary:
             return [f"background-color: {colors[row.cell_type.lower()]:s}" for s in range(len(row))]
         else:
             return [f"background-color: red" for s in range(len(row))]
+
+    def regularize_layer(self, noteinfo:str):
+        """Try to get layer information from the cell notes
+
+        Args:
+            noteinfo (str): the cell_notes field
+        """
+        layer_text = parse_layers.parse_layer(noteinfo)
+        if layer_text is None:
+            return ""
+        else:
+            return layer_text
 
 
     def organize_columns(self, df):
