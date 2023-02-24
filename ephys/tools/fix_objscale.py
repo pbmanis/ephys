@@ -147,12 +147,12 @@ class FixObjective(pg.QtWidgets.QWidget):
         pass
 
     def view_proposed_changes(self, write=False):
-        print(self.objdata)
+        print("Proposed changes - new objective data: ", self.objdata)
         self.change_scale(self.objdata, write=write)
 
     def get_imagefilenames(self, objective: object) -> str:
         imagefiles = []
-        print('obj img: ', objective.images)
+        print('objective img: ', objective.images)
         if objective.images[0] is not None:
             images = SQP(objective.images)[0]
             print("images: ", images)
@@ -238,7 +238,6 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.show_index()
 
     def build_ptree(self):
-        self.ptreewid = 300
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
             {"name": "Set Directory/Protocol", "type": "action"},
@@ -319,7 +318,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.win.setWindowTitle("Model DataTables/FileSelector")
         win_wid = 1024
         win_ht = 512
-        par_wid = self.ptreewid
+        self.ptreewid = 300
         self.ptreewid = 250
         self.win.setWindowTitle("No File")
 
@@ -330,9 +329,9 @@ class FixObjective(pg.QtWidgets.QWidget):
         # Initial Dock Arrangment
 
         
-        self.Dock_Params = PGD.Dock("Params", size=(par_wid, win_ht))
+        self.Dock_Params = PGD.Dock("Params", size=(self.ptreewid, win_ht))
         self.Dock_Params.addWidget(self.ptree)
-        self.Dock_Report = PGD.Dock("Reporting", size=(win_wid-par_wid, win_ht))
+        self.Dock_Report = PGD.Dock("Reporting", size=(win_wid-self.ptreewid, win_ht))
 
         self.textbox = QtWidgets.QTextEdit()
         self.textbox.setReadOnly(True)
