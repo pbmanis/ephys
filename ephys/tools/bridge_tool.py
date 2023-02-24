@@ -9,7 +9,7 @@ from pyqtgraph import configfile
 import ephys.datareaders as DR
 
 re_ccdata = re.compile("^(CCIV_|Ic_)", re.IGNORECASE)
-re_mapdata = re.compile("^(Map_|LED)", re.IGNORECASE)
+re_mapdata = re.compile("^(Map_|LED_|Vc_LED|Ic_LED)", re.IGNORECASE)
 re_vcdata = re.compile("^(VC|vc)", re.IGNORECASE)
 main_df_name = "../mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het_26Jan2023.pkl"
 
