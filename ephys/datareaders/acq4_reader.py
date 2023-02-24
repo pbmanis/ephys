@@ -331,7 +331,8 @@ class acq4_reader:
                 "Directory '%s' is not managed or '.index' file not found"
                 % (str(indexFile))
             )
-
+            print ("_readIndex 334:  ", indexFile, " is file: ", indexFile.is_file())
+            raise FileNotFoundError
             return self._index
         self._index = configfile.readConfigFile(indexFile)
 
@@ -340,11 +341,12 @@ class acq4_reader:
     def readDirIndex(self, currdir: Union[str, Path, None] = None):
         self._dirindex = None
         indexFile = Path(currdir, ".index")
-        # print (indexFile)
         if not indexFile.is_file():
             CP.cprint("r",
                 f"Directory '{str(currdir):s}' is not managed or '.index' file not found"
             )
+            print ("readDirIndex 347:  ", indexFile, " is file: ", indexFile.is_file())
+            raise FileNotFoundError 
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)
         # self._dirindex = configfile.readConfigFile(str(indexFile))
@@ -1065,7 +1067,22 @@ class acq4_reader:
             times["amplitude"] = stimuli["Pulse3"]["amplitude"]["value"]
             times["type"] = stimuli["Pulse3"]["type"]
 
+        elif "Pulse5" in stimuli.keys():
+            # this is what it looks like:
+            # Stimuli:  OrderedDict([('Pulse5', 
+            #   OrderedDict([('start', OrderedDict([('sequence', 'off'), ('value', 0.3)])), 
+            #   ('length', OrderedDict([('sequence', 'off'),  ('value', 0.005)])), 
+            #   ('amplitude', OrderedDict([('sequence', 'off'), ('value', 5.0)])), 
+            #   ('sum', OrderedDict([('affect', 'length'),
+            #   ('sequence', 'off'), ('value', 0.025)])), 
+            #  ('type', 'pulse')]))])
+            times = {}
+            times["start"] = [stimuli["Pulse5"]["start"]["value"]]
+            times["duration"] = stimuli["Pulse5"]["length"]["value"]
+            times["amplitude"] = stimuli["Pulse5"]["amplitude"]["value"]
+            times["type"] = stimuli["Pulse5"]["type"]
         else:
+            print("Stimuli: ", stimuli)
             raise ValueError(
                 "need to find keys for stimulus (might be empty): " % stimuli
             )
@@ -1567,7 +1584,7 @@ def one_test():
             # print("Found Image: ", k)
             imagetimes.append(supindex[k]["__timestamp__"])
             imagename.append(k)
-        if k.startswith("Map_") or k.startswith("LSPS_"):
+        if k.startswith("Map_") or k.startswith("LSPS_" or k.startswith("LED_")):
             maptimes.append(supindex[k]["__timestamp__"])
             mapname.append(k)
     print('maptimes: ', maptimes)
