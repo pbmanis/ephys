@@ -369,11 +369,15 @@ class PlotMapData:
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
+            if events[itrial] is None:
+                continue
             for j, jtrace in enumerate(events[itrial]["onsets"]):
                 nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
         for itrial in events.keys():
+            if events[itrial] is None:
+                continue
             for j, onsets in enumerate(events[itrial]["onsets"]):
                 ntrialev = len(onsets)
                 eventtimes[iev : iev + ntrialev] = onsets
@@ -383,7 +387,7 @@ class PlotMapData:
             f"    plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec",
         )
 
-        if plotevents and len(eventtimes) > 0:
+        if plotevents and len(eventtimes):
             nevents = 0
             y = np.array(eventtimes) * rate
             # print('AR Tstart: ', self.AR.tstart, y.shape)
@@ -459,7 +463,8 @@ class PlotMapData:
         spont_ev_count = 0
         dt = np.mean(np.diff(self.Data.tb))
         itmax = int(self.Pars.analysis_window[1] / dt)
-
+        # print(tb.shape, np.max(tb), tb[itmax], self.Pars.analysis_window, dt)
+        # raise
         if trsel is not None:
             # only plot the selected traces
             for jtrial in range(mdata.shape[0]):
@@ -822,7 +827,7 @@ class PlotMapData:
         # print('maxev, minev: ', maxev, minev)
         nev = len(ave)
         aved = np.asarray(ave)
-        if (len(aved) == 0) or (aved.shape[0] == 0) or (nev == 0):
+        if 0 in (len(aved), aved.shape[0],  nev):
             if evtype == 'avgevoked':
                 evname = "evoked"
             elif evtype == 'avgspont':
@@ -879,11 +884,14 @@ class PlotMapData:
         # print(f"Amplitude: {Amplitude:.3e}")
         # mpl.show()
         # exit()
-        if evtype == "avgspont":
+        if evtype == "avgspont" and events[0] is not None:
+            # print("events[0]: ", events[0])
             srate = float(aved.shape[0]) / (
                 events[0]["spont_dur"][0] * mdata.shape[1]
             )  # dur should be same for all trials
             txt += f" SR: {srate:.2f} Hz"
+        if events[0] is None:
+            txt = txt + "SR: No events"
         ax.text(0.05, 0.95, txt, fontsize=7, transform=ax.transAxes)
         # ax.plot(tx, scale*ave.T, line[evtype], linewidth=0.1, alpha=0.25, rasterized=False)
         ax.plot(
@@ -973,7 +981,6 @@ class PlotMapData:
                 linewidth=0.6,
             )
         ax.set_xlim(0.0, self.Pars.ar_tstart * 1e3 - 1.0)
-        return
 
     def clip_colors(self, cmap, clipcolor):
         cmax = len(cmap)
@@ -1072,7 +1079,7 @@ class PlotMapData:
         # spotsize = spotsize
         # print(measure.keys())
         # print(measuretype)
-        if measuretype in ["A", "Q"]:
+        if measuretype in ("A", "Q"):
             mtype = "I_max"
         else:
             mtype = measuretype
@@ -1105,7 +1112,7 @@ class PlotMapData:
             vmin = 0.0
             vmax = np.max(data)
 
-        elif measuretype in ["A", "Q"] and measure["events"][0] is not None:
+        elif measuretype in ("A", "Q") and measure["events"][0] is not None:
             events = measure["events"]
             nspots = len(measure["events"][0])  # on trial 0
             if "npulses" in list(measure["stimtimes"].keys()):
@@ -1231,7 +1238,7 @@ class PlotMapData:
             # note circle size is radius, and is set by the laser spotsize (which is diameter)
             radw = np.ones(pos.shape[0]) * spotsizes[im]
             radh = np.ones(pos.shape[0]) * spotsizes[im]
-            if measuretype in ["Qr", "Imax"]:
+            if measuretype in ("Qr", "Imax"):
                 spotcolors = cmx.to_rgba(np.clip(data[im], 0.0, vmax))
             else:  # zscore, no sign.
                 spotcolors = cmx.to_rgba(np.clip(data[im], 0.0, vmax))
@@ -1332,8 +1339,7 @@ class PlotMapData:
             title += ", Average"
         if vmaxin is None:
             return vmax
-        else:
-            return vmaxin
+        return vmaxin
 
     def display_position_maps(
         self,
@@ -1436,21 +1442,23 @@ class PlotMapData:
 
     ) -> bool:
         if results is None or self.Pars.datatype is None:
-            CP.cprint("r", f"NO Results in the call, from {str(dataset.name):s}")
+            CP.cprint("r", f"NO Results in the call, from {dataset.name:s}")
             return
 
         if (
             ("_IC" in str(dataset.name))
             or ("_CC" in str(dataset.name))
-            or (self.Pars.datatype in ["I", "IC"])
+            or ("_Ic" in str(dataset.name))
+            or (self.Pars.datatype in ("I", "IC"))
         ):
             scf = 1e3
             label = "mV"  # mV
         elif (
             ("_VC" in str(dataset.name))
+            or("_Vc" in str(dataset.name))
             or ("VGAT_5ms" in str(dataset.name))
             or ("_WCChR2" in str(dataset.name))
-            or (self.Pars.datatype in ["V", "VC"])
+            or (self.Pars.datatype in ("V", "VC"))
         ):
             scf = 1e12  # pA, vc
             label = "pA"
@@ -1606,7 +1614,7 @@ class PlotMapData:
             cal_height = self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11
         else:
             cal_height = 1e-12*cal_height
-        print(cal_height)
+        # print(cal_height)
         PH.calbar(
                 self.P.axdict[trace_panel],
                 calbar=[
