@@ -415,7 +415,7 @@ class BuildGui():
                             pen=pg.mkPen('y', style=pg.Qt.QtCore.Qt.DashLine, linewidth=2.0))
 
             # plot histogram of event times
-            hist, bins = np.histogram(y, 250, range=[0., 0.6], normed=1)
+            hist, bins = np.histogram(y, 250, range=[0., np.max(self.time_base)], normed=1)
             p = self.plots['PSTH'].plot(bins, hist, stepMode=True, fillLevel=0., brush=brushes[evi])
             self.psthplots[eventtype] = [p]
 

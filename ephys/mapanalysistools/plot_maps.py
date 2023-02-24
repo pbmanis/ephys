@@ -533,7 +533,7 @@ def main():
 
     def toggle_selector(event):
         # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
-        if event.key.lower() == 'q')and toggle_selector.RS.active:
+        if event.key.lower() == 'q' and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
         elif event.key.lower() == 'a' and not toggle_selector.RS.active:
