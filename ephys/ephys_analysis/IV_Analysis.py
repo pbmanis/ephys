@@ -49,6 +49,7 @@ np.seterr(divide="raise", invalid="raise")
 class cmdargs:
     experiment: Union[str, list, None] = None
     rawdatapath: Union[str, Path, None] = None
+    directory:  Union[str, Path, None] = None
     analyzeddatapath: Union[str, Path, None] = None
     databasepath: Union[str, Path, None] = None
     inputFilename: Union[str, Path, None] = None
@@ -113,7 +114,7 @@ class IV_Analysis():
 
         self.rawdatapath = None
         self.analyzeddatapath = None
-
+        self.directory = None
         self.inputFilename = None
         self.analyzeddatapath = None
         self.annotationFilename = None
@@ -123,7 +124,7 @@ class IV_Analysis():
         self.artifactFilename = None
         self.pdfFilename = None
         self.exclusions = None
-
+        self.map_annotations = None  # this will be the map_annotationsFilename DATA (pandas from excel)
         self.experiment = args.experiment
 
         # selection of data for analysis
@@ -157,6 +158,7 @@ class IV_Analysis():
         self.recalculate_events = args.recalculate_events
 
         # analysis parameters
+
         self.ivduration = args.ivduration
         self.threshold = args.threshold
         self.signflip = args.signflip
@@ -203,8 +205,13 @@ class IV_Analysis():
     def setup(self):
         if self.experiment not in ["None", None]:
             self.rawdatapath = Path(self.experiment["rawdatapath"])
-            self.analyzeddatapath = Path(self.experiment["analyzeddatapath"])
-            self.databasepath = Path(self.experiment["databasepath"])
+            if self.experiment["directory"] is None:
+                self.analyzeddatapath = Path(self.experiment["analyzeddatapath"])
+                self.databasepath = Path(self.experiment["databasepath"])
+            else:
+                self.analyzeddatapath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
+                self.databasepath = Path(self.experiment["databasepath"], self.experiment["directory"])
+    
             self.inputFilename = Path(
                 self.databasepath, self.experiment["datasummaryFilename"]
             ).with_suffix(".pkl")
@@ -233,7 +240,7 @@ class IV_Analysis():
                     self.analyzeddatapath, self.experiment["map_annotationFilename"]
                 )
                 if not self.map_annotationFilename.is_file():
-                    raise FileNotFoundError
+                    raise FileNotFoundError(f" missing file: {str(self.map_annotationFilename):s}")
             else:
                 self.map_annotationFilename = None
 
@@ -318,7 +325,7 @@ class IV_Analysis():
                 raise ValueError(
                     f"Do not know how to read annotation file: {str(self.annotationFilename):s}, Valid extensions are for pickle and excel"
                 )
-            self.update_annotations()
+        self.update_annotations()
 
         if self.pdfFilename is not None:
             self.pdfFilename.unlink(missing_ok=True)
@@ -429,7 +436,7 @@ class IV_Analysis():
 
         # pull in map annotations. Thesea are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
         if self.map_annotationFilename is not None:
-            print("Reading map annotation file: ", self.map_annotationFilename)
+            CP.cprint("c", f"Reading map annotation file:  {str(self.map_annotationFilename):s}")
             self.map_annotations = pd.read_excel(
                 Path(self.map_annotationFilename).with_suffix(".xlsx"),
                 sheet_name="Sheet1",
@@ -499,13 +506,14 @@ class IV_Analysis():
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
         """
-        print(self.merge_flag, pdf, self.pdfFilename, self.autoout)
-        if self.dry_run:
+        print("********* MERGE ************\n         ", self.merge_flag, pdf, self.pdfFilename, self.autoout)
+
+        if self.dry_run or not self.autoout:
             return
         if not self.merge_flag or pdf is None:
             return
-        if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
-            return
+        # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
+        #     return
 
         # check autooutput and reset pdfFilename if true:
         # CP.cprint("c",
@@ -634,6 +642,8 @@ class IV_Analysis():
                 allprots["maps"].append(c)
             if x.startswith("VGAT_"):
                 allprots["maps"].append(c)
+            if x.startswith("Vc_LED"):  # these are treated as maps, even though they are just repeated... 
+                allprots["maps"].append(c)
             # Standard IVs (100 msec, devined as above)
             for piv in self.stdIVs:
                 if x.startswith(piv):
@@ -686,6 +696,11 @@ class IV_Analysis():
         dstr = str(datestr)
         qstring = f"date == '{dstr:s}'"
         cf = pd.DataFrame()
+        colnames = df.columns
+        
+        mapcolumn = "map"  # old version
+        if "mapname" in colnames:
+            mapcolumn = "mapname"  # newer versions
         if protocolstr is None:
             cf = df.query(
                 f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}"'
@@ -693,7 +708,7 @@ class IV_Analysis():
         else:
             dprot = str(protocolstr.name)
             cf = df.query(
-                f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}" & map == "{dprot:s}"'
+                f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}" & {mapcolumn:s} == "{dprot:s}"'
             )
         return cf
 
@@ -901,6 +916,7 @@ class IV_Analysis():
             if pdf is not None:
                 self.make_tempdir()
             self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+            CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
             self.merge_pdfs(celltype, pdf=pdf)
             gc.collect()
 

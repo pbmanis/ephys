@@ -26,9 +26,7 @@ class MAP_Analysis(IV_Analysis):
         super().__init__(args)
         print(self._testing_counter)
 
-    def analyze_maps(
-        self, icell: int, celltype: str, allprots: dict, pdf=None
-    ):
+    def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         if len(allprots["maps"]) == 0:
             print(f"No maps to analyze for {icell:d}")
             return
@@ -46,10 +44,7 @@ class MAP_Analysis(IV_Analysis):
         )
 
         if self.dry_run:
-            print(
-                "MAP_Analysis:analyze_maps: DRY_RUN"
-                )
-
+            print("MAP_Analysis:analyze_maps: DRY_RUN")
 
             print("       Celltype: {0:s}".format(celltype))
             print("   with {0:4d} protocols".format(len(allprots["maps"])))
@@ -79,7 +74,7 @@ class MAP_Analysis(IV_Analysis):
         CP.cprint("m", f"      Analyzed data filename: {str(picklefilename):s}")
         if self.dry_run:
             return
-    
+
         self.make_tempdir()  # clean up temporary directory
         ###
         ### Parallel is done at lowest level of analyzing a trace, not at this top level
@@ -122,27 +117,23 @@ class MAP_Analysis(IV_Analysis):
             else:
                 CP.cprint("g", f"Database celltype: {txt:s}")
 
-        self.merge_pdfs(celltype=celltype, slicecell=slicecellstr)
+        self.merge_pdfs(celltype=celltype, slicecell=slicecellstr, pdf=pdf)
 
     def set_vc_taus(self, icell: int, path: Union[Path, str]):
         """ """
         datestr, slicestr, cellstr = self.make_cell(icell)
-        # print(self.map_annotationFilename)
-        # print(self.map_annotations)
+
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
             )
             if cell_df is None:
                 return
-            # print(datestr, slicestr, cellstr)
-            # print(cell_df)
-            # print(cell_df['tau1'])
-            # print(cell_df['map'])
+
             sh = cell_df["alt1_tau1"].shape
             sh1 = cell_df["tau1"].shape
             sh2 = cell_df["fl_tau1"].shape
-            # print(sh, sh1, sh2)
+
             if sh != (0,) and sh1 != (0,) and sh2 != (0,):
                 if not self.signflip:
                     if self.alternate_fit1:
@@ -198,7 +189,7 @@ class MAP_Analysis(IV_Analysis):
 
     def set_vc_threshold(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
-        if self.map_annotationFilename is not None:
+        if self.map_annotations is not None:
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
             )
@@ -215,6 +206,8 @@ class MAP_Analysis(IV_Analysis):
                     print("    Setting VC threshold from flipped values", end=" ")
             else:
                 print("    Using default threshold", end=" ")
+        else:
+            CP.cprint("r", "No map annotation file has been read; using default values")
         print(f"      Threshold: {self.AM.Pars.threshold:6.1f}")
 
     def set_cc_threshold(self, icell: int, path: Union[Path, str]):
@@ -233,6 +226,7 @@ class MAP_Analysis(IV_Analysis):
     def set_stimdur(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
+            print(f"Loading map annotation: {str(self.map_annotationFilename):s}")
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, path
             )
@@ -300,9 +294,12 @@ class MAP_Analysis(IV_Analysis):
 
         self.set_stimdur(icell, path_to_map)
 
-        if (path_to_map.match("*_VC_*") or record_mode == "VC") and not self.rawdatapath.match(
+        if (
+            path_to_map.match("*_VC_*") or record_mode == "VC"
+        ) and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSC
+            print(f"Excitatory PSC, VC, not VGAT")
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
@@ -311,9 +308,12 @@ class MAP_Analysis(IV_Analysis):
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
 
-        elif (path_to_map.match("*_VC_*") or record_mode == "VC") and self.rawdatapath.match(
+        elif (
+            path_to_map.match("*_VC_*") or record_mode == "VC"
+        ) and self.rawdatapath.match(
             "*VGAT_*"
         ):  # inhibitory PSC
+            print(f"Inhibitory PSC, VC, VGAT")
             self.AM.datatype = "V"
             if self.high_Cl:
                 self.AM.Pars.sign = -1
@@ -321,14 +321,17 @@ class MAP_Analysis(IV_Analysis):
                 self.AM.Pars.sign = 1
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
-            self.AM.Pars.analysis_window = [0, 0.999]
+            # self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.threshold = self.threshold  # low threshold
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
             print("sign: ", self.AM.Pars.sign)
 
-        elif path_to_map.match("*_CA_*") and record_mode == "VC":  # cell attached (spikes)
+        elif (
+            path_to_map.match("*_CA_*") and record_mode == "VC"
+        ):  # cell attached (spikes)
+            print(f"Cell attachee, VC")
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1  # trigger on negative current
             self.AM.Pars.scale_factor = 1e12
@@ -342,6 +345,7 @@ class MAP_Analysis(IV_Analysis):
         ) and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSP
+            print(f"Excitatory PSP, IC or I=0, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
@@ -353,19 +357,23 @@ class MAP_Analysis(IV_Analysis):
         elif path_to_map.match("*_IC_*") and self.rawdatapath.match(
             "*VGAT_*"
         ):  # inhibitory PSP
-            print("IPSP detector!!!")
+            print(f"Inhibitory PSP, IC, VGAT")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus = [3e-3, 10e-3]  # slow events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  #
-            self.AM.Pars.analysis_window = [0, 0.999]
+            # self.AM.Pars.analysis_window = [0, 0.999]
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
 
         elif path_to_map.match("VGAT_*") and not (
-            path_to_map.match("*_IC_*") or path_to_map.match("*_VC_*") or path_to_map.match("*_CA_*")
+            path_to_map.match("*_IC_*")
+            or path_to_map.match("*_VC_*")
+            or path_to_map.match("*_CA_*")
         ):  # VGAT but no mode information
+            print(f"VGAT but no mode information")
+
             if record_mode in ["IC", "I=0"]:
                 self.AM.datatype = "I"
                 if self.high_Cl:
@@ -382,7 +390,7 @@ class MAP_Analysis(IV_Analysis):
                 raise ValueError(
                     "Record mode not recognized: {0:s}".format(record_mode)
                 )
-            self.AM.Pars.analysis_window = [0, 0.999]
+            # self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
             self.AM.Pars.threshold = self.threshold  # setthreshold...
@@ -394,8 +402,55 @@ class MAP_Analysis(IV_Analysis):
                 self.set_cc_taus(icell, path_to_map)
                 self.set_cc_threshold(icell, path_to_map)
 
+        elif (
+            path_to_map.match("Vc_LED*") and record_mode == "VC"
+        ) and not self.rawdatapath.match(
+            "*VGAT_*"
+        ):  # excitatory PSC
+            print(f"Excitatory PSC, VC, LED, not VGAT")
+            self.AM.datatype = "V"
+            self.AM.Pars.sign = -1
+            self.AM.Pars.scale_factor = 1e12
+            self.AM.Pars.taus = [1e-3, 3e-3]  # fast events
+            self.set_vc_taus(icell, path_to_map)
+            self.AM.Pars.threshold = self.threshold  # threshold...
+            self.set_vc_threshold(icell, path_to_map)
+
+        elif (
+            path_to_map.match("Vc_LED_stim*") and record_mode == "I=0"
+        ) and not self.rawdatapath.match(
+            "*VGAT_*"
+        ):  # excitatory PSC, but recorded with the WRONG PROTOCOL?
+            CP.cprint("r", f"Excitatory PSC, VC, LED, I = 0 (wrong mode!),  not VGAT")
+            self.AM.datatype = "I"
+            self.AM.Pars.sign = 1
+            self.AM.Pars.scale_factor = 1e3
+            self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
+            self.set_cc_taus(icell, path_to_map)
+            self.AM.Pars.threshold = self.threshold  # threshold...
+            self.set_cc_threshold(icell, path_to_map)
+
+        elif (
+            path_to_map.match("Ic_LED*") and record_mode in ["IC", "I=0"]
+        ) and not self.rawdatapath.match(
+            "*VGAT_*"
+        ):  # excitatory PSP
+            CP.cprint("g", f"Excitatory PSP, IC or I=0, LED, not VGAT")
+            self.AM.Pars.sign = 1  # positive going
+            self.AM.Pars.scale_factor = 1e3
+            self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
+            self.AM.datatype = "I"
+            self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
+            self.set_cc_taus(icell, path_to_map)
+            self.set_cc_threshold(icell, path_to_map)
+
         else:
             print("Undetermined map factors - add to the function!")
+            print("    path to map: ", path_to_map)
+            print("    record_mode: ", record_mode)
+            print("    self.rawdatapath: ", self.rawdatapath)
+            raise ValueError()
+
         if self.verbose:
             print(
                 "Data Type: {0:s}/{1:s}  Sign: {2:d}  taus: {3:s}  thr: {4:5.2f}  Scale: {4:.3e}".format(
@@ -446,7 +501,7 @@ class MAP_Analysis(IV_Analysis):
             true if there data was processed; otherwise False
         """
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
-        print(allprots["maps"][i_protocol])
+        print(f"    Map protocol: {str(allprots['maps'][i_protocol]):s}")
         self.map_name = allprots["maps"][i_protocol]
         if len(self.map_name) == 0:
             return None
@@ -459,7 +514,7 @@ class MAP_Analysis(IV_Analysis):
         else:
             scf = 1e12  # pA, vc
         # plot the Z score, Charge and amplitude maps:
-        print(self.mapsZQA_plot)
+        print("ZQA Plot: ", self.mapsZQA_plot)
         if self.mapsZQA_plot:
             CP.cprint(
                 "g",
@@ -469,6 +524,10 @@ class MAP_Analysis(IV_Analysis):
                 "g",
                 f"    Protocol: {self.map_name:s}",
             )
+            if not isfile(picklefilename):
+                raise FileExistsError(
+                    f"The map has not been analyzed: re-run with mapsZQA_plot to false"
+                )
             with open(
                 picklefilename, "rb"
             ) as fh:  # read the previously analyzed data set
@@ -500,7 +559,7 @@ class MAP_Analysis(IV_Analysis):
         if self.signflip:
             self.AM.Pars.sign = -1 * self.AM.Pars.sign  # flip analysis sign
 
-        self.AM.set_analysis_window(0.0, 0.599)
+        # self.AM.set_analysis_window(0.0, 0.599)
         self.AM.set_artifact_suppression(self.artifact_suppress)
         self.AM.set_noderivative_artifact(self.noderivative_artifact)
         if self.artifactFilename is not None:
@@ -514,7 +573,8 @@ class MAP_Analysis(IV_Analysis):
 
         if self.recalculate_events:
             CP.cprint(
-                "g", f"MAP_Analysis:analyze_map  Running map analysis: {str(self.map_name):s}"
+                "g",
+                f"MAP_Analysis:analyze_map  Running map analysis: {str(self.map_name):s}",
             )
             result = self.AM.analyze_one_map(
                 mapdir, noparallel=self.noparallel, verbose=verbose
