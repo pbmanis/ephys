@@ -106,7 +106,7 @@ class PlotMaps(object):
         self.ticks = None
         self.overlay = True
         self.indicesplotted = []
-        self.twin = [0, 0.6]
+        self.twin = [0, 10.0 ]
         self.averageScannerImages = False # normally, would not do
         self.calbar = [20, 500]  # 20 ms, 500 pA
         self.picker = picker.Picker()
@@ -311,7 +311,7 @@ class PlotMaps(object):
         if name is not None:
             self.datasets[name] = self.AR.data_array
 
-        if self.AR.mode in ['v', 'V', 'VC']:
+        if self.AR.mode in ('v', 'V', 'VC'):
             self.vscale = 1e5
             self.off = self.voff
         else:
@@ -490,18 +490,18 @@ def main():
     else:
         docell = [args.celltype]
     
-    if docell in ['unknown', 'all']:
+    if docell in ('unknown', 'all'):
         return
 
     table = pd.read_excel('NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
         parnames = ['invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks']
-        pars = dict()
+        pars = {}
         for n in parnames:
-            if n in ['calbar', 'twin']:
+            if n in ('calbar', 'twin'):
                 pars[n] = eval('['+dc[n].values[0]+']')
-            elif n in ['ticks']:
+            elif n in ('ticks'):
                 pars[n] = [dc[n].values[0]]
             else:
                 pars[n] = dc[n].values[0]
@@ -510,7 +510,7 @@ def main():
     def line_select_callback(eclick, erelease):
         'eclick and erelease are the press and release events'
 
-        if eclick.button == MBB.MouseButton.LEFT and erelease.button== MBB.MouseButton.LEFT:
+        if eclick.button == MBB.MouseButton.LEFT == erelease.button:
             x1, y1 = eclick.xdata, eclick.ydata
             x2, y2 = erelease.xdata, erelease.ydata
             print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
@@ -533,18 +533,18 @@ def main():
 
     def toggle_selector(event):
         # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
-        if event.key in ['Q', 'q'] and toggle_selector.RS.active:
+        if event.key.lower() == 'q')and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
-        elif event.key in ['A', 'a'] and not toggle_selector.RS.active:
+        elif event.key.lower() == 'a' and not toggle_selector.RS.active:
             print(' RectangleSelector activated.')
             toggle_selector.RS.set_active(True)
-        elif event.key in ['p', 'P']:
+        elif event.key.lower() == 'p':
             xylims = PMap.get_XYlims()
             print(f"{xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             if PMap.calbarobj is not None:
                 print(PMap.calbarobj[0].get_xydata())
-        elif event.key in ['s', 'S']:
+        elif event.key.lower == 's':
             xylims = PMap.get_XYlims()
             print(f"Position: {xylims[0]:.5f}\t{xylims[2]:.5f}\t{xylims[1]:.5f}\t{xylims[3]:.5f}")
             mpl.savefig(PMap.outputfn)
@@ -555,35 +555,35 @@ def main():
             PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
-        elif event.key in ['+']:
+        elif event.key == '+':
             PMap.cmax -= 500
             PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
-        elif event.key in ['-']:
+        elif event.key == '-':
             PMap.cmax += 500
             PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
-        elif event.key in ['u', 'U']:
+        elif event.key.lower() == 'u':
             PMap.cmin += 200
             PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
-        elif event.key in ['d', 'D']:
+        elif event.key.lower == 'd':
             PMap.cmin -= 200
             PMap.imageax.set_clim(PMap.cmin, PMap.cmax)
             mpl.draw()
 
         
-        elif event.key in ['right', '\x1b[C']:
+        elif event.key in ('right', '\x1b[C'):
             PMap.reposition_cal(movex=-1)  # move right
-        elif event.key in ['left', '\x1b[D']:
+        elif event.key in ('left', '\x1b[D'):
             PMap.reposition_cal(movex=1)  # move left
-        elif event.key in ['up', '\x1b[A']:
+        elif event.key in ('up', '\x1b[A'):
             PMap.reposition_cal(movey=1)
-        elif event.key in ['down', '\x1b[B']:
+        elif event.key in ('down', '\x1b[B'):
             PMap.reposition_cal(movey=-1)
-        elif event.key in ['h', 'H']: 
+        elif event.key.lower() == 'h':
             PMap.reposition_cal(home=True)  # home
         else:
             pass
@@ -611,7 +611,7 @@ def main():
         PMap.plot_maps(prots, linethickness=1.0)
 
     for cellname in docell:
-        if cellname in ['unknown', 'all']:
+        if cellname in ('unknown', 'all'):
             continue
         if args.number == '*':  # all of a type
             cs = table.loc[table['cellname'] == cellname]

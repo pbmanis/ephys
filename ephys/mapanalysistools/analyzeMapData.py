@@ -295,11 +295,12 @@ class AnalyzeMap(object):
 
         self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
         self.AR.getScannerPositions()
-        print("scanner shape, min and max limits")
-        print(self.AR.scanner_positions.shape)
-        print(np.min(self.AR.scanner_positions[:,0]), np.min(self.AR.scanner_positions[:,1]))
-        print(np.max(self.AR.scanner_positions[:,0]), np.max(self.AR.scanner_positions[:,1]))
         print("-"*40)
+        print("Scanning shape, min and max limits")
+        print("  Shape: ", self.AR.scanner_positions.shape)
+        print("  Min:   ", np.min(self.AR.scanner_positions[:,0]), np.min(self.AR.scanner_positions[:,1]))
+        print("  Max:   ", np.max(self.AR.scanner_positions[:,0]), np.max(self.AR.scanner_positions[:,1]))
+
 
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.spotsize = self.AR.scanner_spotsize
