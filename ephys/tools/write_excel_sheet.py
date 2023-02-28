@@ -132,8 +132,13 @@ def make_excel(df:object, outfile:Path, sheetname:str="Sheet1", columns:list=Non
             writer.sheets[sheetname].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
 
     df = df.style.apply(_highlight_by_cell_type, axis=1)
-    df.to_excel(writer, sheet_name = sheetname, columns=columns)  # organize columns at the end
-    writer.close()
+    try:
+        df.to_excel(writer, sheet_name = sheetname, columns=columns)  # organize columns at the end
+        writer.close()
+    except:
+        print(df.columns)
+        print(columns)
+        raise ValueError
 
 
 if __name__ == "__main__":
