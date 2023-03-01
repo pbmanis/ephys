@@ -208,6 +208,12 @@ def build_parser(experiments):
         help="clean IV plot",
     )
 
+    parser.add_argument(
+        "--plotsoff",
+        action="store_true",
+        dest="noplot",
+        help="suppress plot generation",
+    )
     ###
     ### Specific paramters for mapping analysis
     ###

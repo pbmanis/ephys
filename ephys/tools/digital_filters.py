@@ -4,6 +4,7 @@ Routines for digital filtering
 """
 import numpy as np
 import scipy.signal as spSignal
+from typing import Union
 
 def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
     """Filter with Butterworth low pass, using time-causal lfilter 
@@ -192,7 +193,7 @@ def NotchFilter(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
         signal = spSignal.filtfilt(b, a, signal, axis=-1) # , zi=None)
     return signal
 
-def NotchFilterZP(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
+def NotchFilterZP(signal, notchf:Union[list, tuple]=[60.], Q:float=90., QScale=True, samplefreq=None):
     """
     Zero Phase
     """

@@ -524,7 +524,7 @@ class MAP_Analysis(IV_Analysis):
                 "g",
                 f"    Protocol: {self.map_name:s}",
             )
-            if not isfile(picklefilename):
+            if not Path(picklefilename).is_file():
                 raise FileExistsError(
                     f"The map has not been analyzed: re-run with mapsZQA_plot to false"
                 )
@@ -591,9 +591,9 @@ class MAP_Analysis(IV_Analysis):
         # CP.cprint("c", f"Plotmap: {str(plotmap):s}")
         if plotmap:
             if self.celltype_changed:
-                celltype_text = f"{self.celltype:s} [revised]"
+                celltype_text = f"{self.celltype:s}* "
             else:
-                celltype_text = f"{self.celltype:s} [orig]"
+                celltype_text = f"{self.celltype:s} "
             getimage = False
             plotevents = True
             self.AM.Pars.overlay_scale = 0.0
@@ -608,7 +608,7 @@ class MAP_Analysis(IV_Analysis):
                 else:
                     results = self.AM.last_results
                 mapok = PMD.display_one_map(
-                    mapdir,
+                    dataset=mapdir,
                     results=results,  # self.AM.last_results,
                     imagefile=None,
                     rotation=0.0,
@@ -625,6 +625,17 @@ class MAP_Analysis(IV_Analysis):
 
             if mapok:
                 infostr = ""
+                colnames = self.df.columns
+                if "animal identifier" in colnames:
+                    infostr += f"ID: {self.df.at[icell, 'animal identifier']:s} "
+                if "cell_location" in colnames:
+                    infostr += f"{self.df.at[icell, 'cell_location']:s}, "
+                if "cell_layer" in colnames:
+                    infostr += f"{self.df.at[icell, 'cell_layer']:s}, "
+                infostr += celltype_text
+                if "cell_expression" in colnames:
+                    infostr += f"Exp: {self.df.at[icell, 'cell_expression']:s}, "
+                
                 # notes = self.df.at[icell,'notes']
                 if self.internal_Cs:
                     if self.high_Cl:
@@ -652,9 +663,9 @@ class MAP_Analysis(IV_Analysis):
                     self.AM.Pars.scale_factor,
                     self.AM.methodname,
                 )
-                fix_mapdir = str(mapdir).replace("_", "\_")
+                fix_mapdir = str(mapdir) # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(
-                    f"{fix_mapdir:s}\n{celltype_text:s} {infostr:s} {params:s}",
+                    f"{fix_mapdir:s}\n{infostr:s} {params:s}",
                     fontsize=8,
                 )
                 t_path = Path(

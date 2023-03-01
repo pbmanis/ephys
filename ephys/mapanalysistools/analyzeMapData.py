@@ -201,6 +201,9 @@ class AnalyzeMap(object):
         if methodname.lower() in ["aj"]:
             self.methodname = "aj"
             self.engine = "python"
+        elif methodname.lower() in ["aj_cython"]:
+            self.methodname = "aj"
+            self.engine = "cython"
         elif methodname.lower() in ["cb"]:
             self.methodname = "cb"
             self.engine = "numba"  # set this as the default
@@ -554,6 +557,7 @@ class AnalyzeMap(object):
                         )
             data = data2
             if self.Pars.notch_flag:
+                CP.cprint('g', f"    Notch applied at {str(self.Pars.notch_freqs):s}  Q={self.Pars.notch_Q:.1f}")
                 self.Pars.notch_applied = True
             if self.Pars.LPF_flag:
                 CP.cprint('g', f"    LPF applied at {self.Pars.LPF:.1f}")

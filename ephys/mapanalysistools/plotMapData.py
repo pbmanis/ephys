@@ -280,7 +280,7 @@ class PlotMapData:
             fne = Path(self.images[i]).name
             imfig = ax[i].imshow(self.gamma_correction(img, 2.2))
             PH.noaxes(ax[i])
-            ax[i].set_title(fne.replace(r"_", r"\_"), fontsize=8)
+            ax[i].set_title(fne, fontsize=8)
             imfig.set_cmap(self.cmap)
         if show:
             mpl.show()
@@ -500,13 +500,14 @@ class PlotMapData:
 
         crflag = [False for i in range(mdata.shape[0])]
 
+        iplot_tr = 0
         for itrial in range(mdata.shape[0]):
             if events[itrial] is None:
                 continue
             evtr = events[itrial][
                 "event_trace_list"
             ]  # of course it is the same for every entry.
-            iplot_tr = 0
+            # iplot_tr = 0
             for itrace in range(mdata.shape[1]):
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
@@ -592,8 +593,10 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                 iplot_tr += 1
+        # now the traces themselves
+        iplot_tr = 0
         for itrial in range(mdata.shape[0]):
-            iplot_tr = 0
+            # iplot_tr = 0
             for itrace in range(mdata.shape[1]):
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
@@ -1422,8 +1425,8 @@ class PlotMapData:
 
     def display_one_map(
         self,
-        dataset,
-        results,
+        dataset:str,
+        results:dict,
         imagefile=None,
         rotation:float=0.0,
         measuretype:str=None,
@@ -1487,8 +1490,8 @@ class PlotMapData:
                     ("C1", {"pos": [0.07, 0.3, 0.31, 0.125]}),
                     ("C2", {"pos": [0.07, 0.3, 0.16, 0.125]}),
                     ("D", {"pos": [0.07, 0.3, 0.05, 0.075]}),
-                    ("E", {"pos": [0.47, 0.45, 0.05, 0.85]}),
-                    #     ('F', {'pos': [0.47, 0.45, 0.10, 0.30]}),
+                    ("E", {"pos": [0.47, 0.45, 0.2, 0.75]}),
+                    ("F", {'pos': [0.47, 0.45, 0.05, 0.18]}),
                 ]
             )
             scale_bar = "A1"
@@ -1500,6 +1503,7 @@ class PlotMapData:
             photodiode_panel = "D"
             slice_image_panel = None
             cell_image_panel = None
+            average_panel = "F"
 
         elif plotmode == "publication":
             label_fsize = 16
@@ -1525,6 +1529,7 @@ class PlotMapData:
             photodiode_panel = "D"
             slice_image_panel = 'A1'
             cell_image_panel = 'A2'
+            average_panel = None
         # self.panelmap = panelmap
         self.panels = {'scale_bar': scale_bar,
                         'trace_panel': trace_panel,
@@ -1535,6 +1540,7 @@ class PlotMapData:
                         'photodiode_panel': photodiode_panel,
                         'slice_image_panel': slice_image_panel,
                         'cell_image_panel': cell_image_panel,
+                        'average_panel': average_panel,
                     }
         self.P = PH.Plotter(self.plotspecs, label=False, fontsize=10, figsize=(10.0, 8.0))
 
@@ -1579,16 +1585,22 @@ class PlotMapData:
 
         if plotmode == "document":  # always show all responses/events, regardless of amplitude
             self.plot_stacked_traces(
-                self.Data.tb,
-                self.Data.data_clean,
-                dataset,
+                tb = self.Data.tb,
+                mdata = self.Data.data_clean,
+                title = dataset,
                 results=results,
                 ax=self.P.axdict[trace_panel],
                 zscore_threshold=zscore_threshold,
                 trsel=trsel,
             )  # stacked on right
             trpanel = "E"
-            
+            if self.panels["average_panel"] is not None:
+                avedata = np.squeeze(np.mean(self.Data.data_clean, axis=0))
+                dt = np.mean(np.diff(self.Data.tb))
+                itmax = int(self.Pars.analysis_window[1] / dt)
+                self.P.axdict[self.panels["average_panel"]].plot(self.Data.tb[:itmax]*1e3, avedata[:itmax]*1e12, 'k-', linewidth=0.7)
+                self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
+                self.P.axdict[self.panels["average_panel"]].set_xlabel("T (msec)")
         elif plotmode is "publication":
             # plot average of all the traces for which score is above threshold
             # and amplitude is in a specified range (to eliminate spikes)
@@ -1663,7 +1675,7 @@ class PlotMapData:
             rasterized=rasterized,
         )
 
-        if self.Data.photodiode is not None:
+        if self.Data.photodiode is not None and not "LED" in str(dataset.name):
             self.plot_photodiode(
                 self.P.axdict[photodiode_panel],
                 self.Data.photodiode_timebase[0],

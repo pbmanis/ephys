@@ -62,6 +62,7 @@ class cmdargs:
     map_pdfs: bool=False
     extra_subdirectories: object = None
 
+    update_results:bool = False
     day: str = "all"
     after: str = "1970.1.1"
     before: str = "2266.1.1"
@@ -79,6 +80,7 @@ class cmdargs:
     # graphics controls
     plotmode: str = "document"
     IV_pubmode: str = "normal"
+    plotsoff: bool = False
     rasterize: bool = True
     update: bool = False
     noparallel: bool = True
@@ -98,7 +100,7 @@ class cmdargs:
     whichstim: int = -1
     trsel: Union[int, None] = None
     notchfilter: bool = False
-    notchfreqs: str = "60, 120, 180, 240"
+    notchfreqs: str = "[60, 120, 180, 240]"
     LPF: float = 0.0
     HPF: float = 0.0
     notchQ: float = 90.0
@@ -128,6 +130,7 @@ class IV_Analysis():
         self.experiment = args.experiment
 
         # selection of data for analysis
+        self.update_results = args.update_results
         self.day = args.day
         self.before = DUP.parse(args.before)
         self.before_str = args.before
@@ -151,6 +154,7 @@ class IV_Analysis():
         # graphics controls
         self.plotmode = args.plotmode
         self.IV_pubmode = args.IV_pubmode
+        self.plotsoff = args.plotsoff
         self.rasterize = True
         self.update = args.update
         self.noparallel = args.noparallel
@@ -209,6 +213,7 @@ class IV_Analysis():
                 self.analyzeddatapath = Path(self.experiment["analyzeddatapath"])
                 self.databasepath = Path(self.experiment["databasepath"])
             else:
+                self.rawdatapath = Path(self.rawdatapath, self.experiment["directory"])
                 self.analyzeddatapath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
                 self.databasepath = Path(self.experiment["databasepath"], self.experiment["directory"])
     
@@ -287,7 +292,7 @@ class IV_Analysis():
 
         # get the input file (from dataSummary)
         self.df = pd.read_pickle(str(self.inputFilename))
-        CP.cprint("g", f"Read in put file: {str(self.inputFilename):s}")
+        CP.cprint("g", f"Read input file: {str(self.inputFilename):s}")
         # self.df[
         #     "day"
         # ] = None  # self.df = self.df.assign(day=None)  # make sure we have short day available
@@ -1185,7 +1190,7 @@ class IV_Analysis():
         if self.iv_select["duration"] > 0.0:
             EPIV = EP.IVSummary.IV(
                 str(protocol_directory),
-                plot=True,
+                plot=not self.plotsoff,
             )
             check = EPIV.iv_check(duration=self.iv_select["duration"])
             if check is False:
@@ -1193,7 +1198,7 @@ class IV_Analysis():
                 return (None, 0)  # skip analysis
         if not self.dry_run:
             print(f"      IV analysis for {str(protocol_directory):s}")
-            EPIV = EP.IVSummary.IVSummary(protocol_directory, plot=True)
+            EPIV = EP.IVSummary.IVSummary(protocol_directory, plot=not self.plotsoff)
             br_offset = 0.0
             if (
                 not pd.isnull(self.df.at[icell, "IV"])
