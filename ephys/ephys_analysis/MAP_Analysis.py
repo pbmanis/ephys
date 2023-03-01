@@ -547,6 +547,7 @@ class MAP_Analysis(IV_Analysis):
             result = results[str(mapkey)]  # get individual map result
 
         self.set_map_factors(icell, mapdir)
+        self.AM.reset_filtering() # for every protocol! 
         if self.LPF > 0:
             self.AM.set_LPF(self.LPF)
         if self.HPF > 0:
@@ -680,6 +681,7 @@ class MAP_Analysis(IV_Analysis):
                 pp = PdfPages(t_path)
                 # try:
                 print("        ***** Temp file to : ", t_path)
+                # mpl.show()
                 mpl.savefig(
                     pp, format="pdf"
                 )  # use the map filename, as we will sort by this later
