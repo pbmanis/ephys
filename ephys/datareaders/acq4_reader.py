@@ -1191,6 +1191,7 @@ class acq4_reader:
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
             self.LaserBlue_Raw.append(lbr.view(np.ndarray)[0])  # shutter
+            self.LaserBlue_time_base.append(lbr.xvals("Time"))
             try:
                 self.LaserBlue_pCell.append(lbr.view(np.ndarray)[1])  # pCell
             except:
@@ -1202,7 +1203,6 @@ class acq4_reader:
                 else:
                     pcell = EM.MetaArray(file=fn)
                     self.LaserBlue_pCell.append(pcell.view(np.ndarray)[0])
-            self.LaserBlue_time_base.append(lbr.xvals("Time"))
             try:
                 sr = info[1]["DAQ"]["Shutter"]["rate"]
             except:
@@ -1210,10 +1210,10 @@ class acq4_reader:
                 exit(1)
             self.LaserBlue_sample_rate.append(sr)
         self.LaserBlue_Info = info
-        self.LaserBlue_Raw = np.array(self.LaserBlue_Raw)
-        self.LaserBlue_pCell = np.array(self.LaserBlue_pCell)
+        self.LaserBlue_Raw = np.array(self.LaserBlue_Raw[0])
+        self.LaserBlue_pCell = np.array(self.LaserBlue_pCell[0])
         self.LaserBlue_sample_rate = np.array(self.LaserBlue_sample_rate)
-        self.LaserBlue_time_base = np.array(self.LaserBlue_time_base)
+        self.LaserBlue_time_base = np.array(self.LaserBlue_time_base[0])
         self.LaserBlue_times = self.getLaserBlueTimes()
         return True
 
