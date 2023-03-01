@@ -90,12 +90,17 @@ class AnalysisPars:
     fix_artifact_flag: bool = False  # flag enabling removeal of artifacts
     artifact_file: Union[Path, None] = None
     artifact_file_path: Union[Path, None] = None
-    ar_start: float = 0.10 # starting time for stimuli
+    ar_tstart: float = 0.10 # starting time for VC or IC stimulus pulse
+    ar_tend: float = 0.015 # end time for VC or IC stimulus pulse
+    time_zero: float = 0.0 # in seconds, where we start the trace
+    time_zero_index: int = 0
+    time_end: float=1.0 # in seconds, end time of the trace
+    time_end_index: int = 0  # needs to be set from the data
     stimtimes: dict=field(
         default_factory=def_stimtimes)
     spont_deadtime: float = 0.010  # time after trace onset before counting spont envents
     direct_window: float = 0.001  # window after stimulus for direct response
-    response_window: float = 0.015  # window end for response (response is between direct and respons), seconds
+    response_window: float = 0.015  # window end for response (response is between direct and response), seconds
     twin_base: list = field(
         default_factory=def_twin_base
     )  # time windows baseline measures
@@ -273,26 +278,51 @@ class AnalyzeMap(object):
         # otherwise use the default, which is set in the init routine
         self.AR.getLaserBlueTimes()
         self.Pars.stimtimes = self.AR.LaserBlueTimes
+        self.Pars.ar_tstart = self.AR.tstart
+        self.Pars.ar_tend = self.AR.tend
+
+
+        # Adjust the time limits for the data analysis to exclude any
+        # vc or ic monitoring pulises that might be before or after the data.
+        # This is done to clean up the filtering that takes place later
+        dt = self.AR.sample_interval
+        self.Pars.time_end = np.max(self.AR.time_base)
+        self.Pars.time_end_index = int(self.Pars.time_end/dt)
+        self.Pars.time_zero = 0.0
+        self.Pars.time_zero_index = 0
+        if self.Pars.ar_tend < self.Pars.stimtimes["start"][0]: # VC/IC pulse precedes stimuli
+            self.Pars.time_zero = (self.Pars.ar_tend + 0.010)  # give it 10 msec to settle down
+            self.Pars.time_zero_index = int(self.Pars.time_zero/dt)
+            if self.Pars.twin_base[0] < self.Pars.time_zero:
+                self.Pars.twin_base[0] = self.Pars.time_zero
+        elif self.Pars.ar_tstart > self.Pars.stimtimes["start"][-1]: # after the last stimulus:
+            self.Pars.time_end = self.Pars.ar_tstart -0.001 # end 1 msec before end of trace
+            self.Pars.time_end_index = int(self.Pars.time_end/dt)
+        
         if self.Pars.stimtimes is not None:
             self.Pars.twin_base = [
                 0.0,
-                self.Pars.stimtimes["start"][0] - 0.001,
+                self.Pars.stimtimes["start"][0] - 0.001 - self.Pars.time_zero,
             ]  # remember times are in seconds
             self.Pars.twin_resp = []
             for j in range(len(self.Pars.stimtimes["start"])):
                 self.Pars.twin_resp.append(
                     [
-                        self.Pars.stimtimes["start"][j] + self.Pars.direct_window,
-                        self.Pars.stimtimes["start"][j] + self.Pars.response_window,
+                        self.Pars.stimtimes["start"][j] + self.Pars.direct_window-self.Pars.time_zero,
+                        self.Pars.stimtimes["start"][j] + self.Pars.response_window-self.Pars.time_zero,
                     ]
                 )
-        self.lbr_command = (
-            self.AR.getLaserBlueCommand()
-        )  # just get flag; data in self.AR
-
+        if self.AR.getLaserBlueCommand():
+            self.Data.laser_blue_pCell = self.AR.LaserBlue_pCell[self.Pars.time_zero_index:self.Pars.time_end_index]
+            self.Data.laser_blue_timebase = self.AR.LaserBlue_time_base[self.Pars.time_zero_index:self.Pars.time_end_index]
+            self.Data.laser_blue_sample_rate = self.AR.LaserBlue_sample_rate 
+        else:
+            CP.cprint("r", '**** Could not get photodiode traces')
+           
+       
         if self.AR.getPhotodiode():
-            self.Data.photodiode = self.AR.Photodiode
-            self.Data.photodiode_timebase = self.AR.Photodiode_time_base
+            self.Data.photodiode = self.AR.Photodiode[self.Pars.time_zero_index:self.Pars.time_end_index]
+            self.Data.photodiode_timebase = self.AR.Photodiode_time_base[self.Pars.time_zero_index:self.Pars.time_end_index]
         else:
             CP.cprint("r", '**** Could not get photodiode traces')
 
@@ -305,15 +335,9 @@ class AnalyzeMap(object):
         print("  Max:   ", np.max(self.AR.scanner_positions[:,0]), np.max(self.AR.scanner_positions[:,1]))
 
 
-        self.Pars.ar_tstart = self.AR.tstart
         self.Pars.spotsize = self.AR.scanner_spotsize
-        self.Data.tb = self.AR.time_base
-        # print(self.AR.traces.shape)
-        # print(self.Data.tb.shape)
-        # for i in range(self.AR.traces.shape[0]):
-        #     print(i)
-        #     mpl.plot(self.Data.tb, self.AR.traces.view(np.ndarray)[i,:])
-        # mpl.show()
+        self.Data.tb = self.AR.time_base[self.Pars.time_zero_index:self.Pars.time_end_index]
+
         data = np.reshape(
             self.AR.traces,
             (
@@ -322,6 +346,8 @@ class AnalyzeMap(object):
                 self.AR.traces.shape[1],
             ),
         )
+
+        data = data[:, :, self.Pars.time_zero_index:self.Pars.time_end_index]  # clip the data to the analysis window
         endtime = timeit.default_timer()
 
         CP.cprint("g",
@@ -329,7 +355,7 @@ class AnalyzeMap(object):
                 protocolFilename.name, endtime - starttime
             )
         )
-        return data, self.AR.time_base, self.AR.scanner_sequenceparams, self.AR.scanner_info
+        return data, self.Data.tb, self.AR.scanner_sequenceparams, self.AR.scanner_info
 
     def set_analysis_windows(self):
         pass
@@ -342,7 +368,7 @@ class AnalyzeMap(object):
         twin_resp: list = [[0.101, 0.130]],
     ) -> Tuple[float, float]:
         """
-        Integrate durrent over a time window to get charges
+        Integrate current over a time window to get charges
         
         Returns two charge measures: the baseline, and the value
         in the response window
@@ -524,7 +550,7 @@ class AnalyzeMap(object):
             wnh = self.Pars.HPF / nyquistfreq
             bh, ah = scipy.signal.bessel(2, wnh, btype="highpass")
 
-        imax = int(max(np.where(tb < self.Pars.analysis_window[1])[0]))
+        # imax = int(max(np.where(tb < self.Pars.analysis_window[1])[0]))
         # imax = len(tb)
         bl = 0.
         if data.ndim == 3:
@@ -535,21 +561,20 @@ class AnalyzeMap(object):
             for r in range(data2.shape[0]):
                 for t in range(data2.shape[1]):
                     if self.Pars.baseline_flag and not self.Pars.baseline_subtracted:
-                       data2[r, t, :imax] -= np.median(self._remove_outliers(data2[r, t, :imax], self.Pars.global_trim_scale))
+                       data2[r, t, :] -= np.median(self._remove_outliers(data2[r, t, :], self.Pars.global_trim_scale))
                     if self.Pars.LPF_flag and not self.Pars.LPF_applied:
-                        data2[r, t, :imax] = filtfunc(
-                            b, a, data2[r, t, :imax]
+                        data2[r, t, :] = filtfunc(
+                            b, a, data2[r, t, :]
                         )
 
-
                     if self.Pars.HPF_flag and not self.Pars.HPF_applied:
-                        data2[r, t, :imax] = filtfunc(
-                            bh, ah, data2[r, t, :imax]
+                        data2[r, t, :] = filtfunc(
+                            bh, ah, data2[r, t, :]
                         )
 
                     if self.Pars.notch_flag and not self.Pars.notch_applied:
-                        data2[r, t, :imax] = FILT.NotchFilterZP(
-                            data2[r, t, :imax],
+                        data2[r, t, :] = FILT.NotchFilterZP(
+                            data2[r, t, :],
                             notchf=self.Pars.notch_freqs,
                             Q=self.Pars.notch_Q,
                             QScale=False,
@@ -655,6 +680,7 @@ class AnalyzeMap(object):
                 CP.cprint("c", "        Fixing Artifacts")
         else:
             self.Data.data_clean = self.data
+
         # if self.Pars.LPF_flag or self.Pars.notch_flag or self.Pars.HPF_flag:
         #     if self.verbose:
         #         CP.cprint("c", f"      LPF Filtering at {self.Pars.LPF:.2f} Hz")
@@ -665,16 +691,19 @@ class AnalyzeMap(object):
         # get a list of data points OUTSIDE the stimulus-response window
         lastd = 0  # keeps track of the last valid point
         # print(self.Pars.twin_resp)
-        for i, tr in enumerate(self.Pars.twin_resp):  # get window for response
-            notokd = np.where((self.Data.tb >= tr[0]) & (self.Data.tb < tr[1]))[0]
-            data_nostim.append(list(range(lastd, notokd[0])))
-            lastd = notokd[-1]
-        # fill end space...
-        endindx = np.where(self.Data.tb >= self.Pars.ar_tstart)[0][0]
-        data_nostim.append(list(range(lastd, endindx)))
-        data_nostim = list(np.hstack(np.array(data_nostim, dtype=object)))
+        # for i, tr in enumerate(self.Pars.twin_resp):  # get window for response
+        #     print(np.min(self.Data.tb), tr, self.Data.tb.shape)
+        #     notokd = np.where((self.Data.tb-self.Pars.time_zero >= tr[0]) & (self.Data.tb-self.Pars.time_zero < tr[1]))[0]
+        #     data_nostim.append(list(range(lastd, notokd[0])))
+        #     lastd = notokd[-1]
+        # # fill end space...
+        # endindx = np.where(self.Data.tb >= self.Pars.time_end)[0]
+        # print("endindx: ", endindx, self.Pars.time_end_index, lastd)
+        # if endindx > lastd:
+        #     data_nostim.append(list(range(lastd, endindx)))
+        # data_nostim = list(np.hstack(np.array(data_nostim, dtype=object)))
         if self.verbose:
-            CP.cprint('c', f"        Data shape going into analyze_protocol: str(elf.data_clean.shape:s)")
+            CP.cprint('c', f"        Data shape going into analyze_protocol: str(self.data_clean.shape:s)")
         results = self.analyze_protocol(
             data = self.Data.data_clean,
             tb = self.Data.tb,
@@ -708,7 +737,6 @@ class AnalyzeMap(object):
 
         """
         CP.cprint("g", "    Analyzing protocol")
-        print(self.Pars)
         print("-"*40)
         rate = self.rate
         mdata = np.mean(data, axis=0)  # mean across ALL reps
@@ -725,6 +753,9 @@ class AnalyzeMap(object):
         I_max = np.zeros((nstim, data.shape[1]))
         pos = np.zeros((data.shape[1], 2))
         infokeys = list(info.keys())
+        tb = tb - self.Pars.time_zero
+       # print(np.min(tb), np.max(tb), self.Pars.twin_base, self.Pars.twin_resp)
+
         for ix, t in enumerate(range(data.shape[1])):  # compute for each target
             for s in range(len(self.Pars.twin_resp)):  # and for each stimulus
                 Qr[s, t], Qb[s, t] = self.calculate_charge(
@@ -795,6 +826,7 @@ class AnalyzeMap(object):
                 datatype = self.Pars.datatype
             )
             events[jtrial] = res
+        print("res: ", res)
         if self.verbose:
             print("  ALL trials in protocol analyzed")
         return {
@@ -1540,7 +1572,7 @@ def main():
             rotation=rotation,
             measuretype="ZScore",
         )
-        mpl.show()    
+        # mpl.show()    
 
 if __name__ == "__main__":
     main()

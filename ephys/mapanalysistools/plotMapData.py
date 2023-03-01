@@ -333,7 +333,8 @@ class PlotMapData:
         """
         yl = ax.get_ylim()
         for j in range(len(self.Pars.stimtimes["start"])):
-            t = self.Pars.stimtimes["start"][j]
+            t = self.Pars.stimtimes["start"][j]-self.Pars.time_zero
+            print("t, tz: ", t, self.Pars.time_zero)
             if isinstance(t, float) and np.diff(yl) > 0:  # check that plot is ok to try
                 ax.plot(
                     [t, t],
@@ -391,8 +392,8 @@ class PlotMapData:
             nevents = 0
             y = np.array(eventtimes) * rate
             # print('AR Tstart: ', self.AR.tstart, y.shape)
-            bins = np.linspace(
-                0.0, self.Pars.ar_tstart, int(self.Pars.ar_tstart * 1000.0 / 2.0) + 1
+            bins = np.arange(
+                self.Pars.time_zero, self.Pars.time_end+1e-3, 1e-3
             )
             axh.hist(
                 y,
@@ -411,7 +412,7 @@ class PlotMapData:
                 direction="outward",
                 axesoff=False,
             )
-            axh.set_xlim(0.0, self.Pars.ar_tstart - 0.005)
+            axh.set_xlim(self.Pars.time_zero, self.Pars.time_end)
 
     def plot_stacked_traces(
         self,
@@ -462,7 +463,7 @@ class PlotMapData:
         nevtimes = 0
         spont_ev_count = 0
         dt = np.mean(np.diff(self.Data.tb))
-        itmax = int(self.Pars.analysis_window[1] / dt)
+
         # print(tb.shape, np.max(tb), tb[itmax], self.Pars.analysis_window, dt)
         # raise
         if trsel is not None:
@@ -470,8 +471,8 @@ class PlotMapData:
             for jtrial in range(mdata.shape[0]):
                 if tb.shape[0] > 0 and mdata[jtrial, trsel, :].shape[0] > 0:
                     ax.plot(
-                        tb[:itmax],
-                        mdata[0, trsel, :itmax] * self.Pars.scale_factor,
+                        tb, #  - self.Pars.time_zero,
+                        mdata[0, trsel, :], #  * self.Pars.scale_factor,
                         linewidth=0.2,
                         rasterized=False,
                         zorder=10,
@@ -480,10 +481,10 @@ class PlotMapData:
             PH.calbar(
                 ax,
                 calbar=[
-                    0.6,
-                    -200e-12 * self.Pars.scale_factor,
+                    self.Pars.time_end,
+                    -200e-12, # 3  * self.Pars.scale_factor,
                     0.05,
-                    100e-12 * self.Pars.scale_factor,
+                    100e-12, #  * self.Pars.scale_factor,
                 ],
                 axesoff=True,
                 orient="left",
@@ -495,7 +496,7 @@ class PlotMapData:
             mpl.suptitle(str(Path(*Path(title).parts[-5:])), fontsize=8) # .replace(r"_", r"\_"), fontsize=8)
             self.plot_timemarker(ax)
 
-            ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
+            ax.set_xlim(0.0, (self.Pars.time_end-self.Pars.time_start-0.001))
             return
 
         crflag = [False for i in range(mdata.shape[0])]
@@ -563,7 +564,7 @@ class PlotMapData:
                         cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
 
                         ax.plot(
-                            tb[tsi],
+                            tb[tsi], # -self.Pars.time_zero,
                             ms * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=ck,
@@ -573,7 +574,7 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                         ax.plot(
-                            tb[tri],
+                            tb[tri], # -self.Pars.time_zero,
                             mr * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cr,
@@ -583,7 +584,7 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                         ax.plot(
-                            tb[ts2i],
+                            tb[ts2i], # -self.Pars.time_zero,
                             ms2 * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cg,
@@ -608,8 +609,8 @@ class PlotMapData:
                         alpha = 0.3
                         lw = linewidth * 0.25
                     ax.plot(
-                        tb[:itmax],
-                        mdata[itrial, itrace, :itmax] * self.Pars.scale_factor
+                        tb, # -self.Pars.time_zero,
+                        mdata[itrial, itrace, :] * self.Pars.scale_factor
                         + self.Pars.stepi * iplot_tr,
                         linewidth=lw,
                         rasterized=False,
@@ -621,7 +622,7 @@ class PlotMapData:
 
         mpl.suptitle(str(title), fontsize=8) # .replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
-        ax.set_xlim(0, self.Pars.ar_tstart - 0.001)
+        ax.set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
 
     def get_calbar_Yscale(self, amp: float) -> float:
         """
@@ -977,13 +978,13 @@ class PlotMapData:
             mdata = mdata.mean(axis=0)
         if len(tb) > 0 and len(mdata) > 0:
             ax.plot(
-                tb * 1e3,
+                (tb-self.Pars.time_zero) * 1e3,
                 mdata * self.Pars.scale_factor,
                 color,
                 rasterized=self.rasterized,
                 linewidth=0.6,
             )
-        ax.set_xlim(0.0, self.Pars.ar_tstart * 1e3 - 1.0)
+        ax.set_xlim(0.0, self.Pars.time_end * 1e3 - 1.0)
 
     def clip_colors(self, cmap, clipcolor):
         cmax = len(cmap)
@@ -996,7 +997,7 @@ class PlotMapData:
     def plot_photodiode(self, ax, tb, pddata, color="k"):
         if len(tb) > 0 and len(np.mean(pddata, axis=0)) > 0:
             ax.plot(
-                tb,
+                tb-self.Pars.time_zero,
                 np.mean(pddata, axis=0)*1e3,
                 color,
                 rasterized=self.rasterized,
@@ -1585,7 +1586,7 @@ class PlotMapData:
 
         if plotmode == "document":  # always show all responses/events, regardless of amplitude
             self.plot_stacked_traces(
-                tb = self.Data.tb,
+                tb = self.Data.tb-self.Pars.time_zero,
                 mdata = self.Data.data_clean,
                 title = dataset,
                 results=results,
@@ -1596,11 +1597,35 @@ class PlotMapData:
             trpanel = "E"
             if self.panels["average_panel"] is not None:
                 avedata = np.squeeze(np.mean(self.Data.data_clean, axis=0))
+                if avedata.ndim > 1:
+                    avedata = np.mean(avedata, axis=0)
                 dt = np.mean(np.diff(self.Data.tb))
-                itmax = int(self.Pars.analysis_window[1] / dt)
-                self.P.axdict[self.panels["average_panel"]].plot(self.Data.tb[:itmax]*1e3, avedata[:itmax]*1e12, 'k-', linewidth=0.7)
-                self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
-                self.P.axdict[self.panels["average_panel"]].set_xlabel("T (msec)")
+                self.P.axdict[self.panels["average_panel"]].plot((self.Data.tb-self.Pars.time_zero), avedata, 'k-', linewidth=0.7)
+                self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
+
+                # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
+                # self.P.axdict[self.panels["average_panel"]].set_xlabel("T (msec)")
+                PH.noaxes(self.P.axdict[self.panels["average_panel"]])
+                cal_height = 50e-12 # pA
+                ylims = self.P.axdict[self.panels["average_panel"]].get_ylim()
+                PH.calbar(
+                    self.P.axdict[self.panels["average_panel"]],
+                    calbar=[
+                    self.Pars.time_end - 0.1,
+                    ylims[0]*0.9,
+                    0.05,
+                    cal_height
+                    ],
+                    scale=[1e3, 1e12],
+                    axesoff=True,
+                    orient="left",
+                    unitNames={"x": "ms", "y": "pA"},
+                    fontsize=11,
+                    weight="normal",
+                    font="Arial",
+                )
+                PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.)
+                self.plot_timemarker(self.P.axdict[self.panels["average_panel"]])
         elif plotmode is "publication":
             # plot average of all the traces for which score is above threshold
             # and amplitude is in a specified range (to eliminate spikes)
@@ -1615,9 +1640,9 @@ class PlotMapData:
                     print(f"plotMapData:DisplayOneMap:publication mode: Averaging {len(iplot):d} traces, min/max = ", plot_minmax)
                 if len(plotable) > 0:
                     d = np.mean(plotable, axis=0)
-                    self.P.axdict[trace_panel].plot(self.Data.tb[:itmax], d[:itmax]-np.mean(d[0:50]))
+                    self.P.axdict[trace_panel].plot(self.Data.tb-self.Pars.time_zero, d-np.mean(d[0:50]))
 
-        self.P.axdict[trace_panel].set_xlim(0, self.Pars.ar_tstart)
+        self.P.axdict[trace_panel].set_xlim(0, self.Pars.time_end)
         PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
                 ticklength=3, position=-0.03)
         ylims = self.P.axdict[trace_panel].get_ylim()
@@ -1630,7 +1655,7 @@ class PlotMapData:
         PH.calbar(
                 self.P.axdict[trace_panel],
                 calbar=[
-                    np.max(self.Data.tb[:itmax]) - 0.1,
+                    self.Pars.time_end - 0.1,
                     ylims[0]*0.9,
                     0.05,
                     cal_height
@@ -1681,9 +1706,25 @@ class PlotMapData:
                 self.Data.photodiode_timebase[0],
                 self.Data.photodiode,
             )
-            self.P.axdict[photodiode_panel].set_xlim(0, self.Pars.ar_tstart)
+            self.P.axdict[photodiode_panel].set_xlim(0., self.Pars.time_end - self.Pars.time_zero)
             PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
                 ticklength=3, position=-0.03)
+        elif "LED" in str(dataset.name):
+            lbt = self.Data.laser_blue_timebase.squeeze()
+            if lbt.shape[0] == 0:
+                lbt = np.squeeze(lbt)
+            else:
+                lbt = self.Data.laser_blue_timebase
+                self.P.axdict[photodiode_panel].plot(
+                lbt,
+                self.Data.laser_blue_pCell,
+                'b-',
+            )
+            PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
+                ticklength=3, position=-0.03)  
+            self.P.axdict[photodiode_panel].set_ylabel("Laser Command (V)")
+            self.P.axdict[photodiode_panel].set_xlim(0., self.Pars.time_end - self.Pars.time_zero)
+
         
         # mpl.show()
         return True  # indicated that we indeed plotted traces.
