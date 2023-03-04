@@ -334,7 +334,6 @@ class PlotMapData:
         yl = ax.get_ylim()
         for j in range(len(self.Pars.stimtimes["start"])):
             t = self.Pars.stimtimes["start"][j]-self.Pars.time_zero
-            print("t, tz: ", t, self.Pars.time_zero)
             if isinstance(t, float) and np.diff(yl) > 0:  # check that plot is ok to try
                 ax.plot(
                     [t, t],
@@ -629,6 +628,9 @@ class PlotMapData:
         Pick a scale for the calibration bar based on the amplitude to be represented
         """
         sc = [
+            1.0,
+            2.0,
+            5.0,
             10.0,
             20.0,
             50.0,
@@ -1030,6 +1032,7 @@ class PlotMapData:
         cmrk = 50e-6 * sf  # size, microns
         linewidth = 0.2
         npos = pos.shape[0]
+  
         npos += 1  # need to count up one more to get all of the points in the data
         pos = pos[:npos, :]  # clip unused positions
 
@@ -1087,6 +1090,7 @@ class PlotMapData:
             mtype = "I_max"
         else:
             mtype = measuretype
+
         if whichstim < 0:
             spotsizes = spotsize * np.linspace(1.0, 0.2, len(measure[mtype]))
         else:
@@ -1094,8 +1098,10 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
+        print("xlim: ", xlim)
+        print("ylim: ", ylim)
         sign = measure["sign"]
-
+        print(measuretype)
         upscale = 1.0
         vmin = 0
         vmax = 1
@@ -1147,8 +1153,10 @@ class PlotMapData:
             nev_spots = 0
             # print("event measures: ", events[0][0]["measures"])
             for trial in range(measure["ntrials"]):
+                print("trial: ", trial)
                 skips = False
                 for spot in range(nspots):  # for each spot
+                    print("spot: ", spot)
                     for ipulse in range(npulses):
                         if measuretype == "Q":
                             # try:  # repeated trials not implemented here.
@@ -1183,7 +1191,7 @@ class PlotMapData:
                             try:
                                 smpki = events[trial]["smpksindex"][spot]
                             except:
-                                continue
+                                # continue
                                 print("on Spot: ", spot)
                                 print(smpki)
                                 smpki =  events[trial]["smpksindex"]
@@ -1285,6 +1293,8 @@ class PlotMapData:
                 dtheta = 360.0 / nreps
                 ri = 0
                 rs = int(npos / nreps)
+                if rs == 0:
+                    rs = 1
                 for nr in range(nreps):
                     ec = wedges(
                         pos[ri : (ri + rs), 0],
@@ -1295,7 +1305,10 @@ class PlotMapData:
                         color=spotcolors[ri : ri + rs],
                     )
                     axp.add_collection(ec)
-                    ri += rs
+                    if npos > 1:
+                        ri += rs
+                # print("arcs", nreps, npos, dtheta, ri, rs)
+                # exit()
         if cellmarker:
             CP.cprint("yellow", "Cell marker is plotted")
             axp.plot(
@@ -1563,6 +1576,8 @@ class PlotMapData:
         idm = self.mapfromid[ident]
 
         spotsize = self.Pars.spotsize
+        # print("Spot size: ", spotsize)
+        # exit()
         dt = np.mean(np.diff(self.Data.tb))
         itmax = int(self.Pars.ar_tstart / dt) - 1
         self.newvmax = np.max(results[measuretype])
@@ -1606,8 +1621,15 @@ class PlotMapData:
                 # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
                 # self.P.axdict[self.panels["average_panel"]].set_xlabel("T (msec)")
                 PH.noaxes(self.P.axdict[self.panels["average_panel"]])
-                cal_height = 50e-12 # pA
+                ntraces = self.Data.data_clean.shape[0]
+                cal_height = None# pA
                 ylims = self.P.axdict[self.panels["average_panel"]].get_ylim()
+    #            print(ylims, np.fabs(ylims[1] - ylims[0]))
+                if cal_height == None:
+                    cal_height = self.get_calbar_Yscale((np.fabs(ylims[1] - ylims[0]) / 4.0)*1e12)*1e-12
+                else:
+                    cal_height = 1e-12*cal_height
+
                 PH.calbar(
                     self.P.axdict[self.panels["average_panel"]],
                     calbar=[
@@ -1624,7 +1646,7 @@ class PlotMapData:
                     weight="normal",
                     font="Arial",
                 )
-                PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.)
+                PH.referenceline(self.P.axdict[self.panels["average_panel"]], np.mean(avedata[:20]))
                 self.plot_timemarker(self.P.axdict[self.panels["average_panel"]])
         elif plotmode is "publication":
             # plot average of all the traces for which score is above threshold
@@ -1646,28 +1668,39 @@ class PlotMapData:
         PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
                 ticklength=3, position=-0.03)
         ylims = self.P.axdict[trace_panel].get_ylim()
-        PH.referenceline(self.P.axdict[trace_panel], 0.)
+        # PH.referenceline(self.P.axdict[trace_panel], 0.)
         if cal_height == None:
-            cal_height = self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-11
+            cal_height = self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-12
         else:
             cal_height = 1e-12*cal_height
+        # PH.noaxes(self.P.axdict[trace_panel])
+        self.P.axdict[trace_panel].yaxis.tick_right()
+        self.P.axdict[trace_panel].spines.right.set_visible(True)
+        self.P.axdict[trace_panel].spines.right.set_position(("outward", 5))
+        
+        self.P.axdict[trace_panel].yaxis.set_label_position("right")
+        self.P.axdict[trace_panel].spines.right.set_color('black')
+        self.P.axdict[trace_panel].spines[["bottom", "left"]].set_visible(False)
+        self.P.axdict[trace_panel].set_xticklabels([])
+        self.P.axdict[trace_panel].set_xticks([])
+
         # print(cal_height)
-        PH.calbar(
-                self.P.axdict[trace_panel],
-                calbar=[
-                    self.Pars.time_end - 0.1,
-                    ylims[0]*0.9,
-                    0.05,
-                    cal_height
-                ],
-                scale=[1e3, 1e12],
-                axesoff=True,
-                orient="left",
-                unitNames={"x": "ms", "y": "pA"},
-                fontsize=11,
-                weight="normal",
-                font="Arial",
-            )
+        # PH.calbar(
+        #         self.P.axdict[trace_panel],
+        #         calbar=[
+        #             self.Pars.time_end - 0.1,
+        #             ylims[0]*0.9,
+        #             0.05,
+        #             cal_height
+        #         ],
+        #         scale=[1e3, 1e12],
+        #         axesoff=True,
+        #         orient="left",
+        #         unitNames={"x": "ms", "y": "pA"},
+        #         fontsize=11,
+        #         weight="normal",
+        #         font="Arial",
+        #     )
 
         # PH.calbar(self.P.axdict[panelmap["E"]], calbar=[20e-3, ylim[0]*0.8, 0.05e-3, 100e-12],
         #     scale=[1e-3, 1e-12], 
