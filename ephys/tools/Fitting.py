@@ -1007,8 +1007,7 @@ class Fitting:
                         "Fitting Method %s not recognized, please check Fitting.py"
                         % (method)
                     )
-
-                xfit = np.arange(t0, t1, (t1 - t0) / 100.0)
+                xfit = np.linspace(t0, t1, 100)
                 yfit = func[0](plsq, xfit - t0, C=fixedPars)
                 yy = func[0](plsq, tx, C=fixedPars)  # calculate function
                 self.fitSum2Err = np.sum((dy - yy) ** 2)
@@ -1021,8 +1020,7 @@ class Fitting:
                 yf.append(yfit)  # y fit point list
                 self.tx = tx
                 self.dy = dy
-        #        print xp
-        #        print len(xp)
+
         return (xp, xf, yf, yn)  # includes names with yn and range of tx
 
     def FitPlot(
