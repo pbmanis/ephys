@@ -667,13 +667,13 @@ class SpikeAnalysis():
         if function is not None:
             self.FIGrowth = function
         if x is None: # use class data
-            x = self.analysis_summary['FI_Curve'][0]*1e9
+            x = self.analysis_summary['FI_Curve'][0]
             y = self.analysis_summary['FI_Curve'][1]
             if max_current is not None:
                 x = x[x<=max_current]
                 y = y[x<=max_current]
             yd = y/self.analysis_summary['pulseDuration']  # convert to rate in spikes/second
-        
+       
         if self.FIGrowth == 'fitOneOriginal':
             ymax = np.max(yd)
             ymax_a = 0.8*ymax
@@ -723,7 +723,7 @@ class SpikeAnalysis():
             res = []
             err = []
             fitter = Fitting.Fitting()  # make sure we always work with the same instance
-            for i in range(-4, 4):  # allow breakpoint to move
+            for i in range(0, int(len(x)/2)):  # allow breakpoint to move, but only in steps
                 if fbr + i + 1 > len(x)-1:
                     continue
                 x0 = fbr+i
@@ -732,7 +732,7 @@ class SpikeAnalysis():
                     if x1 >= len(x):
                         continue
                     bounds = ((0., 0.), np.sort([x[x0], x[x1]]),
-                         (0., 2.*yp[0]), (0., ymax*10.0), (1e-5, 1e5))
+                         (0., 2.*yp[0]), (0., ymax*20.0), (1e-3, 1e12))
                     # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
                     # if i == -4 and j == 0:
                     fitbreak0 = ibreak0
@@ -740,19 +740,23 @@ class SpikeAnalysis():
                         0., np.mean(bounds[3]), np.mean(bounds[4])]
                     func = 'FIGrowthExpBreak'
                     f = fitter.fitfuncmap[func]
-                    (fpar, xf, yf, names) = fitter.FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
+                    (fpar, xf, yf, names) = fitter.FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, 
+                                            t1=np.max(x),
                                             fitFunc=func, fitPars=initpars, bounds=bounds,
                                             fixedPars=None, method=testMethod)
                     error = fitter.getFitErr()
                     res.append({'fpar': fpar, 'xf': xf, 'yf': yf, 'names': names, 'error': error})
                     err.append(error)
             minerr = np.argmin(err)
+
             fpar = res[minerr]['fpar']
             xf = res[minerr]['xf']
             yf = res[minerr]['yf']
             names = res[minerr]['names']
             error = res[minerr]['error']
-        
+            self.analysis_summary['FI_Growth'].append({'FunctionName': self.FIGrowth, 'function': func,
+                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf), yf]})
+
         else:  # recompute some stuff
         
         # estimate initial parameters and set region of IV curve to be used for fitting
@@ -912,7 +916,7 @@ class SpikeAnalysis():
             if fitbreak0 > 0.:
                 fitbreak0 = 0.
             ix1 = np.argwhere(yd > 0.)  # find first point with spikes
-            xna = x*1e9
+            xna = x
             x1 = xna[ix1[0]][0]
             initpars = (x1, 3., 0.5)  # 
             bds = [(0., 500.), (0.01, 100.), (0.01, 100)]
@@ -938,6 +942,6 @@ class SpikeAnalysis():
         else:
             raise ValueError('SpikeAnalysis: FIGrowth function %s is not known' % self.FIGrowth)
         self.analysis_summary['FI_Growth'].append({'FunctionName': self.FIGrowth, 'function': func,
-                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf)*1e-9, yf]})
+                'names': names, 'error': error, 'parameters': fpar, 'fit': [np.array(xf), yf]})
 
 
