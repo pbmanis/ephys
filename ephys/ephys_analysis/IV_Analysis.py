@@ -516,6 +516,7 @@ class IV_Analysis():
         if self.dry_run or not self.autoout:
             return
         if not self.merge_flag or pdf is None:
+            print("False merge flag or empty PDF value")
             return
         # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
         #     return
