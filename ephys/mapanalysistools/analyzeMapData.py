@@ -336,6 +336,9 @@ class AnalyzeMap(object):
 
 
         self.Pars.spotsize = self.AR.scanner_spotsize
+        if "LED" in str(protocolFilename):
+            self.Pars.spotsize=1e-4
+
         self.Data.tb = self.AR.time_base[self.Pars.time_zero_index:self.Pars.time_end_index]
 
         data = np.reshape(
