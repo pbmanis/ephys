@@ -29,7 +29,7 @@ from collections import OrderedDict
 import numpy as np
 import pyqtgraph as pg
 from typing import List, Union
-from ..tools import fitting
+import ephys.tools.fitting as fitting
 
 
 class RmTauAnalysis:

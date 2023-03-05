@@ -10,6 +10,7 @@ from . import check_rs
 from . import boundrect
 from . import display_acq4
 from . import tifffile
+from . import fitting
 
 
 

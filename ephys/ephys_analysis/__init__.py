@@ -15,6 +15,6 @@ from . import vc_traceplot
 from . import poisson_score
 from . import make_clamps
 from ..psc_analysis import psc_analyzer
-from ..tools import boundrect
-from ..tools import getcomputer
-from ..tools import data_summary
+# from ..tools import boundrect
+# from ..tools import getcomputer
+# from ..tools import data_summary
