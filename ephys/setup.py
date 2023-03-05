@@ -19,15 +19,15 @@ setup(name='ephys',
       zip_safe=False,
       entry_points={
           'console_scripts': [
-               'dataSummary=ephys.ephysanalysis.dataSummary:main',
+               'dataSummary=ephys.ephysanalysis.data_summary:main',
                'ma2tiff=ephys.ephysanalysis.ma2tiff:convertfiles',
                'bridge=ephys.tools.bridge:main',
                'dataview=ephys.tools.show_data:main',
                'measure=ephys.tools.cursor_plot:main',
-               'matread=ephys.ephysanalysis.MatdatacRead:main',
+               'matread=ephys.ephysanalysis.matdatac_reader:main',
                'plotmaps=ephys.tools.plot_maps:main',
                'fix_objscale=ephys.tools.fix_objscale:main',
-               'analyzemapdata=ephys.mapanalysistools.analyzeMapData:main',
+               'analyzemapdata=ephys.mapanalysistools.analyze_map_ata:main',
           ]
       },
       classifiers = [
