@@ -42,7 +42,7 @@ import ephys.ephys_analysis as EP
 from . import analysis_parameters as AnalysisParams
 import ephys.mapanalysistools as mapanalysistools
 
-PMD = mapanalysistools.plotMapData.PlotMapData()
+PMD = mapanalysistools.plot_map_data.PlotMapData()
 
 np.seterr(divide="raise", invalid="raise")
 

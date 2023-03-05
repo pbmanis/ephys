@@ -18,7 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 
-PMD = mapanalysistools.plotMapData.PlotMapData()
+PMD = mapanalysistools.plot_map_data.PlotMapData()
 
 
 class MAP_Analysis(IV_Analysis):
