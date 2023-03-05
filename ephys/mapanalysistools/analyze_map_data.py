@@ -829,7 +829,6 @@ class AnalyzeMap(object):
                 datatype = self.Pars.datatype
             )
             events[jtrial] = res
-        print("res: ", res)
         if self.verbose:
             print("  ALL trials in protocol analyzed")
         return {
