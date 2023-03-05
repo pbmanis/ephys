@@ -122,7 +122,9 @@ class cmdargs:
     notchQ: float = 90.0
     detector: str = "cb"
     
-class IV_Analysis():
+class Analysis():
+    """Provides handling of data analysis for IVs and MAPs
+    """
     def __init__(self, args: object):
 
         # args = vars(in_args)  # convert to dict
@@ -249,7 +251,7 @@ class IV_Analysis():
                     self.analyzeddatapath, self.experiment["annotationFilename"]
                 )
                 if not self.annotationFilename.is_file():
-                    raise FileNotFoundError
+                    raise FileNotFoundError(f"{str(self.annotationFilename):s}")
             else:
                 self.annotationFilename = None
 
@@ -1215,7 +1217,7 @@ class IV_Analysis():
                 return (None, 0)  # skip analysis
         if not self.dry_run:
             print(f"      IV analysis for {str(protocol_directory):s}")
-            EPIV = EP.iv_analysis.IVSummary(protocol_directory, plot=not self.plotsoff)
+            EPIV = EP.iv_analysis.IVAnalysis(protocol_directory, plot=not self.plotsoff)
             br_offset = 0.0
             if (
                 not pd.isnull(self.df.at[icell, "IV"])
