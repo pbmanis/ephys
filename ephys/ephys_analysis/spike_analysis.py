@@ -29,8 +29,8 @@ import numpy as np
 import pprint
 from typing import Union
 
-from ..tools import Utility # pbm's utilities...
-from ..tools import Fitting # pbm's fitting stuff...
+from ..tools import utilities # pbm's utilities...
+from ..tools import fitting # pbm's fitting stuff...
 
 this_source_file = 'ephysanalysis.SpikeAnalysis'
 
@@ -151,7 +151,7 @@ class SpikeAnalysis():
         lastspikecount = 0
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         maxspk = int(maxspkrate*twin)  # scale max dount by range of spike counts
-        U = Utility.Utility()
+        U = utilities.Utility()
         for i in range(ntr):  # this is where we should parallelize the analysis for spikes
             spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
                                               self.threshold, t0=self.Clamps.tstart,
@@ -241,7 +241,7 @@ class SpikeAnalysis():
         ntr = len(self.Clamps.traces)
         allspikes = [[] for i in range(ntr)]
         spikeIndices = [[] for i in range(ntr)]
-        U = Utility.Utility()
+        U = utilities.Utility()
         for i in range(ntr):
             spikes = U.findspikes(self.Clamps.time_base, np.array(self.Clamps.traces[i]),
                                               self.threshold, t0=twin[0],
@@ -331,7 +331,7 @@ class SpikeAnalysis():
         self.spikeShape = OrderedDict()
         rmps = np.zeros(ntr)
         self.iHold_i = np.zeros(ntr)
-        U = Utility.Utility()
+        U = utilities.Utility()
         for i in range(ntr):
            # print('rec nspk: ', i, len(self.spikes[i]))
             if len(self.spikes[i]) == 0:
@@ -722,7 +722,7 @@ class SpikeAnalysis():
                 x1 = len(x)-1
             res = []
             err = []
-            fitter = Fitting.Fitting()  # make sure we always work with the same instance
+            fitter = fitting.Fitting()  # make sure we always work with the same instance
             for i in range(0, int(len(x)/2)):  # allow breakpoint to move, but only in steps
                 if fbr + i + 1 > len(x)-1:
                     continue
@@ -812,12 +812,12 @@ class SpikeAnalysis():
             initpars = [0., ibreak0, yd[fbr], ymax*2, 0.01*np.max(np.diff(yd)/np.diff(x))]
             func = 'FIGrowthExpBreak'
             fitbreak0 = x[fbr]
-            f = Fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=x[dypos[-1]],
+            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=x[dypos[-1]],
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons, weights=None, #np.sqrt,
                                     fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
+            error = fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
         elif self.FIGrowth == 'FIGrowthExp':  # FIGrowth is 2, Exponential from 0 rate
@@ -829,12 +829,12 @@ class SpikeAnalysis():
                 fitbreak0 = 0.
             initpars = [ibreak0, ymax/2., 0.001]
             func = 'FIGrowthExp'
-            f = Fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
+            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
                                     fitFunc=func, fitPars=initpars, bounds=bounds,
                                     fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
+            error = fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
             imap = [-1, 0, -1, 1, 2]
             
@@ -866,12 +866,12 @@ class SpikeAnalysis():
                 )
                      
             func = 'piecewiselinear3'
-            f = Fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
+            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons,
                                     fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
+            error = fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
             
         elif self.FIGrowth == 'piecewiselinear3_ugh': # use piecewise linear, 3 segment fit
@@ -901,12 +901,12 @@ class SpikeAnalysis():
                 )
                      
             func = 'piecewiselinear3'
-            f = Fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
+            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(np.array([1]), 0, x, yd, t0=fitbreak0, t1=np.max(x),
                                     fitFunc=func, fitPars=initpars, bounds=bounds, constraints=cons,
                                     fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
+            error = fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
 
         elif self.FIGrowth == 'FIGrowthPower':
@@ -930,12 +930,12 @@ class SpikeAnalysis():
            #      )
            #                    
             func = 'FIGrowthPower'
-            f = Fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
-            (fpar, xf, yf, names) = Fitting.Fitting().FitRegion(np.array([1]), 0, xna, yd, t0=fitbreak0, t1=np.max(xna),
+            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(np.array([1]), 0, xna, yd, t0=fitbreak0, t1=np.max(xna),
                                     fitFunc=func, fitPars=initpars, bounds=bds, constraints=None,
                                     fixedPars=None, method=testMethod)
-            error = Fitting.Fitting().getFitErr()
+            error = fitting.Fitting().getFitErr()
             self.FIKeys = f[6]
         elif self.FIGrowth == 'fitOneOriginal':
             pass

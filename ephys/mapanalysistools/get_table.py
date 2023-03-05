@@ -12,7 +12,7 @@ import pandas as pd
 import pylibrary.tools.fileselector as FS
 import pyqtgraph as pg
 from ephys.datareaders import acq4_reader
-from ephys.mapanalysistools import analyzeMapData as AMD
+from ephys.mapanalysistools import analyze_map_data as AMD
 
 from pyqtgraph.parametertree import Parameter, ParameterTree
 

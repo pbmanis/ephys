@@ -1106,7 +1106,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    dataplan = EP.DataPlan.DataPlan(args.datadict)
+    dataplan = EP.data_plan.DataPlan(args.datadict)
 
     MI = MiniAnalysis(dataplan)
     filterstring = "test"

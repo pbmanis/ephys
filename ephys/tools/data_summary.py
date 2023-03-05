@@ -89,7 +89,7 @@ import numpy as np
 import pandas as pd
 from pylibrary.tools import cprint 
 from ..datareaders import acq4_reader
-from ..tools import parse_layers
+from . import parse_layers
 
 
 CP = cprint.cprint

@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import List
 import numpy as np
 from collections import OrderedDict
-import ephys.tools.Utility as UT
+import ephys.tools.utilities as UT
 
 UT = UT.Utility()
 

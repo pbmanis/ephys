@@ -29,7 +29,7 @@ from collections import OrderedDict
 import numpy as np
 import pyqtgraph as pg
 from typing import List, Union
-from ..tools import Fitting
+from ..tools import fitting
 
 
 class RmTauAnalysis:
@@ -196,7 +196,7 @@ class RmTauAnalysis:
         if self.rmp is None:
             self.rmp_analysis(time_window=self.baseline)
 
-        Fits = Fitting.Fitting()  # get a fitting instance
+        Fits = fitting.Fitting()  # get a fitting instance
         initpars = [self.rmp * 1e-3, -0.010, 0.010]  # rmp is in units of mV
         icmdneg = np.where(self.Clamps.commandLevels < -10e-12)
         maxcmd = np.min(self.Clamps.commandLevels)
@@ -659,7 +659,7 @@ class RmTauAnalysis:
             return
 
         Func = "exp1"  # single exponential fit to the seleccted region
-        Fits = Fitting.Fitting()
+        Fits = fitting.Fitting()
 
         # for our time windows, get the ss voltage to use
         ss_voltages = self.Clamps.traces[

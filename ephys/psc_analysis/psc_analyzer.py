@@ -29,10 +29,10 @@ from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtCore, QtGui
 
-import ephys.psc_analysis.analyze_IO as A_IO
-import ephys.psc_analysis.analyze_PPF as A_PPF
-import ephys.psc_analysis.analyze_VDEP as A_VDEP
-import ephys.psc_analysis.analyze_Train as A_TR
+import ephys.psc_analysis.analyze_io as A_IO
+import ephys.psc_analysis.analyze_ppf as A_PPF
+import ephys.psc_analysis.analyze_voltage_dependence as A_VDEP
+import ephys.psc_analysis.analyze_train as A_TR
 import ephys.psc_analysis.functions as FN
 from ephys.datareaders import acq4_reader
 from ephys.tools import cursor_plot as CP

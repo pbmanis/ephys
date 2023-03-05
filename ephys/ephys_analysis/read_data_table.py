@@ -7,7 +7,7 @@ import pyqtgraph as pg
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 from ephys.datareaders import acq4_reader
-from ephys.mapanalysistools import analyzeMapData as AMD
+from ephys.mapanalysistools import analyze_map_data as AMD
 import pylibrary.tools.fileselector as FS
 
 

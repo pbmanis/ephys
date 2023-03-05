@@ -107,8 +107,8 @@ class Bridge():
         self.AR = (
             DR.acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
-        self.SP = EP.SpikeAnalysis.SpikeAnalysis()
-        self.RM = EP.RmTauAnalysis.RmTauAnalysis()
+        self.SP = EP.spike_analysis.SpikeAnalysis()
+        self.RM = EP.rm_tau_analysis.RmTauAnalysis()
         self.curves = []
         self.n_adjusted = 0
         self.this_cell = 0

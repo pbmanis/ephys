@@ -1,22 +1,20 @@
 #!/usr/bin/env python
 # init for ephys
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 2, 2, 'a')
+version_info = (0, 3, 2, 'a')
 __version__ = "%d.%d.%d%s" % version_info
 
-from ..tools import DataPlan
-from . import IV_Analysis
-from . import IV_Analysis_Params
-from . import IV_Summarize
+from ..tools import data_plan
+from . import analysis_common
 
-from . import RmTauAnalysis
-from . import SpikeAnalysis
-from . import IVSummary
-from . import VCSummary
-from . import VCTraceplot
+from . import rm_tau_analysis
+from . import spike_analysis
+from . import iv_analysis
+from . import vc_summary
+from . import vc_traceplot
 from . import poisson_score
-from . import MakeClamps
-from ..psc_analysis import PSCAnalyzer
+from . import make_clamps
+from ..psc_analysis import psc_analyzer
 from ..tools import boundrect
 from ..tools import getcomputer
-from ..tools import dataSummary
+from ..tools import data_summary

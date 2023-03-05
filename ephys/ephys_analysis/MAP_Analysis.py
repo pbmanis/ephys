@@ -13,7 +13,7 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
-from ephys.ephys_analysis.IV_Analysis import IV_Analysis
+from ephys.ephys_analysis.analysis_common import IV_Analysis
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter

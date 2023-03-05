@@ -31,7 +31,7 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph.multiprocess as mp
 import scipy.ndimage
 import scipy.signal
-from ephys.mapanalysistools import plotMapData as PMD
+from ephys.mapanalysistools import plot_map_data as PMD
 from ephys.mapanalysistools import compute_scores
 from ephys.mini_analyses import minis_methods
 
@@ -156,8 +156,8 @@ class AnalyzeMap(object):
         self.Pars = AnalysisPars()
         self.Data = AnalysisData()
         self.AR = DR.acq4_reader.acq4_reader()
-        self.SP = EP.SpikeAnalysis.SpikeAnalysis()
-        self.RM = EP.RmTauAnalysis.RmTauAnalysis()
+        self.SP = EP.spike_analysis.SpikeAnalysis()
+        self.RM = EP.rm_tau_analysis.RmTauAnalysis()
         self.verbose = True
         self.last_dataset = None
         self.last_results = None
@@ -1523,7 +1523,7 @@ def main():
         print("File not found: %s" % filename)
         exit(1)
 
-    DP = EP.DataPlan.DataPlan(os.path.join(datadir, args.datadict))  # create a dataplan
+    DP = EP.data_plan.DataPlan(os.path.join(datadir, args.datadict))  # create a dataplan
     plan = DP.datasets
     print("plan dict: ", plan.keys())
     # print('plan: ', plan)
@@ -1547,7 +1547,7 @@ def main():
 
     if args.do_iv:
 
-        EPIV = EP.IVSummary.IVSummary(
+        EPIV = EP.iv_analysis.IVSummary(
             os.path.join(datapath, str(plan[cell]["IV"]).strip())
         )
         EPIV.compute_iv()

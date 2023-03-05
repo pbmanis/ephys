@@ -7,6 +7,6 @@ init for mapanalysistools
 version_info = (0, 1, 0, '')
 __version__ = '%d.%d.%d%s' % version_info
 
-from . import getTable
-from . import analyzeMapData
+from . import get_table
+from . import analyze_map_data
 

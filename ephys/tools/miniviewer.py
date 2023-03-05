@@ -20,7 +20,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 import ephys.tools.minicalcs as minicalcs
 
 from ..datareaders import acq4_reader
-from ..ephys_analysis import RmTauAnalysis, SpikeAnalysis
+from ..ephys_analysis import rm_tau_analysis, spike_analysis
 from ..mini_analyses import minis_methods, minis_methods_common
 from . import digital_filters as FILT
 from . import functions as FN
@@ -28,9 +28,9 @@ from . import functions as FN
 # os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 all_modules = [
-    SpikeAnalysis,
+    spike_analysis,
     acq4_reader,
-    RmTauAnalysis,
+    rm_tau_analysis,
     FILT,
     minis_methods,
     minis_methods_common,
@@ -48,8 +48,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.AR = (
             acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
-        self.SP = SpikeAnalysis.SpikeAnalysis()
-        self.RM = RmTauAnalysis.RmTauAnalysis()
+        self.SP = spike_analysis.SpikeAnalysis()
+        self.RM = rm_tau_analysis.RmTauAnalysis()
         self.ampdataname = "MultiClamp1.ma"
         self.LPF = 5000.0
         self.HPF = 1.0  # high pass filtering

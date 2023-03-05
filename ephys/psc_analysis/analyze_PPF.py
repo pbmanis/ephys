@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 from collections import OrderedDict
 import pylibrary.tools.cprint as CP
-import ephys.tools.Utility as UT
+import ephys.tools.utilities as UT
 import pint
 from pint import UnitRegistry, set_application_registry
 UR = UnitRegistry()
