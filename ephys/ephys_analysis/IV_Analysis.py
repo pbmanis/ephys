@@ -21,7 +21,7 @@ colormap = "snshelix"
 
 CP = cprint.cprint
 
-class IVSummary:
+class IVAnalysis:
     def __init__(
         self, datapath, altstruct=None, file: Union[str, Path, None] = None, 
         plot:bool=True,
@@ -163,7 +163,7 @@ class IVSummary:
                 return fh
         else:
             print(
-                "IVSummary::compute_iv: acq4_reader.getData found no data to return from: \n  >  ",
+                "IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  >  ",
                 self.datapath,
             )
             return None

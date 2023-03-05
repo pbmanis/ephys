@@ -13,7 +13,7 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
-from ephys.ephys_analysis.analysis_common import IV_Analysis
+from ephys.ephys_analysis.analysis_common import Analysis
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
@@ -21,7 +21,7 @@ from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
 
-class MAP_Analysis(IV_Analysis):
+class MAP_Analysis(Analysis):
     def __init__(self, args):
         super().__init__(args)
         print(self._testing_counter)
@@ -235,15 +235,7 @@ class MAP_Analysis(IV_Analysis):
                 self.AM.set_stimdur(cell_df["stimdur"].values[0])
             else:
                 print("using default stimdur")
-            # print(dir(self.AM))
-            # print(self.AM.Pars)
-            # print(self.AM.Pars.stimdur)
-            # if cell_df is not None and not np.isnan(cell_df["stimdur"].astype(float)):
-            #     self.AM.stimdur = cell_df["stimdur"].astype(float)
-            #     print("Set stimdur from map annotation")
-            # else:
-            #     print("using default stimdur")
-
+  
     def set_map_factors(self, icell: int, path_to_map: Union[Path, str]):
         """
         Configure signs, scale factors and E/IPSP/C template shape
@@ -628,7 +620,10 @@ class MAP_Analysis(IV_Analysis):
                 infostr = ""
                 colnames = self.df.columns
                 if "animal identifier" in colnames:
-                    infostr += f"ID: {self.df.at[icell, 'animal identifier']:s} "
+                    if isinstance(self.df.at[icell, 'animal identifier'], str):
+                        infostr += f"ID: {self.df.at[icell, 'animal identifier']:s} "
+                    else:
+                        infostr += f"ID: None "
                 if "cell_location" in colnames:
                     infostr += f"{self.df.at[icell, 'cell_location']:s}, "
                 if "cell_layer" in colnames:
