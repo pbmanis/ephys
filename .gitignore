@@ -3,6 +3,9 @@ ephys/ephysanalysis/c_deriv.c
 ephys/mini_analyses/clembek.c
 archived/
 
+testbridge.xlsx
+untitled*.*
+
 *.p 
 # database (pickled python) files
 *.pkl 
