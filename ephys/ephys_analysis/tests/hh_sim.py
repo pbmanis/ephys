@@ -9,7 +9,7 @@ Luke Campagnola 2013
 Paul Manis 2023 : pyqt6, use different, faster Ih (Hay et al). 
 
 """
-from dataclasses import dataclass
+import dataclasses 
 import numpy as np
 from pathlib import Path
 import pickle
@@ -207,7 +207,7 @@ def run(cmd):
     
     return out
 
-@dataclass
+@dataclasses.dataclass
 class HHIV:  # mimics "Clamps" in spike and 
     mode:str = 'ic'
     traces: object=None
@@ -216,9 +216,10 @@ class HHIV:  # mimics "Clamps" in spike and
     commandLevels: object=None  # for rmtau
     time_base: object=None
     tstart: float=0.02  # in seconds
-    tend: float = 0.07  # in seconds
+    tend: float = 0.12  # in seconds
     tdur: float = 0.2  # in seconds
     sample_interval: float = 1e-5  # in seconds
+
 
 def make_iv_data():
     pars = HHIV()
@@ -276,14 +277,15 @@ def main():
 
     testpath = Path(__file__).parent
     print(testpath)
+
     with open(Path(testpath, "HHData.pkl"), "wb") as fh:
-        pickle.dump(IV, fh)
+        pickle.dump(dataclasses.asdict(IV), fh)
     IV = None
     with open(Path(testpath, "HHData.pkl"), "rb") as fh:
         IV = pickle.load(fh)
     print(IV)
-    for i in range(IV.traces.shape[0]):
-        Plot.plot(IV.time_base, IV.traces[i,:])
+    for i in range(IV['traces'].shape[0]):
+        Plot.plot(IV['time_base'], IV['traces'][i,:])
 
     pg.QtWidgets.QApplication.instance().exec()
 

@@ -17,8 +17,7 @@ import pyqtgraph as pg
 import ephys.mini_analyses.minis_methods as MM
 from ephys.mini_analyses.util import UserTester
 
-testmode = False  # set false to hold graphs up until closed;
-# true for 2 sec display
+testmode = False # set True show hold graphs for just a few seconds;
 
 def def_taus():
     return [0.001, 0.010]  # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
@@ -258,7 +257,8 @@ def run_ZeroCrossing(
         )
 
     print("testpscn: ", testpscn)
-    if plot:
+    fig_handle = None
+    if plot and testmode:
         fig_handle = zc.plots(
             data=np.array(testpscn), title="Zero Crossings", testmode=testmode
         )
@@ -321,7 +321,8 @@ def run_ClementsBekkers(
     tot_events = sum([len(x) for x in cb.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
-    if plot:
+    fig_handle = None
+    if plot and testmode:
         if mpl is None:
             import matplotlib.pyplot as mpl
         fig_handle = cb.plots(
@@ -380,11 +381,13 @@ def run_ClementsBekkers_multiscale(
         print("total seeded events: ", tot_seeded)
 
     testpscn = np.array(testpscn)
-    print("shape: ", testpscn.shape)
-    for i in range(1, pars.ntraces):
-        testpscn[0, :] += testpscn[i, :]
-    mpl.plot(testpscn[0, 0, :])
-    mpl.show()
+    # print("shape: ", testpscn.shape)
+    # for i in range(1, pars.ntraces):
+    #     testpscn[0, :] += testpscn[i, :]
+    # mpl.plot(testpscn[0, 0, :])
+    # mpl.show()
+
+    fig_handle = None
     for i, pars in enumerate(pars_list):
         cb[i]._make_template()
         cb[i].set_cb_engine(extra)
@@ -400,7 +403,7 @@ def run_ClementsBekkers_multiscale(
         tot_events = sum([len(x) for x in cb[i].onsets])
         print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
-        if plot:
+        if plot and testmode:
             fig_handle = cb[i].plots(
                 np.array(testpscn[0]),
                 events=None,
@@ -468,7 +471,8 @@ def run_AndradeJonas(
     tot_events = sum([len(x) for x in aj.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
-    if plot:
+    fig_handle = None
+    if plot and testmode:
         if mpl is None:
             import matplotlib.pyplot as mpl
         fig_handle = aj.plots(
@@ -528,7 +532,8 @@ def run_RSDeconvolve(
     tot_events = sum([len(x) for x in rs.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
-    if plot:
+    fig_handle = None
+    if plot and testmode:
         if mpl is None:
             import matplotlib.pyplot as mpl
         fig_handle = rs.plots(
@@ -558,42 +563,42 @@ class MiniTestMethods:
             pars.HPF = None
             result, figh = run_ZeroCrossing(pars, plot=True, exp_test_set=True)
             print("Events found: ", len(result.Summary.allevents))
-            if self.plot:
-                zct = np.arange(
-                    0, result.Summary.allevents.shape[1] * result.dt, result.dt
-                )
-                for a in range(len(result.Summary.allevents)):
-                    mpl.plot(zct, result.Summary.allevents[a])
-                mpl.show()
+            # if self.plot:
+            #     zct = np.arange(
+            #         0, result.Summary.allevents.shape[1] * result.dt, result.dt
+            #     )
+            #     for a in range(len(result.Summary.allevents)):
+            #         mpl.plot(zct, result.Summary.allevents[a])
+            #     mpl.show()
         if self.testmethod in ["CB", "cb"]:
             result, figh = run_ClementsBekkers(
                 pars, extra=self.extra, plot=True, exp_test_set=True
             )
             print("Events found: ", len(result.Summary.allevents))
-            if self.plot:
-                for a in range(len(result.Summary.allevents)):
-                    mpl.plot(result.t_template, result.Summary.allevents[a])
-                mpl.show()
+            # if self.plot:
+            #     for a in range(len(result.Summary.allevents)):
+            #         mpl.plot(result.t_template, result.Summary.allevents[a])
+            #     mpl.show()
         if self.testmethod in ["AJ", "aj"]:
             print("pars)")
             result, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
             print("Events found: ", len(result.Summary.allevents))
             ajt = result.t_template[0 : result.Summary.allevents.shape[1]]
-            if self.plot:
-                for i, a in enumerate(range(len(result.Summary.allevents))):
-                    mpl.plot(ajt, result.Summary.allevents[a] + i + 20.0)
-                mpl.show()
+            # if self.plot:
+            #     for i, a in enumerate(range(len(result.Summary.allevents))):
+            #         mpl.plot(ajt, result.Summary.allevents[a] + i + 20.0)
+            #     mpl.show()
         if self.testmethod in ["RS", "rs"]:
             pars.threshold = 2.25
             result, figh = run_RSDeconvolve(pars, plot=True, exp_test_set=True)
             print("Events found: ", len(result.Summary.allevents))
-            if self.plot:
-                rst = np.arange(
-                    0, result.Summary.allevents.shape[1] * result.dt, result.dt
-                )
-                for a in range(len(result.Summary.allevents)):
-                    mpl.plot(rst, result.Summary.allevents[a])
-                mpl.show()
+            # if self.plot:
+            #     rst = np.arange(
+            #         0, result.Summary.allevents.shape[1] * result.dt, result.dt
+            #     )
+            #     for a in range(len(result.Summary.allevents)):
+            #         mpl.plot(rst, result.Summary.allevents[a])
+            #     mpl.show()
         # if self.testmethod in ["all", "ALL"]:
         #     run_ZeroCrossing(pars, plot=True)
         #     run_ClementsBekkers(pars, plot=True)
@@ -631,7 +636,7 @@ class MinisTester(UserTester):
 
     def run_test(self, method):
 
-        self.TM = MiniTestMethods(method=method, sign=self.sign, extra=self.extra)
+        self.TM = MiniTestMethods(method=method, sign=self.sign, extra=self.extra, plot=False)
         test_result = self.TM.run_test()
 
         if "figure" in list(test_result.keys()):
@@ -685,6 +690,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
 
 
 if __name__ == "__main__":
+    plot = False
     ntraces = 1
     methods = [
         "ZC",
@@ -746,11 +752,12 @@ if __name__ == "__main__":
             zc, fig = run_ZeroCrossing(pars, plot=True)
             print("# detected events: ", len(zc.Summary.allevents))
             zct = np.arange(0, zc.Summary.allevents.shape[1] * zc.dt, zc.dt)
-            f, ax = mpl.subplots(1, 1)
-            f.set_size_inches(5, 10)
-            for i, a in enumerate(range(len(zc.Summary.allevents))):
-                mpl.plot(zct, zc.Summary.allevents[a] + i * 10e-12)
-            mpl.show()
+            if plot:
+                f, ax = mpl.subplots(1, 1)
+                f.set_size_inches(5, 10)
+                for i, a in enumerate(range(len(zc.Summary.allevents))):
+                    mpl.plot(zct, zc.Summary.allevents[a] + i * 10e-12)
+                mpl.show()
 
         if testmethod in ["CB", "cb"]:
             for extras in [
@@ -761,37 +768,40 @@ if __name__ == "__main__":
                 # don't forget Numba, but it is not working well.
                 pars.threshold = 3.0
                 cb, fig = run_ClementsBekkers(pars, extra=extras, plot=True)
-                print("All detected events: ", len(cb.Summary.allevents))
-                f, ax = mpl.subplots(1, 1)
-                f.set_size_inches(5, 10)
-                plot_traces_and_markers(cb)
-                mpl.show()
+                if plot:
+                    print("All detected events: ", len(cb.Summary.allevents))
+                    f, ax = mpl.subplots(1, 1)
+                    f.set_size_inches(5, 10)
+                    plot_traces_and_markers(cb)
+                    mpl.show()
 
         if testmethod in ["AJ", "aj"]:
             pars.threshold = 5.0
             aj, fig = run_AndradeJonas(pars, plot=True)
-            mpl.show()
-            print("# detected events: ", len(aj.Summary.allevents))
-            f, ax = mpl.subplots(1, 1)
-            f.set_size_inches(5, 10)
-            plot_traces_and_markers(aj)
-            mpl.show()
+            # mpl.show()
+            if plot:
+                print("# detected events: ", len(aj.Summary.allevents))
+                f, ax = mpl.subplots(1, 1)
+                f.set_size_inches(5, 10)
+                plot_traces_and_markers(aj)
+                mpl.show()
 
         if testmethod in ["RS", "rs"]:
             rs, fig = run_RSDeconvolve(pars, plot=True)
             print("All detected events: ", len(rs.Summary.allevents))
-            f, ax = mpl.subplots(1, 1)
-            f.set_size_inches(5, 10)
-            plot_traces_and_markers(rs, sf=5.0)
-            # rst = np.arange(0, len(rs.Summary.allevents[0]) * rs.dt, rs.dt)
-            # for i, a in enumerate(range(len(rs.Summary.allevents))):
-            #     # print(dir(aj))
-            #     mpl.plot(rst, rs.Summary.allevents[a] + i * 10e-12)
-            # note: no official template for comparison
-            # rst = rs.t_template[0:rs.allevents.shape[1]]
-            # for a in range(len(rs.allevents)):
-            #     mpl.plot(rst, rs.allevents[a])
-            mpl.show()
+            if plot:
+                f, ax = mpl.subplots(1, 1)
+            # f.set_size_inches(5, 10)
+            # plot_traces_and_markers(rs, sf=5.0)
+            # # rst = np.arange(0, len(rs.Summary.allevents[0]) * rs.dt, rs.dt)
+            # # for i, a in enumerate(range(len(rs.Summary.allevents))):
+            # #     # print(dir(aj))
+            # #     mpl.plot(rst, rs.Summary.allevents[a] + i * 10e-12)
+            # # note: no official template for comparison
+            # # rst = rs.t_template[0:rs.allevents.shape[1]]
+            # # for a in range(len(rs.allevents)):
+            # #     mpl.plot(rst, rs.allevents[a])
+            # mpl.show()
         if testmethod in ["all", "ALL"]:
             run_ZeroCrossing(pars, plot=True)
             run_ClementsBekkers(pars, plot=True)

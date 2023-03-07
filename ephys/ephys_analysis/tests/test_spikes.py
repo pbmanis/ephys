@@ -20,6 +20,11 @@ import ephys.ephys_analysis.spike_analysis as SA
 
 from ephys.mini_analyses.util import UserTester
 
+# set up for plotting
+import matplotlib
+import warnings  # need to turn off a scipy future warning.
+import matplotlib.pyplot as mpl
+
 testmode = False  # set false to hold graphs up until closed;
 # true for 2 sec display
 
@@ -44,17 +49,19 @@ def printPars(pars):
     for k in d.keys():
         print("k: ", k, " = ", d[k])
 
+# these are the tests that will be run automagically
 
-# these are the tests that will be run
+def test_spikes_Kalluri():
+    SpikeTester(method="Kalluri")  # default method
 
+def test_spikes_argrelmax():
+    SpikeTester(method="argrelmax")
 
-def test_spikes():
-    SpikeTester(extra="python")  # default method
+def test_spikes_find_peaks():
+    SpikeTester(method="find_peaks")
 
-
-# def test_spikes_cython():
-#     SpikeTester(extra="cython")  # accelerated method
-
+def test_spikes_threshold():
+    SpikeTester(method="threshold")  # simplest method
 
 # def test_rmtau():
 #     RmTauTester(extra="python")
@@ -73,53 +80,49 @@ def get_testdata(
     testpath = Path(__file__).parent # this assumes we are running in the same directory as the test data file
 
     with open(Path(testpath, "HHData.pkl"), "rb") as fh:
-        IV = pickle.load(fh)
-
+        IV = pickle.load(fh)  # should be a dict now
+    IV = HHIV(**IV)
     return IV
 
-
-
-def run_spike_tester_python(plot:bool=True):
+def run_spike_tester(method="Kalluri", plot:bool=False):
     testdata  = get_testdata()
     spike_analyzer = SA.SpikeAnalysis()
-    spike_analyzer.setup(clamps = testdata, threshold=-0.020)
+    spike_analyzer.setup(clamps = testdata, threshold=-0.020, verbose=True)
+    spike_analyzer.set_detector(method) # Kalluri is probably the best detector
     spike_analyzer.analyzeSpikes()
     testresult = spike_analyzer.analysis_summary
-    # print(testresult.keys())
-    spike_analyzer.analyzeSpikeShape()
-    spksh = spike_analyzer.spikeShape
-    print(testdata.traces)
+    spike_analyzer.analyzeSpikeShape(max_spikeshape=3, printSpikeInfo=False)
+    spksh = spike_analyzer.spikeShapes
+    tr_line = []
     if plot:
         for i, t in enumerate(testdata.traces):
-            print("i: ", i)
-            mpl.plot(testdata.time_base, testdata.traces[i])
-
+            tr_line.append(mpl.plot(testdata.time_base, testdata.traces[i], linewidth=0.33))
             if i in spksh.keys():
                 sh = spksh[i]
-                print(sh)
                 for j in sh.keys():
-                    mpl.plot(sh[j].peak_T, sh[j].peak_V, 'ro')
-        
+                    l_color = tr_line[i][0].get_color()
+                    mpl.plot(sh[j].peak_T, sh[j].peak_V, 'o', color="red", markersize=3)
+                    mpl.plot(sh[j].trough_T, sh[j].trough_V, '^', color=l_color, markersize=3)
+                    ap_t = testdata.time_base[sh[j].AP_beginIndex]
+                    # mpl.plot(sh[j].left_halfwidth_T, sh[j].left_halfwidth_V, 'r_')
+                    # mpl.plot(sh[j].right_halfwidth_T, sh[j].right_halfwidth_V, 'b_')
+                    mpl.plot([sh[j].left_halfwidth_T, sh[j].right_halfwidth_T], 
+                             [sh[j].left_halfwidth_V, sh[j].right_halfwidth_V,], color=l_color,
+                              marker='o', markersize=1, linestyle='-', linewidth=1)
         
         mpl.show()
-    print(testresult)
-    return testresult
-
-
+    return spksh
 
 class SpikeTester(UserTester):
-    def __init__(self, method="python"):
+    def __init__(self, method="Kalluri", extra=None):
         self.TM = None
         self.figure = None
- 
-        UserTester.__init__(self,  method=method) # f"{method:s}")
+        UserTester.__init__(self,  "%s_%s" % (method, "spikeshape"), method)
         # UserTester.__init__(self, "%s_%s" % (method, extra), method)
         # if you want to store different results by the "extra" parameter
 
     def run_test(self, method):
-
-        self.STM = SpikeTestMethods(method=method)
-        test_result = self.STM.run_test()
+        test_result = run_spike_tester(method=method)
 
         if "figure" in list(test_result.keys()):
             self.figure = test_result["figure"]
@@ -132,79 +135,31 @@ class SpikeTester(UserTester):
             if self.figure is not None:
                 del self.figure
 
-
-def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
-    if mpl is None:
-        import matplotlib.pyplot as mpl
-    tba = method.timebase[: len(method.Summary.allevents[0])]
-    last_tr = 0
-    dyi = 0
-    for i, a in enumerate(method.Summary.allevents):
-        dyi += dy
-        if np.isnan(a[0]):  # didn't fit.
-            continue
-        mpl.plot(tba, sf * a + dyi)
-        jtr = method.Summary.event_trace_list[i]  # get trace and event number in trace
-        if len(jtr) == 0:
-            continue
-        if jtr[0] > last_tr:
-            last_tr = jtr[0]
-            dyi = dyi + 10 * dy
-        # print('sm, on', i, jtr, len(method.Summary.smpkindex[jtr[0]]), len(method.Summary.onsets[jtr[0]]))
-        pk = method.Summary.smpkindex[jtr[0]][jtr[1]]
-        on = method.Summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt_seconds
-        mpl.plot(
-            onpk,
-            sf * method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + dyi,
-            "ro",
-            markersize=4,
-        )
-        pk = method.Summary.peaks[jtr[0]][jtr[1]]
-        on = method.Summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt_seconds
-        mpl.plot(
-            onpk,
-            sf * method.Summary.amplitudes[jtr[0]][jtr[1]] + dyi,
-            "ys",
-            markersize=4,
-        )
-
-
 if __name__ == "__main__":
     ntraces = 1
     methods = [
-        "python",
-        "cython",
+        "Kalluri",
+        "argrelmax",
+        "find_peaks",
+        # "find_peaks_cwt",
+        "threshold",
     ]
     testmethod = None
     print(len(sys.argv))
     if len(sys.argv) <= 1:
-        print(f"Must specify test method from: ")
-        methodnames = [f"    {m:s}\n" for m in methods]
-        print(methodnames)
-        exit()
+        testmethod = 'Kalluri'
 
     if len(sys.argv) > 1:
         testmethod = sys.argv[1]
+    if testmethod in ["all", "ALL"]:
+        for m in methods:
+            analysis_summary = run_spike_tester(method=m)
+        exit()
     if testmethod not in methods:
         print("Test for %s method is not implemented" % testmethod)
         exit(1)
     else:
-        # set up for plotting
-        import matplotlib
-        import warnings  # need to turn off a scipy future warning.
-        import matplotlib.pyplot as mpl
-
-        if testmethod in ["python"]:
-                analysis_summary = run_spike_tester_python()
-                print("All detected spikes: ", analysis_summary)
-                # f, ax = mpl.subplots(1, 1)
-                # f.set_size_inches(5, 10)
-                # plot_traces_and_markers(cb)
-                # mpl.show()
-        pass
+        analysis_summary = run_spike_tester(method=testmethod)
     
-        if testmethod in ["all", "ALL"]:
-            pass
+        
     

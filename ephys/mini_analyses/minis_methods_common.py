@@ -1296,7 +1296,8 @@ class MiniAnalyses:
         """
         Plot the results from the analysis and the fitting
         """
-
+        if testmode is False:
+            return
         P = PH.regular_grid(
             3,
             1,
@@ -1318,8 +1319,8 @@ class MiniAnalyses:
         ax = P.axarr
         ax = ax.ravel()
         PH.nice_plot(ax)
-        for i in range(1, 2):
-            ax[i].get_shared_x_axes().join(ax[i], ax[0])
+        for i in range(2):
+            ax[i].sharex(ax[i+1])
         # raw traces, marked with onsets and peaks
         ax[0].set_ylabel("I (pA)")
         ax[0].set_xlabel("T (s)")
@@ -1334,7 +1335,7 @@ class MiniAnalyses:
 
         if testmode:  # just display briefly
             mpl.show(block=False)
-            mpl.pause(2)
+            mpl.pause(1)
             mpl.close()
             return None
         else:

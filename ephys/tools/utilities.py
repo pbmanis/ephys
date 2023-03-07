@@ -945,9 +945,9 @@ class Utility:
                 'pylibrary.utility.findspikes: mode must be one of "schmitt", "threshold", "peak" : got %s'
                 % mode
             )
-        if detector not in ["threshold", "argrelmax", "Kalluri"]:
+        if detector not in ["threshold", "argrelmax", "Kalluri", "find_peaks", "find_peaks_cwt"]:
             raise ValueError(
-                'pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri": got %s'
+                'pylibrary.utility.findspikes: mode must be one of "argrelmax", "threshold" "Kalluri", "find_peaks", "find_peaks_cwt": got %s'
                 % detector
             )
         assert data_time_units in ['s', 'ms']
@@ -997,13 +997,22 @@ class Utility:
             )  # intersection defines putative spike start times
             # then go on to mode...
 
-        elif detector == "argrelmax":
-            #  spks = scipy.signal.find_peaks_cwt(vma[spv], np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
-            order = int(refract / dt) + 1
-            stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
-            # argrelmax seems to miss peaks occasionally
-            # spks = scipy.signal.argrelmax(vma, order=order)[0]
-            # stn = spks[np.where(vma[spks] >= thresh)[0]]
+        elif detector in ["argrelmax", "find_peaks", "find_peaks_cwt"]:
+            if detector == "find_peaks_cwt":
+                spv = np.where(vma > thresh)[0].tolist()  # find points above threshold
+                spks = scipy.signal.find_peaks_cwt(vma, widths=np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
+                if len(spks) > 0:
+                    stn = spks[np.where(vma[spks] >= thresh)[0]]
+                else:
+                    stn = []
+            elif detector == 'find_peaks':
+                order = int(refract / dt) + 1
+                stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
+            elif detector == "argrelmax":
+                # argrelmax seems to miss peaks occasionally
+                order = int(refract / dt) + 1
+                spks = scipy.signal.argrelmax(vma, order=order)[0]
+                stn = spks[np.where(vma[spks] >= thresh)[0]]
             if len(stn) > 0:
                 stn2 = [stn[0]]
             else:
