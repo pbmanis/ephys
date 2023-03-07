@@ -134,10 +134,10 @@ class ClementsBekkers(MiniAnalyses):
 
         self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
 
-        if self.engine == "numba":
-            self.Scale, self.Crit = nb_clementsbekkers(D, T)
-            # print('numba')
-        elif self.engine == "cython":
+        # if self.engine == "numba":
+        #     self.Scale, self.Crit = nb_clementsbekkers(D, T)
+        #     # print('numba')
+        if self.engine == "cython":
             self.Scale, self.Crit = self.clements_bekkers_cython(D, T)
             # print('cython')
         elif self.engine == "python":
@@ -145,7 +145,7 @@ class ClementsBekkers(MiniAnalyses):
 
         else:
             raise ValueError(
-                'Clements_Bekkers: computation engine unknown (%s); must be "python", "numba" or "cython"'
+                'Clements_Bekkers: computation engine unknown (%s); must be "python" or "cython"'
                 % self.engine
             )
         endtime = timeit.default_timer() - starttime
@@ -160,6 +160,7 @@ class ClementsBekkers(MiniAnalyses):
         """
         Wrapper for numba implementation
         """
+        raise NotImplementedError("Clements Bekkers implemented in NUMBA is not stable, and is not supported")
         # print('Template len: ', self.template.shape, 'data: ', data.shape, 'max(t): ', np.max(self.timebase))
         if np.std(data) < 5e-12:  # no real data to do - so just return zeros.
             DC = np.zeros(self.template.shape[0])

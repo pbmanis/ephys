@@ -70,8 +70,8 @@ def printPars(pars):
 #     MinisTester(method="ZC", sign=1)
 
 
-def test_ClementsBekkers_numba():
-    MinisTester(method="CB", sign=1, extra="numba")  # accelerated method
+# def test_ClementsBekkers_numba():
+#     MinisTester(method="CB", sign=1, extra="numba")  # accelerated method
 
 
 def test_ClementsBekkers_cython():
@@ -94,8 +94,8 @@ def test_AndradeJonas():
 #     MinisTester(method="ZC", sign=-1)
 
 
-def test_ClementsBekkers_numba_neg():
-    MinisTester(method="CB", sign=-1, extra="numba")  # accelerated method
+# def test_ClementsBekkers_numba_neg():
+#     MinisTester(method="CB", sign=-1, extra="numba")  # accelerated method
 
 
 def test_ClementsBekkers_cython_neg():
@@ -761,7 +761,7 @@ if __name__ == "__main__":
 
         if testmethod in ["CB", "cb"]:
             for extras in [
-                "cython",  # 'numba',
+                "cython",  # 'numba', # the numba version does not work ... 
                 # 'python',  # the python version does not work...
             ]:
                 # python version still does not work correctly
