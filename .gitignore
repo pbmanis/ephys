@@ -7,10 +7,6 @@ archived/
 # database (pickled python) files
 *.pkl 
 
-# test output files
-test*.*
-
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
