@@ -39,8 +39,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 
 import ephys.ephys_analysis as EP
-from . import analysis_parameters as AnalysisParams
 import ephys.mapanalysistools as mapanalysistools
+
+from . import analysis_parameters as AnalysisParams
 
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
@@ -796,6 +797,8 @@ class Analysis():
         Runs all cells in the day, unless slicecell has been specified - then
         permits subsetting to do just one specific cell (or slice) on the day
 
+        Includes a dispatcher for different kinds of protocols: IVs, Maps, VCs
+        
         Parameters
         ----------
         icell : int
