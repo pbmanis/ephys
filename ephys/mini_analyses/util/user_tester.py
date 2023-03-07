@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+import dataclasses
+from dataclasses import is_dataclass
 from pathlib import Path
 import pickle
 import pprint
@@ -67,13 +69,21 @@ class UserTester(object):
                 print('Array received: ', info)
                 print('Array expected: ', expect)
             assert len(info) == len(expect)
-            
+        # print("info, dict: ", type(info), type(expect))
         if isinstance(info, dict):
             for k in info:
                 assert k in expect
             for k in expect:
                 assert k in info
                 self.compare_results(k, info[k], expect[k])
+        elif is_dataclass(info):
+            info_d = dataclasses.asdict(info)
+            expect_d = dataclasses.asdict(expect)
+            for k in info_d:
+                assert k in expect_d
+            for k in expect_d:
+                assert k in info_d
+                self.compare_results(k, info_d[k], expect_d[k])
         elif isinstance(info, list):
             for i in range(len(info)):
                 self.compare_results(key, info[i], expect[i])
