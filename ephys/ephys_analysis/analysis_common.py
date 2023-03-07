@@ -45,6 +45,7 @@ from . import analysis_parameters as AnalysisParams
 
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
+# do not silently pass some common numpy errors
 np.seterr(divide="raise", invalid="raise")
 
 
@@ -125,6 +126,13 @@ class cmdargs:
     
 class Analysis():
     """Provides handling of data analysis for IVs and MAPs
+    This involves:
+        1. setting various paths to the data files, output directories and
+        some excel sheets that may be needed to set fitting parameters or manual annotations
+        2. Selecting from the data_summary file (index of all datasets in an experiment with 
+        some metadata) by date and/or slice/cell (or you can just run analysis on every entry... )
+        3. Generate PDF files for output, including merging pdfs into a single large book. Seemed
+        like a good idea, but the PDFs get large (approaching 1 GB). 
     """
     def __init__(self, args: object):
 
@@ -220,6 +228,11 @@ class Analysis():
         # self.setup()
 
     def set_exclusions(self, exclusions: Union[dict, None] = None):
+        """Set the datasets that will be excluded
+
+        Args:
+            exclusions (Union[dict, None], optional): a dict of the files. Defaults to None.
+        """
         self.exclusions = exclusions
 
     def set_experiment(self, expt: dict):
@@ -376,7 +389,11 @@ class Analysis():
 
 
     def run(self):
-        # select a date:
+        """Perform analysis on one day, a range of days, one cell, or everything.
+
+        Returns:
+            nothing
+        """
         self.n_analyzed = 0
         def _add_day(row):
             row.day = str(Path(row.date).name)
@@ -1358,78 +1375,61 @@ class Analysis():
         self.merge_pdfs(celltype=celltype, pdf=pdf)
 
 
+# This is old code. Use project-specific files instead.
+# def main():
 
-def main():
+#     # import warnings  # need to turn off a scipy future warning.
+#     # warnings.filterwarnings("ignore", category=FutureWarning)
+#     # warnings.filterwarnings("ignore", category=UserWarning)
+#     # warnings.filterwarnings("ignore", message="UserWarning: findfont: Font family ['sans-serif'] not found. Falling back to DejaVu Sans")
 
-    # import warnings  # need to turn off a scipy future warning.
-    # warnings.filterwarnings("ignore", category=FutureWarning)
-    # warnings.filterwarnings("ignore", category=UserWarning)
-    # warnings.filterwarnings("ignore", message="UserWarning: findfont: Font family ['sans-serif'] not found. Falling back to DejaVu Sans")
+#     experiments = nf107.set_expt_paths.get_experiments()
+#     exclusions = nf107.set_expt_paths.get_exclusions()
+#     args = AnalysisParams.getCommands(experiments)  # get from command line
 
-    experiments = nf107.set_expt_paths.get_experiments()
-    exclusions = nf107.set_expt_paths.get_exclusions()
-    args = AnalysisParams.getCommands(experiments)  # get from command line
+#     if args.rawdatapath is None:
+#         X, args.rawdatapath, code_dir = set_expt_paths.get_paths()
+#         if args.rawdatapath is None:
+#             raise ValueError("No path set for computer")
 
-    if args.rawdatapath is None:
-        X, args.rawdatapath, code_dir = set_expt_paths.get_paths()
-        if args.rawdatapath is None:
-            raise ValueError("No path set for computer")
+#     if args.configfile is not None:
+#         config = None
+#         if args.configfile is not None:
+#             if ".json" in args.configfile:
+#                 # The escaping of "\t" in the config file is necesarry as
+#                 # otherwise Python will try to treat is as the string escape
+#                 # sequence for ASCII Horizontal Tab when it encounters it
+#                 # during json.load
+#                 config = json.load(open(args.configfile))
+#             elif ".toml" in args.configfile:
+#                 config = toml.load(open(args.configfile))
 
-    if args.configfile is not None:
-        config = None
-        if args.configfile is not None:
-            if ".json" in args.configfile:
-                # The escaping of "\t" in the config file is necesarry as
-                # otherwise Python will try to treat is as the string escape
-                # sequence for ASCII Horizontal Tab when it encounters it
-                # during json.load
-                config = json.load(open(args.configfile))
-            elif ".toml" in args.configfile:
-                config = toml.load(open(args.configfile))
-
-        vargs = vars(args)  # reach into the dict to change values in namespace
-        for c in config:
-            if c in args:
-                # print("c: ", c)
-                vargs[c] = config[c]
-    CP.cprint(
-        "cyan",
-        f"Starting analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
-    )
-    IV = IV_Analysis(args)
-    IV.setup(args, exclusions)
-    IV.run()
+#         vargs = vars(args)  # reach into the dict to change values in namespace
+#         for c in config:
+#             if c in args:
+#                 # print("c: ", c)
+#                 vargs[c] = config[c]
+#     CP.cprint(
+#         "cyan",
+#         f"Starting analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+#     )
+#     IV = IV_Analysis(args)
+#     IV.setup(args, exclusions)
+#     IV.run()
 
 
 
-    # allp = sorted(list(set(NF.allprots)))
-    # print('All protocols in this dataset:')
-    # for p in allp:
-    #     print('   ', path)
-    # print('---')
-    #
-    CP.cprint(
-        "cyan",
-        f"Finished analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
-    )
+#     # allp = sorted(list(set(NF.allprots)))
+#     # print('All protocols in this dataset:')
+#     # for p in allp:
+#     #     print('   ', path)
+#     # print('---')
+#     #
+#     CP.cprint(
+#         "cyan",
+#         f"Finished analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+#     )
 
 
 if __name__ == "__main__":
-    import matplotlib
-    import matplotlib.collections as collections
-
-    rcParams = matplotlib.rcParams
-    rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
-    rcParams["pdf.fonttype"] = 42
-    rcParams["ps.fonttype"] = 42
-    # rcParams['text.latex.unicode'] = True
-    # rcParams['font.family'] = 'sans-serif'
-    # rcParams['font.sans-serif'] = 'DejaVu Sans'
-    # rcParams['font.weight'] = 'regular'                  # you can omit this, it's the default
-    # rcParams['font.sans-serif'] = ['Arial']
-    rcParams["text.usetex"] = False
-    import matplotlib.colors
-    import matplotlib.pyplot as mpl
-    set_start_method("spawn")
-
-    main()
+    pass
