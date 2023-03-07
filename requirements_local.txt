@@ -22,7 +22,7 @@ termcolor
 jinja2==3.0.1
 
 pyabf
-lmfit==0.9.13
+lmfit==1.1.0
 
 matplotlib>=3.5.0
 matplotlib-scalebar>=0.5.1

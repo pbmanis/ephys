@@ -71,5 +71,4 @@ def c_box_spike_find(
                     spikes[i] = 1.0
 
 
-)
     

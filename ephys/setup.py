@@ -27,7 +27,7 @@ setup(name='ephys',
                'matread=ephys.ephysanalysis.matdatac_reader:main',
                'plotmaps=ephys.tools.plot_maps:main',
                'fix_objscale=ephys.tools.fix_objscale:main',
-               'analyzemapdata=ephys.mapanalysistools.analyze_map_ata:main',
+               'analyzemapdata=ephys.mapanalysistools.analyze_map_data:main',
           ]
       },
       classifiers = [
