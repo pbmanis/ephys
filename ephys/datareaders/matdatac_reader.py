@@ -98,7 +98,7 @@ class GetClamps:
         self.clampState
         self.sample_interval
         self.RSeriesUncomp
-        self.amplifeirSettings['WCCompValid', 'WCEmabled', 'CompEnabled', 'WCSeriesResistance']
+        self.amplifierSettings['WCCompValid', 'WCEmabled', 'CompEnabled', 'WCSeriesResistance']
         self.cmd_wave
         self.commandLevels (np.array(self.values))
         self.traces = MetaArray(traces, info=info)
