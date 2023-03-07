@@ -49,12 +49,12 @@ def c_deriv(
 def c_box_spike_find(
            double[:] x_data,  # time data array (input)
            double[:] y_data,  # data for spike search calculation (input)
-           long int npts, # number of points in the data array
-           double thr, # threshold -35  (express in units of y_data)
-           double C1,  #  # slope value(express in units of y_data)
-           double C2, # slope value (express in units of y_data)
-           double dt2, # spike window (nominal 1.75 msec)
-           double[:] spikes, # calculated spikes (times, set to 1 else 0)
+           long int npts, # number of points in the data array (input)
+           double thr, # threshold -35  (express in units of y_data) (input)
+           double C1,  #  # slope value(express in units of y_data) (input)
+           double C2, # slope value (express in units of y_data) (input)
+           double dt2, # spike window (nominal 1.75 msec) (input)
+           double[:] spikes, # calculated spikes (times, set to 1 else 0) (output)
            ):
 
     cdef double dtemp1, dtemp2, dt
@@ -70,4 +70,6 @@ def c_box_spike_find(
                    #  printf("  spike: %ld\n", i)
                     spikes[i] = 1.0
 
+
+)
     
