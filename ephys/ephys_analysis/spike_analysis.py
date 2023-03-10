@@ -73,14 +73,16 @@ class SpikeAnalysis():
     
     def __init__(self):
         pass
+        self.detector = 'Kalluri'  # This seems to be the best method to use.
+        self.reset_analysis()
+    
+    def reset_analysis(self):
         self.threshold = 0.
         self.Clamps = None
         self.analysis_summary = {}
         self.verbose = False
         self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
         self.analysis_summary['FI_Growth'] = []   # permit analysis of multiple growth functions.
-        self.detector = 'Kalluri'  # This seems to be the best method to use.
-
 
     def setup(self, clamps=None, threshold=None, refractory:float=0.0007, peakwidth:float=0.001,
                     verify=False, interpolate=True, verbose=False, mode='peak', min_halfwidth=0.010,
@@ -172,17 +174,15 @@ class SpikeAnalysis():
         
         maxspkrate = 50  # max rate to count in adaptation is 50 spikes/second
         minspk = 4
-
         ntr = len(self.Clamps.traces)
         self.spikecount = np.zeros(ntr)
         self.fsl = np.zeros(ntr)
         self.fisi = np.zeros(ntr)
-        ar = np.zeros(ntr)
         self.allisi = []
         self.spikes = [[] for i in range(ntr)]
         self.spikeIndices = [[] for i in range(ntr)]
-        # print( 'clamp start/end: ', self.Clamps.tstart, self.Clamps.tend)
-        # exit()
+
+        ar = np.zeros(ntr)
         lastspikecount = 0
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         maxspk = int(maxspkrate*twin)  # scale max dount by range of spike counts
@@ -202,7 +202,6 @@ class SpikeAnalysis():
                                               data_volt_units=self.volt_units,
                                               verify=self.verify,
                                               debug=False)
-           # print (ntr, i, self.Clamps.values[i], len(spikes))
             if len(spikes) == 0:
                 # print ('no spikes found')
                 continue
@@ -426,7 +425,7 @@ class SpikeAnalysis():
         else:
             kend = int(self.spikeIndices[i][j]+self.max_spike_look/dt)
         if kend >= dvdt.shape[0]:
-            raise ValueError()
+            # raise ValueError()
             return(thisspike)  # end of spike would be past end of trace
         else:
             if kend < k:
@@ -457,7 +456,7 @@ class SpikeAnalysis():
         except:
             print(f"can't analyze spike in {this_source_file:s}:: kbegin = {kbegin:d}, k = {k:d}")
             print("len (dv/dt): ", len(dvdt))
-            raise ValueError
+           #  raise ValueError
             return(thisspike)
 
         if ((km - kbegin) < 1):
@@ -517,7 +516,7 @@ class SpikeAnalysis():
                 b1 = vi[1] - m1*xi[1]
                 if m1 == 0.0 or np.std(tr) == 0.0:
                     # print('a: ', vi[1], vi[0], kup, tr[kup:kup+2], tr[kup-1:kup+1], tr[kup], halfv)
-                    raise ValueError("m1 is 0 or std(tr) is 0, ? ")
+                    # raise ValueError("m1 is 0 or std(tr) is 0, ? ")
                     return(thisspike)
 
                 t_hwup = (halfv-b1)/m1
@@ -533,7 +532,7 @@ class SpikeAnalysis():
                 b2 = vi[1] - m2*xi[1]
                 if m2 == 0.0 or np.std(tr) == 0.0:
                     # print('b: ', vi[1], vi[0], kup , tr[kdown-1:kdown+1], tr[kdown:kdown+2], tr[kdown], halfv)
-                    raise ValueError("m2 is 0 or std(tr) is 0, ? ")
+                    # raise ValueError("m2 is 0 or std(tr) is 0, ? ")
                     return(thisspike)
                 t_hwdown = (halfv-b2)/m2
                 thisspike.halfwidth = t_hwdown-t_hwup

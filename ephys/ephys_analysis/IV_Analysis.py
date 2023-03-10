@@ -23,37 +23,53 @@ CP = cprint.cprint
 
 class IVAnalysis:
     def __init__(
-        self, datapath, altstruct=None, file: Union[str, Path, None] = None, 
-        plot:bool=True,
-        pdf_pages:Union[object, None]=None,
+        self
     ):
-
+        
         self.IVFigure = None
         self.mode = "acq4"
+        self.AR = None
+        self.SP = None
+        self.RM = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        del self.AR
+        del self.SP
+        del self.RM
+        gc.collect()
+
+    def reset_analysis(self):
+        pass
+    
+    def configure(self, datapath, altstruct=None, 
+                  file: Union[str, Path, None] = None, 
+                  spikeanalyzer: Union[object, None] = None,
+                  reader: Union[object, None] = None,
+                  rmtauanalyzer: Union[object, None] = None,
+                  plot:bool=True,
+                  pdf_pages:Union[object, None]=None,):
+
         self.pdf_pages = pdf_pages
 
         if datapath is not None:
-            self.AR = (
-                acq4_reader.acq4_reader()
-            )  # make our own private version of the analysis and reader
+            self.AR = reader
             self.datapath = datapath
         else:
             self.AR = altstruct
             self.datapath = file
             self.mode = "nwb2.5"
         self.datapath = str(datapath)
-        self.SP = spike_analysis.SpikeAnalysis()
-        self.RM = rm_tau_analysis.RmTauAnalysis()
+        self.SP = spikeanalyzer # spike_analysis.SpikeAnalysis()
+        self.RM = rmtauanalyzer # rm_tau_analysis.RmTauAnalysis()
         self.plot = plot
         self.plotting_mode = "normal"
         self.decorate = True
         self.plotting_alternation = 1
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, type, value, traceback):
-        gc.collect()
+        self.SP.analysis_summary = {}
+        self.RM.analysis_summary = {}
 
     def iv_check(self, duration=0.0):
         """
@@ -219,7 +235,7 @@ class IVAnalysis:
             if self.plotting_alternation > 1:
                 if i % self.plotting_alternation != 0:
                     continue
-            if i in list(self.SP.spikeShape.keys()):
+            if i in list(self.SP.spikeShapes.keys()):
                 idv = float(jsp) * dv
                 jsp += 1
             else:
@@ -240,22 +256,23 @@ class IVAnalysis:
             )
             ptps = np.array([])
             paps = np.array([])
-            if i in list(self.SP.spikeShape.keys()) and self.decorate:
-                for j in list(self.SP.spikeShape[i].keys()):
-                    paps = np.append(paps, self.SP.spikeShape[i][j]["peak_V"] * 1e3)
-                    ptps = np.append(ptps, self.SP.spikeShape[i][j]["peak_T"] * 1e3)
+            if i in list(self.SP.spikeShapes.keys()) and self.decorate:
+                for j in list(self.SP.spikeShapes[i].keys()):
+                    paps = np.append(paps, self.SP.spikeShapes[i][j].peak_V * 1e3)
+                    ptps = np.append(ptps, self.SP.spikeShapes[i][j].peak_T * 1e3)
                 P.axdict["A"].plot(ptps, idv + paps, "ro", markersize=0.5)
 
             # mark spikes outside the stimlulus window
             if self.decorate:
                 ptps = np.array([])
                 paps = np.array([])
-                for window in ["baseline", "poststimulus"]:
+                clist = ["g", "b"]
+                for k, window in enumerate(["baseline", "poststimulus"]):
                     ptps = np.array(self.SP.analysis_summary[window + "_spikes"][i])
                     uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps]
                     paps = np.array(self.AR.traces[i, uindx])
                     P.axdict["A"].plot(
-                        ptps * 1e3, idv + paps * 1e3, "bo", markersize=0.5
+                        ptps * 1e3, idv + paps * 1e3, "o", color=clist[k], markersize=0.5
                     )
         if not pubmode:
             for k in self.RM.taum_fitted.keys():
@@ -454,13 +471,13 @@ class IVAnalysis:
         )
 
         # phase plot
-        # print(self.SP.spikeShape.keys())
+        # print(self.SP.spikeShapes.keys())
         import matplotlib.pyplot as mpl
 
-        # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShape.keys()))])
-        for k, i in enumerate(self.SP.spikeShape.keys()):
-            # print("ss i: ", i, self.SP.spikeShape[i][0])
-            P.axdict["E"].plot(self.SP.spikeShape[i][0]["V"], self.SP.spikeShape[i][0]["dvdt"], linewidth=0.35,
+        # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
+        for k, i in enumerate(self.SP.spikeShapes.keys()):
+            # print("ss i: ", i, self.SP.spikeShapes[i][0])
+            P.axdict["E"].plot(self.SP.spikeShapes[i][0].V, self.SP.spikeShapes[i][0].dvdt, linewidth=0.35,
             color = trace_colors[i])
         P.axdict["E"].set_xlabel("V (mV)")
         P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
@@ -501,7 +518,7 @@ class IVAnalysis:
             if self.plotting_alternation > 1:
                 if i % self.plotting_alternation != 0:
                     continue
-            if i in list(self.SP.spikeShape.keys()):
+            if i in list(self.SP.spikeShapes.keys()):
                 idv = float(jsp) * dv
                 jsp += 1
             else:

@@ -153,11 +153,13 @@ class AnalysisData:
 
 class AnalyzeMap(object):
     def __init__(self, rasterize=True):
+        
+        self.reset()
+
+    def reset(self):
         self.Pars = AnalysisPars()
         self.Data = AnalysisData()
-        self.AR = DR.acq4_reader.acq4_reader()
-        self.SP = EP.spike_analysis.SpikeAnalysis()
-        self.RM = EP.rm_tau_analysis.RmTauAnalysis()
+
         self.verbose = True
         self.last_dataset = None
         self.last_results = None
@@ -168,9 +170,21 @@ class AnalyzeMap(object):
 
         self.methodname = "aj"  # default event detector
         self.set_methodname(self.methodname)
-        self.MA = minis.minis_methods.MiniAnalyses()  # get a minianalysis instance
-        self.Pars.MA = self.MA  # instance may be needed for plotting
         self.reset_filtering()
+     
+    
+    def configure(self, 
+                  reader: Union[object, None] = None,
+                  spikeanalyzer: Union[object, None] = None,
+                  rmtauanalyzer: Union[object, None] = None,
+                  minianalyzer: Union[object, None] = None,
+        ):
+
+        self.AR = reader
+        self.SP = spikeanalyzer # spike_analysis.SpikeAnalysis()
+        self.RM = rmtauanalyzer # rm_tau_analysis.RmTauAnalysis()
+        self.MA = minianalyzer
+        self.Pars.MA = self.MA  # instance may be needed for plotting
         
 
     def set_analysis_window(self, t0: float = 0.0, t1: Union[float, None] = None):

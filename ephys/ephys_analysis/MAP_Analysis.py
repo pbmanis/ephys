@@ -665,10 +665,10 @@ class MAP_Analysis(Analysis):
                     fontsize=8,
                 )
                 t_path = Path(
-                    self.tempdir, "temppdf_{0:s}.pdf".format(str(mapdir.name))
+                    self.cell_tempdir, "temppdf_{0:s}.pdf".format(str(mapdir.name))
                 )
-                if not self.tempdir.is_dir():
-                    print("temp dir not found: ", self.tempdir)
+                if not self.cell_tempdir.is_dir():
+                    print("The cell's tempdir was not found: ", self.cell_tempdir)
                     exit()
 
                 if t_path.is_file():

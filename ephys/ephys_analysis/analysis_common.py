@@ -39,7 +39,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 
 import ephys.ephys_analysis as EP
+import ephys.datareaders as DR
 import ephys.mapanalysistools as mapanalysistools
+import ephys.mini_analyses as MINIS
 
 from . import analysis_parameters as AnalysisParams
 
@@ -210,11 +212,20 @@ class Analysis():
         self.notch_Q = args.notchQ
         self.detector = args.detector
 
-        self.tempdir = None
+        self.cell_tempdir = None
         self.annotated_dataframe: Union[pd.DataFrame, None] = None
         self.allprots = []
 
+    
+        # load up the analysis modules (don't allow multiple instances to exist)
+        self.SP = EP.spike_analysis.SpikeAnalysis()
+        self.RM = EP.rm_tau_analysis.RmTauAnalysis()
+        self.EPIV = EP.iv_analysis.IVAnalysis()
+        self.AR = DR.acq4_reader.acq4_reader()
+        self.MM = MINIS.minis_methods.MiniAnalyses()
         self.AM = mapanalysistools.analyze_map_data.AnalyzeMap(rasterize=self.rasterize)
+        self.AM.configure(reader=self.AR, spikeanalyzer=self.SP, rmtauanalyzer=self.RM,
+                            minianalyzer=self.MM)
         if self.detector == "cb":
             self.AM.set_methodname("cb_cython")
         elif self.detector == "aj":
@@ -222,10 +233,9 @@ class Analysis():
         elif self.detector == "zc":
             raise ValueError("Detector ZC is not recommended at this time")
         else:
-            raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc")
+            raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc]")
 
         super().__init__()
-        # self.setup()
 
     def set_exclusions(self, exclusions: Union[dict, None] = None):
         """Set the datasets that will be excluded
@@ -281,6 +291,10 @@ class Analysis():
             else:
                 self.map_annotationFilename = None
 
+
+             # always specify the temporary directory for intermediate plot results
+            self.cell_tempdir = Path(self.analyzeddatapath, "temppdfs")
+
             # handle directories to include or skip
             if (
                 "extra_subdirectories" in list(self.experiment.keys())
@@ -303,6 +317,8 @@ class Analysis():
                 self.iv_analysisFilename = Path(
                     self.analyzeddatapath, self.experiment["iv_analysisFilename"]
                 )
+                if len(Path(self.iv_analysisFilename).suffix) == 0:
+                    raise ValueError(f"Analysis output file specified, but required extension (.h5, .pkl, or .feather) is missing: {str(Path(self.iv_analysisFilename).suffix):s}")
             else:
                 self.iv_analysisFilename = None
 
@@ -435,7 +451,11 @@ class Analysis():
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
                         self.do_cell(icell, pdf=pdf)
-
+            CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
+            with open(self.iv_analysisFilename, 'wb') as fh:
+               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+        
+        
         if self.update:
             n = datetime.datetime.now()  # get current time
             dateandtime = n.strftime(
@@ -526,9 +546,8 @@ class Analysis():
         """
         Make a temporary directory; if the directory exists, just clean it out
         """
-        self.tempdir = Path(self.analyzeddatapath, "temppdfs")
-        if not self.tempdir.is_dir():
-            self.tempdir.mkdir(mode=0o755, exist_ok=True)
+        if not self.cell_tempdir.is_dir():
+            self.cell_tempdir.mkdir(mode=0o755, exist_ok=True)
         else:
             self.clean_tempdir()  # clean up
 
@@ -537,22 +556,50 @@ class Analysis():
         Delete the files in the current temporary directory
         """
         fns = sorted(
-            list(self.tempdir.glob("*.pdf"))
+            list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
         for fn in fns:  # delete the files in the tempdir
             Path(fn).unlink(missing_ok=True)
 
+    def make_cell_filename(self, celltype:str, slicecell:str):
+        pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
+        pdfname += f"_{slicecell:s}"
+        if self.signflip:
+            pdfname += "_signflip"
+        if self.alternate_fit1:
+            pdfname += "_alt1"
+        if self.alternate_fit2:
+            pdfname += "_alt2"
+
+        if isinstance(celltype, str):
+            celltype = celltype.strip()
+        if celltype in [None, "", "?"]:
+            celltype = "unknown"
+        pdfname += f"_{celltype:s}"
+        if self.iv_flag:
+            pdfname += f"_IVs"
+        elif self.mapsZQA_plot:
+            pdfname += f"_ZQAmaps"  # tag if using other than zscore in the map plot
+        elif self.map_flag:
+            pdfname += "_maps"
+        elif self.vc_flag:
+            pdfname += "_VC"
+
+        pdfname = Path(pdfname)
+        return pdfname
+    
     def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None, pdf=None):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
-        """
-        print("********* MERGE ************\n         ", self.merge_flag, pdf, self.pdfFilename, self.autoout)
+        Merging should be done on a per-cell basis, and on a per-protocol class basis.
 
+        """
+        CP.cprint('c', "********* MERGEING PDFS ************\n")
         if self.dry_run or not self.autoout:
             return
-        if not self.merge_flag or pdf is None:
-            print("False merge flag or empty PDF value")
+        if not self.merge_flag:
+            print("False merge flag")
             return
         # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
         #     return
@@ -561,31 +608,11 @@ class Analysis():
         # CP.cprint("c",
         #     f"Merging pdfs at {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
         # )
-
+        if slicecell is None:
+            raise ValueError("iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set")
         if self.autoout:
             # print("  in auto mode")
-            pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
-            if slicecell is not None:
-                pdfname += f"_{slicecell:s}"
-            else:
-                pdfname += "_"
-            if self.signflip:
-                pdfname += "_signflip"
-            if self.alternate_fit1:
-                pdfname += "_alt1"
-            if self.alternate_fit2:
-                pdfname += "_alt2"
-
-            if isinstance(celltype, str):
-                celltype = celltype.strip()
-            if celltype in [None, "", "?"]:
-                celltype = "unknown"
-            pdfname += f"_{celltype:s}"
-            if self.iv_flag:
-                pdfname += f"_IVs"
-            elif self.mapsZQA_plot:
-                pdfname += f"_maps"  # tag if using other than zscore in the map plot
-
+            pdfname = self.make_cell_filename(celltype, slicecell)
             pdfname = Path(pdfname)
             # check to see if we have a sorted directory with this cell type
             pdfdir = Path(self.analyzeddatapath, celltype)
@@ -593,7 +620,7 @@ class Analysis():
                 pdfdir.mkdir()
             self.cell_pdfFilename = Path(pdfdir, pdfname.stem).with_suffix(".pdf")
         fns = sorted(
-            list(self.tempdir.glob("*.pdf"))
+            list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
         print("FNS: ", fns)
         if len(fns) == 0:
@@ -810,9 +837,8 @@ class Analysis():
 
     def do_cell(self, icell: int, pdf=None):
         """
-        Do analysis on a day's data
-        Runs all cells in the day, unless slicecell has been specified - then
-        permits subsetting to do just one specific cell (or slice) on the day
+        Do analysis on one cell's
+        Runs all protocols for the cell 
 
         Includes a dispatcher for different kinds of protocols: IVs, Maps, VCs
         
@@ -825,15 +851,16 @@ class Analysis():
 
         """
         datestr, slicestr, cellstr = self.make_cell(icell)
-        if len(self.slicecell) >= 2:
-            slicen = "slice_%03d" % int(self.slicecell[1])
-            if slicestr != slicen:
-                return
-            if len(self.slicecell) == 4:
-                celln = "cell_%03d" % int(self.slicecell[3])
-                if cellstr != celln:
-                    return
 
+        # if len(self.slicecell) >= 2:
+        #     slicen = "slice_%03d" % int(self.slicecell[1])
+        #     if slicestr != slicen:
+        #         return
+        #     if len(self.slicecell) == 4:
+        #         celln = "cell_%03d" % int(self.slicecell[3])
+        #         if cellstr != celln:
+        #             return
+        slicecell = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
         dsday, nx = Path(datestr).name.split("_")
         self.thisday = dsday
 
@@ -846,7 +873,7 @@ class Analysis():
             return
         celltype, celltypechanged = self.get_celltype(icell)
         fullfile = Path(
-            self.rawdatapath, self.df.iloc[icell].cell_id) # self.make_cellstr(self.df, icell, shortpath=False)
+            self.rawdatapath, self.df.iloc[icell].cell_id)
         #)
         # print("fullfile: ", fullfile, fullfile.is_dir())
         if self.skip_subdirectories is not None:
@@ -945,23 +972,37 @@ class Analysis():
             if self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
                 self.df["IV"] = None
                 self.df["Spikes"] = None
-            if pdf is not None:
+            if self.cell_tempdir is not None:
                 self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(
                 icell=icell, allprots=allprots, celltype=celltype, pdf=pdf
             )
-            self.merge_pdfs(celltype, pdf=pdf)  
+            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)  
+            pklname = self.make_cell_filename(celltype, slicecell)
+            pklname = Path(pklname)
+            # check to see if we have a sorted directory with this cell type
+            pkldir = Path(self.analyzeddatapath, celltype)
+            if not pkldir.is_dir():
+                pkldir.mkdir()
+            self.cell_pklFilename = Path(pkldir, pklname.stem).with_suffix(".pkl")
+            CP.cprint("c", f"Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}")
+ 
+            with open(self.cell_pklFilename, 'wb') as fh:
+               self.df.iloc[icell].to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            self.df["IV"] = None
+            self.df["Spikes"] = None
             gc.collect()
 
         if self.vc_flag:
             self.analyze_vcs(icell, allprots)
+            gc.collect()
 
         if self.map_flag:
-            if pdf is not None:
+            if self.cell_tempdir is not None:
                 self.make_tempdir()
             self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
             CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
-            self.merge_pdfs(celltype, pdf=pdf)
+            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
             gc.collect()
 
     
@@ -1140,12 +1181,11 @@ class Analysis():
                 icell, "Spikes"
             ] = rsp  # everything in the SP analysus_summary structure
 
-        # foname = '%s~%s~%s.pkl'%(datestr, slicestr, cellstr)
         self.df["annotated"] = self.df["annotated"].astype(int)
         self.df["expUnit"] = self.df["expUnit"].astype(int)
 
         if len(allivs) > 0 and self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
-
+            CP.cprint("m", f"Writing IV analysis results to HDF5 file: {str(self.iv_analysisFilename):s}")
             # with hdf5:
             # Note, reading this will be slow - it seems to be rather a large file.
             day, slice, cell = self.make_cell(icell=icell)
@@ -1160,23 +1200,23 @@ class Analysis():
                 self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
                 self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
-            self.df.at[icell, "IV"] = None
-            self.df.at[icell, "Spikes"] = None
+            # self.df.at[icell, "IV"] = None
+            # self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
             gc.collect()
 
         elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".pkl":
             # with pickle and compression (must open with gzip, then read_pickle)
-            with open(self.iv_analysisFilename, 'wb') as fh:
-               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            # CP.cprint("c", f"Writing IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
+            # with open(self.iv_analysisFilename, 'wb') as fh:
+            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            pass
 
         elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".feather":
-            # with pickle and compression (must open with gzip, then read_pickle)
+            # with feather (experimental)
+            CP.cprint("b", f"Writing IV analysis results to FEATHER file: {str(self.iv_analysisFilename):s}")
             with open(self.iv_analysisFilename, 'wb') as fh:
                self.df.to_feather(fh)
-
-        # with open(Path(analyzeddatapath, 'events', foname), 'wb') as fh:
-        #      dill.dump(results, fh)
 
     def analyze_iv(
         self,
@@ -1225,19 +1265,17 @@ class Analysis():
             print("protocol: ", protocol)
             CP.cprint("r", f"protocol directory not found (analyze_iv)!! {str(protocol_directory):s}")
             exit()
-
+        self.EPIV.configure(protocol_directory, plot=not self.plotsoff,
+                          reader = self.AR,
+                          spikeanalyzer=self.SP,
+                          rmtauanalyzer=self.RM)
         if self.iv_select["duration"] > 0.0:
-            EPIV = EP.iv_analysis.IV(
-                str(protocol_directory),
-                plot=not self.plotsoff,
-            )
-            check = EPIV.iv_check(duration=self.iv_select["duration"])
+            check = self.EPIV.iv_check(duration=self.iv_select["duration"])
             if check is False:
                 gc.collect()
                 return (None, 0)  # skip analysis
         if not self.dry_run:
             print(f"      IV analysis for {str(protocol_directory):s}")
-            EPIV = EP.iv_analysis.IVAnalysis(protocol_directory, plot=not self.plotsoff)
             br_offset = 0.0
             if (
                 not pd.isnull(self.df.at[icell, "IV"])
@@ -1259,16 +1297,16 @@ class Analysis():
             ]:
                 tgap = 0.0005  # shorten gap for measures for fast cell types
                 tinit = False
-            EPIV.plot_mode(mode=self.IV_pubmode)
-            plot_handle = EPIV.compute_iv(
+            self.EPIV.plot_mode(mode=self.IV_pubmode)
+            plot_handle = self.EPIV.compute_iv(
                 threshold=self.spike_threshold,
                 bridge_offset=br_offset,
                 tgap=tgap,
                 plotiv=True,
                 full_spike_analysis=True,
             )
-            iv_result = EPIV.RM.analysis_summary
-            sp_result = EPIV.SP.analysis_summary
+            iv_result = self.EPIV.RM.analysis_summary
+            sp_result = self.EPIV.SP.analysis_summary
             result["IV"] = iv_result
             result["Spikes"] = sp_result
             ctype = self.df.at[icell, "cell_type"]
@@ -1289,7 +1327,7 @@ class Analysis():
                     ),
                     fontsize=8,
                 )
-                t_path = Path(self.tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
+                t_path = Path(self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
                 # print("PDF: ", pdf)
                 # if pdf is not None:
                 #     pdf.savefig(plot_handle)
@@ -1300,7 +1338,6 @@ class Analysis():
                 mpl.close(plot_handle)
                 CP.cprint("g", f"saved to: {str(t_path):s}")
                 nfiles += 1
-            del EPIV
             del iv_result
             del sp_result
             gc.collect()
@@ -1359,7 +1396,7 @@ class Analysis():
                     plotted = EPVC.compute_iv()
                     if plotted:
                         t_path = Path(
-                            self.tempdir, "temppdf_{0:04d}.pdf".format(nfiles)
+                            self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles)
                         )
                         mpl.savefig(
                             t_path, dpi=300

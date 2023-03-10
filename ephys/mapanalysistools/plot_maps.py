@@ -33,7 +33,7 @@ import textwrap as WR
 import tifffile as tf
 import ephys.tools.boundrect as BR
 import ephys.tools.digital_filters as FILT
-import mahotas as MH
+# import mahotas as MH
 
 
 # set_expt_paths.get_computer()

@@ -19,7 +19,7 @@ setup(name='ephys',
       zip_safe=False,
       entry_points={
           'console_scripts': [
-               'dataSummary=ephys.tools.dataSummary:main',
+               'datasummary=ephys.tools.data_summary:main',
                'dircheck=ephys.tools.dir_check:main',
                'ma2tiff=ephys.tools.ma2tiff:convertfiles',
                'bridge=ephys.tools.bridge:main',
