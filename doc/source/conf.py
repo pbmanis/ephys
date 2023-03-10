@@ -19,11 +19,11 @@
 # -- Project information -----------------------------------------------------
 
 project = 'ephys'
-copyright = '2019-2022, Paul B Manis'
+copyright = '2019-2023, Paul B Manis'
 author = 'Paul B Manis'
 
 # The full version, including alpha/beta/rc tags
-release = '0.5'
+release = '0.6'
 
 
 # -- General configuration ---------------------------------------------------
