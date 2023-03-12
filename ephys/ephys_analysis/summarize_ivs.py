@@ -391,6 +391,10 @@ class GetAllIVs:
                         Path(self.experiments[expts[i]]["databasepath"], coding_f),
                         sheet_name=self.experiments[expts[i]]["coding_sheet"],
                     )
+                    CP.cprint("c", f"Successfully Read Coding sheet {str(coding_f)}.pkl")
+                    gr = list(set(df_c.Group.values))
+                    CP.cprint("c", f"    With these Groups: {str(gr):s}")
+                   
                 else:
                     df_c = None
                 # read the pickled output from the iv analysis.
@@ -398,7 +402,7 @@ class GetAllIVs:
                     self.inputFilename,
                   #  compression={"method": "gzip", "compresslevel": 5, "mtime": 1},
                 )
-                CP.cprint("c", "Read NIHL_IVs.pkl")
+                CP.cprint("c", f"Successfully Read {str(self.inputFilename.name):s}")
                 select = self.celltype
                 # print("Select: ", select)
                 if select not in ["any", "*"]:
@@ -416,6 +420,7 @@ class GetAllIVs:
                     return row
 
                 df_c = df_c.apply(mapdate, axis=1)
+    
                 if coding_f is not None:
                     df_i = pd.merge(
                         df_i,
@@ -423,11 +428,18 @@ class GetAllIVs:
                         left_on=["date"],  # , "slice_slice", "cell_cell"],
                         right_on=["Date"],  # , "slice_slice", "cell_cell"],
                     )
-                    print("After merge:\n", df_i.head())
+                    # print("After merge:\n", df_i.head())
                     df_i.coding = df_i[self.group_mode].str.strip()
                 else:
                     df_i.coding = df_i.cell_expression
                 self.dfs = pd.concat((self.dfs, df_i))
+                self.dfs["Group"] = self.dfs['Group'].values.astype(str)
+                groups = sorted(list(set(self.dfs.Group.values)))
+                dates = sorted(list(set(self.dfs.date.values)))
+                for date in dates:
+                    print(f"       {date:s}")
+                CP.cprint("c", f"    with these groups: {str(groups):s}")
+
         self.dfs = self.dfs.reset_index(drop=True)
         self.rainbowcolors = iter(
             matplotlib.cm.rainbow(np.linspace(0, 1, len(self.dfs)))
@@ -580,6 +592,8 @@ class GetAllIVs:
                         leglabel = code
                     else:
                         leglabel = None
+                    if "FI_Curve" not in list(dv[fidata].keys()):
+                        continue
                     fi = dv[fidata]["FI_Curve"]
                     lp = PF.axdict["A"].plot(
                         fi[0] * 1e9,
@@ -667,7 +681,11 @@ class GetAllIVs:
             proto (str): Protocol name within the dict to use
         """
         cellmeas = dspk[proto]
-        tracekeys = list(cellmeas["spikes"].keys())
+        if 'spikes' in list(cellmeas.keys()):
+            tracekeys = list(cellmeas["spikes"].keys())
+        else:
+            return  self.make_emptydict(spike_measures)
+    
         # print("get_protocol_spike: ", Cell_ID)
         for m in spike_measures:
             if (
@@ -1106,6 +1124,7 @@ class GetAllIVs:
         cellmeas: dict,
         accumulator: dict,
         func: object = np.nanmean,
+        df: object = None,
     ):
         """Get the IV values averaged (or smallest) from one protocol/measurement in one cell
         accumulate the measures in the accumulator (dict of measures), using lists.
@@ -1119,11 +1138,17 @@ class GetAllIVs:
         Returns:
             updated accumulator
         """
-
-        if pd.isnull(cellmeas[measure]):
+        if measure not in list(cellmeas.keys()):
             accumulator[measure].append(np.nan)
-        else:
-            accumulator[measure].append(cellmeas[measure])
+            return accumulator
+        try:
+            if pd.isnull(cellmeas[measure]):
+                accumulator[measure].append(np.nan)
+            else:
+                accumulator[measure].append(cellmeas[measure])
+        except:
+            print("failed to get measure in dataframe : ", df)
+            raise ValueError()
         return accumulator
 
     def _get_protocol_iv_data(
@@ -1168,6 +1193,7 @@ class GetAllIVs:
                     cellmeas=cellmeas,
                     accumulator=accumulator,
                     func=np.nanmean,
+                    df=dfi,
                 )
 
             elif m in no_average:
