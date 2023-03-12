@@ -42,6 +42,7 @@ import ephys.ephys_analysis as EP
 import ephys.datareaders as DR
 import ephys.mapanalysistools as mapanalysistools
 import ephys.mini_analyses as MINIS
+import ephys.tools.build_info_string as BIS
 
 from . import analysis_parameters as AnalysisParams
 
@@ -451,9 +452,9 @@ class Analysis():
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
                         self.do_cell(icell, pdf=pdf)
-            CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
-            with open(self.iv_analysisFilename, 'wb') as fh:
-               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            # CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
+            # with open(self.iv_analysisFilename, 'wb') as fh:
+            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
         
         
         if self.update:
@@ -560,41 +561,48 @@ class Analysis():
         )  # list filenames in the tempdir and sort by name
         for fn in fns:  # delete the files in the tempdir
             Path(fn).unlink(missing_ok=True)
-
-    def make_cell_filename(self, celltype:str, slicecell:str):
-        pdfname = str(self.analyzeddatapath) + "_" + self.thisday.replace(".", "_")
-        pdfname += f"_{slicecell:s}"
-        if self.signflip:
-            pdfname += "_signflip"
-        if self.alternate_fit1:
-            pdfname += "_alt1"
-        if self.alternate_fit2:
-            pdfname += "_alt2"
-
+    
+    def check_celltype(self, celltype: Union[str, None]=None):
         if isinstance(celltype, str):
             celltype = celltype.strip()
-        if celltype in [None, "", "?"]:
+        if celltype in [None, "", "?", " ", "  ", "\t"]:
             celltype = "unknown"
-        pdfname += f"_{celltype:s}"
-        if self.iv_flag:
-            pdfname += f"_IVs"
-        elif self.mapsZQA_plot:
-            pdfname += f"_ZQAmaps"  # tag if using other than zscore in the map plot
-        elif self.map_flag:
-            pdfname += "_maps"
-        elif self.vc_flag:
-            pdfname += "_VC"
+        return celltype
 
-        pdfname = Path(pdfname)
-        return pdfname
+    def make_cell_filename(self, celltype:str, slicecell:str):
+        celltype = self.check_celltype(celltype)
+       
+        file_dir = str(Path(self.analyzeddatapath, celltype))
+        file_name = self.thisday.replace(".", "_")
+        file_name += f"_{slicecell:s}"
+        if self.signflip:
+            file_name += "_signflip"
+        if self.alternate_fit1:
+            file_name += "_alt1"
+        if self.alternate_fit2:
+            file_name += "_alt2"
+
+        file_name += f"_{celltype:s}"
+        if self.iv_flag:
+            file_name += f"_IVs"
+        elif self.mapsZQA_plot:
+            file_name += f"_ZQAmaps"  # tag if using other than zscore in the map plot
+        elif self.map_flag:
+            file_name += "_maps"
+        elif self.vc_flag:
+            file_name += "_VC"
+
+        file_name = Path(file_name)
+        return file_name
     
-    def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None, pdf=None):
+    def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None, pdf=None, overwrite:bool=True):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
         Merging should be done on a per-cell basis, and on a per-protocol class basis.
 
         """
+        celltype = self.check_celltype(celltype)
         CP.cprint('c', "********* MERGEING PDFS ************\n")
         if self.dry_run or not self.autoout:
             return
@@ -622,7 +630,6 @@ class Analysis():
         fns = sorted(
             list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
-        print("FNS: ", fns)
         if len(fns) == 0:
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
@@ -630,6 +637,8 @@ class Analysis():
       
         # cell file merged
         mergeFile = PdfMerger()
+        if overwrite:  # remove existing file
+            self.cell_pdfFilename.unlink(missing_ok=True)
         fns.insert(0, str(self.cell_pdfFilename))
         for i, fn in enumerate(fns):
             if Path(fn).is_file():
@@ -642,16 +651,19 @@ class Analysis():
         for fn in fns:
             fn.unlink(missing_ok=True)
 
-        # main file merge
-        if self.pdfFilename is not None:
-            mergeFile = PdfMerger()
-            fns = [str(self.pdfFilename), str(self.cell_pdfFilename)]
-            for i, fn in enumerate(fns):
-                fn = Path(fn)
-                if fn.is_file() and fn.stat().st_size > 0:
-                    mergeFile.append(PdfReader(open(fn, "rb")))
-            with open(self.pdfFilename, "wb") as fout:
-                mergeFile.write(fout)
+        # big file merge
+        # removing this as it really slows down the analysis
+        # and generates a big file that we can't read = better to 
+        # do this with a separate routine AFTER the analysis is complete
+        # if self.pdfFilename is not None:
+        #     mergeFile = PdfMerger()
+        #     fns = [str(self.pdfFilename), str(self.cell_pdfFilename)]
+        #     for i, fn in enumerate(fns):
+        #         fn = Path(fn)
+        #         if fn.is_file() and fn.stat().st_size > 0:
+        #             mergeFile.append(PdfReader(open(fn, "rb")))
+        #     with open(self.pdfFilename, "wb") as fout:
+        #         mergeFile.write(fout)
         print("="*80)
         print()
 
@@ -850,16 +862,12 @@ class Analysis():
         pdf : bool, default=False
 
         """
+        celltype, celltypechanged = self.get_celltype(icell)
         datestr, slicestr, cellstr = self.make_cell(icell)
+        # celltype = self.df.iloc[icell].cell_type
+        celltype = self.check_celltype(celltype)
+        self.df.iloc[icell].cell_type = celltype  # force relabel in database
 
-        # if len(self.slicecell) >= 2:
-        #     slicen = "slice_%03d" % int(self.slicecell[1])
-        #     if slicestr != slicen:
-        #         return
-        #     if len(self.slicecell) == 4:
-        #         celln = "cell_%03d" % int(self.slicecell[3])
-        #         if cellstr != celln:
-        #             return
         slicecell = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
         dsday, nx = Path(datestr).name.split("_")
         self.thisday = dsday
@@ -871,7 +879,7 @@ class Analysis():
                 f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
             )
             return
-        celltype, celltypechanged = self.get_celltype(icell)
+
         fullfile = Path(
             self.rawdatapath, self.df.iloc[icell].cell_id)
         #)
@@ -978,6 +986,8 @@ class Analysis():
                 icell=icell, allprots=allprots, celltype=celltype, pdf=pdf
             )
             self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)  
+
+            # store pandas db analysis of this cell in a pickled file:
             pklname = self.make_cell_filename(celltype, slicecell)
             pklname = Path(pklname)
             # check to see if we have a sorted directory with this cell type
@@ -1001,8 +1011,11 @@ class Analysis():
             if self.cell_tempdir is not None:
                 self.make_tempdir()
             self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
-            CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
-            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
+            # analyze_maps stores events in an events subdirectory by cell
+            # It also merges the PDFs for that cell in the celltype directory
+            # CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
+            # self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
+
             gc.collect()
 
     
@@ -1320,11 +1333,7 @@ class Analysis():
                 shortpath = protocol_directory.parts
                 shortpath = str(Path(*shortpath[4:]))
                 plot_handle.suptitle(
-                    "{0:s}\nType: {1:s} {2:s}".format(
-                        shortpath,  # .replace("_", "\_"),
-                        self.df.at[icell, "cell_type"],
-                        ctwhen,
-                    ),
+                    f"{str(shortpath):s}\n{BIS.build_info_string(self.EPIV.AR, protocol_directory):s}",
                     fontsize=8,
                 )
                 t_path = Path(self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
@@ -1381,6 +1390,8 @@ class Analysis():
         Nothing - generates pdfs and updates the pickled database file.
         """
         import matplotlib.pyplot as mpl
+        celltype = self.check_celltype(self.df.iloc[icell].cell_type)
+        self.df.iloc[icell].cell_type = celltype
 
         self.make_tempdir()
         for pname in ["VCIVs"]:  # the different VCIV protocols
@@ -1406,9 +1417,6 @@ class Analysis():
                         #     pdf.savefig(dpi=300)
                         mpl.close(EPVC.IVFigure)
                     mpl.close(EPVC.IVFigure)
-        celltype = self.df.iloc[icell].cell_type
-        if len(celltype) == 0:
-            celltype = 'unknown'
         self.merge_pdfs(celltype=celltype, pdf=pdf)
 
 
