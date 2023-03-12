@@ -3,17 +3,18 @@ Compute IV Information
 
 
 """
+import datetime
 import gc
 from collections import OrderedDict
 from pathlib import Path
-from typing import Union, Literal, List
+from typing import List, Literal, Union
 
 import numpy as np
 import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools import cprint
+import ephys.tools.build_info_string as BIS
 
 from ..datareaders import acq4_reader
-
 from . import rm_tau_analysis, spike_analysis
 
 color_sequence = ["k", "r", "b"]
@@ -21,11 +22,10 @@ colormap = "snshelix"
 
 CP = cprint.cprint
 
+
 class IVAnalysis:
-    def __init__(
-        self
-    ):
-        
+    def __init__(self):
+
         self.IVFigure = None
         self.mode = "acq4"
         self.AR = None
@@ -43,14 +43,18 @@ class IVAnalysis:
 
     def reset_analysis(self):
         pass
-    
-    def configure(self, datapath, altstruct=None, 
-                  file: Union[str, Path, None] = None, 
-                  spikeanalyzer: Union[object, None] = None,
-                  reader: Union[object, None] = None,
-                  rmtauanalyzer: Union[object, None] = None,
-                  plot:bool=True,
-                  pdf_pages:Union[object, None]=None,):
+
+    def configure(
+        self,
+        datapath,
+        altstruct=None,
+        file: Union[str, Path, None] = None,
+        spikeanalyzer: Union[object, None] = None,
+        reader: Union[object, None] = None,
+        rmtauanalyzer: Union[object, None] = None,
+        plot: bool = True,
+        pdf_pages: Union[object, None] = None,
+    ):
 
         self.pdf_pages = pdf_pages
 
@@ -62,8 +66,8 @@ class IVAnalysis:
             self.datapath = file
             self.mode = "nwb2.5"
         self.datapath = str(datapath)
-        self.SP = spikeanalyzer # spike_analysis.SpikeAnalysis()
-        self.RM = rmtauanalyzer # rm_tau_analysis.RmTauAnalysis()
+        self.SP = spikeanalyzer  # spike_analysis.SpikeAnalysis()
+        self.RM = rmtauanalyzer  # rm_tau_analysis.RmTauAnalysis()
         self.plot = plot
         self.plotting_mode = "normal"
         self.decorate = True
@@ -96,7 +100,7 @@ class IVAnalysis:
         self.plotting_alternation = alternate
         self.decorate = decorate
 
-    def stability_check(self, rmpregion:List=[0.0, 0.005], threshold = 2.0):
+    def stability_check(self, rmpregion: List = [0.0, 0.005], threshold=2.0):
         """_summary_
 
         Args:
@@ -121,13 +125,13 @@ class IVAnalysis:
 
     def compute_iv(
         self,
-        threshold:float=-0.010,
-        bridge_offset:float=0.0,
-        tgap:float=0.0005,
-        plotiv:bool=False,
-        full_spike_analysis:bool=True,
-        max_spikeshape:int=2,
-        to_peak:bool=True,
+        threshold: float = -0.010,
+        bridge_offset: float = 0.0,
+        tgap: float = 0.0005,
+        plotiv: bool = False,
+        full_spike_analysis: bool = True,
+        max_spikeshape: int = 2,
+        to_peak: bool = True,
     ) -> Union[None, object]:
         """
         Simple plot of spikes, FI and subthreshold IV
@@ -209,11 +213,18 @@ class IVAnalysis:
         P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(8.0, 10.0))
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
+        now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
+        P.axdict["A"].text(
+            0.96,
+            0.01,
+            s=now,
+            fontsize=6,
+            ha="right",
+            transform=P.figure_handle.transFigure,
+        )
+        infostr = BIS.build_info_string(self.AR, self.AR.protocol)
 
-        if self.mode == "acq4":
-            P.figure_handle.suptitle(self.datapath, fontsize=8)
-        elif self.mode == "nwb":
-            P.figure_handle.suptitle(str(self.datapath), fontsize=8)
+        P.figure_handle.suptitle(f"{str(self.datapath):s}\n{infostr:s}", fontsize=8)
         dv = 50.0
         jsp = 0
         # create a color map ans use it for all data in the plot
@@ -221,13 +232,16 @@ class IVAnalysis:
         # and is then mapped to the current levels in the trace
         # in case the sequence was randomized or run in a different
         # sequence
-        import matplotlib.pyplot as mpl
         import colorcet
-        
+        import matplotlib.pyplot as mpl
+
         # matplotlib versions:
         # cmap = mpl.colormaps['tab20'].resampled(self.AR.traces.shape[0])
         cmap = colorcet.cm.glasbey_bw_minc_20_maxl_70
-        trace_colors = [cmap(float(i)/self.AR.traces.shape[0]) for i in range(self.AR.traces.shape[0])]
+        trace_colors = [
+            cmap(float(i) / self.AR.traces.shape[0])
+            for i in range(self.AR.traces.shape[0])
+        ]
 
         # colorcet versions:
 
@@ -272,7 +286,11 @@ class IVAnalysis:
                     uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps]
                     paps = np.array(self.AR.traces[i, uindx])
                     P.axdict["A"].plot(
-                        ptps * 1e3, idv + paps * 1e3, "o", color=clist[k], markersize=0.5
+                        ptps * 1e3,
+                        idv + paps * 1e3,
+                        "o",
+                        color=clist[k],
+                        markersize=0.5,
                     )
         if not pubmode:
             for k in self.RM.taum_fitted.keys():
@@ -286,7 +304,7 @@ class IVAnalysis:
                     linewidth=1.0,
                 )
             for k in self.RM.tauh_fitted.keys():
-            # CP('r', f"tau fitted keys: {str(k):s}")
+                # CP('r', f"tau fitted keys: {str(k):s}")
                 if self.RM.tauh_meantau == np.nan:
                     continue
                 P.axdict["A"].plot(
@@ -310,7 +328,7 @@ class IVAnalysis:
             self.SP.analysis_summary["FI_Curve"][0] * 1e9,
             self.SP.analysis_summary["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
             "grey",
-            linestyle='-',
+            linestyle="-",
             # markersize=4,
             linewidth=0.5,
         )
@@ -361,7 +379,7 @@ class IVAnalysis:
         P.axdict["C"].scatter(
             np.array(self.RM.ivss_cmd) * 1e9,
             np.array(self.RM.ivss_v) * 1e3,
-            c=trace_colors[0:len(self.RM.ivss_cmd)],
+            c=trace_colors[0 : len(self.RM.ivss_cmd)],
             s=16,
         )
         if not pubmode:
@@ -386,11 +404,15 @@ class IVAnalysis:
             taum = r"$\tau_m$"
             tauh = r"$\tau_h$"
             tstr = f"RMP: {self.RM.analysis_summary['RMP']:.1f} mV\n"
-            tstr += f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
+            tstr += (
+                f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
+            )
             tstr += f"{taum:s}: {self.RM.analysis_summary['taum']*1e3:.2f} ms\n"
             tstr += f"{tauh:s}: {self.RM.analysis_summary['tauh_tau']*1e3:.3f} ms\n"
             tstr += f"${{G_h}}$: {self.RM.analysis_summary['tauh_Gh'] *1e9:.3f} nS\n"
-            tstr += f"Holding: {np.mean(self.RM.analysis_summary['Irmp']) * 1e12:.1f} pA\n"
+            tstr += (
+                f"Holding: {np.mean(self.RM.analysis_summary['Irmp']) * 1e12:.1f} pA\n"
+            )
             tstr += f"Bridge [{enable:3s}]: {ccbridge:.1f} ${{M\Omega}}$\n"
             tstr += f"Bridge Adjust: {self.RM.analysis_summary['BridgeAdjust']:.1f} ${{M\Omega}}$\n"
             tstr += f"Pipette: {cccomp:.1f} mV\n"
@@ -447,10 +469,17 @@ class IVAnalysis:
                 np.array(self.SP.spikes[i][spx]) - self.SP.Clamps.tstart
             ) * 1e3  # just shorten...
             if len(spkl) == 1:
-                P.axdict["D"].plot(spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4)
+                P.axdict["D"].plot(
+                    spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4
+                )
             else:
                 P.axdict["D"].plot(
-                    spkl[:-1], np.diff(spkl), "o-",color=trace_colors[i], markersize=3, linewidth=0.5
+                    spkl[:-1],
+                    np.diff(spkl),
+                    "o-",
+                    color=trace_colors[i],
+                    markersize=3,
+                    linewidth=0.5,
                 )
 
         PH.talbotTicks(
@@ -477,8 +506,12 @@ class IVAnalysis:
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
         for k, i in enumerate(self.SP.spikeShapes.keys()):
             # print("ss i: ", i, self.SP.spikeShapes[i][0])
-            P.axdict["E"].plot(self.SP.spikeShapes[i][0].V, self.SP.spikeShapes[i][0].dvdt, linewidth=0.35,
-            color = trace_colors[i])
+            P.axdict["E"].plot(
+                self.SP.spikeShapes[i][0].V,
+                self.SP.spikeShapes[i][0].dvdt,
+                linewidth=0.35,
+                color=trace_colors[i],
+            )
         P.axdict["E"].set_xlabel("V (mV)")
         P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
 
@@ -487,10 +520,12 @@ class IVAnalysis:
         if self.plot:
             if self.pdf_pages is None:
                 import matplotlib.pyplot as mpl
+
                 # mpl.show()
             else:
                 self.pdf_pages.savefig(dpi=300)
                 import matplotlib.pyplot as mpl
+
                 mpl.close()
         return P.figure_handle
 
@@ -511,7 +546,13 @@ class IVAnalysis:
         P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(7.0, 5.0))
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
-        P.figure_handle.suptitle(self.datapath, fontsize=8)
+        fix_mapdir = str(mapdir) # .replace("_", "\_")
+        
+        P.figure_handle.suptitle(
+                    f"{fix_mapdir:s}\n{infostr:s} {params:s}",
+                    fontsize=8,
+                )
+        # P.figure_handle.suptitle(self.datapath, fontsize=8)
         dv = 0.0
         jsp = 0
         for i in range(self.AR.traces.shape[0]):
