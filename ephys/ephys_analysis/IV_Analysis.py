@@ -548,7 +548,7 @@ class IVAnalysis:
         P.resize(sizer)  # perform positioning magic
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
         P.figure_handle.suptitle(
-                    f"{str(self.datapath):s}\n{infostr:s} {params:s}",
+                    f"{str(self.datapath):s}\n{infostr:s}",
                     fontsize=8,
                 )
         dv = 0.0
