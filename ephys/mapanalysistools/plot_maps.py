@@ -328,7 +328,7 @@ class PlotMaps(object):
         dshape = self.datasets[name].shape
         for p in range(dshape[0]): # scp.shape[0]):
             self._plot_one(ax, p, pcolor, name=name, ythick=linethickness)
-        self.plot_calbar(ax, xmin, ymin)
+        # self.plot_calbar(ax, xmin, ymin)
         # print(dir(self.imageax))
         
     def plot_calbar(self, ax, x0, y0):
