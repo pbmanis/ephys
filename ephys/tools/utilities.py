@@ -34,6 +34,7 @@ Use as::
 
 """
 import fnmatch
+import gc
 import itertools
 import os
 import re
@@ -992,6 +993,7 @@ class Utility:
                 x=x, y=v, dt=dt, thr=thresh, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
             )
             u = [x for x in u if (x >= t0)and (x <= t1)]  # limit to those in the window
+            gc()
             return u
 
         # print('max x: ', np.max(xt))
