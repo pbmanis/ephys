@@ -546,13 +546,11 @@ class IVAnalysis:
         P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(7.0, 5.0))
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
-        fix_mapdir = str(mapdir) # .replace("_", "\_")
-        
+        infostr = BIS.build_info_string(self.AR, self.AR.protocol)
         P.figure_handle.suptitle(
-                    f"{fix_mapdir:s}\n{infostr:s} {params:s}",
+                    f"{str(self.datapath):s}\n{infostr:s} {params:s}",
                     fontsize=8,
                 )
-        # P.figure_handle.suptitle(self.datapath, fontsize=8)
         dv = 0.0
         jsp = 0
         for i in range(self.AR.traces.shape[0]):
