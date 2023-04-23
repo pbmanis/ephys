@@ -142,6 +142,27 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
         print("Error: signal dimesions of > 3 are not supported (no filtering applied)")
         return signal
 
+
+def SignalFilter_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bool=False):
+    print("Filter: SOS at ", LPF, " Poles: ", NPole)
+    flpf = float(LPF)
+    sf = float(samplefreq)
+    wn = [flpf/(sf/2.0)]
+    reduction = 1
+    if LPF <= samplefreq/2.0:
+        reduction = int(samplefreq/LPF)
+    sos=spSignal.bessel(
+            NPole,
+            wn,
+            btype = "low",
+            output = 'sos')
+    sm = np.mean(signal)
+    w = spSignal.sosfilt(sos, signal-sm) # filter the incoming signal
+    w = w + sm
+    if reduce:
+        w = spSignal.resample(w, reduction)
+    return(w)
+
 def SignalFilter_Bandpass(signal, HPF, LPF, samplefreq):
     """Filter signal within a bandpass with elliptical filter
 

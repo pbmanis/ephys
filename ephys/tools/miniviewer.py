@@ -25,7 +25,6 @@ from ..mini_analyses import minis_methods, minis_methods_common
 from . import digital_filters as FILT
 from . import functions as FN
 
-# os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 all_modules = [
     spike_analysis,
@@ -44,7 +43,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
     def __init__(self, app=None):
         super(MiniViewer, self).__init__()
         self.app = app
-        self.datadir = "/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107Ai32Het"
+        self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig4(MRK)/L23_intrinsic"
         self.AR = (
             acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
@@ -98,6 +97,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def getProtocolDir(self, reload_last=False):
         current_filename = None
+        sel = None
         if not reload_last:
             sel = FS.FileSelector(dialogtype="dir", startingdir=self.datadir)
             current_filename = sel.fileName
@@ -105,6 +105,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             if self.filelistpath.is_file():
                 file_dict = toml.load(self.filelistpath)
                 current_filename = file_dict['MostRecent']
+                sel = current_filename
             else:
                 print('No Previous Files Found')
                 return
@@ -259,9 +260,11 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 samplefreq=self.AR.sample_rate[0],
             )
         if self.LPF != "None":
-            CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
-            self.mod_data[self.current_trace]  = FILT.SignalFilter_LPFBessel(
-                self.mod_data[self.current_trace] , self.LPF, samplefreq=self.AR.sample_rate[0], NPole=8
+            # CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
+#            self.mod_data[self.current_trace]  = FILT.SignalFilter_LPFBessel(
+            self.mod_data[self.current_trace]  = FILT.SignalFilter_SOS(
+                self.mod_data[self.current_trace] , self.LPF, 
+                samplefreq=self.AR.sample_rate[0], NPole=16,
             )
         # self.mod_data = FILT.SignalFilter_LPFBessel(
         #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
@@ -672,6 +675,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         layout.setColumnStretch(2, 0)  # and stretch out the data dispaly
 
         self.keyPressed.connect(self.on_key)
+        self.win.show()
 
 
 class FloatSlider(pg.QtWidgets.QSlider):
