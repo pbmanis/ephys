@@ -111,6 +111,7 @@ class cmdargs:
     # analysis parameters
     ivduration: float = 0.0
     threshold: float = 2.5  # cb event detection threshold (x baseline std)
+    refractory: float = 0.0007 # absolute refractory period
     signflip: bool = False
     alternate_fit1: bool = False
     alternate_fit2: bool = False  # second alternate
@@ -195,6 +196,7 @@ class Analysis():
 
         self.ivduration = args.ivduration
         self.threshold = args.threshold
+        self.refractory = args.refractory
         self.signflip = args.signflip
         self.alternate_fit1 = (
             args.alternate_fit1
@@ -452,9 +454,9 @@ class Analysis():
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
                         self.do_cell(icell, pdf=pdf)
-            # CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
-            # with open(self.iv_analysisFilename, 'wb') as fh:
-            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
+            with open(self.iv_analysisFilename, 'wb') as fh:
+               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
         
         
         if self.update:
@@ -603,12 +605,13 @@ class Analysis():
 
         """
         celltype = self.check_celltype(celltype)
-        CP.cprint('c', "********* MERGEING PDFS ************\n")
         if self.dry_run or not self.autoout:
+            print("Dry run or not automatic output")
             return
         if not self.merge_flag:
-            print("False merge flag")
+            print("Merge flag is False")
             return
+        CP.cprint('c', "********* MERGEING PDFS ************\n")
         # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
         #     return
 
@@ -1313,6 +1316,7 @@ class Analysis():
             self.EPIV.plot_mode(mode=self.IV_pubmode)
             plot_handle = self.EPIV.compute_iv(
                 threshold=self.spike_threshold,
+                refractory=self.refractory,
                 bridge_offset=br_offset,
                 tgap=tgap,
                 plotiv=True,

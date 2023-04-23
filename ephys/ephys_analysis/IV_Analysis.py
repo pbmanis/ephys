@@ -126,6 +126,7 @@ class IVAnalysis:
     def compute_iv(
         self,
         threshold: float = -0.010,
+        refractory=0.0007,
         bridge_offset: float = 0.0,
         tgap: float = 0.0005,
         plotiv: bool = False,
@@ -146,7 +147,7 @@ class IVAnalysis:
             self.SP.setup(
                 clamps=self.AR,
                 threshold=threshold,
-                refractory=0.0001,
+                refractory=refractory,
                 peakwidth=0.001,
                 interpolate=True,
                 verify=False,
