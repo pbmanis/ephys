@@ -67,6 +67,7 @@ import pandas as pd
 import pylibrary.plotting.plothelpers as PH
 import scipy.stats
 import seaborn as sns
+from ephys.tools.clean_database_merge import clean_database_merge
 from ephys.tools.parse_ages import ISO8601_age
 from pylibrary.tools import cprint as CP
 
@@ -378,60 +379,70 @@ class GetAllIVs:
             else:
                 expts = [self.experiment]
             for i in range(len(expts)):
-                cprint("g", f"Analyzing experiment: {str(expts[i]):s}")
-                self.basedir = Path(self.experiments[expts[i]]["rawdatapath"])
+                expt = self.experiments[expts[i]]
+                cprint("g", f"Analyzing experiment: {str(expt):s}")
+                self.basedir = Path(expt["rawdatapath"])
                 self.inputFilename = Path(
-                    self.experiments[expts[i]]["databasepath"],
-                    self.experiments[expts[i]]["iv_analysisFilename"],
+                    expt["databasepath"],
+                    expt["iv_analysisFilename"],
                 ).with_suffix(".pkl")
-                self.outputPath = Path(self.experiments[expts[i]]["databasepath"])
-                coding_f = self.experiments[expts[i]]["coding_file"]
-                if self.experiments[expts[i]]["coding_sheet"] is not None:
-                    df_c = pd.read_excel(
-                        Path(self.experiments[expts[i]]["databasepath"], coding_f),
-                        sheet_name=self.experiments[expts[i]]["coding_sheet"],
-                    )
-                    CP.cprint("c", f"Successfully Read Coding sheet {str(coding_f)}.pkl")
-                    gr = list(set(df_c.Group.values))
-                    CP.cprint("c", f"    With these Groups: {str(gr):s}")
+                if expt["coding_file"] is None:
+                    raise ValueError("Coding file must be specified; got 'None'")
+                if expt["coding_sheet"] is None:
+                    raise ValueError(f"Coding shet in the file {str(expt['coding_file']):s} must be specified; got 'None'")
+                self.outputPath = Path(expt["databasepath"])
+                coding_f = Path(expt["databasepath"],
+                                expt["coding_file"])
+                sheet_name = expt["coding_sheet"]
+                df_i = clean_database_merge(pkl_file = self.inputFilename, 
+                                            coding_file=coding_f,
+                                            coding_sheet=sheet_name)
+                # if self.experiments[expts[i]]["coding_sheet"] is not None:
+                #     df_c = pd.read_excel(
+                #         Path(self.experiments[expts[i]]["databasepath"], coding_f),
+                #         sheet_name=self.experiments[expts[i]]["coding_sheet"],
+                #     )
+                #     CP.cprint("c", f"Successfully Read Coding sheet {str(coding_f)}.pkl")
+                #     gr = list(set(df_c.Group.values))
+                #     CP.cprint("c", f"    With these Groups: {str(gr):s}")
                    
-                else:
-                    df_c = None
-                # read the pickled output from the iv analysis.
-                df_i = pd.read_pickle(
-                    self.inputFilename,
-                  #  compression={"method": "gzip", "compresslevel": 5, "mtime": 1},
-                )
-                CP.cprint("c", f"Successfully Read {str(self.inputFilename.name):s}")
-                select = self.celltype
-                # print("Select: ", select)
-                if select not in ["any", "*"]:
-                    df_i = df_i[df_i["cell_type"] == select]
-                sLength = len(df_i["date"])
-                df_i["age"] = ISO8601_age(df_i["age"].values[0])
+                # else:
+                #     df_c = None
+                # # read the pickled output from the iv analysis.
+                # df_i = pd.read_pickle(
+                #     self.inputFilename,
+                #   #  compression={"method": "gzip", "compresslevel": 5, "mtime": 1},
+                # )
+                # CP.cprint("c", f"Successfully Read {str(self.inputFilename.name):s}")
+                # select = self.celltype
+                # # print("Select: ", select)
+                # if select not in ["any", "*"]:
+                #     df_i = df_i[df_i["cell_type"] == select]
+                # sLength = len(df_i["date"])
+                # df_i["age"] = ISO8601_age(df_i["age"].values[0])
 
-                df_i = df_i.assign(source=expts[i])
-                df_i.reset_index(drop=True)
-                # print("dfi head before merge: ", df_i.head())
-                # print("dfc head before merge: ", df_c.head())
-                def mapdate(row):
-                    if not pd.isnull(row["Date"]):
-                        row["Date"] = row["Date"] + "_000"
-                    return row
+                # df_i = df_i.assign(source=expts[i])
+                # df_i.reset_index(drop=True)
+                # # print("dfi head before merge: ", df_i.head())
+                # # print("dfc head before merge: ", df_c.head())
+                # def mapdate(row):
+                #     if not pd.isnull(row["Date"]):
+                #         row["Date"] = row["Date"] + "_000"
+                #     return row
 
-                df_c = df_c.apply(mapdate, axis=1)
+                # df_c = df_c.apply(mapdate, axis=1)
     
-                if coding_f is not None:
-                    df_i = pd.merge(
-                        df_i,
-                        df_c,
-                        left_on=["date"],  # , "slice_slice", "cell_cell"],
-                        right_on=["Date"],  # , "slice_slice", "cell_cell"],
-                    )
-                    # print("After merge:\n", df_i.head())
-                    df_i.coding = df_i[self.group_mode].str.strip()
-                else:
-                    df_i.coding = df_i.cell_expression
+                # if coding_f is not None:
+                #     df_i = pd.merge(
+                #         df_i,
+                #         df_c,
+                #         left_on=["date"],  # , "slice_slice", "cell_cell"],
+                #         right_on=["Date"],  # , "slice_slice", "cell_cell"],
+                #     )
+                #     # print("After merge:\n", df_i.head())
+                #     df_i.coding = df_i[self.group_mode].str.strip()
+                # else:
+                #     df_i.coding = df_i.cell_expression
                 self.dfs = pd.concat((self.dfs, df_i))
                 self.dfs["Group"] = self.dfs['Group'].values.astype(str)
                 groups = sorted(list(set(self.dfs.Group.values)))
