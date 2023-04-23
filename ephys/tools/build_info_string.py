@@ -4,8 +4,8 @@ def build_info_string(AR, path_to_cell):
     info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent.parent)["."]
     slice_info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent)["."]
     cell_info= AR.readDirIndex(currdir=Path(AR.protocol).parent)["."]
-
-
+    # print(info)
+    # print(cell_info)
     info_keys = list(info.keys())
     slice_info_keys = list(slice_info.keys())
     cell_info_keys = list(cell_info.keys())
@@ -19,10 +19,12 @@ def build_info_string(AR, path_to_cell):
         infostr += f"{cell_info['cell_location']:s}, "
     if "cell_layer" in cell_info_keys:
         infostr += f"{cell_info['cell_layer']:s}, "
-    if "cell_type" in cell_info_keys:
-        infostr += f"{cell_info['cell_type']:s}, "
+    if "type" in cell_info_keys:
+        infostr += f"{cell_info['type']:s}, "
     else:
         infostr += "No Cell Type, "
+    if "strain" in info_keys:
+        infostr += f"{info['strain']:s}, "
     if "cell_expression" in info_keys:
         infostr += f"Exp: {info['cell_expression']:s}, "
     

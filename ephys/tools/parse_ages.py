@@ -13,6 +13,8 @@ def ISO8601_age(agestr):
     """
     q = False
     ish = False
+    if isinstance(agestr, (float, int)):
+        agestr = str(agestr)
     agestr = agestr.strip()
     if agestr.endswith("?"):
         agestr = agestr[:-1]
