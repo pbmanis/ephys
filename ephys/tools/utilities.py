@@ -992,9 +992,13 @@ class Utility:
             u = self.box_spike_find(
                 x=x, y=v, dt=dt, thr=thresh, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
             )
-            u = [x for x in u if (x >= t0)and (x <= t1)]  # limit to those in the window
-            gc()
-            return u
+            st = np.array([x for x in u if (x >= t0)and (x <= t1)])  # limit to those in the window
+            # if len(st) > 0:
+            #     print('min st, max st, min dtst: ', min(st), max(st), min(np.diff(st)))
+            #     print("refract: ", refract)
+            #    st = self.clean_spiketimes(st, mindT=refract)
+            gc.collect()
+            return self.clean_spiketimes(st, mindT=refract)
 
         # print('max x: ', np.max(xt))
        #  print('dt: ', dt)
