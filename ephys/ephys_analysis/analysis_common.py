@@ -149,7 +149,6 @@ class Analysis():
         self.analyzeddatapath = None
         self.directory = None
         self.inputFilename = None
-        self.analyzeddatapath = None
         self.annotationFilename = None
         self.map_annotationFilename = None
         self.extra_subdirectories = None
@@ -634,6 +633,7 @@ class Analysis():
             list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
         if len(fns) == 0:
+            CP.cprint("m", f"No pdfs to merge for {str(self.cell_pdfFilename):s}")
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
@@ -653,6 +653,7 @@ class Analysis():
         # remove temporary files
         for fn in fns:
             fn.unlink(missing_ok=True)
+        
 
         # big file merge
         # removing this as it really slows down the analysis
@@ -999,12 +1000,19 @@ class Analysis():
                 pkldir.mkdir()
             self.cell_pklFilename = Path(pkldir, pklname.stem).with_suffix(".pkl")
             CP.cprint("c", f"Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}")
- 
+            if self.df.iloc[icell]['Spikes'] is None:
+                CP.cprint("r", f"   @@@ Spikes array is empty @@@")
+            else:
+                CP.cprint('g', f"*** Have Spikes keys: {str(self.df.iloc[icell]['Spikes'].keys()):s}")
             with open(self.cell_pklFilename, 'wb') as fh:
                self.df.iloc[icell].to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
-            self.df["IV"] = None
-            self.df["Spikes"] = None
+
+            # print(self.df.iloc[icell].keys())
+            # exit()
+            # self.df["IV"] = None
+            # self.df["Spikes"] = None
             gc.collect()
+            
 
         if self.vc_flag:
             self.analyze_vcs(icell, allprots)
