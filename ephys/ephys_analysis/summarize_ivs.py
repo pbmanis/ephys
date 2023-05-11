@@ -170,6 +170,7 @@ no_average = [
     "Cell_ID",
     "Animal_ID",
     "Group",
+    'grouping',
     "protocol",
     "age",
     "sex",
@@ -315,7 +316,7 @@ class GetAllIVs:
         Args:
             group_mode (str): column name to group data by
         """
-        assert group_mode in ["genotype", "code", "Group"]
+        assert group_mode in ["genotype", "code", "Group", "cell_expression", "expression_and_genotype"]
         self.group_mode = group_mode
 
     def set_exclude_codes(self, excludelist: list = []):
@@ -544,10 +545,11 @@ class GetAllIVs:
         ncells = 0
         legcodes = []
         print("FI Plot")
+        self.dfs = self.set_grouping(self.dfs)
         for idx in self.dfs.index:
             # print("   ", self.dfs.columns)
             dx = self.dfs.iloc[idx]["Spikes"]  # get the spikes dict
-            code = self.dfs.iloc[idx][self.group_mode]
+            code = self.dfs.iloc[idx]['grouping']
             if isinstance(code, list):
                 code = code[0]
             if code not in self.code_names:
@@ -643,6 +645,7 @@ class GetAllIVs:
         code: str,
         genotype: str,
         cell_expression: str,
+        grouping: str,
         # Group: str,
         day: str = None,
         accumulator: dict = None,
@@ -730,6 +733,8 @@ class GetAllIVs:
                     accumulator[m].append(cell_expression)
                 if m == "Group":
                     accumulator[m].append(Group)
+                if m == "grouping":
+                    accumulator[m].append(grouping)
                 if m == "code":
                     accumulator[m].append(code)
                 if m == "protocol":
@@ -760,6 +765,8 @@ class GetAllIVs:
                 if m == "genotype":
                     accumulator[m] = accumulator[m][0]
                 if m == "code":
+                    accumulator[m] = accumulator[m][0]
+                if m == "grouping":
                     accumulator[m] = accumulator[m][0]
                 if m == "Group":
                     # print("Accumulator[m]: ", accumulator[m], m)
@@ -813,9 +820,13 @@ class GetAllIVs:
                 Cell_accumulator = self.make_emptydict(spike_measures)
                 Cell_ID = self.make_cell(idx)
                 # cprint("g", f"    gspk: Cell: {str(Cell_ID):s}   idx: {idx:d}, cell_id: {self.dfs.iloc[idx]['cell_id']:s} ")
-                code = self.dfs.iloc[idx][self.group_mode]
+                if 'code' in self.dfs.columns:
+                    code = self.dfs.iloc[idx]['code']
+                else:
+                    code = ''
                 Animal_ID = self.dfs.iloc[idx]["Animal_ID"]
                 Group = self.dfs.iloc[idx]["Group"]
+                grouping = self.dfs.iloc[idx]["grouping"]
                 genotype = self.dfs.iloc[idx]["genotype"]
                 cell_expression = self.dfs.iloc[idx]["cell_expression"]
                 sex = self.dfs.iloc[idx]["sex"]
@@ -843,6 +854,7 @@ class GetAllIVs:
                         code=code,
                         genotype=genotype,
                         cell_expression=cell_expression,
+                        grouping=grouping,
                         sex=sex,
                         day=day,
                         accumulator=Cell_accumulator,
@@ -862,13 +874,27 @@ class GetAllIVs:
         return int(len(~np.isnan(a)))
 
     def group_by_sex_and_genotype(self, row):
-        if row.Cell_ID == []:
-            return row
         if row.sex == []:
             raise ValueError("sex is not defined")
         row.grouping = f"{row.sex:s}_{row.genotype:s}"
         return row
 
+    def group_by_expression(self, row):
+        if row.cell_expression in ['+', 'gFP+']:
+            row.cell_expression = 'GFP+'
+        if row.cell_expression in ['-']:
+            row.cell_expression = 'GFP-'
+        row.grouping = f"{row.cell_expression:s}"
+        return row
+
+    def group_by_expression_and_genotype(self, row):
+        if row.cell_expression in ['+', 'gFP+']:
+            row.cell_expression = 'GFP+'
+        if row.cell_expression in ['-']:
+            row.cell_expression = 'GFP-'
+        row.grouping = f"{row.cell_expression:s}_{row.genotype:s}"
+        return row
+    
     def group_by_code(self, row):
         row.grouping = f"{row.code:s}"
         return row
@@ -876,6 +902,26 @@ class GetAllIVs:
     def group_by_group(self, row):
         row.grouping = f"{row.Group:s}"
         return row
+
+    def set_grouping(self, df_accum):
+        if "code" in df_accum.columns.values:
+            df_accum = df_accum[df_accum.code != " "]  # remove unidentified groups
+        df_accum = df_accum.assign(grouping="")  # assign some groupings in a new column
+        if self.group_mode == "genotype":
+            df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
+        elif self.group_mode == "code":
+            df_accum = df_accum.apply(self.group_by_code, axis=1)
+        elif self.group_mode == "Group":
+            df_accum = df_accum.apply(self.group_by_group, axis=1)
+        elif self.group_mode == "cell_expression":
+            df_accum = df_accum.apply(self.group_by_expression, axis=1)
+        elif self.group_mode == "expression_and_genotype":
+            df_accum = df_accum.apply(self.group_by_expression_and_genotype, axis=1)
+        else:
+            raise ValueError(
+                f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
+            )
+        return df_accum
 
     def plot_summary_info(
         self, datatype: str, mode, code: str, pax: object, parentFigure=None
@@ -902,7 +948,7 @@ class GetAllIVs:
             raise ValueError(
                 f"plot_summary_info: Data type not in [spike, iv], got <{datatype:s}>"
             )
-        assert code in ["genotype", "code", "Group"]
+        assert code in ["genotype", "code", "Group", "cell_expression", "expression_and_genotype"]
 
         if datatype == "spike":
             print("getting spike data")
@@ -913,23 +959,8 @@ class GetAllIVs:
             use_measures = iv_measures
             df_accum = self._get_iv_info(mode)
             paxx = paxesb
+        df_accum = self.set_grouping(df_accum)
 
-        if "code" in df_accum.columns.values:
-            df_accum = df_accum[df_accum.code != " "]  # remove unidentified groups
-        # df_accum.replace(np.inf, np.nan, inplace=True)
-        # df_accum.replace( -np.inf, np.nan, inplace=True)
-        df_accum = df_accum.assign(grouping="")  # assign some groupings in a new column
-        print(f"df_accum in plot summary info 1 for {datatype:s} \n", df_accum.head())
-        if self.group_mode == "genotype":
-            df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
-        elif self.group_mode == "code":
-            df_accum = df_accum.apply(self.group_by_code, axis=1)
-        elif self.group_mode == "Group":
-            df_accum = df_accum.apply(self.group_by_group, axis=1)
-        else:
-            raise ValueError(
-                f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
-            )
         print("plot summary info: df_accum = \n", df_accum.head())
         self.print_census(df_accum)
 
@@ -1055,6 +1086,10 @@ class GetAllIVs:
                 df_accum = df_accum.apply(self.group_by_code, axis=1)
             elif self.group_mode == "Group":
                 df_accum = df_accum.apply(self.group_by_group, axis=1)
+            elif self.group_mode == "cell_expression":
+                df_accum = df_accum.apply(self.group_by_expression, axis=1)
+            elif self.group_mode == "expression_and_genotype":
+                df_accum = df_accum.apply(self.group_by_expression_and_genotype, axis=1)
             else:
                 raise ValueError(
                     f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
@@ -1224,6 +1259,7 @@ class GetAllIVs:
         code: str = None,
         genotype: str = None,
         cell_expression: str = None,
+        grouping: str=None,
         age: str = None,
         sex: str = None,
         day: str = None,
@@ -1245,6 +1281,7 @@ class GetAllIVs:
         cellmeas["sex"] = sex
         cellmeas["genotype"] = genotype
         cellmeas["cell_expression"] = cell_expression
+        cellmeas["grouping"] = grouping
         cellmeas["Date"] = day
         tracekeys = list(cellmeas.keys())
         for m in iv_measures:
@@ -1278,6 +1315,8 @@ class GetAllIVs:
                     accumulator[m].append(genotype)
                 if m == "cell_expression":
                     accumulator[m].append(cell_expression)
+                if m == "grouping":
+                    accumulator[m].append(grouping)
                 if m == "protocol":
                     accumulator[m].append(proto)
                 if m == "Ibreak":
@@ -1331,7 +1370,7 @@ class GetAllIVs:
                 Cell_accumulator = self.make_emptydict(iv_measures)
                 n_protocols = 0
                 Cell_ID = self.make_cell(idx)
-                code = self.dfs.iloc[idx][self.group_mode]
+                code = self.dfs.iloc[idx]['grouping']
                 # print("code: ", code)
                 # print("self.dfs columns (1262): ", self.dfs.columns)
 
@@ -1343,6 +1382,7 @@ class GetAllIVs:
                 cell_expression = self.dfs.iloc[idx]["cell_expression"]
                 Animal_ID = self.dfs.iloc[idx]["Animal_ID"]
                 Group = self.dfs.iloc[idx]["Group"]
+                grouping = self.dfs.iloc[idx]["grouping"]
                 try:
                     age = self.dfs.iloc[idx]["age"]
                 except:
@@ -1376,6 +1416,7 @@ class GetAllIVs:
                         Group=Group,
                         genotype=genotype,
                         cell_expression=cell_expression,
+                        grouping=grouping,
                         day=day,
                         accumulator=Cell_accumulator,
                     )
