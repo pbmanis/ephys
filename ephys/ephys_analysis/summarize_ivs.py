@@ -570,9 +570,10 @@ class GetAllIVs:
                     if "FI_Curve" not in list(dv[fidata].keys()):
                         continue
                     fi = dv[fidata]["FI_Curve"]
+                    imax = np.argmax(fi[1])   # only plot to max firing rate
                     lp = PF.axdict["A"].plot(
-                        fi[0] * 1e9,
-                        fi[1] / dv[fidata]["pulseDuration"],
+                        fi[0][:imax] * 1e9,
+                        fi[1][:imax] / dv[fidata]["pulseDuration"],
                         "-",
                         color=color,
                         linewidth=0.75,
@@ -1058,20 +1059,25 @@ class GetAllIVs:
                 raise ValueError(
                     f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
                 )
+            print(df_accum.keys())
 
             yd = df_accum[measure].replace([np.inf], np.nan)
-            x = pd.Series(df_accum[usecode])
+            x = pd.Series(df_accum['grouping'])
             sex = pd.Series(df_accum["sex"])
-            grouping = pd.Series(df_accum["Group"])
+            # grouping = pd.Series(df_accum["Group"])
             # print("grouping: ", grouping)
+            print("measure: ", measure)
+            print("x: ",  x)
+            print("y: ", yd)
 
             iasort = x.argsort()
             if np.all(np.isnan(yd)):
                 iax += 1
                 continue  # skip plot if no data
-            groups = sorted(list(set(grouping)))
+            groups = sorted(list(set(x)))
             # print("Groups: ", groups)
             dfm = pd.DataFrame({"Group": x, "measure": yd, "sex": sex})
+            print("dfm: \n", dfm.head())
             sns.violinplot(
                 data=dfm,
                 x="Group",
@@ -1106,7 +1112,7 @@ class GetAllIVs:
             # sns.boxplot(data = dfm, x='Group', y="measure",  ax=pax[i], palette=self.codecolors, orient='v', width=0.5, saturation=1.0)
             pax[iax].set_title(measure, fontsize=8)  # .replace('_', '\_'))
             pax[iax].set_ylabel(ylabels[measure], fontsize=7)
-            pax[iax].set_ylim(paxx[measure])
+            # pax[iax].set_ylim(paxx[measure])
             pax[iax].tick_params(axis="x", labelsize=8, labelrotation=45.0)
 
             iax += 1
