@@ -604,7 +604,7 @@ class MiniAnalyses:
         meas = {"Q": [], "A": [], "HWup": [], "HWdown": [], "HW": []}
         for j, i in enumerate(eventlist):
             ix = i + pkt  # self.idelay
-            if (ix + npost) < len(self.data) and (ix - npre) >= 0:
+            if (ix + npost) < len(self.data) and (ix - npre) >= 0 and np.count_nonzero(np.isnan(self.data) == npre+npost):
                 allevents[k, :] = data[ix - npre : ix + npost]
                 k = k + 1
         if k > 0:
@@ -686,19 +686,19 @@ class MiniAnalyses:
                     pad = allevents.shape[1] - ((ix - npre) - (ix + npost))
                     allevents[k, :] = data[itrace, (ix - npre) : (ix + npost)]
                     allevents[k, :] -= np.mean(allevents[k, 0:npre])
+                    event_trace[k] = [itrace, j]  # only add to the event list if data in window 
+                    k = k + 1
                 else:
                     allevents[k, :] = (
                         np.nan * allevents[k, :]
-                    )  # "no event in available window"
+                    )
+                    CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} event would be outside data window")
                     n_incomplete_events += 1
-                event_trace[k] = [itrace, j]
-                k = k + 1
         if n_incomplete_events > 0:
             CP.cprint(
                 "y",
-                f"    {n_incomplete_events:d} event(s) excluded because they were too close to the end of the trace",
+                f"    {n_incomplete_events:d} event(s) excluded because they were too close to the end of the trace\n",
             )
-
         self.avgevent = np.nanmean(allevents, axis=0)
         self.avgeventtb = avgeventtb
         self.Summary.average.avgeventtb = avgeventtb
@@ -791,7 +791,7 @@ class MiniAnalyses:
             tb,
             avgevent,
             time_past_peak=time_past_peak,
-            initdelay=initdelay,
+            fixed_delay=initdelay,
             debug=debug,
             label=label,
         )
@@ -882,18 +882,22 @@ class MiniAnalyses:
         self.ev_A_fitamp = np.zeros(
             nevents
         )  # fit amplitude - raw value can be quite different than true amplitude.....
-        self.ev_tau1 = np.zeros(nevents) * np.nan
-        self.ev_tau2 = np.zeros(nevents) * np.nan
-        self.ev_1090 = np.zeros(nevents) * np.nan
-        self.ev_2080 = np.zeros(nevents) * np.nan
+        def nanfill(n):
+            a = np.empty(n)
+            a.fill(np.nan)
+            return a
+        self.ev_tau1 = nanfill(nevents)
+        self.ev_tau2 = nanfill(nevents)
+        self.ev_1090 = nanfill(nevents)
+        self.ev_2080 = nanfill(nevents)
         self.ev_amp = (
-            np.zeros(nevents) * np.nan
+            nanfill(nevents)
         )  # measured peak amplitude from the event itself
         self.ev_Qtotal = (
-            np.zeros(nevents) * np.nan
+            nanfill(nevents)
         )  # measured charge of the event (integral of current * dt)
-        self.fiterr = np.zeros(nevents) * np.nan
-        self.bfdelay = np.zeros(nevents) * np.nan
+        self.fiterr = nanfill(nevents)
+        self.bfdelay = nanfill(nevents)
         self.best_fit = (
             np.zeros((nevents, self.Summary.average.avgeventtb.shape[0])) * np.nan
         )
@@ -917,6 +921,8 @@ class MiniAnalyses:
             self.Summary.event_trace_list
         ):  # trace list of events
             # print('onsetsj: ', len(onsets[j]))
+            if len(ev_tr) == 0:  # event in this trace could be outside data window, so skip
+                continue
             i_tr, j_tr = ev_tr
             te = self.timebase[onsets[i_tr][j_tr]]  # get current event time
             try:
@@ -933,39 +939,56 @@ class MiniAnalyses:
                     continue
             except:
                 pass
+            j_nan = np.count_nonzero(np.isnan(self.Summary.allevents[j, :]))
+            if j_nan > 0:
+                raise ValueError(f"Event array {j:d} has {j_nan:d} nan values in it, array length = {len(self.Summary.allevents[j, :]):d} and {len(onsets[i_tr]):d} onset values")
+            
             try:
                 max_event = np.max(self.sign * self.Summary.allevents[j, :])
             except:
-                print("minis_methods eventfitter")
-                print("j: ", j)
-                print("allev: ", self.Summary.allevents)
-                print("len allev: ", len(self.Summary.allevents), len(onsets))
-                raise ValueError("Fit failed)")
+                CP.cprint("r", "FITTING FAILED: ")
+                print("  minis_methods eventfitter")
+                print("  j: ", j)
+                print("  allev: ", self.Summary.allevents)
+                print("  len allev: ", len(self.Summary.allevents), len(onsets))
+                raise ValueError("  Fit failed)")
             res = self.event_fitter_lm(
-                self.Summary.average.avgeventtb,
-                self.Summary.allevents[j, :],
+                timebase=self.Summary.average.avgeventtb,
+                event=self.Summary.allevents[j, :],
                 time_past_peak=time_past_peak,
                 fixed_delay=1e-3,
+                label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
             )
             if res is None:  # skip events that won't fit
                 continue
 
-            self.bfdelay = res.values["fixed_delay"]
+            self.bfdelay[j] = res.values["fixed_delay"]
             self.avg_best_fit = res.best_fit
             self.ev_A_fitamp[j] = res.values["amp"]
             self.ev_tau1[j] = res.values["tau_1"]
             self.ev_tau2[j] = res.values["tau_2"]
-            self.bfdelay[j] = res.values["fixed_delay"]
+ 
+
+                # print(self.fitresult.params)
+                # print('amp: ', self.fitresult.params['amp'].value)
+                # print('tau_1: ', self.fitresult.params['tau_1'].value)
+                # print('tau_2: ', self.fitresult.params['tau_2'].value)
+                # print('risepower: ', self.fitresult.params['risepower'].value)
+                # print('fixed_delay: ', self.fitresult.params['fixed_delay'].value)
+                # print('y shape: ', np.shape(self.Summary.allevents[j,:]))
+                # print('x shape: ', np.shape(self.Summary.average.avgeventtb))
             self.fiterr[j] = self.doubleexp(
-                self.fitresult,
-                self.Summary.average.avgeventtb,
-                self.sign * self.Summary.allevents[j, :],
-                risepower=self.risepower,
-                fixed_delay=self.bfdelay[j],
-                mode=1,
+                y=self.Summary.allevents[j],
+                time=self.Summary.average.avgeventtb,
+                amp=self.fitresult.params['amp'].value,
+                tau_1=self.fitresult.params['tau_1'].value,
+                tau_2 = self.fitresult.params['tau_2'].value,
+                # self.sign * self.Summary.allevents[j, :],
+                risepower=self.fitresult.params['risepower'].value,
+                fixed_delay=self.fitresult.params['fixed_delay'].value, # self.bfdelay[j],
             )
             self.best_fit[j] = res.best_fit
-            self.best_decay_fit[j] = self.decay_fit  # from event_fitter
+            # self.best_decay_fit[j] = self.decay_fit  # from event_fitter
             self.ev_fitamp[j] = np.max(self.best_fit[j])
             self.ev_Qtotal[j] = self.dt_seconds * np.sum(
                 self.sign * self.Summary.allevents[j, :]
@@ -977,23 +1000,53 @@ class MiniAnalyses:
         )
         self.individual_events = True  # we did this step
 
+    def doubleexp(
+            self, 
+            time: np.ndarray,
+            amp: float,
+            tau_1: float,
+            tau_2: float,
+            risepower: float,
+            fixed_delay: float = 0.0,
+            y: np.ndarray=None,
+        ) -> np.ndarray:
+            """
+            Calculate a double exponential EPSC-like waveform. The rising phase
+            is taken to a power to make it sigmoidal
+            Note that the parameters p[1] and p[2] are multiplied, rather
+            than divided here, so the values must be inverted in the caller
+            from the "time constants"
+            """
+            # fixed_delay = p[3]  # allow to adjust; ignore input value
+            ix = np.argmin(np.fabs(time - fixed_delay))
+            tm = np.zeros_like(time)
+            # tau_2 = tau_1*tau_ratio
+            exp_arg = (time[ix:] - fixed_delay) / tau_1
+            exp_arg[exp_arg > 40] = 40 # limit values
+            # exp_arg = np.clip(exp_arg, np.log(1e-16), 0)
+            tm[ix:] = amp * (1.0 - np.exp(-exp_arg)) ** risepower
+            tm[ix:] *= np.exp(-(time[ix:] - fixed_delay) / tau_2)
+            if y is not None:  # return error - single value
+                tm = np.sqrt(np.sum((tm-y)*(tm-y)))
+            return tm
+        
     def event_fitter_lm(
         self,
         timebase: np.ndarray,
         event: np.ndarray,
         time_past_peak: float = 1e-4,
-        initdelay: Union[float, None] = 1e-3,
+        fixed_delay: float = 1e-3,
         debug: bool = False,
         label: str = "",
+        j:int = 0
     ) -> Tuple[dict, float]:
         """
         Fit the event using lmfit and LevenbergMarquardt
         Using lmfit is a bit more disciplined approach than just using scipy.optimize
 
         """
-
         def doubleexp_lm(
-            x: np.ndarray,
+            time: np.ndarray,
             amp: float,
             tau_1: float,
             tau_2: float,
@@ -1008,17 +1061,22 @@ class MiniAnalyses:
             from the "time constants"
             """
             # fixed_delay = p[3]  # allow to adjust; ignore input value
-            ix = np.argmin(np.fabs(x - fixed_delay))
-            tm = np.zeros_like(x)
+            try:
+                ix = np.argmin(np.fabs(time - fixed_delay))
+            except:
+                print('time: ', time)
+                print('fixed delay: ', fixed_delay)
+                raise(ValueError)
+            tm = np.zeros_like(time)
             # tau_2 = tau_1*tau_ratio
-            exp_arg = (x[ix:] - fixed_delay) / tau_1
+            exp_arg = (time[ix:] - fixed_delay) / tau_1
             exp_arg[exp_arg > 40] = 40 # limit values
             # exp_arg = np.clip(exp_arg, np.log(1e-16), 0)
             tm[ix:] = amp * (1.0 - np.exp(-exp_arg)) ** risepower
-            tm[ix:] *= np.exp(-(x[ix:] - fixed_delay) / tau_2)
+            tm[ix:] *= np.exp(-(time[ix:] - fixed_delay) / tau_2)
             return tm
 
-        evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=initdelay)
+        evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
 
         dexpmodel = lmfit.Model(doubleexp_lm)
         params = lmfit.Parameters()
@@ -1070,29 +1128,27 @@ class MiniAnalyses:
         )
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
-            value=initdelay,
+            value=fixed_delay,
             vary=True,
-            min=initdelay - 2e-3,
-            max=initdelay + 2e-3,
+            min=fixed_delay - 2e-3,
+            max=fixed_delay + 2e-3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
-        # CP.cprint("y", f"fitting: {str(params):s}")
-        self.fitresult = dexpmodel.fit(evfit, params, x=timebase, nan_policy="raise")
+        self.fitresult = dexpmodel.fit(evfit, params, nan_policy="raise", time=timebase)
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
         if debug:
             import matplotlib.pyplot as mpl
-
             mpl.figure()
             mpl.plot(timebase, evfit, "k-")
             mpl.plot(timebase, self.fitresult.best_fit, "r--")
             print(self.fitresult.fit_report())
-
             mpl.show()
             exit()
+
         return self.fitresult
 
     def set_fit_delay(self, event, initdelay: Union[float, None] = None):
@@ -1243,7 +1299,6 @@ class MiniAnalyses:
         offset2 = 0.0
         k = 0
         for i in evok:
-            #  print(self.ev_tau1, self.ev_tau2)
             offset = i * 3.0
             ev_bl = np.mean(self.Summary.allevents[i, 0:5])
             P2.axdict["A"].plot(
@@ -1258,12 +1313,12 @@ class MiniAnalyses:
                 "c--",
                 linewidth=0.3,
             )
-            P2.axdict["A"].plot(
-                self.avgeventtb,
-                self.sign * self.best_decay_fit[i] + offset,
-                "r--",
-                linewidth=0.3,
-            )
+            # P2.axdict["A"].plot(
+            #     self.avgeventtb,
+            #     self.sign * self.best_decay_fit[i] + offset,
+            #     "r--",
+            #     linewidth=0.3,
+            # )
             P3.axdict[idx[k]].plot(
                 self.avgeventtb,
                 self.Summary.allevents[i] + offset2,
@@ -1285,6 +1340,7 @@ class MiniAnalyses:
         if show:
             mpl.show()
 
+    # note: this is only called from cs.py, not otherwised used.
     def plots(
         self,
         data,
@@ -1426,13 +1482,11 @@ class MiniAnalyses:
                 label=label,
             )
             maxa = np.max(self.sign * self.Summary.average.avgevent)
-            # tpkmax = np.argmax(self.sign*self.template)
             if self.template is not None:
                 maxl = int(
                     np.min([len(self.template), len(self.Summary.average.avgeventtb)])
                 )
                 temp_tb = np.arange(0, maxl * self.dt_seconds, self.dt_seconds)
-                # print(len(self.avgeventtb[:len(self.template)]), len(self.template))
                 if i == 0:
                     label = "Template"
                 else:
@@ -1449,9 +1503,6 @@ class MiniAnalyses:
                 10, (1.0 / self.risepower) * np.log10(self.tau1 * sf)
             )  # correct for rise power
             tau2 = self.tau2 * sf
-            # print(dir(self.fitresult))
-            # print("fit: ", self.fitresult.fit())
-            # print("result: ", dir(self.fitresult.result))
             
             if i == 0:
                 label = "Best Fit:\nRise Power={0:.2f}\nTau1={1:.3f} ms\nTau2={2:.3f} ms\ndelay: {3:.3f} ms".format(
