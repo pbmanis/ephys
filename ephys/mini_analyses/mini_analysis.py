@@ -1,11 +1,15 @@
 import argparse
-import os
+import datetime
 import pickle
-import sys
+import textwrap
 from collections import OrderedDict
+from functools import reduce
+from operator import concat
 from pathlib import Path
 from typing import Union
 
+# get current git repo hash for this code
+import git
 import numpy as np
 import scipy.signal
 import scipy.stats
@@ -16,10 +20,16 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 
-CP = cprint.cprint
+repo = git.Repo(search_parent_directories=True)
+repo_sha = repo.head.object.hexsha[-12:]
 
+
+CP = cprint.cprint
+wrapper = textwrap.TextWrapper(width=120)
+import ephys.datareaders as DR
 import ephys.ephys_analysis as EP
 from ephys.tools import digital_filters as DF
+
 from . import minis_methods as minis
 
 """
@@ -77,7 +87,7 @@ class MiniAnalysis:
     def __init__(self, dataplan):
         """
         Perform detection of miniature synaptic events, and some analysis
-        
+
         Parameters
         ----------
         dataplan : object
@@ -169,26 +179,29 @@ class MiniAnalysis:
         """
         Wraps analysis of individual data sets, writes plots to
         a file named "summarydata%s.p % self.datasource" in pickled format.
-        
+
         Parameters
         ----------
         fofilename : str (no default)
             name of the PDF plot output file
         check : bool (default: False)
             If true, run just checks for the existence of the data files, but does no analysis.
-        
+
         Returns
         -------
         Nothing
 
         """
         print("analyze_all")
-        acqr = EP.acq4_reader.acq4_reader(
+        acqr = DR.acq4_reader.acq4_reader(
             dataname=self.clamp_name
         )  # creates a new instance every time - probably should just create one.
         summarydata = {}
+        max_n = 0
         with PdfPages(fofilename) as pdf:
             for index, mouse in enumerate(sorted(self.dataplan_params.keys())):
+                if max_n > 0 and index >= max_n:
+                    break
                 self.analyze_one_cell(
                     mouse,
                     pdf,
@@ -202,7 +215,7 @@ class MiniAnalysis:
                 # if index >= 0:
                 #     break
         if not check:
-            print("output file: ", self.shortdir, self.dataset, self.filterstring, mode)
+            # print("output file: ", self.shortdir, self.dataset, self.filterstring, mode)
             ofile = Path(
                 self.outputpath,
                 f"{self.dataset:s}_{str(self.filterstring):s}_{mode:s}.p",
@@ -262,10 +275,10 @@ class MiniAnalysis:
         """
         Provide analysis of one entry in the data table using the Andrade_Jonas algorithm
         and fitting distributions.
-        Generates a page with plots for all protocols and traces stacked, and 
+        Generates a page with plots for all protocols and traces stacked, and
         a second page of histograms with
         fits for the interval and amplitude distributions
-        
+
         Parameters
         ----------
         mouse : str (no default)
@@ -277,7 +290,7 @@ class MiniAnalysis:
         check : bool (default: False)
             If true, run just checks for the existence of the data files,
         but does no analysis.
-        
+
         Returns
         -------
             cell summary dictionary for the 'mouse' entry.
@@ -285,7 +298,7 @@ class MiniAnalysis:
         """
         print("analyze one cell")
         if arreader is None:
-            acqr = EP.acq4_reader.acq4_reader(
+            acqr = DR.acq4_reader.acq4_reader(
                 dataname=self.clamp_name
             )  # only if we don't already have one
         else:
@@ -304,10 +317,9 @@ class MiniAnalysis:
         if "sign" in self.dataplan_data:
             self.sign = int(self.dataplan_data["sign"])
 
-        print("\nMouse: ", mouse)
-
+        print("\nMouse ID, slice#, cell#: ", mouse)
         self.build_summary_dict(
-            genotype=mousedata["G"], EGFP=mousedata["EGFP"], mouse=mouse
+            genotype=mousedata["G"], EGFP=mousedata["EYFP"], mouse=mouse
         )
 
         if not check:
@@ -327,7 +339,7 @@ class MiniAnalysis:
                 return
             self.nprot = nprot
             self.dprot = dprot
-            
+
             exclude_traces = []
             print("    Exclusion list: ", mousedata["exclist"][nprot])
             exclude_traces = mousedata["exclist"][nprot]
@@ -336,15 +348,18 @@ class MiniAnalysis:
             fn = Path(self.basedatadir, mousedata["dir"])
             fx = fn.name
             ext = fn.suffix
+            protocolname = f"{mousedata['protocol_names'][nprot]:s}_{dprot:03d}"
             print("    sign: ", sign)
-            fn = Path(fn, f"{mousedata['protocol_names'][nprot]:s}_{dprot:03d}")
+            fn = Path(fn, protocolname)
             print("    Protocol file: ", fn)
+            if not fn.is_dir():
+                raise FileNotFoundError("Protocol File was not found!")
             split = fn.parts[-4:-1]
             acqr.setProtocol(fn)
             if not check:
-                print("   Protocol dataname: ", fn)
+                print("    Protocol dataname: ", fn)
                 if len(exclude_traces) > 0:
-                    CP("c", f"   Excluding traces: {str(exclude_traces):s}")
+                    CP("c", f"    Excluding traces: {str(exclude_traces):s}")
                 else:
                     print("   No traces excluded")
             else:
@@ -354,10 +369,17 @@ class MiniAnalysis:
                     CP("r", f"        dataname: {fn:s}")
                 continue
             acqr.getData()
+            acqr.data_array = np.array(acqr.data_array)
+
             oktraces = [
                 x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces
             ]
             data = np.array(acqr.data_array[oktraces])
+            # print(exclude_traces)
+            # print(oktraces)
+            # print(data.shape)
+            # print(dir(acqr))
+            # print(acqr.sample_rate)
             dt_seconds = acqr.sample_interval
             min_index = int(self.min_time / dt_seconds)
             if self.max_time > 0.0:
@@ -369,11 +391,23 @@ class MiniAnalysis:
             time_base = time_base - self.min_time
             if not datanameposted and not check:
                 self.P.figure_handle.suptitle(
-                    f"{mouse:s}\n{str(mousedata):s}\n{self.cell_summary['genotype']:s}",
+                    f"{mouse:s}\n{self.cell_summary['genotype']:s} {protocolname:s}",
                     fontsize=8,
                     weight="normal",
                 )
                 datanameposted = True
+                textdata = wrapper.wrap(str(mousedata))
+                textdata = "\n".join(textdata)
+                textdata.replace('"', "")
+                textdata.replace("'", "")
+                self.P.figure_handle.text(0.02, 0.05, s=f"{textdata:s}", fontsize=6)
+                self.P.figure_handle.text(
+                    0.95,
+                    0.01,
+                    s=f"Analyzed: {datetime.datetime.now().strftime('%d-%b-%Y %H:%M:%S'):s}\nmini_analysis sha: {repo_sha:s}",
+                    ha="right", va="bottom",
+                    fontsize=6,
+                )
 
             maxt = np.max(time_base)
 
@@ -396,7 +430,7 @@ class MiniAnalysis:
         # summarize the event and amplitude distributions
         # For the amplitude, the data are fit against normal,
         # skewed normal and gamma distributions.
-        print('plot hists: ')
+        print("Plotting histograms: ")
         self.plot_hists()
         # show to sceen or save plots to a file
         if pdf is None:
@@ -405,10 +439,15 @@ class MiniAnalysis:
             pdf.savefig(dpi=300)  # rasterized to 300 dpi is ok for documentation.
             # mpl.close()
 
-        print('plot individ events: ')
+        print("plot individual events: ")
+        # print(self.cell_summary.keys())
+        # print(self.cell_summary['averaged'])
+        # print(self.cell_summary['averaged'][nprot]['fit']['tau1'])
+        # print(self.cell_summary['protocols'][nprot])
         self.plot_individual_events(
             fit_err_limit=50.0,
-            title=f"{str(mousedata):s} {self.cell_summary['mouse']:s} {self.cell_summary['genotype']:s}",
+            title=f"{mouse:s} {self.cell_summary['genotype']:s} {protocolname:s}",
+              mousedata = self.cell_summary['mouse'],
             pdf=pdf,
         )
         # show to sceen or save plots to a file
@@ -416,8 +455,7 @@ class MiniAnalysis:
             mpl.show()
         else:
             pdf.savefig(dpi=300)  # rasterized to 300 dpi is ok for documentation.
-            mpl.close()        
-
+            mpl.close()
 
     def analyze_protocol_traces(
         self,
@@ -431,7 +469,7 @@ class MiniAnalysis:
     ):
         """
         perform mini analyzis on all the traces in one protocol
-        
+
         mode: str
             which event detector to use ()
         """
@@ -452,7 +490,7 @@ class MiniAnalysis:
         print("*** Mode: ", mode)
         if mode == "aj":
             aj = minis.AndradeJonas()
-            print("calling aj setup: ")
+            print("Calling setup for Andrade-Jonas (2012)")
             aj.setup(
                 ntraces=ntraces,
                 tau1=mousedata["rt"],
@@ -550,19 +588,19 @@ class MiniAnalysis:
         self.cell_summary["sign"].append(method.sign)
         self.cell_summary["threshold"].append(mousedata["thr"])
 
-        method.fit_individual_events() # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+        method.fit_individual_events()  # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
         # print(dir(method))
         # print(dir(method.individual_events))
-        self.cell_summary['indiv_amp'].append(method.ev_amp)
-        self.cell_summary['indiv_fitamp'].append(method.ev_fitamp)
-        self.cell_summary['indiv_tau1'].append(method.ev_tau1)
-        self.cell_summary['indiv_tau2'].append(method.ev_tau2)
-        self.cell_summary['indiv_fiterr'].append(method.fiterr)
-        self.cell_summary['fitted_events'].append(method.fitted_events)
-        self.cell_summary['indiv_Qtotal'].append(method.ev_Qtotal)
-        self.cell_summary['indiv_evok'].append(method.events_ok)
-        self.cell_summary['indiv_notok'].append(method.events_notok)
-        self.cell_summary['indiv_tb'].append(method.Summary.average.avgeventtb)
+        self.cell_summary["indiv_amp"].append(method.ev_amp)
+        self.cell_summary["indiv_fitamp"].append(method.ev_fitamp)
+        self.cell_summary["indiv_tau1"].append(method.ev_tau1)
+        self.cell_summary["indiv_tau2"].append(method.ev_tau2)
+        self.cell_summary["indiv_fiterr"].append(method.fiterr)
+        self.cell_summary["fitted_events"].append(method.fitted_events)
+        self.cell_summary["indiv_Qtotal"].append(method.ev_Qtotal)
+        self.cell_summary["indiv_evok"].append(method.events_ok)
+        self.cell_summary["indiv_notok"].append(method.events_notok)
+        self.cell_summary["indiv_tb"].append(method.Summary.average.avgeventtb)
         # self.cell_summary['allevents'].append(np.array(method.allevents))
         # self.cell_summary['best_fit'].append(np.array(method.best_fit))
         # self.cell_summary['best_decay_fit'].append(np.array(method.best_decay_fit))
@@ -595,8 +633,14 @@ class MiniAnalysis:
                 linewidth=0.25,
                 rasterized=self.rasterize,
             )
-            self.ax0.annotate(f"{i:3d}", (-0.015, yp), xycoords='data', horizontalalignment="right",
-                verticalalignment="center", fontsize=9)
+            self.ax0.annotate(
+                f"{i:3d}",
+                (-0.015, yp),
+                xycoords="data",
+                horizontalalignment="right",
+                verticalalignment="center",
+                fontsize=9,
+            )
             # self.ax0.plot(method.timebase[pkindex], data[i][pkindex] + yp,
             # 'ro', markersize=1.75, rasterized=self.rasterize)
             # self.ax0.plot(aj.timebase[aj.smpkindex], data[i][aj.smpkindex] + yp,
@@ -641,7 +685,7 @@ class MiniAnalysis:
         return tracelist, nused
 
     def plot_individual_events(
-        self, fit_err_limit=1000.0, tau2_range=2.5, title="", pdf=None
+        self, fit_err_limit=1000.0, tau2_range=2.5, mousedata:str="", title="", pdf=None
     ):
         P = PH.regular_grid(
             3,
@@ -650,14 +694,14 @@ class MiniAnalysis:
             figsize=(8.0, 8.0),
             showgrid=False,
             verticalspacing=0.1,
-            horizontalspacing=0.12,
+            horizontalspacing=0.1,
             margins={
                 "leftmargin": 0.12,
                 "rightmargin": 0.12,
-                "topmargin": 0.03,
-                "bottommargin": 0.1,
+                "topmargin": 0.06,
+                "bottommargin": 0.12,
             },
-            labelposition=(-0.12, 0.95),
+            labelposition=(-0.05, 0.95),
         )
         P.figure_handle.suptitle(title)
         all_evok = self.cell_summary[
@@ -668,8 +712,15 @@ class MiniAnalysis:
         trfit = []
         trdecfit = []
         scf = 1e12
-        csym = ['ko', 'rs', 'bx', 'c^', 'm*', 'yD']
-        facecolorlist = ["xkcd:black", "None", "xkcd:blue", "None", "xkcd:magenta", "xkcd:yellow"]
+        csym = ["ko", "rs", "bx", "c^", "m*", "yD"]
+        facecolorlist = [
+            "xkcd:black",
+            "None",
+            "xkcd:blue",
+            "None",
+            "xkcd:magenta",
+            "xkcd:yellow",
+        ]
         msize = 2
         alpha = 0.45
         for i in range(len(all_evok)):
@@ -677,31 +728,31 @@ class MiniAnalysis:
             facecolor = facecolorlist[i]
             for evok in all_evok[i]:  # for each ok event in that trace
                 P.axdict["A"].plot(
-                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
-                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    self.cell_summary["indiv_tau1"][i][evok] * 1e3,
+                    self.cell_summary["indiv_amp"][i][evok] * scf,
                     cs,
                     markersize=msize,
                     alpha=alpha,
                     markerfacecolor=facecolor,
                 )
                 P.axdict["B"].plot(
-                    self.cell_summary["indiv_tau2"][i][evok]*1e3,
-                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    self.cell_summary["indiv_tau2"][i][evok] * 1e3,
+                    self.cell_summary["indiv_amp"][i][evok] * scf,
                     cs,
                     markersize=msize,
                     alpha=alpha,
                     markerfacecolor=facecolor,
                 )
                 P.axdict["C"].plot(
-                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
-                    self.cell_summary["indiv_tau2"][i][evok]*1e3,
+                    self.cell_summary["indiv_tau1"][i][evok] * 1e3,
+                    self.cell_summary["indiv_tau2"][i][evok] * 1e3,
                     cs,
                     markersize=msize,
                     alpha=alpha,
                     markerfacecolor=facecolor,
                 )
                 P.axdict["D"].plot(
-                    self.cell_summary["indiv_amp"][i][evok]*scf,
+                    self.cell_summary["indiv_amp"][i][evok] * scf,
                     self.cell_summary["indiv_fiterr"][i][evok],
                     cs,
                     markersize=msize,
@@ -709,8 +760,8 @@ class MiniAnalysis:
                     markerfacecolor=facecolor,
                 )
                 P.axdict["H"].plot(
-                    self.cell_summary["indiv_tau1"][i][evok]*1e3,
-                    self.cell_summary["indiv_Qtotal"][i][evok]*1e3*scf,
+                    self.cell_summary["indiv_tau1"][i][evok] * 1e3,
+                    self.cell_summary["indiv_Qtotal"][i][evok] * 1e3 * scf,
                     cs,
                     markersize=msize,
                     alpha=alpha,
@@ -792,6 +843,31 @@ class MiniAnalysis:
         P.axdict["G"].set_xlim((-2.0, 25.0))
         P.axdict["E"].set_ylim((-100.0, 20.0))
         P.axdict["E"].set_xlim((-2.0, 25.0))
+        t1 = [x for y in self.cell_summary['indiv_tau1'] for x in y]
+        t2 = [x for y in self.cell_summary['indiv_tau2'] for x in y]
+        try:
+            np.nanmean(t1)
+        except:
+            print(len(self.cell_summary['indiv_tau1']))
+            print(self.cell_summary['indiv_tau1'])
+            raise ValueError
+        
+        P.axdict["F"].text(
+            1.0,
+            0.09,
+            s=f"tau_1 = {np.nanmean(t1)*1e3:5.2f} ms",
+            ha="right",
+            transform=P.axdict["F"].transAxes,
+            fontsize=8,
+        )
+        P.axdict["F"].text(
+            1.0,
+            0.03,
+            s=f"tau_2 = {np.nanmean(t2)*1e3:5.2f} ms",
+            ha="right",
+            transform=P.axdict["F"].transAxes,
+            fontsize=8,
+        )
 
         # put in averaged event too
         # self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb,
@@ -801,8 +877,20 @@ class MiniAnalysis:
         aev = self.cell_summary["averaged"]
         for i in range(len(aev)):
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avg"], "k-", linewidth=0.8)
-            P.axdict["F"].plot(aev[i]["tb"], aev[i]["best_fit"], "r--", linewidth=0.4)
+            P.axdict["F"].plot(aev[i]["tb"], aev[i]["best_fit"], "r--", linewidth=0.6)
 
+        textdata = wrapper.wrap(str(mousedata))
+        textdata = "\n".join(textdata)
+        textdata.replace('"', "")
+        textdata.replace("'", "")
+        self.P.figure_handle.text(0.02, 0.05, s=f"{textdata:s}", fontsize=6)
+        P.figure_handle.text(
+            0.95,
+            0.01,
+            s=f"Analyzed: {datetime.datetime.now().strftime('%d-%b-%Y %H:%M:%S'):s}\nmini_analysis sha: {repo_sha:s}",
+            ha="right", va="bottom",
+            fontsize=6,
+        )
         if pdf is None:
             mpl.show()
         # else:
@@ -863,14 +951,11 @@ class MiniAnalysis:
         mpl.show()
 
     def plot_hists(self):  # generate histogram of amplitudes for plots
-
         histBins = 50
         scf = 1e12
-        ampls = np.array(self.cell_summary["amplitudes"])*scf
+        ampls = np.array(self.cell_summary["amplitudes"]) * scf
         nevents = len(ampls)
-        amp, ampbins, amppa = self.axAmps.hist(
-            ampls, histBins, alpha=0.5, density=True
-        )
+        amp, ampbins, amppa = self.axAmps.hist(ampls, histBins, alpha=0.5, density=True)
         # fit to normal distribution
         ampnorm = scipy.stats.norm.fit(ampls)  #
         print(
@@ -1003,12 +1088,12 @@ class MiniAnalysis:
         self.axIntvls.legend(fontsize=6)
 
         # report results
-        print("   N events: {0:7d}".format(nintvls))
+        print("    N events: {0:7d}".format(nintvls))
         print(
-            "   Intervals: {0:7.1f} ms SD = {1:.1f} Frequency: {2:7.1f} Hz".format(
-                np.mean(self.cell_summary["intervals"]),
-                np.std(self.cell_summary["intervals"]),
-                1e3 / np.mean(self.cell_summary["intervals"]),
+            "    Intervals: {0:7.1f} ms SD = {1:.1f} ms Frequency: {2:7.1f} Hz".format(
+                np.mean(self.cell_summary["intervals"])*1e3,
+                np.std(self.cell_summary["intervals"])*1e3,
+                1.0 / np.mean(self.cell_summary["intervals"]),
             )
         )
         print(
@@ -1048,10 +1133,10 @@ class MiniAnalysis:
     def plot_setup(self):
         sizer = OrderedDict(
             [
-                ("A", {"pos": [0.12, 0.8, 0.35, 0.60]}),
+                ("A", {"pos": [0.12, 0.8, 0.4, 0.55], "labelpos": (-0.05, 1.05)}),
                 #  ('A1', {'pos': [0.52, 0.35, 0.35, 0.60]}),
-                ("B", {"pos": [0.12, 0.35, 0.08, 0.20]}),
-                ("C", {"pos": [0.60, 0.35, 0.08, 0.20]}),
+                ("B", {"pos": [0.12, 0.35, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
+                ("C", {"pos": [0.60, 0.35, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
             ]
         )  # dict elements are [left, width, bottom, height] for the axes in the plot.
         n_panels = len(sizer.keys())
@@ -1079,7 +1164,6 @@ class MiniAnalysis:
 
 
 if __name__ == "__main__":
-
     # example of how to use the analysis in conjunction with a data plan
     # usually this kind of code will be in a separate directory where the specific
     # runner and results for a given experiment are located.
