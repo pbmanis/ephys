@@ -54,7 +54,7 @@ class DataPlan():
             exec(open(fn+ext).read(), data)
             #execfile(fn + ext, data)  old python 2.7 version
             self.datasource = datadictname
-            print(data.keys())
+            print("ephys.tools.data_plan, data keys: ", data.keys())
             # self.datasets = data['datasets']  # convenience
             self.datadir = data['basepath']
             self.outputpath = data['outputpath']
@@ -213,7 +213,7 @@ class DataPlan():
                 elif datatype == 'str':
                     self.excel_as_df[colname] = pd.Series(['' for x in range(dflength)], index=self.excel_as_df.index)
                 else:
-                    raise ValueError('add result column needs datatype of "float" or "str", got: %s' % str(datatypepyt))
+                    raise ValueError('add result column needs datatype of "float" or "str", got: %s' % str(datatype))
 
     def post_result(self, dataname, dataid, colname, value):
         """
