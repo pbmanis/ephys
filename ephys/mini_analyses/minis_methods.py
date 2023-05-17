@@ -123,8 +123,6 @@ class ClementsBekkers(MiniAnalyses):
 
         """
         starttime = timeit.default_timer()
-        if self.template is None:
-            self._make_template()
 
         ## Strip out meta-data for faster computation
         D = self.sign * data.view(np.ndarray)
@@ -224,7 +222,6 @@ class ClementsBekkers(MiniAnalyses):
         """
 
         starttime = timeit.default_timer()
-        # Strip out meta-data for faster computation
         NDATA = len(D)
         # Prepare a bunch of arrays we'll need later
         N = len(T)
@@ -234,12 +231,7 @@ class ClementsBekkers(MiniAnalyses):
         sumD2 = self._rollingSum(np.power(D,2), N)
         sumTD = scipy.signal.correlate(D, T, mode="valid", method="direct")
 
-        # sumTD2 = np.zeros_like(sumD)
-        # for i in range(len(D)-N+1):
-        #     sumTD2[i] = np.multiply(D[i : i + N], T).sum()
-        # print(np.mean(sumTD-sumTD2))
         # compute scale factor, offset at each location:
-        ## compute scale factor, offset at each location:
         scale = (sumTD - (sumT * sumD / N)) / (sumT2 - (np.power(sumT, 2) / N))
         offset = (sumD - (scale * sumT)) / N
 
@@ -248,11 +240,20 @@ class ClementsBekkers(MiniAnalyses):
             sumD2
             + (np.power(scale, 2) * sumT2)
             + (N * np.power(offset,2))
-            - 2.0 * ((scale * sumTD) + (offset * sumD) - (scale * offset * sumT))
+            - 2.0 * (scale * offset * sumT)
+            + (offset * sumD) 
+            - (scale * offset * sumT)
         )
         ## finally, compute error and detection criterion
 
-        stderror = np.sqrt(SSE / (N - 1))
+        try:
+            stderror = np.sqrt(SSE / (N - 1))
+        except:
+            print("len d: ", len(D), " len T: ", len(T))
+            print("len sumd2: ", sumD2, sumT2, sumTD, sumD, sumT)
+            print("SSE: ", np.array(SSE)*1e12)
+            print("N: ", N, " NDATA", NDATA)
+            raise ValueError
         DetCrit = scale / stderror
         endtime = timeit.default_timer() - starttime
         self.runtime = endtime
@@ -310,19 +311,22 @@ class ClementsBekkers(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + self.idelay
+                #+ self.idelay
             )
 
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
         # self.summarize(self.data)
         endtime = timeit.default_timer() - self.starttime
-
+        # print("cb identify events: len onsets:", len(self.onsets))
         # import matplotlib.pyplot as mpl
+        # f, ax = mpl.subplots(3,1)
+        # print(criterion.shape)
+        # print(self.onsets)
         # for i in range(criterion.shape[0]):
-        #     mpl.plot(self.timebase, criterion[i])
-        #     mpl.plot(self.onsets[i]*self.dt, self.sdthr*np.ones_like(self.onsets[i]), 'ro')
-        # mpl.plot([self.timebase[0], self.timebase[-1]], [self.sdthr, self.sdthr], 'r--')
+        #     ax[0].plot(self.timebase[:len(criterion[i])], criterion[i])
+        #     ax[1].plot(self.onsets[i]*self.dt_seconds, self.sdthr*np.ones_like(self.onsets[i]), 'ro')
+        # ax[2].plot([self.timebase[0], self.timebase[-1]], [self.sdthr, self.sdthr], 'r--')
         # mpl.show()
         # self.summarize(self.data)
         if verbose:

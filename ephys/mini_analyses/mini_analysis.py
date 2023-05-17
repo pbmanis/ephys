@@ -19,6 +19,7 @@ from matplotlib import rc
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
+import seaborn as sns
 
 repo = git.Repo(search_parent_directories=True)
 repo_sha = repo.head.object.hexsha[-12:]
@@ -125,13 +126,16 @@ class MiniAnalysis:
 
         self.filter = False
         self.filterstring = "no_notch_filter"
-        try:
-            self.filter = dataplan.data["notch_filter"]
-            if self.filter:
-                self.filterstring = "notch_filtered"
-                CP("r", "*** NOTCH FILTER ENABLED ***")
-        except KeyError:
-            raise ValueError("No Notch filter specified")
+        # try:
+        #     self.filter = dataplan.data["notch_filter"]
+        #     if self.filter:
+        #         self.filterstring = "notch_filtered"
+        #         CP("r", "*** NOTCH FILTER ENABLED ***")
+        #     else:
+        #         CP("r", "*** NOTCH FILTER DISABLED ***")
+
+        # except KeyError:
+        #     raise ValueError("No Notch filter specified")
             # self.filter = False
             # self.filterstring = "no_notch_filter"
         # moved this to mousedata (e.g., per mouse).
@@ -175,7 +179,7 @@ class MiniAnalysis:
         else:
             return med
 
-    def analyze_all(self, fofilename, check=False, mode="aj", engine="cython"):
+    def analyze_all(self, fofilename, check=False, method="aj", engine="cython"):
         """
         Wraps analysis of individual data sets, writes plots to
         a file named "summarydata%s.p % self.datasource" in pickled format.
@@ -208,7 +212,7 @@ class MiniAnalysis:
                     maxprot=10,
                     arreader=acqr,
                     check=check,
-                    mode=mode,
+                    method=method,
                     engine=engine,
                 )
                 summarydata[mouse] = self.cell_summary
@@ -218,7 +222,7 @@ class MiniAnalysis:
             # print("output file: ", self.shortdir, self.dataset, self.filterstring, mode)
             ofile = Path(
                 self.outputpath,
-                f"{self.dataset:s}_{str(self.filterstring):s}_{mode:s}.p",
+                f"{self.dataset:s}_{str(self.filterstring):s}_{method:s}.p",
             )
             fout = str(ofile)
             print("outfile: ", ofile)
@@ -269,7 +273,7 @@ class MiniAnalysis:
         maxprot=10,
         arreader=None,
         check=False,
-        mode="aj",
+        method="aj",
         engine="cython",
     ):
         """
@@ -412,7 +416,8 @@ class MiniAnalysis:
             maxt = np.max(time_base)
 
             tracelist, nused = self.analyze_protocol_traces(
-                mode=mode,
+                method=method,
+                engine=engine,
                 data=data,
                 time_base=time_base,
                 maxt=maxt,
@@ -459,7 +464,8 @@ class MiniAnalysis:
 
     def analyze_protocol_traces(
         self,
-        mode: str = "cb",
+        method: str = "cb",
+        engine: str="cython",
         data: Union[object, None] = None,
         time_base: Union[np.ndarray, None] = None,
         maxt: float = 0.0,
@@ -487,8 +493,9 @@ class MiniAnalysis:
         tasks = []
         for i in tracelist:
             tasks.append(i)
-        print("*** Mode: ", mode)
-        if mode == "aj":
+        print("*** Method: ", method, " engine: ", engine)
+
+        if method == "aj":
             aj = minis.AndradeJonas()
             print("Calling setup for Andrade-Jonas (2012)")
             aj.setup(
@@ -496,6 +503,27 @@ class MiniAnalysis:
                 tau1=mousedata["rt"],
                 tau2=mousedata["decay"],
                 template_tmax=maxt,
+                template_pre_time = 0.001,
+                dt_seconds=dt_seconds,
+                delay=0.,  # delay before analysis into each trace/sweep
+                sign=self.sign,
+                risepower=1.0,
+                min_event_amplitude=float(
+                    mousedata["min_event_amplitude"]
+                ),  # self.min_event_amplitude,
+                threshold=float(mousedata["thr"]),
+                lpf=mousedata["lpf"],
+                hpf=mousedata["hpf"],
+                notch=mousedata["notch"],
+                notch_Q=mousedata["notch_Q"],
+            )
+        elif method == "cb":
+            cb = minis.ClementsBekkers()
+            cb.setup(
+                ntraces=ntraces,
+                tau1=mousedata["rt"],
+                tau2=mousedata["decay"],
+                template_tmax=3.0 * mousedata["decay"],
                 dt_seconds=dt_seconds,
                 delay=0.0,
                 sign=self.sign,
@@ -509,30 +537,12 @@ class MiniAnalysis:
                 notch=mousedata["notch"],
                 notch_Q=mousedata["notch_Q"],
             )
-        elif mode == "cb":
-            cb = minis.ClementsBekkers()
-            cb.setup(
-                ntraces=ntraces,
-                tau1=mousedata["rt"],
-                tau2=mousedata["decay"],
-                template_tmax=3.0 * mousedata["decay"],
-                dt_seconds=dt_seconds,
-                delay=0.0,
-                sign=self.sign,
-                risepower=1.0,
-                min_event_amplitude=self.min_event_amplitude,
-                threshold=float(mousedata["thr"]),
-                lpf=mousedata["lpf"],
-                hpf=mousedata["hpf"],
-                notch=mousedata["notch"],
-                notch_Q=mousedata["notch_Q"],
-            )
-            cb.set_cb_engine("cython")
+            cb.set_cb_engine(engine)
         else:
-            raise ValueError("Mode must be aj or cb for event detection")
+            raise ValueError("Method must be aj or cb for event detection")
 
         # now detect events...
-        if mode == "aj":
+        if method == "aj":
             for i in tracelist:
                 aj.reset_filtering()
                 aj.deconvolve(
@@ -544,7 +554,7 @@ class MiniAnalysis:
 
             # print(aj.Summary)
             method = aj
-        elif mode == "cb":
+        elif method == "cb":
             for i in tracelist:
                 cb.reset_filtering()
                 cb.cbTemplateMatch(
@@ -556,11 +566,22 @@ class MiniAnalysis:
             cb.identify_events(outlier_scale=3.0, order=101)
             cb.summarize(np.array(data))
             method = cb
+        
+        # method.summarize(np.array(data))  # then trim
+        # method.fit_individual_events(fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+        method.re_average_events()
+        method.fit_individual_events()  # on the data just analyzed
+
         self.cell_summary["averaged"].extend(
             [
                 {
                     "tb": method.Summary.average.avgeventtb,
                     "avg": method.Summary.average.avgevent,
+                    "stdevent": method.Summary.average.stdevent,
+                    "avgevent25": method.Summary.average.avgevent25,
+                    "avgevent75": method.Summary.average.avgevent75,
+                    "allevents": method.Summary.allevents,
+                    "clean_event_trace_list": method.Summary.clean_event_trace_list,
                     "fit": {
                         "amplitude": method.Summary.average.Amplitude,
                         "tau1": method.Summary.average.fitted_tau1,
@@ -588,7 +609,7 @@ class MiniAnalysis:
         self.cell_summary["sign"].append(method.sign)
         self.cell_summary["threshold"].append(mousedata["thr"])
 
-        method.fit_individual_events()  # fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
+        #
         # print(dir(method))
         # print(dir(method.individual_events))
         self.cell_summary["indiv_amp"].append(method.ev_amp)
@@ -617,11 +638,11 @@ class MiniAnalysis:
             ypq = (ntr * i) * self.ypqspan
             linefit = np.polyfit(time_base, dat, 1)
             refline = np.polyval(linefit, time_base)
-            jtr = method.Summary.event_trace_list[
-                i
-            ]  # get trace and event number in trace
-            if len(jtr) == 0:
-                continue
+            # jtr = method.Summary.event_trace_list[
+            #     i
+            # ]  # get trace and event number in trace
+            # if len(jtr) == 0:
+            #     continue
             peaks = method.Summary.smpkindex[i]
             onsets = method.Summary.onsets[i]
             onset_times = np.array(onsets) * method.dt_seconds
@@ -674,7 +695,7 @@ class MiniAnalysis:
                 label="Threshold ({0:4.2f}) SD".format(aj.sdthr),
             )
             self.axdec.plot(
-                aj.timebase[aj.onsets] - aj.idelay,
+                aj.timebase[aj.onsets],
                 ypq + aj.Crit[aj.onsets],
                 "y^",
                 label="Deconv. Peaks",
@@ -875,9 +896,24 @@ class MiniAnalysis:
         #     'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
         #     'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven}])
         aev = self.cell_summary["averaged"]
+        P.axdict["F"].plot([np.min(aev[i]["tb"]), np.max(aev[i]["tb"])], 
+                            [0,0], "k--", linewidth=0.3)
         for i in range(len(aev)):
+            P.axdict["F"].fill_between(aev[i]["tb"], 
+                                       aev[i]["avg"] - aev[i]["stdevent"], 
+                                       aev[i]["avg"] + aev[i]["stdevent"],
+                                       color='gray', alpha=0.2)
+            
+            for j in range(len(aev[i]["allevents"])):
+                # if np.sum(aev[i]["allevents"][j]) > 0:
+                #     continue
+                if aev[i]["clean_event_trace_list"][j]:
+                    P.axdict["F"].plot(aev[i]["tb"],aev[i]["allevents"][j], 'b-', linewidth=0.3, alpha=0.1)
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avg"], "k-", linewidth=0.8)
-            P.axdict["F"].plot(aev[i]["tb"], aev[i]["best_fit"], "r--", linewidth=0.6)
+            # sns.lineplot(x=aev[i]["tb"], y = aev[i]["allevents"], estimator="median", errorbar=('ci', 90), ax=P.axdict["F"])
+            P.axdict["F"].plot(aev[i]["tb"], aev[i]["avgevent25"], "m-", linewidth=0.5)
+            P.axdict["F"].plot(aev[i]["tb"], aev[i]["avgevent75"], "c-", linewidth=0.5)
+            P.axdict["F"].plot(aev[i]["tb"], self.sign*aev[i]["best_fit"], "r--", linewidth=0.6)
 
         textdata = wrapper.wrap(str(mousedata))
         textdata = "\n".join(textdata)
@@ -1178,12 +1214,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-m",
-        "--mode",
+        "--method",
         type=str,
         default="aj",
-        dest="mode",
+        dest="method",
         choices=["aj", "cb"],
         help="just do one",
+    )
+    parser.add_argument(
+        "-e",
+        "--engine",
+        type=str,
+        default="cython",
+        dest="engine",
+        choices=["cython", "python", "numba"],
+        help="set detection engine typ (default: cython)",
     )
     parser.add_argument(
         "-v", "--view", action="store_false", help="Turn off pdf for single run"
@@ -1227,6 +1272,7 @@ if __name__ == "__main__":
                     maxprot=10,
                     check=args.check,
                     mode=args.mode,
+                    engine=args.engine,
                 )
         else:
             MI.analyze_one_cell(
