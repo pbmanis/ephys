@@ -311,7 +311,7 @@ class ClementsBekkers(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                #+ self.idelay
+                + int(self.template_pre_time/self.dt_seconds)
             )
 
             endtime = timeit.default_timer() - self.starttime
@@ -424,7 +424,7 @@ class AndradeJonas(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + self.idelay
+                + int(self.template_pre_time/self.dt_seconds)
             )
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
@@ -555,7 +555,7 @@ class RSDeconvolve(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + self.idelay
+                #+ self.idelay
             )
 
             endtime = timeit.default_timer() - self.starttime

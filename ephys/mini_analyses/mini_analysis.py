@@ -503,7 +503,7 @@ class MiniAnalysis:
                 tau1=mousedata["rt"],
                 tau2=mousedata["decay"],
                 template_tmax=maxt,
-                template_pre_time = 0.001,
+                template_pre_time = 1e-3, # seconds
                 dt_seconds=dt_seconds,
                 delay=0.,  # delay before analysis into each trace/sweep
                 sign=self.sign,
@@ -512,6 +512,7 @@ class MiniAnalysis:
                     mousedata["min_event_amplitude"]
                 ),  # self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
+                analysis_window=mousedata["analysis_window"],
                 lpf=mousedata["lpf"],
                 hpf=mousedata["hpf"],
                 notch=mousedata["notch"],
@@ -532,6 +533,7 @@ class MiniAnalysis:
                     mousedata["min_event_amplitude"]
                 ),  # self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
+                analysis_window=mousedata["analysis_window"],
                 lpf=mousedata["lpf"],
                 hpf=mousedata["hpf"],
                 notch=mousedata["notch"],
@@ -584,9 +586,11 @@ class MiniAnalysis:
                     "clean_event_trace_list": method.Summary.clean_event_trace_list,
                     "fit": {
                         "amplitude": method.Summary.average.Amplitude,
-                        "tau1": method.Summary.average.fitted_tau1,
-                        "tau2": method.Summary.average.fitted_tau2,
+                        "tau_1": method.Summary.average.fitted_tau1,
+                        "tau_2": method.Summary.average.fitted_tau2,
                         "risepower": method.risepower,
+                        "best_fit": method.Summary.average.best_fit,
+                        
                     },
                     "best_fit": method.avg_best_fit,
                     "risetenninety": method.Summary.average.risetenninety,
@@ -876,7 +880,7 @@ class MiniAnalysis:
         P.axdict["F"].text(
             1.0,
             0.09,
-            s=f"tau_1 = {np.nanmean(t1)*1e3:5.2f} ms",
+            s=f"tau_1 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_1']:.3f} ms",
             ha="right",
             transform=P.axdict["F"].transAxes,
             fontsize=8,
@@ -884,7 +888,7 @@ class MiniAnalysis:
         P.axdict["F"].text(
             1.0,
             0.03,
-            s=f"tau_2 = {np.nanmean(t2)*1e3:5.2f} ms",
+            s=f"tau_1 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_2']:.3f} ms",
             ha="right",
             transform=P.axdict["F"].transAxes,
             fontsize=8,
@@ -913,7 +917,7 @@ class MiniAnalysis:
             # sns.lineplot(x=aev[i]["tb"], y = aev[i]["allevents"], estimator="median", errorbar=('ci', 90), ax=P.axdict["F"])
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avgevent25"], "m-", linewidth=0.5)
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avgevent75"], "c-", linewidth=0.5)
-            P.axdict["F"].plot(aev[i]["tb"], self.sign*aev[i]["best_fit"], "r--", linewidth=0.6)
+            P.axdict["F"].plot(aev[i]["tb"], aev[i]["fit"]["best_fit"], "r--", linewidth=0.6)
 
         textdata = wrapper.wrap(str(mousedata))
         textdata = "\n".join(textdata)
