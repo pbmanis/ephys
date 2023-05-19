@@ -110,7 +110,7 @@ class MiniAnalysis:
         self.max_time = dataplan.max_time
         self.clamp_name = "Clamp1.ma"
         self.protocol_name = "minis"
-        print("mini_analysis dataplan parameters: ", self.dataplan_params)
+        # print("mini_analysis dataplan parameters: ", self.dataplan_params)
         try:
             self.global_threshold = dataplan.data["global_threshold"]
             self.override_threshold = True
@@ -493,7 +493,7 @@ class MiniAnalysis:
         tasks = []
         for i in tracelist:
             tasks.append(i)
-        print("*** Method: ", method, " engine: ", engine)
+        print("*** Method: ", method, " engine: ", engine, "notch: ", mousedata["notch"])
 
         if method == "aj":
             aj = minis.AndradeJonas()
