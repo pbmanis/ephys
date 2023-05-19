@@ -211,25 +211,39 @@ def NotchFilter(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
         Qf = Q * np.ones(len(notchf))  # all Qf are the same (so bandwidth varies)
     for i, f0 in enumerate(notchf):
         b, a = spSignal.iirnotch(notchf[i], Qf[i], samplefreq)
-        signal = spSignal.filtfilt(b, a, signal, axis=-1) # , zi=None)
+        signal = spSignal.filtfilt(b, a, signal) # , zi=None)
     return signal
 
-def NotchFilterZP(signal, notchf:Union[list, tuple]=[60.], Q:float=90., QScale=True, samplefreq=None):
+
+
+#freq, h = signal.freqz(b, a, fs=fs)
+
+def NotchFilterComb(signal, notchf:Union[list, tuple]=[60.], Q:float=90., QScale=True, samplefreq=None):
     """
-    Zero Phase
+    Zero Phase Sos notch
     """
     assert samplefreq is not None
+    # resample the signal so that the timing matches the notch frequency
+    uint = int(samplefreq/notchf[0])
+    fnew = (uint+1)*notchf[0]
+    xnew = np.arange(0, np.max(len(signal)/fnew), 1./fnew)
+    xold = np.arange(0, np.max(len(signal)/samplefreq), 1./samplefreq)
+    signaln = np.interp(xnew, xold, signal)
     w0 = np.array(notchf)/(float(samplefreq)/2.0)  # all W0 for the notch frequency
     if QScale:
         bw = w0[0]/Q
         Qf = (w0/bw)**np.sqrt(2)  # Bandwidth is constant, Qf varies
     else:
         Qf = Q * np.ones(len(notchf))  # all Qf are the same (so bandwidth varies)
-    signalo = signal.copy()
-    for i, f0 in enumerate(notchf):
-        b, a = spSignal.iirnotch(w0[i], Qf[i])
-        signalo = spSignal.filtfilt(b, a, signalo, axis=-1)
+    # for i, f0 in enumerate(notchf):
+    #     b, a = spSignal.iirnotch(w0[i], Qf[i])
+    #     signalo = spSignal.filtfilt(b, a, signalo, axis=-1)
+    # return signalo
+    b, a = spSignal.iircomb(notchf[0], Qf[0], ftype='notch', fs=fnew)
+    signaln = spSignal.filtfilt(b, a, signaln)
+    signalo = np.interp(xold, xnew, signaln)
     return signalo
+    
     
 
 def downsample(data, n, axis=0, xvals='subsample'):
@@ -241,7 +255,7 @@ def downsample(data, n, axis=0, xvals='subsample'):
     ma = None
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
         ma = data
-        data = data.view(ndarray)
+        data = data.view(np.ndarray)
         
     
     if hasattr(axis, '__len__'):
