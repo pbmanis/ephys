@@ -37,6 +37,7 @@ class Filtering:
     HPF_applied: bool = False
     LPF_frequency: Union[float, None] = None
     HPF_frequency: Union[float, None] = None
+    Notch_applied: bool=False
 
 
 def def_empty_list():
@@ -320,6 +321,7 @@ class MiniAnalyses:
         data : the filtered data (as a copy)
         """
         assert not self.filtering.HPF_applied  # block repeated application of filtering
+        CP.cprint("y", f"minis_methods_common, HPF data:  {hpf:f}")
         if hpf is None or hpf == 0.0:
             return data
         if len(data.shape) == 1:
@@ -367,8 +369,10 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
+        assert not self.filtering.Notch_applied  # block repeated application of filtering
+        CP.cprint("y", f"minis_methods_common, Notch filter data:  {str(notch):s}")
 
-        if notch is None:
+        if notch is None or len(notch) == 0:
             return data
         if len(data.shape) == 1:
             ndata = data.shape[0]
@@ -385,6 +389,43 @@ class MiniAnalyses:
         self.filtering.Notch_applied = True
         return data.copy()
 
+    def NotchFilterComb(
+        self, data: np.ndarray, notch: Union[list, None] = None, notch_Q=30.0
+    ) -> np.ndarray:
+        """
+        Notch filter the data with a comb filter
+        This routine does a comb filter with the first listed notch frequency.
+
+        Parameters
+        ----------
+        data : the  array of data
+        notch: list : list of notch frequencies, in Hz
+        notch_Q : the Q of the filter (higher is narrower)
+
+        Return
+        ------
+        data : the filtered data (as a copy)
+        """
+        assert not self.filtering.Notch_applied  # block repeated application of filtering
+        CP.cprint("y", f"minis_methods_common, Notch comb filter data:  {notch[0]:f}")
+
+        if notch is None or len(notch) == 0:
+            return data
+        if len(data.shape) == 1:
+            ndata = data.shape[0]
+        else:
+            ndata = data.shape[1]
+        data = dfilt.NotchFilterComb(
+            data,
+            notchf=notch,
+            Q=notch_Q,
+            QScale=False,
+            samplefreq=1.0 / self.dt_seconds,
+        )
+        self.filtering.notch = notch
+        self.filtering.Notch_applied = True
+        return data.copy()
+    
     def prepare_data(self, data: np.array):
         """
         This function prepares the incoming data for the mini analyses.
@@ -431,8 +472,10 @@ class MiniAnalyses:
             data = self.LPFData(data, lpf=self.lpf)
         if self.hpf is not None and isinstance(self.hpf, float):
             data = self.HPFData(data, hpf=self.hpf)
-        if self.notch is not None and isinstance(self.notch, list):
-            data = self.NotchData(data, notch=self.notch, notch_Q=self.notch_Q)
+        # print("NOTCH: ", self.notch, type(self.notch))
+        if self.notch is not None and (isinstance(self.notch, list) or isinstance(self.notch, np.ndarray)):
+            # CP.cprint("r", "Comb filter notch")
+            data = self.NotchFilterComb(data, notch=self.notch, notch_Q=self.notch_Q)
         self.data = data
         self.timebase = self.timebase[jmin:jmax]
         # self.template_tmax = np.max(self.timebase)
