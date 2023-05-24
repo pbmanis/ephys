@@ -73,6 +73,7 @@ class AverageEvent:
     fitted: bool = False  # Set True if data has been fitted
     fitted_tau1: float = np.nan  # rising time constant for 2-exp fit
     fitted_tau2: float = np.nan  # falling time constant for 2-exp fit
+    fitted_tau_ratio: float=np.nan
     best_fit: object = None  # best fit trace
     Amplitude: float = np.nan  # amplitude from the fit
     avg_fiterr: float = np.nan  # fit error
@@ -283,7 +284,7 @@ class MiniAnalyses:
         data : the filtered data (as a copy)
         """
         assert not self.filtering.LPF_applied  # block repeated application of filtering
-        CP.cprint("y", f"minis_methods_common, LPF data:  {lpf:f}")
+        CP.cprint("y", f"        minis_methods_common, LPF data:  {lpf:f}")
         if lpf is not None:
             # CP.cprint('y', f"     ... lpf at {lpf:f}")
             if lpf > 0.49 / self.dt_seconds:
@@ -321,7 +322,7 @@ class MiniAnalyses:
         data : the filtered data (as a copy)
         """
         assert not self.filtering.HPF_applied  # block repeated application of filtering
-        CP.cprint("y", f"minis_methods_common, HPF data:  {hpf:f}")
+        CP.cprint("y", f"        minis_methods_common, HPF data:  {hpf:f}")
         if hpf is None or hpf == 0.0:
             return data
         if len(data.shape) == 1:
@@ -370,7 +371,7 @@ class MiniAnalyses:
         data : the filtered data (as a copy)
         """
         assert not self.filtering.Notch_applied  # block repeated application of filtering
-        CP.cprint("y", f"minis_methods_common, Notch filter data:  {str(notch):s}")
+        CP.cprint("y", f"         minis_methods_common, Notch filter data:  {str(notch):s}")
 
         if notch is None or len(notch) == 0:
             return data
@@ -746,7 +747,7 @@ class MiniAnalyses:
                     accept
                     and np.sum(
                         data[itrace][ix : (ix + npost)]
-                        - np.mean(data[itrace][(ix - npre) : ix])
+                        - np.nanmean(data[itrace][(ix - npre) : ix])
                     )
                     > 0.0
                 ):  # check sign of charge
@@ -852,6 +853,7 @@ class MiniAnalyses:
             )
             self.Summary.average.fitted_tau1 = self.fitted_tau1
             self.Summary.average.fitted_tau2 = self.fitted_tau2
+            self.Summary.average.fitted_tau_ratio = self.fitted_tau_ratio
             self.Summary.average.best_fit = self.avg_best_fit
             self.Summary.average.Amplitude = self.Amplitude
             self.Summary.average.avg_fiterr = self.avg_fiterr
@@ -919,6 +921,7 @@ class MiniAnalyses:
         time_past_peak = 2.5e-4
         self.fitted_tau1 = np.nan
         self.fitted_tau2 = np.nan
+        self.fitted_tau_ratio = np.nan
         self.Amplitude = np.nan
         self.avg_fiterr = np.nan
         self.bfdelay = np.nan
@@ -948,9 +951,9 @@ class MiniAnalyses:
         self.Amplitude = res.values["amp"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
-        self.fitted_tau_ratio = (
-            res.values["tau_2"] / res.values["tau_1"]
-        )  # res.values["tau_ratio"]
+        self.fitted_tau_ratio = res.values["tau_ratio"] #(
+           # res.values["tau_2"] / res.values["tau_1"]
+       # )  # res.values["tau_ratio"]
         self.bfdelay = res.values["fixed_delay"]
         self.avg_best_fit = self.sign * res.best_fit  # self.fitresult.best_fit
         # f, ax = mpl.subplots(1,1)
@@ -1039,6 +1042,7 @@ class MiniAnalyses:
 
         self.ev_tau1 = nanfill(nevents)
         self.ev_tau2 = nanfill(nevents)
+        self.ev_tau_ratio = nanfill(nevents)
         self.ev_1090 = nanfill(nevents)
         self.ev_2080 = nanfill(nevents)
         self.ev_amp = nanfill(nevents)  # measured peak amplitude from the event itself
@@ -1121,6 +1125,7 @@ class MiniAnalyses:
             self.ev_A_fitamp[j] = res.values["amp"]
             self.ev_tau1[j] = res.values["tau_1"]
             self.ev_tau2[j] = res.values["tau_2"]
+            self.ev_tau_ratio[j] = res.values["tau_ratio"]
 
             # print(self.fitresult.params)
             # print('amp: ', self.fitresult.params['amp'].value)
@@ -1136,6 +1141,7 @@ class MiniAnalyses:
                 amp=self.fitresult.params["amp"].value,
                 tau_1=self.fitresult.params["tau_1"].value,
                 tau_2=self.fitresult.params["tau_2"].value,
+                tau_ratio=self.fitresult.params["tau_ratio"].value,
                 # self.sign * self.Summary.allevents[j, :],
                 risepower=self.fitresult.params["risepower"].value,
                 fixed_delay=self.fitresult.params[
@@ -1165,7 +1171,8 @@ class MiniAnalyses:
         amp: float,
         tau_1: float,
         tau_2: float,
-        risepower: float,
+        tau_ratio: float=1.0,
+        risepower: float=1.0,
         fixed_delay: float = 0.0,
         y: np.ndarray = None,
     ) -> np.ndarray:
@@ -1191,7 +1198,7 @@ class MiniAnalyses:
                 f"Fitting function failed: {amp:.3e}, tau1: {tau_1:.4e}, risepower: {risepower:.2f}"
             )
             raise ValueError()
-        tm[ix:] *= np.exp(-tx / tau_2)
+        tm[ix:] *= np.exp(-tx / (tau_1*tau_ratio)) # this gets constrained
         if y is not None:  # return error - single value
             tm = np.sqrt(np.sum((tm - y) * (tm - y)))
         return tm
@@ -1237,8 +1244,9 @@ class MiniAnalyses:
                         int(0.005 - fixed_delay) / self.dt_seconds
                     ]  # print("itau2: ", itau2)
             tau2 = (itau2[0] - fixed_delay) * self.dt_seconds
-        if tau2 <= 2 * tau1:
+        if tau2 <= 1.5 * tau1:
             tau2 = 5 * tau1  # move it further out
+        
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
 
@@ -1246,9 +1254,6 @@ class MiniAnalyses:
             tau1min = tau1 / 10.0
             if tau1min < 1e-4:
                 tau1min = 1e-4
-            tau1_maxfac = 3.0
-            tau2_maxfac = 5.0
-            tau2_minfac = 1.0 / 20
             params["amp"] = lmfit.Parameter(
                 name="amp", value=25.0e-12, min=0.0, max=50e-9, vary=True
             )
@@ -1256,9 +1261,6 @@ class MiniAnalyses:
             tau1min = tau1 / 10.0
             if tau1min < 1e-4:
                 tau1min = 1e-4
-            tau1_maxfac = 10.0
-            tau2_maxfac = 20.0
-            tau2_minfac = 1.0 / 20.0
             # params["amp"] = lmfit.Parameter(
             #     name="amp", value=1.0e-3, min=0.0, max=50e-3, vary=True
             # )
@@ -1275,24 +1277,21 @@ class MiniAnalyses:
             name="tau_1",
             value=tau1,
             min=tau1min,
-            max=5 * tau1,  # tau1 * tau1_maxfac,
+            max=6,  # tau1 * tau1_maxfac,
             vary=True,
         )
-        # params["tau_ratio"] = lmfit.Parameter(
-        #     name="tau_ratio",
-        #     value = self.tau2/self.tau1,
-        #     min = 1.0,
-        #     max = 50.0,
-        #     vary = True,
-        # )
+        params["tau_ratio"] = lmfit.Parameter(
+            name="tau_ratio",
+            value = 1.5,
+            min=1.2,
+            max=50.,
+            vary=True,
+        )
         params["tau_2"] = lmfit.Parameter(
             name="tau_2",
-            # expr="tau_1*tau_ratio"
-            value=tau2,
-            min=tau1,  # tau2 * tau2_minfac,
-            max=15 * tau2,  # tau2 * tau2_maxfac,
-            vary=True,
+            expr = "tau_1*tau_ratio",
         )
+
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,

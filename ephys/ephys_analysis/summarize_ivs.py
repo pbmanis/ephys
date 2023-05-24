@@ -210,6 +210,7 @@ paxes["maxrate"] = [0, 150]
 paxes["age"] = [0, 1000]
 paxes["FR_Slope"] = [0, 1000]
 
+p_skip_plot = ["Ibreak", "FR_Slope", "Irate"]
 
 # graph limits for iv_measures
 paxesb = dict.fromkeys(iv_measures)
@@ -478,7 +479,7 @@ class GetAllIVs:
             1,
             1,
             order="columnsfirst",
-            figsize=(11.0, 8.0),
+            figsize=(11.0, 11.0),
             showgrid=False,
             verticalspacing=0.08,
             horizontalspacing=0.08,
@@ -496,6 +497,7 @@ class GetAllIVs:
         # now do the FI curves and the two subfigures
         # along with their analyses
         self.plot_FI(self.PFig)
+
         P1 = self.plot_IV_info(self.mode, code=self.group_mode, parentFigure=self.PFig)
         P2 = self.plot_spike_info(
             self.mode, code=self.group_mode, parentFigure=self.PFig
@@ -550,6 +552,9 @@ class GetAllIVs:
             # print("   ", self.dfs.columns)
             dx = self.dfs.iloc[idx]["Spikes"]  # get the spikes dict
             code = self.dfs.iloc[idx]['grouping']
+            cn = code.split("_")
+            code = cn[0]
+            genotype = cn[1]
             if isinstance(code, list):
                 code = code[0]
             if code not in self.code_names:
@@ -884,6 +889,8 @@ class GetAllIVs:
             row.cell_expression = 'GFP+'
         if row.cell_expression in ['-']:
             row.cell_expression = 'GFP-'
+        if row.cell_expression in [' ']:
+            row.cell_expression = 'ND'
         row.grouping = f"{row.cell_expression:s}"
         return row
 
@@ -892,6 +899,8 @@ class GetAllIVs:
             row.cell_expression = 'GFP+'
         if row.cell_expression in ['-']:
             row.cell_expression = 'GFP-'
+        if row.cell_expression in [' ']:
+            row.cell_expression = 'ND'
         row.grouping = f"{row.cell_expression:s}_{row.genotype:s}"
         return row
     
@@ -906,6 +915,7 @@ class GetAllIVs:
     def set_grouping(self, df_accum):
         if "code" in df_accum.columns.values:
             df_accum = df_accum[df_accum.code != " "]  # remove unidentified groups
+            df_accum = df_accum[df_accum.cell_expression != "ND"]  # remove unidentified cells
         df_accum = df_accum.assign(grouping="")  # assign some groupings in a new column
         if self.group_mode == "genotype":
             df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
@@ -951,7 +961,7 @@ class GetAllIVs:
         assert code in ["genotype", "code", "Group", "cell_expression", "expression_and_genotype"]
 
         if datatype == "spike":
-            print("getting spike data")
+            # print("getting spike data")
             df_accum = self._get_spike_info(mode)
             use_measures = spike_measures
             paxx = paxes
@@ -1079,6 +1089,8 @@ class GetAllIVs:
                 #     len(codes),
                 # )
                 continue
+            if measure in p_skip_plot:
+                continue
             df_accum = df_accum_main.assign(grouping="")
             if self.group_mode == "genotype":
                 df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
@@ -1094,7 +1106,7 @@ class GetAllIVs:
                 raise ValueError(
                     f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
                 )
-            print(df_accum.keys())
+            # print(df_accum.keys())
 
             yd = df_accum[measure].replace([np.inf], np.nan)
             x = pd.Series(df_accum['grouping'])
@@ -1102,8 +1114,8 @@ class GetAllIVs:
             # grouping = pd.Series(df_accum["Group"])
             # print("grouping: ", grouping)
             print("measure: ", measure)
-            print("x: ",  x)
-            print("y: ", yd)
+            # print("x: ",  x)
+            # print("y: ", yd)
 
             iasort = x.argsort()
             if np.all(np.isnan(yd)):
@@ -1112,7 +1124,7 @@ class GetAllIVs:
             groups = sorted(list(set(x)))
             # print("Groups: ", groups)
             dfm = pd.DataFrame({"Group": x, "measure": yd, "sex": sex})
-            print("dfm: \n", dfm.head())
+            # print("dfm: \n", dfm.head())
             sns.violinplot(
                 data=dfm,
                 x="Group",
@@ -1167,7 +1179,7 @@ class GetAllIVs:
         """
         # create the plot grid for the spike analysis
         self.Pspikes = PH.regular_grid(
-            4,
+            3,
             4,
             order="columnsfirst",
             showgrid=False,
@@ -1194,22 +1206,19 @@ class GetAllIVs:
 
         iax = 0
         for i, measure in enumerate(spike_measures):
-            if measure in no_average:
+            if measure in no_average:  # skip data that is not relevant
+                continue
+            if measure in p_skip_plot:  # skip measures that are not useful
                 continue
             pax[iax].tick_params(axis="x", labelsize=8, labelrotation=45.0)
             if measure == "AdaptRatio":
                 if pax[iax].get_legend() is not None:
                     mpl.setp(pax[iax].get_legend().get_texts(), fontsize="5")
                     pax[iax].legend(bbox_to_anchor=(1.02, 1.0))
-                    # handles, labels = pax[iax].get_legend_handles_labels()
-                    # # print("labels: ", labels)
-                    # handles = [handles[1], handles[3]]
-                    # labels = [labels[2], labels[3]]
-                    # pax[iax].legend(handles, labels, bbox_to_anchor=(1.02, 1.5), fontsize=8)
             else:
                 if pax[iax].get_legend() is not None:
                     pax[iax].get_legend().remove()
-                iax += 1
+            iax += 1
 
         self.spike_dataframe = df_accum
         return self.Pspikes

@@ -588,6 +588,7 @@ class MiniAnalysis:
                         "amplitude": method.Summary.average.Amplitude,
                         "tau_1": method.Summary.average.fitted_tau1,
                         "tau_2": method.Summary.average.fitted_tau2,
+                        "tau_ratio": method.Summary.average.fitted_tau_ratio,
                         "risepower": method.risepower,
                         "best_fit": method.Summary.average.best_fit,
                         
@@ -776,6 +777,7 @@ class MiniAnalysis:
                     alpha=alpha,
                     markerfacecolor=facecolor,
                 )
+
                 P.axdict["D"].plot(
                     self.cell_summary["indiv_amp"][i][evok] * scf,
                     self.cell_summary["indiv_fiterr"][i][evok],
@@ -860,6 +862,9 @@ class MiniAnalysis:
         P.axdict["B"].set_ylabel(r"Amp (pA)")
         P.axdict["C"].set_xlabel(r"$\tau_1$ (ms)")
         P.axdict["C"].set_ylabel(r"$\tau_2$ (ms)")
+        P.axdict["C"].plot([0, 10], 
+                            [0, 10], linewidth=0.5,
+                                   linestyle='--', color='k')
         P.axdict["D"].set_xlabel(r"Amp (pA)")
         P.axdict["D"].set_ylabel(r"Fit Error (cost)")
         P.axdict["H"].set_xlabel(r"$\tau_1$ (ms)")
@@ -888,12 +893,16 @@ class MiniAnalysis:
         P.axdict["F"].text(
             1.0,
             0.03,
-            s=f"tau_1 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_2']:.3f} ms",
+            s=f"tau_2 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_2']:.3f} ms",
             ha="right",
             transform=P.axdict["F"].transAxes,
             fontsize=8,
         )
 
+        # print(1e3*self.cell_summary['averaged'][0]['fit']['tau_1'])
+        # print(1e3*self.cell_summary['averaged'][0]['fit']['tau_2'])
+        # print(1e3*self.cell_summary['averaged'][0]['fit']['tau_ratio'])
+        
         # put in averaged event too
         # self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb,
         # 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
@@ -902,7 +911,7 @@ class MiniAnalysis:
         aev = self.cell_summary["averaged"]
         P.axdict["F"].plot([np.min(aev[i]["tb"]), np.max(aev[i]["tb"])], 
                             [0,0], "k--", linewidth=0.3)
-        for i in range(len(aev)):
+        for i in range(len(aev)):  # show data from all protocols
             P.axdict["F"].fill_between(aev[i]["tb"], 
                                        aev[i]["avg"] - aev[i]["stdevent"], 
                                        aev[i]["avg"] + aev[i]["stdevent"],
