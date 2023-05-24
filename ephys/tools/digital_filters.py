@@ -5,6 +5,7 @@ Routines for digital filtering
 import numpy as np
 import scipy.signal as spSignal
 from typing import Union
+import MetaArray
 
 def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
     """Filter with Butterworth low pass, using time-causal lfilter 
