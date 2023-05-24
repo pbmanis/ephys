@@ -38,6 +38,7 @@ class MiniCalcs():
             dt_seconds=rate,
             delay=0.0,
             template_tmax=rate * (jmax - 1),
+            template_pre_time=1.0e-3,
             threshold=self.parent.thresh_reSD,
             sign=self.parent.sign,
             eventstartthr=None,
@@ -79,6 +80,7 @@ class MiniCalcs():
             dt_seconds=rate,
             delay=0.0,
             template_tmax=np.max(self.parent.tb),
+            template_pre_time=1.0e-3,
             threshold=self.parent.thresh_reSD,
             sign=self.parent.sign,
             eventstartthr=None,
@@ -135,6 +137,7 @@ class MiniCalcs():
             dt_seconds=rate,
             delay=0.0,
             template_tmax=np.max(self.parent.tb),  # taus are for template
+            template_pre_time=1e-3,
             sign=self.parent.sign,
             risepower=4.0,
             threshold=self.parent.thresh_reSD,
@@ -215,27 +218,27 @@ class MiniCalcs():
         self.parent.scatter = []
         self.parent.crits = []
 
-        if minimethod.Summary.onsets is not None and len(minimethod.Summary.onsets) > 0:
-            # self.parent.scatter.append(
-            #     self.parent.dataplot.plot(
-            #         self.parent.tb[minimethod.Summary.peaks[self.parent.current_trace]] * 1e3,
-            #         self.parent.current_data[minimethod.Summary.peaks[self.parent.current_trace]],
-            #         pen=None,
-            #         symbol="o",
-            #         symbolPen=None,
-            #         symbolSize=10,
-            #         symbolBrush=(255, 0, 0, 255),
-            #     )
-            # )
-            pass
-            # self.parent.scatter.append(self.parent.dataplot.plot(self.parent.tb[minimethod.peaks]*1e3,
-            # np.array(minimethod.amplitudes),
-            #           pen = None, symbol='o', symbolPen=None, symbolSize=5,
-            # symbolBrush=(255, 0, 0, 255)))
+        if minimethod.Summary.onsets is not None and len(minimethod.Summary.onsets[self.parent.current_trace]) > 0:
+            self.parent.scatter.append(
+                self.parent.dataplot.plot(
+                    self.parent.tb[minimethod.Summary.peaks[self.parent.current_trace]],
+                    self.parent.current_data[minimethod.Summary.peaks[self.parent.current_trace]],
+                    pen=None,
+                    symbol="o",
+                    symbolPen=None,
+                    symbolSize=10,
+                    symbolBrush=(255, 0, 0, 255),
+                )
+            )
+
+            self.parent.scatter.append(self.parent.dataplot.plot(self.parent.tb[minimethod.Summary.peaks[self.parent.current_trace]],
+            np.array(minimethod.Summary.amplitudes[self.parent.current_trace]),
+                      pen = None, symbol='o', symbolPen=None, symbolSize=5,
+            symbolBrush=(255, 0, 0, 255)))
 
         self.parent.crits.append(
             self.parent.dataplot2.plot(
-                self.parent.tb[: len(minimethod.Criterion[self.parent.current_trace])] * 1e3,
+                self.parent.tb[: len(minimethod.Criterion[self.parent.current_trace])],
                 minimethod.Criterion[self.parent.current_trace],
                 pen="r",
             )
@@ -277,7 +280,7 @@ class MiniCalcs():
         # make all events in one long array broken by nans
         allevents = self.parent.method.Summary.allevents
         allev = np.concatenate((allevents*1e12, np.array([np.nan]*allevents.shape[0])[:, None]), axis=1)
-        x = np.concatenate((avg.avgeventtb*1e3, [np.nan]))
+        x = np.concatenate((avg.avgeventtb, [np.nan]))
         x = np.reshape(np.tile(x, allevents.shape[0]), (allevents.shape[0], x.shape[0]))
         allev = np.reshape(allev, (1, np.prod(allev.shape)))[0]
         x = np.reshape(x, (1, np.prod(x.shape)))[0]
@@ -287,9 +290,9 @@ class MiniCalcs():
         l = self.parent.fitplot.plot(x, allev, pen=pg.mkPen({'color': "#66F", 'width': 0.25}),
             connect="finite")
         self.parent.fitlines.append(l)
-        l = self.parent.fitplot.plot(avg.avgeventtb*1e3, avg.avgevent*1e12, pen="w")
+        l = self.parent.fitplot.plot(avg.avgeventtb, avg.avgevent*1e12, pen="w")
         self.parent.fitlines.append(l)
-        l = self.parent.fitplot.plot(avg.avgeventtb*1e3, self.parent.method.avg_best_fit*1e12, pen="r")
+        l = self.parent.fitplot.plot(avg.avgeventtb, self.parent.method.avg_best_fit*1e12, pen="r")
         self.parent.fitlines.append(l)
         self.direct_60Hz()
 

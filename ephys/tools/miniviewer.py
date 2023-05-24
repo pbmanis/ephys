@@ -22,18 +22,19 @@ import ephys.tools.minicalcs as minicalcs
 from ..datareaders import acq4_reader
 from ..ephys_analysis import rm_tau_analysis, spike_analysis
 from ..mini_analyses import minis_methods, minis_methods_common
-from . import digital_filters as FILT
+from . import digital_filters
 from . import functions as FN
 
 
 all_modules = [
-    spike_analysis,
     acq4_reader,
+    spike_analysis,
     rm_tau_analysis,
-    FILT,
+    digital_filters,
     minis_methods,
     minis_methods_common,
     minicalcs,
+    FN,
 ]
 
 
@@ -252,7 +253,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             else:
                 notchfreqs = [self.notch_frequency]
             CP.cprint("y", f"Notch Filtering")
-            self.mod_data[self.current_trace]  = FILT.NotchFilterZP(
+            self.mod_data[self.current_trace]  = digital_filters.NotchFilterComb(
                 self.mod_data[self.current_trace] ,
                 notchf=notchfreqs,
                 Q=self.notch_Q,
@@ -261,22 +262,22 @@ class MiniViewer(pg.QtWidgets.QWidget):
             )
         if self.LPF != "None":
             # CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
-#            self.mod_data[self.current_trace]  = FILT.SignalFilter_LPFBessel(
-            self.mod_data[self.current_trace]  = FILT.SignalFilter_SOS(
+#            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
+            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_SOS(
                 self.mod_data[self.current_trace] , self.LPF, 
                 samplefreq=self.AR.sample_rate[0], NPole=16,
             )
-        # self.mod_data = FILT.SignalFilter_LPFBessel(
+        # self.mod_data = digital_filters.SignalFilter_LPFBessel(
         #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
         #     )
         
 
         self.curves.append(
             self.dataplot.plot(
-                self.AR.time_base[:imax] * 1e3,
+                self.AR.time_base[:imax],
                 # self.AR.traces[i,:],
                 self.mod_data[self.current_trace] ,
-                pen=pg.intColor(1),
+                pen=pg.intColor(2),
             )
         )
         self.current_data = self.mod_data[self.current_trace]
@@ -362,12 +363,12 @@ class MiniViewer(pg.QtWidgets.QWidget):
             ev = self.compare_data[self.data_set]["events"]  # list of trials, spots
             tr = self.current_trace  # which spot/trace?
             trd = ev[0][tr]  # get the trace data
-            for line in np.array(trd["peaktimes"][0]) * 1e3 * rate:
+            for line in np.array(trd["peaktimes"][0]) * rate:
                 self.lines.append(pg.InfiniteLine(line, pen="m"))
                 self.dataplot.addItem(self.lines[-1])
             self.scatter.append(
                 self.dataplot.plot(
-                    np.array(trd["peaktimes"][0]) * 1e3 * rate,
+                    np.array(trd["peaktimes"][0]) * rate,
                     trd["smpks"][0],
                     pen=None,
                     symbol="t",
