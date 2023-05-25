@@ -55,14 +55,43 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.HPF = 1.0  # high pass filtering
         self.tb = None
         self.notch_60HzHarmonics = [60.0, 120.0, 180.0, 240.0]
-        self.notch_60HzHarmonics_4K = [60.0, 120.0, 180.0, 240.0, 300., 360., 420., 480.02, 
-                    660., 720.2, 780., 900., 960.4, 1020.03, 1140.04, 1260.5, 1380.5, 1500.6, 1620.6, 1740.6, 1860.6,
-                    1980.6, 2100.8, 2220.8, 2340.8, 2460.8, 2581.0, 2701.0, 2821.0, 2941.0, 3061.2,
-                    
-                    4000.]
+        self.notch_60HzHarmonics_4K = [
+            60.0,
+            120.0,
+            180.0,
+            240.0,
+            300.0,
+            360.0,
+            420.0,
+            480.02,
+            660.0,
+            720.2,
+            780.0,
+            900.0,
+            960.4,
+            1020.03,
+            1140.04,
+            1260.5,
+            1380.5,
+            1500.6,
+            1620.6,
+            1740.6,
+            1860.6,
+            1980.6,
+            2100.8,
+            2220.8,
+            2340.8,
+            2460.8,
+            2581.0,
+            2701.0,
+            2821.0,
+            2941.0,
+            3061.2,
+            4000.0,
+        ]
         self.notch_frequency = "None"
         self.notch_Q = 90.0
-        
+
         self.curves = []
         self.crits = []
         self.scatter = []
@@ -80,7 +109,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.minis_falltau = self.tau2
         self.thresh_reSD = 3.0
         self.ZC_mindur = 1e-3  # sec
-        self.ZC_minPeak = 5e-12 # A
+        self.ZC_minPeak = 5e-12  # A
         self.sign = -1
         self.minis_sign = "-"
         self.scalar = 1
@@ -94,7 +123,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.filelistpath = Path(currentpath, "ephys/tools/data/files.toml")
         self.maxPreviousFiles = 10  # limit of # of files held in history of filenames
         self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
-        self.MINC = minicalcs.MiniCalcs(parent=self)
+        self.MINC = None # don't set until we need it. = minicalcs.MiniCalcs(parent=self)
 
     def getProtocolDir(self, reload_last=False):
         current_filename = None
@@ -105,10 +134,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
         else:
             if self.filelistpath.is_file():
                 file_dict = toml.load(self.filelistpath)
-                current_filename = file_dict['MostRecent']
+                current_filename = file_dict["MostRecent"]
                 sel = current_filename
             else:
-                print('No Previous Files Found')
+                print("No Previous Files Found")
                 return
         if sel is None:
             return
@@ -119,8 +148,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             for p in self.pdirs:
                 self.clampfiles.append(p)
                 # print(p)
-        wtparts = Path(current_filename).parts
-        wt = "/".join(wtparts[-4:])
+            wtparts = Path(current_filename).parts
+            wt = "/".join(wtparts[-4:])
         self.fileName = current_filename
         self.win.setWindowTitle(wt)
         self.w1.slider.setValue(0)
@@ -139,16 +168,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
             print(file_dict)
             if "Previous" not in list(file_dict.keys()):
                 file_dict["Previous"] = []
-            file_dict['MostRecent'] = str(self.fileName)
-            if self.fileName not in file_dict['Previous']:
-                file_dict['Previous'].insert(0, str(self.fileName))
-            file_dict['Previous'] = file_dict['Previous'][:self.maxPreviousFiles]
+            file_dict["MostRecent"] = str(self.fileName)
+            if self.fileName not in file_dict["Previous"]:
+                file_dict["Previous"].insert(0, str(self.fileName))
+            file_dict["Previous"] = file_dict["Previous"][: self.maxPreviousFiles]
 
         else:  # create a new file
-            file_dict = {
-                'MostRecent': str(self.fileName),
-                'Previous': []
-            }
+            file_dict = {"MostRecent": str(self.fileName), "Previous": []}
         with open(self.filelistpath, "w") as fh:
             toml.dump(file_dict, fh)
 
@@ -161,7 +187,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.date = date
         self.slice = sliceno
         self.cell = cellno
-        if date.find('_') < 0:
+        if date.find("_") < 0:
             self.date = date + "_000"
         if isinstance(sliceno, int):
             self.slice = "slice_{0:03d}".format(sliceno)
@@ -205,6 +231,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def update_threshold(self):
         self.threshold_line.setPos(self.thresh_reSD)
+        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
         trmap1 = {
             "CB": self.MINC.CB_update,
             "AJ": self.MINC.AJ_update,
@@ -213,10 +240,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
         }
         trmap1[self.last_method]()  # threshold/scroll, just update
 
-    def update_traces(self, value=None, update_analysis=False):
+    def update_traces(self, value=None):
         if isinstance(value, int):
             self.current_trace = value
-        trmap2 = {"CB": self.MINC.CB, "AJ": self.MINC.AJ, "ZC": self.MINC.ZC, "RS": self.MINC.RS}
+
         if len(self.AR.traces) == 0:
             return
         self.current_trace = int(self.w1.x)
@@ -241,9 +268,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
         imax = len(self.AR.data_array[self.current_trace])
         self.imax = imax
         self.maxT = self.AR.sample_rate[0] * imax
-        self.mod_data[self.current_trace] = self.AR.data_array[self.current_trace, :imax]
+        self.mod_data[self.current_trace] = self.AR.data_array[
+            self.current_trace, :imax
+        ]
         # detrend traces
-        self.mod_data[self.current_trace]  = FN.adaptiveDetrend(self.mod_data[self.current_trace] , x=self.AR.time_base[:imax], threshold=3.0)
+        self.mod_data[self.current_trace] = FN.adaptiveDetrend(
+            self.mod_data[self.current_trace], x=self.AR.time_base[:imax], threshold=3.0
+        )
 
         if self.notch_frequency != "None":
             if self.notch_frequency == "60HzHarm":
@@ -253,8 +284,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             else:
                 notchfreqs = [self.notch_frequency]
             CP.cprint("y", f"Notch Filtering")
-            self.mod_data[self.current_trace]  = digital_filters.NotchFilterComb(
-                self.mod_data[self.current_trace] ,
+            self.mod_data[self.current_trace] = digital_filters.NotchFilterComb(
+                self.mod_data[self.current_trace],
                 notchf=notchfreqs,
                 Q=self.notch_Q,
                 QScale=False,
@@ -262,31 +293,41 @@ class MiniViewer(pg.QtWidgets.QWidget):
             )
         if self.LPF != "None":
             # CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
-#            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
-            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_SOS(
-                self.mod_data[self.current_trace] , self.LPF, 
-                samplefreq=self.AR.sample_rate[0], NPole=16,
+            #            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
+            self.mod_data[self.current_trace] = digital_filters.SignalFilter_SOS(
+                self.mod_data[self.current_trace],
+                self.LPF,
+                samplefreq=self.AR.sample_rate[0],
+                NPole=16,
             )
         # self.mod_data = digital_filters.SignalFilter_LPFBessel(
         #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
         #     )
-        
 
         self.curves.append(
             self.dataplot.plot(
                 self.AR.time_base[:imax],
                 # self.AR.traces[i,:],
-                self.mod_data[self.current_trace] ,
-                pen=pg.intColor(2),
+                self.mod_data[self.current_trace],
+                pen=pg.intColor(1),
             )
         )
         self.current_data = self.mod_data[self.current_trace]
         self.tb = self.AR.time_base[:imax]
         # print(self.tb.shape, imax)
         self.curve_set = True
-        if update_analysis:
-            trmap2[self.last_method]()  # recompute from scratch
-        elif self.method is not None:
+        return
+    
+    def update_analysis(self):
+        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
+        trmap2 = {
+            "CB": self.MINC.CB,
+            "AJ": self.MINC.AJ,
+            "ZC": self.MINC.ZC,
+            "RS": self.MINC.RS,
+        } 
+        trmap2[self.last_method]()  # recompute from scratch
+        if self.method is not None:
             self.MINC.decorate(self.method)
         self.MINC.show_fitting_pars()
         # if self.method is not None:
@@ -388,125 +429,151 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     "analysis pars not in dateset: ",
                     self.compare_data[self.data_set].keys(),
                 )
+
     def clear_fit_lines(self):
         if len(self.fitlines) > 0:
             for l in self.fitlines:
                 self.fitplot.removeItem(l)
             self.fitlines = []
-    
+
     def copy_fits(self):
         if not self.method.Summary.average.averaged:
             CP.cprint("r", "Fit not yet run")
             return
         self.minis_risetau = self.method.Summary.average.fitted_tau1
         self.minis_falltau = self.method.Summary.average.fitted_tau2
-        
+
     def write_dataset(self):
         pass
-        
 
     def build_ptree(self):
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
+            {
+                "name": "PreProcessing",
+                "type": "group",
+                "children": [
+                    {
+                        "name": "Channel Name",
+                        "type": "list",
+                        "values": [
+                            "Clamp1.ma",
+                            "MultiClamp1.ma",
+                            "Clamp2.ma",
+                            "MultiClamp2.ma",
+                        ],
+                        "value": "MultiClamp1.ma",
+                    },
+                    {
+                        "name": "Set Start (s)",
+                        "type": "float",
+                        "value": 0.1,
+                        "limits": (0, 30.0),
+                        "default": 0.0,
+                    },
+                    {
+                        "name": "Set End (s)",
+                        "type": "float",
+                        "value": 0.0,
+                        "limits": (0, 30.0),
+                        "default": 0.0,
+                    },
+                    {
+                        "name": "Notch Frequency",
+                        "type": "list",
+                        "values": [
+                            "None",
+                            "60HzHarm",
+                            "60HzHarm+4K",
+                            30.0,
+                            60.0,
+                            120.0,
+                            180.0,
+                            240.0,
+                        ],
+                        "value": "None",
+                    },
+                    {
+                        "name": "LPF",
+                        "type": "list",
+                        "values": [
+                            "None",
+                            500.0,
+                            1000.0,
+                            1200.0,
+                            1500.0,
+                            1800.0,
+                            2000.0,
+                            2500.0,
+                            3000.0,
+                            4000.0,
+                            5000.0,
+                        ],
+                        "value": None,
+                        "renamable": True,
+                    },
+                    {
+                        "name": "Notch Q",
+                        "type": "float",
+                        "value": 60.0,
+                        "limits": (1, 300.0),
+                        "default": 60.0,
+                    },
+                ],
+            },  # end group
+            # {"name": "Apply Filters", "type": "action"},
             {"name": "Get Protocol", "type": "action"},
             {"name": "Reload Last Protocol", "type": "action"},
             {
-                "name": "Set Start (s)",
-                "type": "float",
-                "value": 0.1,
-                "limits": (0, 30.0),
-                "default": 0.0,
-            },
-            {
-                "name": "Set End (s)",
-                "type": "float",
-                "value": 0.0,
-                "limits": (0, 30.0),
-                "default": 0.0,
-            },
-            {
-                "name": "Notch Frequency",
-                "type": "list",
-                "values": ["None", "60HzHarm", "60HzHarm+4K", 30.0, 60.0, 120.0, 180.0, 240.0],
-                "value": "None",
-            },
-            {
-                "name": "LPF",
-                "type": "list",
-                "values": [
-                    "None",
-                    500.0,
-                    1000.0,
-                    1200.0,
-                    1500.0,
-                    1800.0,
-                    2000.0,
-                    2500.0,
-                    3000.0,
-                    4000.0,
-                    5000.0,
+                "name": "Mini Analysis",
+                "type": "group",
+                "children": [
+                    {
+                        "name": "Method",
+                        "type": "list",
+                        "values": ["AJ", "CB", "RS", "ZC"],
+                        "value": "AJ",
+                    },
+                    {
+                        "name": "Sign",
+                        "type": "list",
+                        "values": ["+", "-"],
+                        "value": "-",
+                    },
+                    {
+                        "name": "Rise Tau",
+                        "type": "float",
+                        "value": 0.15,
+                        "step": 0.05,
+                        "limits": (0.05, 20.0),
+                        "default": 0.15,
+                    },
+                    {
+                        "name": "Fall Tau",
+                        "type": "float",
+                        "value": 1.0,
+                        "step": 0.1,
+                        "limits": (0.15, 50.0),
+                        "default": 1.0,
+                    },
+                    {
+                        "name": "Threshold",
+                        "type": "float",
+                        "value": 3.0,
+                        "step": 0.1,
+                        "limits": (-1e-6, 50.0),
+                        "default": 2.5,
+                    },
+                    {
+                        "name": "Order",
+                        "type": "float",
+                        "value": 7,
+                        "step": 1,
+                        "limits": (1, 100),
+                        "default": 7,
+                    },
+                    {"name": "Analyze Events", "type": "action"},
                 ],
-                "value": None,
-                "renamable": True,
-            },
-            {
-                "name": "Notch Q",
-                "type": "float",
-                "value": 60.,
-                "limits": (1, 300.),
-                "default": 60.,
-            },
-            {"name": "Apply Filters", "type": "action"},
-            {
-                "name": "Method",
-                "type": "list",
-                "values": ["AJ", "CB", "RS", "ZC"],
-                "value": "AJ",
-            },
-            {"name": "Sign", "type": "list", "values": ["+", "-"], "value": "-"},
-            {
-                "name": "Rise Tau",
-                "type": "float",
-                "value": 0.15,
-                "step": 0.05,
-                "limits": (0.05, 20.0),
-                "default": 0.15,
-            },
-            {
-                "name": "Fall Tau",
-                "type": "float",
-                "value": 1.0,
-                "step": 0.1,
-                "limits": (0.15, 50.0),
-                "default": 1.0,
-            },
-            {
-                "name": "Threshold",
-                "type": "float",
-                "value": 3.0,
-                "step": 0.1,
-                "limits": (-1e-6, 50.0),
-                "default": 2.5,
-            },
-            {
-                "name": "Order",
-                "type": "float",
-                "value": 7,
-                "step": 1,
-                "limits": (1, 100),
-                "default": 7,
-            },
-            {"name": "Apply Analysis", "type": "action"},
-            {
-                "name": "Channel Name",
-                "type": "list",
-                "values": [
-                    "Clamp1.ma",
-                    "MultiClamp1.ma",
-                    "Clamp2.ma",
-                    "MultiClamp2.ma",
-                ],
-                "value": "MultiClamp1.ma",
             },
             {
                 "name": "Compare Events",
@@ -543,10 +610,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 self.quit()
             elif path[0] == "Get Protocol":
                 self.getProtocolDir()
+                self.update_traces()
             elif path[0] == "Reload Last Protocol":
                 self.getProtocolDir(reload_last=True)
+                self.update_traces()
             elif path[0] == "Show Fitting Pars":
-                self.MINC.show_fitting_pars()
+                if self.MINC is not None:
+                    self.MINC.show_fitting_pars()
             elif path[0] == "Copy Fit to template":
                 self.copy_fits()
             elif path[0] == "Write Dataset text":
@@ -571,8 +641,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 self.notch_frequency = data
             elif path[0] == "Notch Q":
                 self.notch_Q = data
-            elif path[0] == "Apply Filters":
-                self.update_traces(update_analysis=False)
+            # elif path[0] == "Apply Filters":
+            #     self.update_traces(update_analysis=False)
 
             elif path[0] == "Rise Tau":
                 self.minis_risetau = data
@@ -593,8 +663,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
             elif path[0] == "Method":
                 self.last_method = data
 
-            elif path[0] == "Apply Analysis":
-                self.update_traces(update_analysis=True)
+            elif path[0] == "Mini Analysis":
+                if path[1] == "Analyze Events": # call the analysis function
+                    self.update_analysis()
 
             elif path[0] == "Channel Name":
                 self.ampdataname = data
@@ -609,8 +680,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
         for module in all_modules:
             print("reloading: ", module)
             module = importlib.reload(module)
-        # self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
-        self.MINC = minicalcs.MiniCalcs(parent=self)
+
+        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
 
     def set_window(self, parent=None):
         super(MiniViewer, self).__init__(parent=parent)
@@ -646,7 +717,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             bounds=[0.0, 20.0],
             movable=True,
         )
-        self.threshold_line_label = pg.InfLineLabel(self.threshold_line,
+        self.threshold_line_label = pg.InfLineLabel(
+            self.threshold_line,
             text=f"Abs Thresh: {self.thresh_reSD:.3e}",
             movable=True,
             position=0.0,
@@ -666,9 +738,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.dlayout.setColumnMinimumWidth(0, 650)
         layout.addLayout(self.dlayout, 0, 1, 1, 1)
         self.dsumlayout = pg.QtWidgets.QGridLayout()
-        self.dsumlayout.addWidget(self.fitplot) #, 0, 0)
-        self.dsumlayout.addWidget(self.histplot) #, 1, 0)
-        self.dsumlayout.addWidget(self.xplot) #, 2, 0)
+        self.dsumlayout.addWidget(self.fitplot)  # , 0, 0)
+        self.dsumlayout.addWidget(self.histplot)  # , 1, 0)
+        self.dsumlayout.addWidget(self.xplot)  # , 2, 0)
         layout.addLayout(self.dsumlayout, 0, 9, 10, 1)
         # self.dsumlayout.setColumnMinimumWidth(0, 200)
         layout.setColumnStretch(0, 0)  # reduce width of LHS column of buttons
@@ -682,7 +754,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
 class FloatSlider(pg.QtWidgets.QSlider):
     def __init__(self, parent, decimals=3, *args, **kargs):
         super(FloatSlider, self).__init__(parent, *args, **kargs)
-        self._multi = 10 ** decimals
+        self._multi = 10**decimals
         self.setMinimum(self.minimum())
         self.setMaximum(self.maximum())
 
@@ -706,7 +778,9 @@ class Slider(pg.QtWidgets.QWidget):
         super(Slider, self).__init__(parent=parent)
         self.verticalLayout = pg.Qt.QtWidgets.QVBoxLayout(self)
         self.label = pg.Qt.QtWidgets.QLabel(self)
-        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
+        self.verticalLayout.addWidget(
+            self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter
+        )
         self.horizontalLayout = pg.Qt.QtWidgets.QHBoxLayout()
         # spacerItem = pg.QtGui.QSpacerItem(
         #     0, 20, pg.QtWidgets.QSizePolicy.PolicyFlag.ExpandFlag # , pg.QtWidgets.QSizePolicy.Minimum
@@ -750,7 +824,6 @@ class Slider(pg.QtWidgets.QWidget):
 
 
 def main():
-
     app = pg.QtWidgets.QApplication([])
     app.setStyle("Fusion")
 
@@ -760,7 +833,7 @@ def main():
     )  # prevent python exception when closing window with system control
     MV.set_window()
 
-    if (sys.flags.interactive != 1):
+    if sys.flags.interactive != 1:
         pg.QtWidgets.QApplication.instance().exec()
 
 
