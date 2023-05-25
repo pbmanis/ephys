@@ -143,6 +143,7 @@ class MiniAnalyses:
         self.datatype = None
         self.events_ok = []
         self.events_notok = []
+        self.filters_on = True # enable filtering
         super().__init__()
 
     def setup(
@@ -199,8 +200,11 @@ class MiniAnalyses:
         self.hpf = hpf
         self.notch = notch
         self.notch_Q = notch_Q
+        self.filters_off = False
         self.reset_filtering()
         self.set_datatype("VC")
+
+    
 
     def set_datatype(self, datatype: str):
         CP.cprint("c", f"data type: {datatype:s}")
@@ -268,6 +272,17 @@ class MiniAnalyses:
         self.filtering.LPF_applied = False
         self.filtering.HPF_applied = False
         self.filtering.Notch_applied = False
+
+    def filters_on(self):
+        """Turn the filtering OFF (e.g., data is pre-filtered)
+        """
+        self.filters_on = True
+
+    def filters_off(self):
+        """Turn the filtering OFF (e.g., data is pre-filtered)
+        """
+        self.filters_on = False
+
 
     def LPFData(
         self, data: np.ndarray, lpf: Union[float, None] = None, NPole: int = 8
@@ -469,12 +484,12 @@ class MiniAnalyses:
                 )
             else:
                 CP.cprint("r", f"    minis_methods_common, no HPF applied")
-        if self.lpf is not None and isinstance(self.lpf, float):
+        if( self.lpf is not None) and isinstance(self.lpf, float) and self.filters_on:
             data = self.LPFData(data, lpf=self.lpf)
-        if self.hpf is not None and isinstance(self.hpf, float):
+        if (self.hpf is not None) and isinstance(self.hpf, float) and self.filters_on:
             data = self.HPFData(data, hpf=self.hpf)
         # print("NOTCH: ", self.notch, type(self.notch))
-        if self.notch is not None and (isinstance(self.notch, list) or isinstance(self.notch, np.ndarray)):
+        if (self.notch is not None) and (isinstance(self.notch, list) or isinstance(self.notch, np.ndarray)) and self.filters_on:
             # CP.cprint("r", "Comb filter notch")
             data = self.NotchFilterComb(data, notch=self.notch, notch_Q=self.notch_Q)
         self.data = data
@@ -995,11 +1010,11 @@ class MiniAnalyses:
                 exit()
             self.risetenninety = it90 - it10
 
-        i37 = np.nonzero(move_avg[ipk:] >= p37)[-1]
+        i37 = np.nonzero(move_avg[ipk:] >= p37)[0]  # find last point greater than 37% of peak
         if len(i37) == 0:
             self.decaythirtyseven = np.nan
         else:
-            i37 = i37[0]  # first point
+            i37 = i37[-1]  # last point
             self.decaythirtyseven = self.dt_seconds * i37
         self.Qtotal = self.dt_seconds * np.sum(avgevent[self.tsel :])
         self.fitted = True
@@ -1614,7 +1629,7 @@ class MiniAnalyses:
             tb[self.onsets[i]],
             scf * data[self.onsets[i]],
             onset_marks[index],
-            markersize=6,
+            markersize=5,
             markerfacecolor=(1, 1, 0, 0.8),
             label=label,
         )
@@ -1667,7 +1682,7 @@ class MiniAnalyses:
                 tb[: self.Criterion[i].shape[0]][events],
                 self.Criterion[i][events],
                 "ro",
-                markersize=5.0,
+                markersize=3.0,
             )
 
         # averaged events, convolution template, and fit
