@@ -19,8 +19,9 @@ from ..datareaders import acq4_reader
 from ..mini_analyses import minis_methods, minis_methods_common
 
 class MiniCalcs():
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, filters_on=True):
         self.parent = parent
+        self.filters_on = filters_on 
         self.hp = []
         self.xp = []
         
@@ -28,6 +29,9 @@ class MiniCalcs():
         self.parent._getpars()
         self.parent.method = minis_methods.ClementsBekkers()
         self.parent.method.set_cb_engine('numba')
+        if not self.filters_on:
+            self.parent.method.filters_off()
+
         rate = np.mean(np.diff(self.parent.tb))
         jmax = int((2 * self.parent.tau1 + 3 * self.parent.tau2) / rate)
         CP.cprint("r", f"showdata CB threshold: {self.parent.thresh_reSD:8.2f}")
@@ -69,6 +73,9 @@ class MiniCalcs():
     def AJ(self):
         self.parent._getpars()
         self.parent.method = minis_methods.AndradeJonas()
+        if not self.filters_on:
+            self.parent.method.filters_off()
+
         rate = np.mean(np.diff(self.parent.tb))
         jmax = int((2 * self.parent.tau1 + 3 * self.parent.tau2) / rate)
         CP.cprint("g", f"showdata AJ threshold: {self.parent.thresh_reSD:8.2f}")
@@ -128,6 +135,9 @@ class MiniCalcs():
     def RS(self):
         self.parent._getpars()
         self.parent.method = minis_methods.RSDeconvolve()
+        if not self.filters_on:
+            self.parent.method.filters_off()
+
         rate = np.mean(np.diff(self.parent.tb))
 
         self.parent.method.setup(
@@ -172,6 +182,9 @@ class MiniCalcs():
     def ZC(self):
         self.parent._getpars()
         self.parent.method = minis_methods.ZCFinder()
+        if not self.filters_on:
+            self.parent.method.filters_off()
+
         rate = np.mean(np.diff(self.parent.tb))
         minlen = int(self.parent.ZC_mindur / rate)
         self.parent.method.setup(
