@@ -807,13 +807,13 @@ class MiniAnalyses:
             allevents, axis=0
         )  # - np.mean(avgevent[:3])
         self.Summary.average.stdevent = np.nanstd(allevents, axis=0)
-        print("allevents shape: ", allevents.shape)
+        # print("allevents shape: ", allevents.shape)
         if self.sign < 0:
             evamps = self.sign * np.nanmin(allevents, axis=1)
             print(1e12 * np.nanmin(np.nanmin(allevents, axis=1)))
         else:
             evamps = self.sign * np.nanmax(allevents, axis=1)
-        print("evamps: ", 1e12 * evamps[:100])
+        # print("evamps: ", 1e12 * evamps[:100])
         ev25 = np.nanpercentile(
             evamps,
             q=25,
@@ -822,26 +822,26 @@ class MiniAnalyses:
             evamps,
             q=75,
         )  #  method="median_unbiased")
-        print(
-            "len evamps, allevents, timebase: ",
-            len(evamps),
-            len(allevents),
-            len(self.Summary.average.avgeventtb),
-        )
-        print("ev25: ", ev25 * 1e12)
-        print("ev75: ", ev75 * 1e12)
-        print(
-            "nanmean events25 shape: ",
-            np.nanmean(allevents[evamps < ev25], axis=1).shape,
-        )
-        print(
-            "nanmean events75 shape: ",
-            np.nanmean(allevents[evamps > ev75], axis=1).shape,
-        )
+        # print(
+        #     "len evamps, allevents, timebase: ",
+        #     len(evamps),
+        #     len(allevents),
+        #     len(self.Summary.average.avgeventtb),
+        # )
+        # print("ev25: ", ev25 * 1e12)
+        # print("ev75: ", ev75 * 1e12)
+        # print(
+        #     "nanmean events25 shape: ",
+        #     np.nanmean(allevents[evamps < ev25], axis=1).shape,
+        # )
+        # print(
+        #     "nanmean events75 shape: ",
+        #     np.nanmean(allevents[evamps > ev75], axis=1).shape,
+        # )
         avgevent25 = np.nanmean(allevents[evamps < ev25], axis=0)
         avgevent75 = np.nanmean(allevents[evamps > ev75], axis=0)
-        print(np.min(avgevent25), np.max(avgevent25), len(avgevent25))
-        print(np.min(avgevent75), np.max(avgevent75), len(avgevent75))
+        # print(np.min(avgevent25), np.max(avgevent25), len(avgevent25))
+        # print(np.min(avgevent75), np.max(avgevent75), len(avgevent75))
 
         if k > 0:
             self.Summary.average.averaged = True
@@ -1088,6 +1088,7 @@ class MiniAnalyses:
         )  # events that can be used (may not be all events, but these are the events that were fit)
 
         # only use "well-isolated" events in time to make the fit measurements.
+        print(f"Fitting individual events: {len(self.Summary.clean_event_trace_list):d}")
         for j, ev_tr in enumerate(
             self.Summary.clean_event_trace_list
         ):  # trace list of events
@@ -1125,6 +1126,7 @@ class MiniAnalyses:
                 print("  allev: ", self.Summary.allevents)
                 print("  len allev: ", len(self.Summary.allevents), len(onsets))
                 raise ValueError("  Fit failed)")
+            print(f"\r    Event: {j:06d}", end="")
             res = self.event_fitter_lm(
                 timebase=self.Summary.average.avgeventtb,
                 event=self.Summary.allevents[j, :],
@@ -1175,6 +1177,7 @@ class MiniAnalyses:
             )
             self.ev_amp[j] = np.max(self.sign * self.Summary.allevents[j, :])
             self.fitted_events.append(j)
+        print()
         self.individual_event_screen(
             fit_err_limit=2000.0, tau2_range=10.0, verbose=False
         )
