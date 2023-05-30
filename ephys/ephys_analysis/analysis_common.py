@@ -1081,18 +1081,18 @@ class Analysis():
                         if isinstance(u[k], dict):
                             for uk in u[k].keys():
                                 if isinstance(u[k][uk], bool) or isinstance(
-                                    u[k][uk], np.int32
+                                    u[k][uk], int32
                                 ):
                                     u[k][uk] = int(u[k][uk])
                         if k in ["taupars", "RMPs", "Irmp"]:
-                            # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, np.float)):
+                            # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, nfloat)):
                             # print("type for ", k, type(u[k]))
                             if isinstance(u[k], numpy.ndarray):
                                 u[k] = u[k].tolist()
                             elif isinstance(u[k], list) and len(u[k]) > 0:
                                 if isinstance(u[k][0], numpy.ndarray):
                                     u[k] = u[k][0].tolist()
-                            elif isinstance(u[k], np.float64):
+                            elif isinstance(u[k], float):
                                 u[k] = float(u[k])
                             elif isinstance(u[k], list):
                                 pass
@@ -1101,7 +1101,7 @@ class Analysis():
                                 raise ValueError
                         # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str)):
                         #     u[k] = u[k].tolist()
-                        elif isinstance(u[k], np.float64):
+                        elif isinstance(u[k], float):
                             u[k] = float(u[k])
                     results[str(r)] = results.pop(r)
             return results

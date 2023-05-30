@@ -299,7 +299,7 @@ class PoissonScore:
         if os.path.exists(cacheFile):
             # norm = np.fromstring(
             norm = copy.copy(
-                np.frombuffer(open(cacheFile, "rb").read(), dtype=np.float64).reshape(
+                np.frombuffer(open(cacheFile, "rb").read(), dtype=float).reshape(
                     tableShape
                 )
             )
@@ -598,7 +598,7 @@ class PoissonRepeatScore:
 
         if os.path.exists(cacheFile):
             norm = np.fromstring(
-                open(cacheFile, "rb").read(), dtype=np.float64
+                open(cacheFile, "rb").read(), dtype=float
             ).reshape(tableShape)
         else:
             print("Generating %s ..." % cacheFile)
