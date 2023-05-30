@@ -111,9 +111,9 @@ class Summaries:
         default_factory=def_empty_list
     )
     individual_events: bool = False  # hmmm.
-    average: object = AverageEvent()  # average
-    average25: object = AverageEvent()  # average of lower 25th percentile
-    average75: object = AverageEvent()  # average of upper 25th percentile
+    average: object = field(default_factory=AverageEvent)  # average
+    average25: object = field(default_factory=AverageEvent)  # average of lower 25th percentile
+    average75: object = field(default_factory=AverageEvent)  # average of upper 25th percentile
     allevents: Union[List, np.ndarray] = field(  # list of all events
         default_factory=def_empty_list
     )
@@ -731,81 +731,94 @@ class MiniAnalyses:
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in self.Summary.onsets])
         allevents = np.zeros((n_events, avgnpts))
+        clean_events = np.zeros((n_events, avgnpts))
         event_trace = [[]] * n_events
+        accepted_events = []
         k = 0
         pkt = 0
-        n_incomplete_events = 0
-        n_overlaps = 0
-        n_charge_sign = 0
+        all_events = []
+        incomplete_event_list = []
+        overlapping_event_list = []
+        wrong_charge_sign_event_list = []
+        clean_event_list = []
+
         onsetlist = self.Summary.onsets
 
-        # select traces for averaging
+        # tag traces and get a clean set for averaging
         for itrace in traces:
             for j, event_onset in enumerate(onsetlist[itrace]):
                 ix = event_onset + pkt  # self.idelay
-                accept = (
-                    True  # assume trace is ok, then set rejection based on criteria
-                )
-                if ((ix + npost) >= data[itrace].shape[0]) or ((ix - npre) < 0):
-                    accept = False  # outside bounds
-                    n_incomplete_events += 1
-                    # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} event would be outside data window")
-                if (
-                    accept and j < len(onsetlist[itrace]) - 1
-                ):  # check for next event and reject if in the window
-                    if (onsetlist[itrace][j + 1] - event_onset) < avgnpts:
-                        accept = False
-                        n_overlaps += 1
-                        # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has overlaps")
-
-                if (
-                    accept
-                    and np.sum(
-                        data[itrace][ix : (ix + npost)]
-                        - np.nanmean(data[itrace][(ix - npre) : ix])
-                    )
-                    > 0.0
-                ):  # check sign of charge
-                    accept = False
-                    n_charge_sign += 1
-                    # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has wrong charge")
-
-                if accept:  # ok to add
-                    allevents[k, :] = data[
+                allevents[k, :] = data[
                         itrace, (ix - npre) : (ix + npost)
                     ]  # save event, reject later
+                all_events.append(k)
+                if npre > 0:
                     allevents[k, :] -= np.mean(allevents[k, 0:npre])
-                    # padding sometimes needed to fit output array shape
-                    # pad = allevents.shape[1] - ((ix - npre) - (ix + npost))
-                    event_trace[k] = [
-                        itrace,
-                        j,
-                    ]  # only add to the event list if data in window
-                    k = k + 1
-                else:  # reject by setting data to nans
-                    allevents[k, :] = np.nan * allevents[k, :]
-                    k = k + 1
 
-        if n_incomplete_events > 0:
+                # Test for failure to include: event goes outside acquisition time
+                if ((ix + npost) >= data[itrace].shape[0]) or ((ix - npre) < 0):
+                    # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} event would be outside data window")
+                    incomplete_event_list.append(k)
+
+                # Test for sign of the charge of the event
+                if npre > 0:
+                    baseline = np.nanmean(data[itrace][(ix - npre) : ix])
+                else:
+                    baseline = 0.0
+                if (self.sign*np.sum(
+                        data[itrace][ix : (ix + npost)]
+                        - baseline
+                    )
+                    < 0.0
+                ):
+                    # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has wrong charge")
+                    wrong_charge_sign_event_list.append(k)
+
+                # test for overlap with next event
+                if (
+                    j < len(onsetlist[itrace]) - 1
+                ):  # check for next event and reject if in the window
+                    if (onsetlist[itrace][j + 1] - event_onset) < avgnpts:
+                       # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has overlaps")
+                        overlapping_event_list.append(k)
+
+                k = k + 1
+
+        tarnished_events = list(set(overlapping_event_list).union(set(wrong_charge_sign_event_list), set(incomplete_event_list)))
+        print("tarnsihed events: ", tarnished_events)
+        # get the clean events (non overlapping, correct charge, complete in trace)
+        clean_event_list = [x for x in all_events if x not in list(tarnished_events)]
+        print("allevent shape original: ", allevents.shape)
+        clean_events = allevents[clean_event_list]
+        print("clean_events shape: ", clean_events.shape, " len accepted: ", len(clean_events))
+        
+        # get all events that are within the trace, whether overlappingn or charge is wrong
+        allevents = allevents[[x for x in all_events if x not in list(incomplete_event_list)]]
+        event_trace = [x for x in all_events if x not in list(incomplete_event_list)]
+        print("allevent not incomplete shape: ", allevents.shape)
+        # np.array([x for i, x in enumerate(allevents) if not all(np.isnan(allevents[i,:]))])
+        
+        if len(incomplete_event_list) > 0:
             CP.cprint(
                 "y",
-                f"    {n_incomplete_events:d} event(s) excluded from average because they were too close to the end of the trace\n",
+                f"    {len(incomplete_event_list):d} event(s) excluded from average because they were too close to the end of the trace\n",
             )
-        if n_overlaps > 0:
+        if len(overlapping_event_list) > 0:
             CP.cprint(
                 "y",
-                f"    {n_overlaps:d} event(s) excluded from average because they overlapped in the window with another event\n",
+                f"    {len(overlapping_event_list):d} event(s) excluded from average because they overlapped in the window with another event\n",
             )
-        if n_charge_sign > 0:
+        if len(wrong_charge_sign_event_list) > 0:
             CP.cprint(
                 "y",
-                f"    {n_charge_sign:d} event(s) excluded the sign of the charge was wrong\n",
+                f"    {len(wrong_charge_sign_event_list):d} event(s) excluded the sign of the charge was wrong\n",
             )
         self.Summary.average.avgeventtb = avgeventtb
         self.Summary.average.avgnpts = avgnpts
         self.Summary.average.avgevent = np.nanmean(
             allevents, axis=0
         )  # - np.mean(avgevent[:3])
+        print("average shape as stored: ", self.Summary.average.avgevent.shape)
         self.Summary.average.stdevent = np.nanstd(allevents, axis=0)
         # print("allevents shape: ", allevents.shape)
         if self.sign < 0:
@@ -843,7 +856,7 @@ class MiniAnalyses:
         # print(np.min(avgevent25), np.max(avgevent25), len(avgevent25))
         # print(np.min(avgevent75), np.max(avgevent75), len(avgevent75))
 
-        if k > 0:
+        if len(event_trace) > 0:
             self.Summary.average.averaged = True
             self.Summary.average.Nevents = k
             self.Summary.average.avgevent25 = avgevent25
@@ -860,6 +873,7 @@ class MiniAnalyses:
 
         if self.Summary.average.averaged:
             CP.cprint("m", "    Fitting averaged event")
+            print("average event shape: ", self.Summary.average.avgevent.shape)
             self.fit_average_event(
                 tb=self.Summary.average.avgeventtb,
                 avgevent=self.Summary.average.avgevent,
@@ -1240,6 +1254,7 @@ class MiniAnalyses:
 
         """
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
+        print("Event: ", event)
         if peak_pos == len(event):
             peak_pos = len(event) - 10
         dexpmodel = lmfit.Model(self.doubleexp_lm)

@@ -268,7 +268,7 @@ def run_ZeroCrossing(
 def run_ClementsBekkers(
     pars: dataclass = None,
     bigevent: bool = False,
-    extra="numba",
+    extra="python",
     plot: bool = False,
     exp_test_set: bool = False,
     mpl=None,
@@ -545,7 +545,7 @@ def run_RSDeconvolve(
 
 
 class MiniTestMethods:
-    def __init__(self, method: str = "cb", sign=1, extra="numba", plot: bool = False):
+    def __init__(self, method: str = "cb", sign=1, extra="cython", plot: bool = False):
         self.plot = plot
         self.testmethod = method
         self.extra = extra
@@ -663,6 +663,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
             continue
         mpl.plot(tba, sf * a + dyi)
         jtr = method.Summary.event_trace_list[i]  # get trace and event number in trace
+        print(jtr)
         if len(jtr) == 0:
             continue
         if jtr[0] > last_tr:
@@ -690,7 +691,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
 
 
 if __name__ == "__main__":
-    plot = False
+    plot = True
     ntraces = 1
     methods = [
         "ZC",

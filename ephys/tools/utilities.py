@@ -56,7 +56,7 @@ class ScriptError(Exception):
     pass
 
 
-@jit(nopython=False, parallel=False, cache=True)
+@jit(parallel=False, cache=True)
 def nb_deriv(x, y, order=1):
     """
     Compute a derivative of order n of V

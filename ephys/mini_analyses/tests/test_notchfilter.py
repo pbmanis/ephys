@@ -13,6 +13,7 @@ def event(rise:float, decay:float, amp:float=-1, dur:float=0.025, rate:float=1e-
     wv = amp*(1.0-np.exp(-tb/rise))*np.exp(-tb/decay)
     return wv
 
+
 MA = MM.AndradeJonas()
 samprate = 1e-4 # 10 kHz
 trace_dur = 5.0

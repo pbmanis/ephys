@@ -44,7 +44,7 @@ def nb_clementsbekkers(data, template: Union[List, np.ndarray]):
     """
     ## Prepare a bunch of arrays we'll need later
     n_template = len(template)
-    # template = np.ndarray(template, dtype=np.float64)  # throws error so not needed?
+    # template = np.ndarray(template, dtype=float)  # throws error so not needed?
     # if n_template <= 1:
     #     raise ValueError("nb_clementsbekkers: Length of template must be useful, and > 1")
     n_data = data.shape[0]
@@ -202,14 +202,14 @@ class ClementsBekkers(MiniAnalyses):
         self.runtime = endtime
         return Scale, Crit
 
-    def _rollingSum(self, data, n):
-        n = int(n)
-        d1 = data.copy()
-        d1[1:] = d1[1:] + d1[:-1]
-        d2 = np.empty(len(d1) - n + 1, dtype=data.dtype)
-        d2[0] = d1[n - 1]  # copy first point
-        d2[1:] = d1[n:] - d1[:-n]  # subtract
-        return d2
+    # def _rollingSum(self, data, n):
+    #     n = int(n)
+    #     d1 = data.copy()
+    #     d1[1:] = d1[1:] + d1[:-1]
+    #     d2 = np.empty(len(d1) - n + 1, dtype=data.dtype)
+    #     d2[0] = d1[n - 1]  # copy first point
+    #     d2[1:] = d1[n:] - d1[:-n]  # subtract
+    #     return d2
 
     def clements_bekkers_python(
         self, D: np.ndarray, T: np.ndarray
@@ -218,43 +218,57 @@ class ClementsBekkers(MiniAnalyses):
         returns array of points indicating goodness of fit.
         Biophysical Journal, 73: 220-229, 1997.
 
-        Campagnola's version...
         """
 
         starttime = timeit.default_timer()
-        NDATA = len(D)
-        # Prepare a bunch of arrays we'll need later
-        N = len(T)
+        n_data = len(D)
+        n_template = len(T)
         sumT = T.sum()
         sumT2 = (np.power(T, 2.0)).sum()
-        sumD = self._rollingSum(D, N)
-        sumD2 = self._rollingSum(np.power(D,2), N)
         sumTD = scipy.signal.correlate(D, T, mode="valid", method="direct")
+        # sumD = self._rollingSum(D, n_template)
+        # sumD2 = self._rollingSum(np.power(D,2), N)
+        d_sliding = D[:n_template]
+        sumD = np.sum(d_sliding)
+        sumD2 = np.sum(d_sliding*d_sliding)
+        stderror = np.zeros(n_data-n_template)
+        DetCrit = np.zeros(n_data-n_template)
+        for i in range(n_data-n_template): # compute scale factor, offset at each location:
+            sumD += (D[i+n_template-1] - D[i-1])
+            sumD2 = ((D[i+n_template-1] * D[i+n_template-1]) - (D[i-1]*D[i-1]))   
+            sumTD = 0
+            for j in range(i, n_template+i):
+                sumTD += (D[j]*T[j-i])
+                scale = (sumTD - (sumT * sumD / n_template)) / (sumT2 - (np.power(sumT, 2) / n_template))
+            offset = (sumD - (scale * sumT)) / n_template
 
-        # compute scale factor, offset at each location:
-        scale = (sumTD - (sumT * sumD / N)) / (sumT2 - (np.power(sumT, 2) / N))
-        offset = (sumD - (scale * sumT)) / N
+            ## compute SSE at every location
+            SSE = (
+                sumD2
+                + (np.power(scale, 2) * sumT2)
+                + (n_data * np.power(offset,2))
+                - 2.0 * ( 
+                    (scale * sumTD)
+                    + (offset * sumD) 
+                    - (scale * offset * sumT)
+                )
+            )
+            ## finally, compute error and detection criterion
+            # print("N: ", n_template, len(D))
+            # print("SSE < 0: ", len([x for x in SSE if x < 0]), "of :", len(SSE))
+            # print(np.sqrt(SSE / (n_data - 1)))
+            if SSE < 0:
+                SSE = 1e-99
+            try:
 
-        ## compute SSE at every location
-        SSE = (
-            sumD2
-            + (np.power(scale, 2) * sumT2)
-            + (N * np.power(offset,2))
-            - 2.0 * (scale * offset * sumT)
-            + (offset * sumD) 
-            - (scale * offset * sumT)
-        )
-        ## finally, compute error and detection criterion
-
-        try:
-            stderror = np.sqrt(SSE / (N - 1))
-        except:
-            print("len d: ", len(D), " len T: ", len(T))
-            print("len sumd2: ", sumD2, sumT2, sumTD, sumD, sumT)
-            print("SSE: ", np.array(SSE)*1e12)
-            print("N: ", N, " NDATA", NDATA)
-            raise ValueError
-        DetCrit = scale / stderror
+                stderror[i] = np.sqrt(SSE / (n_data - 1))
+            except:
+                # print("len d: ", len(D), " len T: ", len(T))
+                # print("len sumd2: ", sumD2, sumT2, sumTD, sumD, sumT)
+                # print("SSE: ", np.array(SSE)*1e12)
+                # print("n_template: ", n_template, " n_data: ", n_data)
+                raise ValueError
+            DetCrit[i] = scale / stderror[i]
         endtime = timeit.default_timer() - starttime
         self.runtime = endtime
         # import matplotlib.pyplot as mpl

@@ -844,7 +844,7 @@ def affineSlice(data, shape, origin, vectors, axes, **kargs):
     ##xi1 = xi0 + 1
     ##yi1 = yi0 + 1
     #if interpolate:
-        #xi = np.empty((2,) + x.shape, dtype=np.intp)
+        #xi = np.empty((2,) + x.shape, dtype=intp)
         #xi[0] = np.floor(x)
         #xi[1] = xi[0] + 1
     #else:
@@ -1182,31 +1182,31 @@ def bandPass(data, low, high, lowOrder=1, highOrder=1, dt=None):
     return lowPass(highPass(data, low, lowOrder, dt), high, highOrder, dt)
 
 def gaussDivide(data, sigma):
-    return data.astype(np.float32) / scipy.ndimage.gaussian_filter(data, sigma=sigma)
+    return data.astype(float32) / scipy.ndimage.gaussian_filter(data, sigma=sigma)
     
 def meanDivide(data, axis, inplace=False):
     if not inplace:
-        d = np.empty(data.shape, dtype=np.float32)
+        d = np.empty(data.shape, dtype=float)
     ind = [slice(None)] * data.ndim
     for i in range(0, data.shape[axis]):
         ind[axis] = i
         if inplace:
             data[tuple(ind)] /= data[tuple(ind)].mean()
         else:
-            d[tuple(ind)] = data[tuple(ind)].astype(np.float32) / data[tuple(ind)].mean()
+            d[tuple(ind)] = data[tuple(ind)].astype(float) / data[tuple(ind)].mean()
     if not inplace:
         return d
 
 def medianDivide(data, axis, inplace=False):
     if not inplace:
-        d = np.empty(data.shape, dtype=np.float32)
+        d = np.empty(data.shape, dtype=float)
     ind = [slice(None)] * data.ndim
     for i in range(0, data.shape[axis]):
         ind[axis] = i
         if inplace:
             data[tuple(ind)] /= data[tuple(ind)].median()
         else:
-            d[tuple(ind)] = data[tuple(ind)].astype(np.float32) / data[tuple(ind)].mean()
+            d[tuple(ind)] = data[tuple(ind)].astype(float) / data[tuple(ind)].mean()
     if not inplace:
         return d
 
@@ -1260,7 +1260,7 @@ def triggerStack(data, triggers, axis=0, window=None):
 def generateSphere(radius):
     radius2 = radius**2
     w = int(radius*2 + 1)
-    d = np.empty((w, w), dtype=np.float32)
+    d = np.empty((w, w), dtype=float)
     for x in range(0, w):
         for y in range(0, w):
             r2 = (x-radius)**2+(y-radius)**2
@@ -1349,8 +1349,8 @@ def makeDispMap(im1, im2, maxDist=10, searchRange=None, normBlur=5.0, matchSize=
         
         (See also: matchDistortImg)
     """
-    im1 = im1.astype(np.float32)
-    im2 = im2.astype(np.float32)
+    im1 = im1.astype(float)
+    im2 = im2.astype(float)
     
     if searchRange is None:
         searchRange = [[-maxDist, maxDist+1], [-maxDist, maxDist+1]]
@@ -1476,7 +1476,7 @@ def matchDistortImg(im1, im2, scale=4, maxDist=40, mapBlur=30, showProgress=Fals
     
     
     ## blur the map to make continuous
-    dm2Blur = blur(dispMap2.astype(np.float32), (mapBlur, mapBlur, 0))
+    dm2Blur = blur(dispMap2.astype(float), (mapBlur, mapBlur, 0))
     if showProgress:
         imws.append(showImg(dm2Blur, title="blurred full disp map"))
     
@@ -2224,7 +2224,7 @@ def isFloat(x):
     return isinstance(x, float) or isinstance(x, np.floating)
 
 def isInt(x):
-    for typ in [int, int, np.integer]:
+    for typ in [int, int]:
         if isinstance(x, typ):
             return True
     return False

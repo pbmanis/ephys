@@ -60,7 +60,8 @@ class UserTester(object):
         If *result* and *expect* do not match, then raise an exception.
         """
         # Check test structures are the same
-        # print(type(info), type(expect))
+
+       # print(type(info), type(expect))
         assert type(info) is type(expect)
         if hasattr(info, '__len__'):
             if len(info) != len(expect):

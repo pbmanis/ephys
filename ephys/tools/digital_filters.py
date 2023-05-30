@@ -30,8 +30,8 @@ def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
         filtered version of the input signal
 
     """
-    flpf = np.float(LPF)
-    sf = np.float(samplefreq)
+    flpf = float(LPF)
+    sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
     b, a = spSignal.butter(NPole, wn, btype='low', output='ba')
     zi = spSignal.lfilter_zi(b,a)
@@ -61,8 +61,8 @@ def SignalFilter_HPFButter(signal, HPF, samplefreq, NPole=8):
         filtered version of the input signal
 
     """
-    fhpf = np.float(HPF)
-    sf = np.float(samplefreq)
+    fhpf = float(HPF)
+    sf = float(samplefreq)
     wn = [fhpf/(sf/2.0)]
     b, a = spSignal.butter(NPole, wn, btype='high', output='ba')
     zi = spSignal.lfilter_zi(b,a)
