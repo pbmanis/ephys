@@ -104,11 +104,11 @@ class ClementsBekkers(MiniAnalyses):
         cython requires compilation in advance in setup.py
         Numba does a JIT compilation (see routine above)
         """
-        if engine in ["numba", "cython", "python"]:
+        if engine in ["cython", "python"]:
             self.engine = engine
         else:
             raise ValueError(
-                f"CB detection engine must be one of python, numba or cython. Got{str(engine):s}"
+                f"CB detection engine must be one of python or cython. Got{str(engine):s}"
             )
 
     def clements_bekkers(self, data: np.ndarray) -> None:

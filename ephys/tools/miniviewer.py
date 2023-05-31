@@ -101,12 +101,15 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.tstart = 0.1
         self.tend = 0.0
         self.maxT = 0.6
-        self.tau1 = 0.1
-        self.tau2 = 0.4
+        self.default_tau1 = 0.001
+        self.default_tau2 = 0.004
+        self.tau1 = 0.001  # value in the spinbox for template
+        self.tau2 = 0.004  # value in the spinbox
+        self.minis_risetau = self.tau1  # will be value returned from analysis
+        self.minis_falltau = self.tau2
         self.method = None
         self.Order = 7
-        self.minis_risetau = self.tau1
-        self.minis_falltau = self.tau2
+
         self.thresh_reSD = 3.0
         self.ZC_mindur = 1e-3  # sec
         self.ZC_minPeak = 5e-12  # A
@@ -223,8 +226,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def _getpars(self):
         signdict = {"-": -1, "+": 1}
-        self.tau1 = 1e-3 * self.minis_risetau  # .value()*1e-3
-        self.tau2 = 1e-3 * self.minis_falltau  # .value()*1e-3
+        # self.tau1 = 1e-3 * self.minis_risetau  # .value()*1e-3
+        # self.tau2 = 1e-3 * self.minis_falltau  # .value()*1e-3
         sign = self.minis_sign
         self.sign = signdict[sign]
         # print(self.tau1, self.tau2, self.thresh, self.sign)
@@ -543,18 +546,20 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "Rise Tau",
                         "type": "float",
-                        "value": 0.15,
-                        "step": 0.05,
-                        "limits": (0.05, 20.0),
-                        "default": 0.15,
+                        "value": self.default_tau1,
+                        "step": 0.0005,
+                        "limits": (0.0001, 0.100),
+                        "default": self.default_tau1,
+                        "units": "s",
                     },
                     {
                         "name": "Fall Tau",
                         "type": "float",
-                        "value": 1.0,
-                        "step": 0.1,
-                        "limits": (0.15, 50.0),
-                        "default": 1.0,
+                        "value": self.default_tau2,
+                        "step": 0.001,
+                        "limits": (0.0015, 1.00),
+                        "default": self.default_tau2,
+                        "units": "s",
                     },
                     {
                         "name": "Threshold",
@@ -615,8 +620,11 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 self.getProtocolDir(reload_last=True)
                 self.update_traces()
             elif path[0] == "Show Fitting Pars":
+                print("Fitting Parameters: ")
                 if self.MINC is not None:
                     self.MINC.show_fitting_pars()
+                else:
+                    print("Analysis not performed yet")
             elif path[0] == "Copy Fit to template":
                 self.copy_fits()
             elif path[0] == "Write Dataset text":
@@ -627,48 +635,47 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 self.compare_flag = data
                 print("compare flg: ", self.compare_flag)
                 self.compareEvents()
-            elif path[0] == "Set Start (s)":
-                self.tstart = data
-            elif path[0] == "Set End (s)":
-                if data > self.tstart:
-                    self.tend = data
-                else:
-                    pass
-
-            elif path[0] == "LPF":
-                self.LPF = data
-            elif path[0] == "Notch Frequency":
-                self.notch_frequency = data
-            elif path[0] == "Notch Q":
-                self.notch_Q = data
-            # elif path[0] == "Apply Filters":
-            #     self.update_traces(update_analysis=False)
-
-            elif path[0] == "Rise Tau":
-                self.minis_risetau = data
-            elif path[0] == "Fall Tau":
-                self.minis_falltau = data
-
-            elif path[0] == "Order":
-                self.Order = data
-
-            elif path[0] == "sign":
-                self.minis_sign = data
-                # self.update_traces(update_analysis=True)
-
-            elif path[0] == "Threshold":
-                self.thresh_reSD = data
-                self.update_threshold()
-
-            elif path[0] == "Method":
-                self.last_method = data
+                
+            elif path[0] == "PreProcessing":
+                if path[1] == "Channel Name":
+                    self.ampdataname = data
+                elif path[1] == "LPF":
+                    self.LPF = data
+                elif path[1] == "Notch Frequency":
+                    self.notch_frequency = data
+                elif path[1] == "Notch Q":
+                    self.notch_Q = data
+                elif path[1] == "Set Start (s)":
+                    self.tstart = data
+                elif path[1] == "Set End (s)":
+                    if data > self.tstart:
+                        self.tend = data
+                    else:
+                        pass
+                # elif path[0] == "Apply Filters":
+                #     self.update_traces(update_analysis=False)
 
             elif path[0] == "Mini Analysis":
-                if path[1] == "Analyze Events": # call the analysis function
+                if path[1] == "Rise Tau":
+                    self.tau1 = data
+                    print(self.tau1)
+                elif path[1] == "Fall Tau":
+                    self.tau2 = data
+                    print(self.tau2)
+                elif path[1] == "Order":
+                    self.Order = data
+                elif path[1] == "sign":
+                    self.minis_sign = data
+                    # self.update_traces(update_analysis=True)
+                elif path[1] == "Threshold":
+                    self.thresh_reSD = data
+                    self.update_threshold()
+                elif path[1] == "Method":
+                    self.last_method = data
+                elif path[1] == "Analyze Events": # call the analysis function
                     self.update_analysis()
 
-            elif path[0] == "Channel Name":
-                self.ampdataname = data
+
             elif path[0] == "Reload":
                 self.reload()
             else:

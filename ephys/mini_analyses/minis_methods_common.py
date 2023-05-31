@@ -743,22 +743,22 @@ class MiniAnalyses:
         clean_event_list = []
 
         onsetlist = self.Summary.onsets
-
+        trdur = allevents.shape[1]
         # tag traces and get a clean set for averaging
         for itrace in traces:
             for j, event_onset in enumerate(onsetlist[itrace]):
                 ix = event_onset + pkt  # self.idelay
-                allevents[k, :] = data[
-                        itrace, (ix - npre) : (ix + npost)
-                    ]  # save event, reject later
-                all_events.append(k)
-                if npre > 0:
-                    allevents[k, :] -= np.mean(allevents[k, 0:npre])
-
-                # Test for failure to include: event goes outside acquisition time
+                # first make sure event is within the trace
                 if ((ix + npost) >= data[itrace].shape[0]) or ((ix - npre) < 0):
                     # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} event would be outside data window")
                     incomplete_event_list.append(k)
+                else:
+                    allevents[k, :] = data[
+                        itrace,  (ix - npre) : (ix + npost)
+                    ]  # save event, reject later
+                    all_events.append(k)
+                    if npre > 0:
+                        allevents[k, :] -= np.mean(allevents[k, 0:npre])
 
                 # Test for sign of the charge of the event
                 if npre > 0:
@@ -785,17 +785,16 @@ class MiniAnalyses:
                 k = k + 1
 
         tarnished_events = list(set(overlapping_event_list).union(set(wrong_charge_sign_event_list), set(incomplete_event_list)))
-        print("tarnsihed events: ", tarnished_events)
+        print("    # Tarnsihed events: ", len(tarnished_events))
         # get the clean events (non overlapping, correct charge, complete in trace)
         clean_event_list = [x for x in all_events if x not in list(tarnished_events)]
-        print("allevent shape original: ", allevents.shape)
+        print("    # Cvents found: ", allevents.shape[0])
         clean_events = allevents[clean_event_list]
-        print("clean_events shape: ", clean_events.shape, " len accepted: ", len(clean_events))
+        print("    # Clean events: ", clean_events.shape[0])
         
         # get all events that are within the trace, whether overlappingn or charge is wrong
         allevents = allevents[[x for x in all_events if x not in list(incomplete_event_list)]]
         event_trace = [x for x in all_events if x not in list(incomplete_event_list)]
-        print("allevent not incomplete shape: ", allevents.shape)
         # np.array([x for i, x in enumerate(allevents) if not all(np.isnan(allevents[i,:]))])
         
         if len(incomplete_event_list) > 0:

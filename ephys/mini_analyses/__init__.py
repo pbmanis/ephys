@@ -4,7 +4,7 @@ init for minis
 """
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 3, 0, '')
+version_info = (0, 3,11, 'a')
 __version__ = '%d.%d.%d%s' % version_info
 AUDIT_TESTS=False
 from . import clements_bekkers

@@ -28,7 +28,7 @@ class MiniCalcs():
     def CB(self):
         self.parent._getpars()
         self.parent.method = minis_methods.ClementsBekkers()
-        self.parent.method.set_cb_engine('numba')
+        self.parent.method.set_cb_engine('cython')
         if not self.filters_on:
             self.parent.method.filters_off()
 
