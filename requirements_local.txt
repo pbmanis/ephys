@@ -13,7 +13,8 @@ jupyterlab==3.4.4
 pyperclip
 pytest==7.1.2
 gitpython
-Cython==0.29.21
+#Cython==0.29.21
+Cython==3.0.0b1
 dill==0.3.1.1
 # efel>=3.0.93 
 # envisage==4.7.2
@@ -23,7 +24,7 @@ jinja2==3.0.1
 
 pyabf  # for reading axon binary files
 meegkit # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
-lmfit==1.1.0
+lmfit==1.2.1
 
 matplotlib>=3.5.0
 matplotlib-scalebar>=0.5.1
