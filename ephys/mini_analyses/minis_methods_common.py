@@ -1080,7 +1080,7 @@ class MiniAnalyses:
         )  # measured charge of the event (integral of current * dt)
         self.ev_Q_end = nanfill(
             nevents
-        )  # measured charge of last half of event (integral of current * dt)
+        )  # measured charge of last half of event (integrl of current * dt)
         self.fiterr = nanfill(nevents)
         self.bfdelay = nanfill(nevents)
         self.best_fit = (
@@ -1712,7 +1712,7 @@ class MiniAnalyses:
                 label = ""
             evlen = len(self.Summary.average.avgevent)
             ax[2].plot(
-                self.Summary.average.avgeventtb[:evlen],
+                self.Summary.average.avgeventtb[:evlen]*1e3,
                 scf * self.Summary.average.avgevent,
                 "k-",
                 label=label,
@@ -1728,7 +1728,7 @@ class MiniAnalyses:
                 else:
                     label = ""
                 ax[2].plot(
-                    self.Summary.average.avgeventtb[:maxl] + self.bfdelay,
+                    self.Summary.average.avgeventtb[:maxl]*1e3 + self.bfdelay,
                     scf * self.sign * self.template[:maxl] * maxa / self.template_amax,
                     "m-",
                     label=label,
@@ -1750,7 +1750,7 @@ class MiniAnalyses:
             else:
                 label = ""
             ax[2].plot(
-                self.Summary.average.avgeventtb[: len(self.avg_best_fit)],
+                self.Summary.average.avgeventtb[: len(self.avg_best_fit)]*1e3,
                 scf * self.avg_best_fit,
                 "c--",
                 linewidth=2.0,

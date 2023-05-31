@@ -17,7 +17,7 @@ import pyqtgraph as pg
 import ephys.mini_analyses.minis_methods as MM
 from ephys.mini_analyses.util import UserTester
 
-testmode = False # set True show hold graphs for just a few seconds;
+testmode = True # set True show hold graphs for just a few seconds;
 
 def def_taus():
     return [0.001, 0.010]  # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
@@ -663,7 +663,6 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
             continue
         mpl.plot(tba, sf * a + dyi)
         jtr = method.Summary.event_trace_list[i]  # get trace and event number in trace
-        print(jtr)
         if len(jtr) == 0:
             continue
         if jtr[0] > last_tr:
@@ -768,7 +767,7 @@ if __name__ == "__main__":
                 # python version still does not work correctly
                 # don't forget Numba, but it is not working well.
                 pars.threshold = 3.0
-                cb, fig = run_ClementsBekkers(pars, extra=extras, plot=True)
+                cb, fig = run_ClementsBekkers(pars, extra=extras, plot=plot)
                 if plot:
                     print("All detected events: ", len(cb.Summary.allevents))
                     f, ax = mpl.subplots(1, 1)
@@ -778,7 +777,7 @@ if __name__ == "__main__":
 
         if testmethod in ["AJ", "aj"]:
             pars.threshold = 5.0
-            aj, fig = run_AndradeJonas(pars, plot=True)
+            aj, fig = run_AndradeJonas(pars, plot=plot)
             # mpl.show()
             if plot:
                 print("# detected events: ", len(aj.Summary.allevents))
@@ -788,7 +787,7 @@ if __name__ == "__main__":
                 mpl.show()
 
         if testmethod in ["RS", "rs"]:
-            rs, fig = run_RSDeconvolve(pars, plot=True)
+            rs, fig = run_RSDeconvolve(pars, plot=plot)
             print("All detected events: ", len(rs.Summary.allevents))
             if plot:
                 f, ax = mpl.subplots(1, 1)

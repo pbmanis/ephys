@@ -56,7 +56,7 @@ class ScriptError(Exception):
     pass
 
 
-@jit(parallel=False, cache=True)
+@jit(parallel=False, cache=True, nopython=True)
 def nb_deriv(x, y, order=1):
     """
     Compute a derivative of order n of V
@@ -123,7 +123,7 @@ def test_clean():
     print(x)
     print(nb_clean_spiketimes(x, mindT=0.001))
 
-@jit(nopython=False, parallel=False, cache=False)
+@jit(nopython=True, parallel=False, cache=False)
 def nb_box_spike_find(x:np.ndarray, y:np.ndarray, dt:float, 
         thr:float=-35.0, C1:float=-12.0, C2:float=11.0, dt2:float=1.75,
         data_time_units:str='s') -> np.ndarray:

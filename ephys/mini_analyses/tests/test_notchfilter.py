@@ -8,6 +8,7 @@ import matplotlib.pyplot as mpl
 import ephys.mini_analyses.minis_methods as MM
 import meegkit as MEK
 
+plot = False
 def event(rise:float, decay:float, amp:float=-1, dur:float=0.025, rate:float=1e-4):
     tb = np.arange(0, dur, rate)
     wv = amp*(1.0-np.exp(-tb/rise))*np.exp(-tb/decay)
@@ -19,10 +20,10 @@ samprate = 1e-4 # 10 kHz
 trace_dur = 5.0
 npts = int(trace_dur/samprate)
 
-print("npts: ", npts)
+
 notch = []
 notch = np.arange(60, 4000, 60)
-print(notch)
+
 Q = 6.
 MI = MM.MiniAnalyses()
 MI.dt_seconds = samprate
@@ -86,10 +87,11 @@ datan = MI.NotchFilterComb(data=data, notch=notch, notch_Q = Q)
 datan = datan[hwin:-hwin]
 tbn = tb[hwin:-hwin]
 
-print(f"Max difference: {np.max(datan-data[hwin:-hwin]):.6e}")
-f, ax = mpl.subplots(2,1)
-ax[0].plot(tb, data, 'k-')
-ax[0].plot(tbn, datan, 'r--')
-ax[1].magnitude_spectrum(data, Fs=1./samprate, color='k')
-ax[1].magnitude_spectrum(datan, Fs=1./samprate, color='r')
-mpl.show()
+if plot:
+    print(f"Max difference: {np.max(datan-data[hwin:-hwin]):.6e}")
+    f, ax = mpl.subplots(2,1)
+    ax[0].plot(tb, data, 'k-')
+    ax[0].plot(tbn, datan, 'r--')
+    ax[1].magnitude_spectrum(data, Fs=1./samprate, color='k')
+    ax[1].magnitude_spectrum(datan, Fs=1./samprate, color='r')
+    mpl.show()
