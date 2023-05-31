@@ -11,7 +11,7 @@ refurb==1.13.0
 jupyterlab==3.4.4
 # plotnine>=0.9.0
 pyperclip
-pytest==7.1.2
+pytest==7.3.1
 gitpython
 #Cython==0.29.21
 Cython==3.0.0b1
