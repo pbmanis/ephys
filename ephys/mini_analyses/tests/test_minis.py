@@ -312,12 +312,13 @@ def run_ClementsBekkers(
     for i in range(pars.ntraces):
         cb.cbTemplateMatch(testpscn[i], itrace=i, lpf=pars.LPF)
         testpscn[i] = cb.data  # # get filtered data
-        cb.reset_filtering()
+        cb.reset_filters()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", cb.threshold)
 
     cb.identify_events(outlier_scale=3.0, order=101)
-    cb.summarize(np.array(testpscn))
+    summary = cb.summarize(np.array(testpscn))
+    summary = cb.average_events(traces=[0], data=np.array(testpscn), summary=summary)
     tot_events = sum([len(x) for x in cb.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
@@ -330,7 +331,7 @@ def run_ClementsBekkers(
         )  # i_events)
         mpl.show()
         # time.sleep(5)
-    return cb, fig_handle
+    return cb, summary, fig_handle
 
 
 def run_ClementsBekkers_multiscale(
@@ -394,12 +395,13 @@ def run_ClementsBekkers_multiscale(
         for j in range(pars.ntraces):
             cb[j].cbTemplateMatch(np.array(testpscn[0][j]), itrace=j, lpf=pars.LPF)
             testpscn[0][j] = cb[j].data  # # get filtered data
-            cb[j].reset_filtering()
+            cb[j].reset_filters()
             print("# events in template: ", len(t_events[j]))
             print("threshold: ", cb[j].threshold)
 
         cb[i].identify_events(outlier_scale=3.0, order=101)
-        cb[i].summarize(np.array(testpscn[0]))
+        summary = cb[i].summarize(np.array(testpscn[0]))
+        summary = cb.average_events(traces=[0], data=np.array(testpscn), summary=summary)
         tot_events = sum([len(x) for x in cb[i].onsets])
         print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
@@ -413,7 +415,7 @@ def run_ClementsBekkers_multiscale(
             )  # i_events)
             mpl.show()
             # time.sleep(5)
-    return cb, fig_handle
+    return cb, summary, fig_handle
 
 
 def run_AndradeJonas(
@@ -463,11 +465,12 @@ def run_AndradeJonas(
             llambda=5.0,
         )
         testpscn[i] = aj.data  # # get filtered data
-        aj.reset_filtering()
+        aj.reset_filters()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", aj.threshold)
     aj.identify_events(order=order)
-    aj.summarize(np.array(testpscn))
+    summary = aj.summarize(np.array(testpscn))
+    summary = aj.average_events(traces=[0], data=np.array(testpscn), summary=summary)
     tot_events = sum([len(x) for x in aj.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
@@ -480,7 +483,7 @@ def run_AndradeJonas(
         )  # i_events)
         mpl.show()
         # time.sleep(5)
-    return aj, fig_handle
+    return aj, summary, fig_handle
 
 
 def run_RSDeconvolve(
@@ -525,10 +528,11 @@ def run_RSDeconvolve(
     for i in range(pars.ntraces):
         rs.deconvolve(testpscn[i], itrace=i)
         testpscn[i] = rs.data  # # get filtered data
-        rs.reset_filtering()
+        rs.reset_filters()
 
     rs.identify_events(order=101)
-    rs.summarize(np.array(testpscn))
+    summary = rs.summarize(np.array(testpscn))
+    summary = rs.average_events(traces=[0], data=np.array(testpscn), summary=summary)
     tot_events = sum([len(x) for x in rs.onsets])
     print("total events identified: ", tot_events, "from seeded: ", tot_seeded)
 
@@ -541,7 +545,7 @@ def run_RSDeconvolve(
         )  # i_events)
         mpl.show()
         # time.sleep(5)
-    return rs, fig_handle
+    return rs, summary, fig_handle
 
 
 class MiniTestMethods:
@@ -562,42 +566,43 @@ class MiniTestMethods:
             pars.mindur = 1e-3
             pars.HPF = None
             result, figh = run_ZeroCrossing(pars, plot=True, exp_test_set=True)
-            print("Events found: ", len(result.Summary.allevents))
+            print("Events found: ", len(summary.allevents))
             # if self.plot:
             #     zct = np.arange(
-            #         0, result.Summary.allevents.shape[1] * result.dt, result.dt
+            #         0, summary.allevents.shape[1] * result.dt, result.dt
             #     )
-            #     for a in range(len(result.Summary.allevents)):
-            #         mpl.plot(zct, result.Summary.allevents[a])
+            #     for a in range(len(summary.allevents)):
+            #         mpl.plot(zct, summary.allevents[a])
             #     mpl.show()
         if self.testmethod in ["CB", "cb"]:
-            result, figh = run_ClementsBekkers(
+            result, summary, figh = run_ClementsBekkers(
                 pars, extra=self.extra, plot=True, exp_test_set=True
             )
-            print("Events found: ", len(result.Summary.allevents))
+            print("Events found: ", len(summary.allevents))
             # if self.plot:
-            #     for a in range(len(result.Summary.allevents)):
-            #         mpl.plot(result.t_template, result.Summary.allevents[a])
+            #     for a in range(len(summary.allevents)):
+            #         mpl.plot(result.t_template, summary.allevents[a])
             #     mpl.show()
         if self.testmethod in ["AJ", "aj"]:
-            print("pars)")
-            result, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
-            print("Events found: ", len(result.Summary.allevents))
-            ajt = result.t_template[0 : result.Summary.allevents.shape[1]]
+
+            result, summary, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
+            print("Events found: ", len(summary.allevents))
+            # k = summary.allevents[0]
+            # ajt = result.t_template[0 : summary.allevents[k][1]]
             # if self.plot:
-            #     for i, a in enumerate(range(len(result.Summary.allevents))):
-            #         mpl.plot(ajt, result.Summary.allevents[a] + i + 20.0)
+            #     for i, a in enumerate(range(len(summary.allevents))):
+            #         mpl.plot(ajt, summary.allevents[a] + i + 20.0)
             #     mpl.show()
         if self.testmethod in ["RS", "rs"]:
             pars.threshold = 2.25
             result, figh = run_RSDeconvolve(pars, plot=True, exp_test_set=True)
-            print("Events found: ", len(result.Summary.allevents))
+            print("Events found: ", len(summary.allevents))
             # if self.plot:
             #     rst = np.arange(
-            #         0, result.Summary.allevents.shape[1] * result.dt, result.dt
+            #         0, summary.allevents.shape[1] * result.dt, result.dt
             #     )
-            #     for a in range(len(result.Summary.allevents)):
-            #         mpl.plot(rst, result.Summary.allevents[a])
+            #     for a in range(len(summary.allevents)):
+            #         mpl.plot(rst, summary.allevents[a])
             #     mpl.show()
         # if self.testmethod in ["all", "ALL"]:
         #     run_ZeroCrossing(pars, plot=True)
@@ -605,15 +610,15 @@ class MiniTestMethods:
         #     run_AndradeJoans(pars, plot=True)
 
         testresult = {
-            "onsets": result.Summary.onsets,
-            "peaks": result.Summary.peaks,
-            "amplitudes": result.Summary.amplitudes,
+            "onsets": summary.onsets,
+            "peaks": summary.peakindices,
+            "amplitudes": summary.amplitudes,
             # "fitresult": result.fitresult,  # lmfit object: can't be pickled, so do not save..
-            "fitted_tau1": result.fitted_tau1,
-            "fitted_tau2": result.fitted_tau2,
-            "risepower": result.risepower,
-            "risetenninety": result.risetenninety,
-            "decaythirtyseven": result.decaythirtyseven,
+            "fitted_tau1": summary.average.fitted_tau1,
+            "fitted_tau2": summary.average.fitted_tau2,
+            "risepower": summary.average.risepower,
+            "risetenninety": summary.average.risetenninety,
+            "decaythirtyseven": summary.average.decaythirtyseven,
         }
         return testresult
 
@@ -654,36 +659,36 @@ class MinisTester(UserTester):
 def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
     if mpl is None:
         import matplotlib.pyplot as mpl
-    tba = method.timebase[: len(method.Summary.allevents[0])]
+    tba = method.timebase[: len(method.summary.allevents[0])]
     last_tr = 0
     dyi = 0
-    for i, a in enumerate(method.Summary.allevents):
+    for i, a in enumerate(method.summary.allevents):
         dyi += dy
         if np.isnan(a[0]):  # didn't fit.
             continue
         mpl.plot(tba, sf * a + dyi)
-        jtr = method.Summary.event_trace_list[i]  # get trace and event number in trace
+        jtr = method.summary.event_trace_list[i]  # get trace and event number in trace
         if len(jtr) == 0:
             continue
         if jtr[0] > last_tr:
             last_tr = jtr[0]
             dyi = dyi + 10 * dy
-        # print('sm, on', i, jtr, len(method.Summary.smpkindex[jtr[0]]), len(method.Summary.onsets[jtr[0]]))
-        pk = method.Summary.smpkindex[jtr[0]][jtr[1]]
-        on = method.Summary.onsets[jtr[0]][jtr[1]]
+        # print('sm, on', i, jtr, len(method.summary.smpkindex[jtr[0]]), len(method.summary.onsets[jtr[0]]))
+        pk = method.summary.smpkindex[jtr[0]][jtr[1]]
+        on = method.summary.onsets[jtr[0]][jtr[1]]
         onpk = (pk - on) * method.dt_seconds
         mpl.plot(
             onpk,
-            sf * method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + dyi,
+            sf * method.summary.smoothed_peaks[jtr[0]][jtr[1]] + dyi,
             "ro",
             markersize=4,
         )
-        pk = method.Summary.peaks[jtr[0]][jtr[1]]
-        on = method.Summary.onsets[jtr[0]][jtr[1]]
+        pk = method.summary.peaks[jtr[0]][jtr[1]]
+        on = method.summary.onsets[jtr[0]][jtr[1]]
         onpk = (pk - on) * method.dt_seconds
         mpl.plot(
             onpk,
-            sf * method.Summary.amplitudes[jtr[0]][jtr[1]] + dyi,
+            sf * method.summary.amplitudes[jtr[0]][jtr[1]] + dyi,
             "ys",
             markersize=4,
         )

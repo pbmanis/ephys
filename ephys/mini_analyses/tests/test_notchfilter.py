@@ -82,8 +82,9 @@ window = scipy.signal.windows.hann(winpts, 1)# , at=100)
 twin = np.concatenate((window[:hwin], np.ones(npts-winpts), window[hwin:]))
 data = data*twin
 datan, _, _ = MEK.detrend.detrend(data, order=5)
-
-datan = MI.NotchFilterComb(data=data, notch=notch, notch_Q = Q)
+MI.filters.Notch_frequencies = notch
+MI.filters.Notch_Q = Q
+datan = MI.NotchFilterComb(data=data)
 datan = datan[hwin:-hwin]
 tbn = tb[hwin:-hwin]
 

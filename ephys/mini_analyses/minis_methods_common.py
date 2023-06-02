@@ -339,7 +339,7 @@ class MiniAnalyses:
         data = dfilt.NotchFilterComb(
             data,
             notchf=self.filters.Notch_frequencies,
-            Q=self.Notch_Q,
+            Q=self.filters.Notch_Q,
             QScale=False,
             samplefreq=1.0 / self.dt_seconds,
         )
@@ -589,6 +589,7 @@ class MiniAnalyses:
             "y",
             f"    methods common: identify_events: {nrejected_too_small:5d} events were smaller than threshold of {1e12*self.min_event_amplitude:6.1f} pA",
         )
+        self.summary = summary # keep a local copy, but only for resting. 
         return summary
     
     def select_events(
@@ -783,11 +784,11 @@ class MiniAnalyses:
                 meas["HWdown"].append(hw_down)
                 meas["HW"].append(hw_up + hw_down)
             self.measured = True
-            self.Summary.allevents = allevents
+            self.summary.allevents = allevents
             # assert 1 == 0  # force trap here
         else:
             self.measured = False
-            self.Summary.allevents = None
+            self.summary.allevents = None
         return meas
 
     def average_events(
@@ -975,20 +976,21 @@ class MiniAnalyses:
             summary.average.Amplitude = self.Amplitude
             summary.average.avg_fiterr = self.avg_fiterr
             summary.average.risetenninety = self.risetenninety
+            summary.average.risepower = self.risepower
             summary.average.decaythirtyseven = self.decaythirtyseven
         else:
             CP.cprint("r", "    average_events: **** No events found that meet criteria ****")
             return
         # for testing, plot out the clean events
         # fig, ax = mpl.subplots(1,2)
-        # for i in self.Summary.isolated_event_trace_list:
-        #     ax[0].plot(avgeventtb+event_onsets[i], self.Summary.allevents[i]-self.Summary.allevents[i][0], 'b-', lw=0.5, )
+        # for i in self.summary.isolated_event_trace_list:
+        #     ax[0].plot(avgeventtb+event_onsets[i], self.summary.allevents[i]-self.summary.allevents[i][0], 'b-', lw=0.5, )
         # # rejected:
-        # for i in range(self.Summary.allevents.shape[0]):
-        #     if i not in self.Summary.isolated_event_trace_list and i < len(event_onsets):
-        #         ax[0].plot(avgeventtb+event_onsets[i], self.Summary.allevents[i]-self.Summary.allevents[i][0], 'r-', lw=0.5, )
+        # for i in range(self.summary.allevents.shape[0]):
+        #     if i not in self.summary.isolated_event_trace_list and i < len(event_onsets):
+        #         ax[0].plot(avgeventtb+event_onsets[i], self.summary.allevents[i]-self.summary.allevents[i][0], 'r-', lw=0.5, )
 
-        # # mpl.plot(avgeventtb, self.Summary.average.avgevent, 'k-', lw=3)
+        # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
         # mpl.show()
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
         return summary
@@ -1143,14 +1145,14 @@ class MiniAnalyses:
 
         """
         if (
-            not self.Summary.average.averaged or not self.fitted
+            not self.summary.average.averaged or not self.fitted
         ):  # averaging should be done first: stores events for convenience and gives some tau estimates
             print(
                 "Require fit of averaged events prior to fitting individual events",
-                self.Summary.average.averaged,
+                self.summary.average.averaged,
             )
             raise (ValueError)
-        onsets = self.Summary.onsets
+        onsets = self.summary.onsets
         time_past_peak = 0.1  # msec - time after peak to start fitting
         fixed_delay = self.template_pre_time
         # allocate arrays for results. Arrays have space for ALL events
@@ -1181,10 +1183,10 @@ class MiniAnalyses:
         self.fiterr = nanfill(nevents)
         self.bfdelay = nanfill(nevents)
         self.best_fit = (
-            np.zeros((nevents, self.Summary.average.avgeventtb.shape[0])) * np.nan
+            np.zeros((nevents, self.summary.average.avgeventtb.shape[0])) * np.nan
         )
         self.best_decay_fit = (
-            np.zeros((nevents, self.Summary.average.avgeventtb.shape[0])) * np.nan
+            np.zeros((nevents, self.summary.average.avgeventtb.shape[0])) * np.nan
         )
         self.tsel = 0
         self.tau2_range = 10.0
@@ -1192,16 +1194,16 @@ class MiniAnalyses:
 
         # prescreen events
         minint = np.max(
-            self.Summary.average.avgeventtb
+            self.summary.average.avgeventtb
         )  # msec minimum interval between events.
         self.fitted_events = (
             []
         )  # events that can be used (may not be all events, but these are the events that were fit)
 
         # only use "well-isolated" events in time to make the fit measurements.
-        print(f"Fitting individual events: {len(self.Summary.isolated_event_trace_list):d}")
+        print(f"Fitting individual events: {len(self.summary.isolated_event_trace_list):d}")
         for j, ev_tr in enumerate(
-            self.Summary.isolated_event_trace_list
+            self.summary.isolated_event_trace_list
         ):  # trace list of events
             # print('onsetsj: ', len(onsets[j]))
             if not ev_tr:  # event in this trace could be outside data window, so skip
@@ -1222,25 +1224,25 @@ class MiniAnalyses:
                     continue
             except:
                 pass
-            j_nan = np.count_nonzero(np.isnan(self.Summary.allevents[j, :]))
+            j_nan = np.count_nonzero(np.isnan(self.summary.allevents[j, :]))
             if j_nan > 0:
                 raise ValueError(
-                    f"Event array {j:d} has {j_nan:d} nan values in it, array length = {len(self.Summary.allevents[j, :]):d} and {len(onsets[i_tr]):d} onset values"
+                    f"Event array {j:d} has {j_nan:d} nan values in it, array length = {len(self.summary.allevents[j, :]):d} and {len(onsets[i_tr]):d} onset values"
                 )
 
             try:
-                max_event = np.max(self.sign * self.Summary.allevents[j, :])
+                max_event = np.max(self.sign * self.summary.allevents[j, :])
             except:
                 CP.cprint("r", "FITTING FAILED: ")
                 print("  minis_methods eventfitter")
                 print("  j: ", j)
-                print("  allev: ", self.Summary.allevents)
-                print("  len allev: ", len(self.Summary.allevents), len(onsets))
+                print("  allev: ", self.summary.allevents)
+                print("  len allev: ", len(self.summary.allevents), len(onsets))
                 raise ValueError("  Fit failed)")
             print(f"\r    Event: {j:06d}", end="")
             res = self.event_fitter_lm(
-                timebase=self.Summary.average.avgeventtb,
-                event=self.Summary.allevents[j, :],
+                timebase=self.summary.average.avgeventtb,
+                event=self.summary.allevents[j, :],
                 time_past_peak=time_past_peak,
                 fixed_delay=fixed_delay,
                 label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
@@ -1261,16 +1263,16 @@ class MiniAnalyses:
             # print('tau_2: ', self.fitresult.params['tau_2'].value)
             # print('risepower: ', self.fitresult.params['risepower'].value)
             # print('fixed_delay: ', self.fitresult.params['fixed_delay'].value)
-            # print('y shape: ', np.shape(self.Summary.allevents[j,:]))
-            # print('x shape: ', np.shape(self.Summary.average.avgeventtb))
+            # print('y shape: ', np.shape(self.summary.allevents[j,:]))
+            # print('x shape: ', np.shape(self.summary.average.avgeventtb))
             self.fiterr[j] = self.doubleexp_lm(
-                y=self.Summary.allevents[j],
-                time=self.Summary.average.avgeventtb,
+                y=self.summary.allevents[j],
+                time=self.summary.average.avgeventtb,
                 amp=self.fitresult.params["amp"].value,
                 tau_1=self.fitresult.params["tau_1"].value,
                 tau_2=self.fitresult.params["tau_2"].value,
                 tau_ratio=self.fitresult.params["tau_ratio"].value,
-                # self.sign * self.Summary.allevents[j, :],
+                # self.sign * self.summary.allevents[j, :],
                 risepower=self.fitresult.params["risepower"].value,
                 fixed_delay=self.fitresult.params[
                     "fixed_delay"
@@ -1280,13 +1282,13 @@ class MiniAnalyses:
             # self.best_decay_fit[j] = self.decay_fit  # from event_fitter
             self.ev_fitamp[j] = np.max(self.best_fit[j])
             self.ev_Qtotal[j] = self.dt_seconds * np.sum(
-                self.sign * self.Summary.allevents[j, :]
+                self.sign * self.summary.allevents[j, :]
             )
-            last_half = int(self.Summary.allevents.shape[1] / 2)
+            last_half = int(self.summary.allevents.shape[1] / 2)
             self.ev_Q_end[j] = self.dt_seconds * np.sum(
-                self.Summary.allevents[j, last_half:]
+                self.summary.allevents[j, last_half:]
             )
-            self.ev_amp[j] = np.max(self.sign * self.Summary.allevents[j, :])
+            self.ev_amp[j] = np.max(self.sign * self.summary.allevents[j, :])
             self.fitted_events.append(j)
         print()
         self.individual_event_screen(
@@ -1580,17 +1582,17 @@ class MiniAnalyses:
         P.axdict["D"].set_xlabel(r"Amp (pA)")
         P.axdict["D"].set_ylabel(r"Fit Error (cost)")
         for i in self.events_ok:
-            ev_bl = np.mean(self.Summary.allevents[i, 0:5])
+            ev_bl = np.mean(self.summary.allevents[i, 0:5])
             P.axdict["E"].plot(
-                self.Summary.average.avgeventtb,
-                self.Summary.allevents[i] - ev_bl,
+                self.summary.average.avgeventtb,
+                self.summary.allevents[i] - ev_bl,
                 "b-",
                 linewidth=0.75,
             )
             # P.axdict['E'].plot()
             P.axdict["F"].plot(
-                self.Summary.average.avgeventtb,
-                self.Summary.allevents[i] - ev_bl,
+                self.summary.average.avgeventtb,
+                self.summary.allevents[i] - ev_bl,
                 "r-",
                 linewidth=0.75,
             )
@@ -1632,33 +1634,33 @@ class MiniAnalyses:
         k = 0
         for i in self.events_ok:
             offset = i * 3.0
-            ev_bl = np.mean(self.Summary.allevents[i, 0:5])
+            ev_bl = np.mean(self.summary.allevents[i, 0:5])
             P2.axdict["A"].plot(
-                self.Summary.average.avgeventtb,
-                self.Summary.allevents[i] + offset - ev_bl,
+                self.summary.average.avgeventtb,
+                self.summary.allevents[i] + offset - ev_bl,
                 "k-",
                 linewidth=0.35,
             )
             P2.axdict["A"].plot(
-                self.Summary.average.avgeventtb,
+                self.summary.average.avgeventtb,
                 self.best_fit[i] + offset,
                 "c--",
                 linewidth=0.3,
             )
             # P2.axdict["A"].plot(
-            #     self.Summary.average.avgeventtb,
+            #     self.summary.average.avgeventtb,
             #     self.sign * self.best_decay_fit[i] + offset,
             #     "r--",
             #     linewidth=0.3,
             # )
             P3.axdict[idx[k]].plot(
-                self.Summary.average.avgeventtb,
-                self.Summary.allevents[i] + offset2,
+                self.summary.average.avgeventtb,
+                self.summary.allevents[i] + offset2,
                 "k--",
                 linewidth=0.3,
             )
             P3.axdict[idx[k]].plot(
-                self.Summary.average.avgeventtb,
+                self.summary.average.avgeventtb,
                 self.best_fit[i] + offset2,
                 "r--",
                 linewidth=0.3,
@@ -1755,8 +1757,8 @@ class MiniAnalyses:
             else:
                 label = ""
             ax[0].plot(
-                tb[self.Summary.smpkindex[i]],
-                scf * np.array(self.Summary.smoothed_peaks[i]),
+                tb[self.summary.smpkindex[i]],
+                scf * np.array(self.summary.smoothed_peaks[i]),
                 peak_marks[index],
                 label=label,
             )
@@ -1800,23 +1802,23 @@ class MiniAnalyses:
             )
 
         # averaged events, convolution template, and fit
-        if self.Summary.average.averaged:
+        if self.summary.average.averaged:
             if i == 0:
                 nev = sum([len(x) for x in self.onsets])
                 label = f"Average Event (N={nev:d})"
             else:
                 label = ""
-            evlen = len(self.Summary.average.avgevent)
+            evlen = len(self.summary.average.avgevent)
             ax[2].plot(
-                self.Summary.average.avgeventtb[:evlen]*1e3,
-                scf * self.Summary.average.avgevent,
+                self.summary.average.avgeventtb[:evlen]*1e3,
+                scf * self.summary.average.avgevent,
                 "k-",
                 label=label,
             )
-            maxa = np.max(self.sign * self.Summary.average.avgevent)
+            maxa = np.max(self.sign * self.summary.average.avgevent)
             if self.template is not None:
                 maxl = int(
-                    np.min([len(self.template), len(self.Summary.average.avgeventtb)])
+                    np.min([len(self.template), len(self.summary.average.avgeventtb)])
                 )
                 temp_tb = np.arange(0, maxl * self.dt_seconds, self.dt_seconds)
                 if i == 0:
@@ -1824,7 +1826,7 @@ class MiniAnalyses:
                 else:
                     label = ""
                 ax[2].plot(
-                    self.Summary.average.avgeventtb[:maxl]*1e3 + self.bfdelay,
+                    self.summary.average.avgeventtb[:maxl]*1e3 + self.bfdelay,
                     scf * self.sign * self.template[:maxl] * maxa / self.template_amax,
                     "m-",
                     label=label,
@@ -1846,7 +1848,7 @@ class MiniAnalyses:
             else:
                 label = ""
             ax[2].plot(
-                self.Summary.average.avgeventtb[: len(self.avg_best_fit)]*1e3,
+                self.summary.average.avgeventtb[: len(self.avg_best_fit)]*1e3,
                 scf * self.avg_best_fit,
                 "c--",
                 linewidth=2.0,
