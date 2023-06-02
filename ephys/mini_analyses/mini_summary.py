@@ -14,7 +14,7 @@ import ephys.ephys_analysis as EP
 from . import minis_methods
 
 
-class Summary():
+class Mini_summary():
     def __init__(self, basedir):
         self.basedir = basedir
         
