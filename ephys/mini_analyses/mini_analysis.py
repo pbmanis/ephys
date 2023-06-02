@@ -583,7 +583,7 @@ class MiniAnalysis:
                     "avgevent25": method.Summary.average.avgevent25,
                     "avgevent75": method.Summary.average.avgevent75,
                     "allevents": method.Summary.allevents,
-                    "clean_event_trace_list": method.Summary.clean_event_trace_list,
+                    "isolated_event_trace_list": method.Summary.isolated_event_trace_list,
                     "fit": {
                         "amplitude": method.Summary.average.Amplitude,
                         "tau_1": method.Summary.average.fitted_tau1,
@@ -920,7 +920,7 @@ class MiniAnalysis:
             for j in range(len(aev[i]["allevents"])):
                 # if np.sum(aev[i]["allevents"][j]) > 0:
                 #     continue
-                if aev[i]["clean_event_trace_list"][j]:
+                if aev[i]["isolated_event_trace_list"][j]:
                     P.axdict["F"].plot(aev[i]["tb"],aev[i]["allevents"][j], 'b-', linewidth=0.3, alpha=0.1)
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avg"], "k-", linewidth=0.8)
             # sns.lineplot(x=aev[i]["tb"], y = aev[i]["allevents"], estimator="median", errorbar=('ci', 90), ax=P.axdict["F"])
