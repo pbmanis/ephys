@@ -34,6 +34,7 @@ import scipy.signal
 from ephys.mapanalysistools import plot_map_data as PMD
 from ephys.mapanalysistools import compute_scores
 from ephys.mini_analyses import minis_methods
+import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
 re_duration = re.compile(r"(\d{1,3}ms)")
@@ -74,6 +75,7 @@ class AnalysisPars:
     This class is also passed to the plotMapdata routines
     (display_one_map).
     """
+    dt_seconds: float=2e-5 # sample rate in seconds
     spotsize: float = 42e-6  # spot size in meters
     baseline_flag: bool = False
     baseline_subtracted: bool = False
@@ -225,7 +227,7 @@ class AnalyzeMap(object):
             self.engine = "cython"
         elif methodname.lower() in ["cb"]:
             self.methodname = "cb"
-            self.engine = "numba"  # set this as the default
+            self.engine = "cython"  # set this as the default
         elif methodname.lower() in ["cb_numba"]:
             self.methodname = "cb"
             self.engine = "numba"
@@ -294,12 +296,12 @@ class AnalyzeMap(object):
         self.Pars.stimtimes = self.AR.LaserBlueTimes
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.ar_tend = self.AR.tend
-
+        dt = self.AR.sample_interval
+        self.Pars.dt_seconds = dt
 
         # Adjust the time limits for the data analysis to exclude any
         # vc or ic monitoring pulises that might be before or after the data.
         # This is done to clean up the filtering that takes place later
-        dt = self.AR.sample_interval
         self.Pars.time_end = np.max(self.AR.time_base)
         self.Pars.time_end_index = int(self.Pars.time_end/dt)
         self.Pars.time_zero = 0.0
@@ -397,150 +399,6 @@ class AnalyzeMap(object):
         Qb = 1e6 * np.sum(data[tbindx]) / (twin_base[1] - twin_base[0])  # baseline
         return Qr, Qb
 
-
-
-
-    def select_events(
-        self,
-        pkt: Union[list, np.ndarray],
-        tstarts: list,  # window starts
-        tdurs: list,  # window durations
-        rate: float,
-        mode: str = "reject",
-        thr: float = 5e-12,
-        data: Union[np.ndarray, None] = None,
-        first_only: bool = False,
-        debug: bool = False,
-    ) -> list:
-        """
-        return indices where the input index is outside (or inside) a set of time windows.
-        tstarts is a list of window starts
-        twin is the duration of each window
-        rate is the data sample rate (in msec...)
-        pkt is the list of times to compare against.
-        """
-
-        # print('rate: ', rate)
-        if mode in ["reject", "threshold_reject"]:
-            npk = list(range(len(pkt)))  # assume all
-        else:
-            npk = []
-        for itw, tw in enumerate(tstarts):  # and for each stimulus
-            first = False
-            if isinstance(tdurs, list) or isinstance(
-                tdurs, np.ndarray
-            ):  # either use array parallel to tstarts, or
-                ttwin = tdurs[itw]
-            else:
-                ttwin = tdurs  # or use just a single value
-            ts = int(tw / rate)
-            te = ts + int(ttwin / rate)
-            for k, pk in enumerate(pkt):  # over each index
-                if (
-                    mode == "reject" and npk[k] is None
-                ):  # means we have already rejected the n'th one
-                    continue
-                if mode == "reject":
-                    if pk >= ts and pk < te:
-                        npk[k] = None
-                elif (mode == "threshold_reject") and (data is not None):
-                    if (pk >= ts) and (pk < te) and (np.fabs(data[k]) < thr):
-                        print("np.fabs: ", np.fabs(data[k]), thr)
-                        npk[k] = None
-                elif mode == "accept":
-                    if debug:
-                        print("accepting ?: ", ts, k, pk, te, rate)
-                    if pk >= ts and pk < te and not first:
-                        if debug:
-                            print("    ok")
-                        if k not in npk:
-                            npk.append(k)
-                        if first_only and not first:
-                            first = True
-                            break
-
-                else:
-                    raise ValueError(
-                        "analyzeMapData:select_times: mode must be accept, threshold_reject, or reject; got: %s"
-                        % mode
-                    )
-        if debug:
-            print("npk: ", npk)
-        npks = [
-            n for n in npk if n is not None
-        ]  # return the truncated list of indices into pkt
-        return npks
-
-    def select_by_sign(
-        self, method: object, itrace:int, npks: int, data: np.ndarray, min_event: float = 5e-12
-    ) -> Union[list, np.ndarray]:
-        """
-        Screen events for correct sign and minimum amplitude.
-        Here we use the onsets and smoothed peak to select
-        for events satisfying criteria.
-
-        Parameters
-        ----------
-        method : object (mini_analysis object)
-            result of the mini analysis. The object must contain
-            at least two lists, one of onsets and one of the smoothed peaks.
-            The lists must be of the same length.
-
-        data : array
-            a 1-D array of the data to be screened. This is the entire
-            trace.
-
-        event_min : float (default 5e-12)
-            The smallest size event that will be considered acceptable.
-        """
-
-        pkt = []
-        if len(method.onsets) == 0:
-            return pkt
-        tb = method.timebase  # full time base
-        smpks = np.array(method.Summary.smpkindex[itrace])
-        # events[trial]['aveventtb']
-        rate = np.mean(np.diff(tb))
-        tb_event = method.avgeventtb # method.Summary.average.avgeventtb  # event time base
-        tpre = 0.002  # 0.1*np.max(tb0)
-        tpost = np.max(tb_event) - tpre
-        ipre = int(tpre / self.rate)
-        ipost = int(tpost / self.rate)
-        pt_fivems = int(0.0005 / self.rate)
-        pk_width = int(0.0005 / self.rate / 2.0)
-
-        for npk, jevent in enumerate(np.array(method.Summary.onsets[itrace])[npks]):
-            jstart = jevent - ipre
-            jpeak = method.Summary.smpkindex[itrace][npk]
-            jend = jevent + ipost + 1
-            evdata = data[jstart:jend].copy()
-            l_expect = jend - jstart
-            if evdata.shape[0] == 0 or evdata.shape[0] < l_expect:
-                # print('nodata', evdata.shape[0], l_expect)
-                continue
-            bl = np.mean(evdata[:pt_fivems])
-            evdata -= bl
-
-            # next we make a window over which the data will be averaged to test the ampltiude
-            left = jpeak - pk_width
-            right = jpeak + pk_width
-            left = max(0, left)
-            right = min(right, len(data))
-            if right - left == 0:  # peak and onset cannot be the same
-                # print('r - l = 0')
-                continue
-            # if (self.Pars.sign < 0) and (
-            #     np.mean(data[left:right]-zero) > (self.Pars.sign * min_event)
-            # ):  # filter events by amplitude near peak
-            #      print('data pos, sign neg', np.mean(data[left:right]))
-            #      continue
-            # if (self.Pars.sign >= 0) and (
-            #     np.mean(data[left:right]-zero) < (self.Pars.sign * min_event)
-            # ):
-            #     print('data neg, sign pos', np.mean(data[left:right]))
-            #     continue
-            pkt.append(npk)  # build array through acceptance.
-        return pkt
 
     def _remove_outliers(self, x:np.ndarray, scale:float=3.0) -> np.ndarray:
         """
@@ -843,6 +701,8 @@ class AnalyzeMap(object):
                 datatype = self.Pars.datatype
             )
             events[jtrial] = res
+            # print("Trial results: ", res)
+
         if self.verbose:
             print("  ALL trials in protocol analyzed")
         return {
@@ -856,10 +716,10 @@ class AnalyzeMap(object):
             "positions": pos,
             "stimtimes": self.Pars.stimtimes,
             "events": events,
-            "eventtimes": eventlist,
+            # "eventtimes": res.onsets,
             "dataset": dataset,
             "sign": self.Pars.sign,
-            "avgevents": avgevents,
+            # "avgevents": res.average,
             "rate": rate,
             "ntrials": data.shape[0],
         }
@@ -871,8 +731,6 @@ class AnalyzeMap(object):
         analyze_traces_in_trial
         and returns "method" (the class that analyzed the data in a trial)
 
-        
-        
         Parameters
         ----------
         data: numpy array (2D): no default
@@ -910,23 +768,30 @@ class AnalyzeMap(object):
         #             data[itarget], itarget, pars=pars
         #         )
             # print('Result keys no parallel: ', results.keys())
+
         method = self.analyze_traces_in_trial(data, pars=pars, datatype=datatype)
         method.identify_events(verbose=True) # order=order)
-        method.summarize(data, verbose=True)
-        if len(method.Summary.average.avgevent) == 0:
-            return None
-        method.fit_average_event(
-            method.Summary.average.avgeventtb,
-            method.Summary.average.avgevent,
-            inittaus = self.Pars.taus)
-        if method.fitted:
-            results = self.clean_and_gather_trial_events(method, data=data, pars=pars)
-            if self.verbose:
-                print("    Trial analyzed")
-            return results
-        else:
-            return None
+        summary = method.summarize(data, verbose=True)
+        ok_onsets = method.get_data_cleaned_from_stimulus_artifacts(data, summary=summary, pars=self.Pars)
+        summary.ok_onsets = ok_onsets
+        summary.spont_dur = [self.Pars.stimtimes["start"][0]]*data.shape[0]
+        summary = method.average_events(traces=range(data.shape[0]), data=data, summary=summary)
+        summary = self.average_trial_events(method, data=data, minisummary=summary, pars=self.Pars)
 
+        if len(summary.average.avgevent) == 0:
+            return None
+        
+        method.fit_average_event(
+            summary.average.avgeventtb,
+            summary.average.avgevent,
+            inittaus = self.Pars.taus
+            )
+
+        if self.verbose:
+            print("    Trial analyzed")
+
+        return summary
+    
     def analyze_traces_in_trial(
         self, data: np.ndarray,  pars: dict = None, datatype: str=None,
     ) -> dict:
@@ -1051,214 +916,136 @@ class AnalyzeMap(object):
                 f'analyzeMapData:analyzetracesintrial: Method <{self.methodname:s}> is not valid (use "aj" or "cb" or "zc")'
             )
 
-    def clean_and_gather_trial_events(self, method:object, data:object, pars: dict = None):
+    def get_artifact_times(self):
+        """Compute the artifact times and store them in a structurs
+
+        Returns:
+            artifacts structure: dataclass holding artifact times (starts, durations)
         """
-        After the traces have been analyzed, we next
-        filter out events at times of stimulus artifacts and
-        then collect the data
-        """
-        # build array of artifact times first
-        assert data.ndim == 2
-        ntraces = data.shape[0]
         # set up parameters for artifact exclusion
-        art_starts = []
-        art_durs = []
-        art_starts = [
+        artifacts = MEDC.Artifacts()
+        artifacts.starts = [
             self.Pars.analysis_window[1],
             self.Pars.shutter_artifact,
         ]  # generic artifacts
-        art_durs = [2, 2 * self.rate]
+        artifacts.durations = [2, 2 * self.Pars.dt_seconds]
         if self.Pars.artifact_suppress:
             for si, s in enumerate(self.Pars.stimtimes["start"]):
-                if s in art_starts:
+                if s in artifacts.starts:
                     continue
-                art_starts.append(s)
+                artifacts.starts.append(s)
                 if isinstance(self.Pars.stimtimes["duration"], float):
                     if pd.isnull(self.Pars.stimdur):  # allow override
-                        art_starts.append(s + self.Pars.stimtimes["duration"])
+                        artifacts.starts.append(s + self.Pars.stimtimes["duration"])
                     else:
-                        art_starts.append(s + self.Pars.stimdur)
+                        artifacts.starts.append(s + self.Pars.stimdur)
 
                 else:
                     if pd.isnull(self.Pars.stimdur):
-                        art_starts.append(s + self.Pars.stimtimes["duration"][si])
+                        artifacts.starts.append(s + self.Pars.stimtimes["duration"][si])
                     else:
-                        art_starts.append(s + self.Pars.stimdur)
-                art_durs.append(2.0 * self.rate)
-                art_durs.append(2.0 * self.rate)
+                        artifacts.starts.append(s + self.Pars.stimdur)
+                artifacts.durations.append(2.0 * self.Pars.dt_seconds)
+                artifacts.durations.append(2.0 * self.Pars.dt_seconds)
 
-        """
-        Initialize the output arrays
-        """
-        eventlist = pars["eventlist"]
-        tb = pars["tb"]
-        # nevents = pars["nevents"]
-        onsets = []  # list of event onset times in this trace
-        crit = []  # criteria from CB
-        scale = []  # scale from CB
-        tpks = []  # time for peaks
-        smpks = []  # boxcar smoothed peak values
-        smpksindex = []  # array matching smpks for indices into smoothed peaks
-        avgev = []  # average of detected events
-        avgtb = []  # time base for average events (for avgev)
-        avgnpts = []  # number of points in averaged events
-        avg_spont = []  # average of spontaneous evetns
-        avg_evoked = []  # average of evoked events
-        measures = []  # simple measures, q, amp, half-width
-        fit_tau1 = []  # fit time constants rise
-        fit_tau2 = []  # fall
-        fit_amp = []  # amplitude of fit to event
-        spont_dur = []  # time window for spontaneous detection
-        evoked_ev = []  # subset of onsets events falling into evoked window
-        spont_ev = []  # subset of onsets events falling into spontaneous window
-        order = []
+        return artifacts
 
-        # get a time base for the average event
-        
-        event_trace_list = method.Summary.event_trace_list
-        nevents = 0
-        for i in range(ntraces):
-            # CP.cprint("r", f"analyzing trace: {i:d}")
-            npk0 = self.select_events(
-                method.Summary.smpkindex[i], art_starts, art_durs, self.rate, mode="reject"
+
+
+    def average_trial_events(self, method:object, data:object, minisummary:object=None, pars: dict = None):
+        """
+        After the traces have been analyzed, we next
+        filter out events at times of stimulus artifacts and
+        then make an average of all of the traces, separately for spontaneous
+        and evoked events. We also save the indices of those traces into the data array
+        """
+        # build array of artifact times first
+        assert data.ndim == 2
+        assert minisummary is not None
+        assert pars is not None
+        artifacts = self.get_artifact_times()
+
+        CP.cprint("c", "\nanalyze_map_data: Average Trial Events")
+        ev_done = []
+        for itrace in range(data.shape[0]):
+            # get events in the trace:
+            # CP.cprint("c", f"    AMD: analyzing trace: {itrace:d}")
+            evtr = list([x[1] for x in minisummary.isolated_event_trace_list if x[0] == itrace] )
+
+            # Define:
+            # spontaneous events are those that are:
+            #   a: not in evoked window, and,
+            #   b: no sooner than 10 msec before a stimulus,
+            # Also, events must be at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
+            # Evoked events are those that occur after the stimulus with in a window (usually ~ 5 msec)
+            # All data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
+            #
+            # process spontaneous events first
+            # also, only use isolated events for this calculation
+
+            npk_sp = method.select_events(
+                pkt = [minisummary.onsets[itrace][x] for x in evtr],
+                tstarts = [0.0],
+                tdurs = self.Pars.stimtimes["start"][0] - (0.010),
+                rate = minisummary.dt_seconds,
+                mode="accept",
             )
-            npk4 = self.select_by_sign(
-                method, itrace=i, npks=npk0, data=data[i], min_event=5e-12
-            )  # events must have correct sign and a minimum amplitude
-            npk = list(
-                set(npk0).intersection(set(npk4))
-            )  # make a list of all peaks that pass all tests (logical AND)
-            #  if not self.artifact_suppress:
-            #     npk = npk4  # only suppress shutter artifacts  .. exception
-            if len(npk) == 0:  # if there are no events that survive, then fill with empties
-                # CP.cprint('r', f"trace {i:d} has no events")
-                onsets.append(np.array([]))
-                eventlist.append(np.array([]))
-                tpks.append(np.array([]))
-                smpks.append(np.array([]))
-                smpksindex.append(np.array([]))
-                spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
-                st_times = np.array(self.Pars.stimtimes["start"])
-                ok_events = np.array([])
-                evoked_ev.append(
-                    [np.array([]), np.array([])]
+            if len(npk_sp) > 0:
+                sp_onsets = [minisummary.onsets[itrace][x] for x in npk_sp]
+                minisummary.spontaneous_event_trace_list.append(
+                    [sp_onsets, [minisummary.smpkindex[itrace][x] for x in npk_sp]]
                 )
-                spont_ev.append(
-                    [np.array([]), np.array([])]
+                avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(data[itrace], eventlist = sp_onsets, minisummary=minisummary)
+                minisummary.average_spont.avgevent.append(avg_spont_one)
+            else:
+                minisummary.spontaneous_event_trace_list.append([[], []])
+            # print(ok_events*rate)
+            
+            # Now get the events in the evoked event window across all traces
+            npk_ev = method.select_events(
+                pkt = [minisummary.onsets[itrace][x] for x in evtr],
+                tstarts = self.Pars.stimtimes["start"],
+                tdurs = self.Pars.response_window,
+                rate = minisummary.dt_seconds,
+                mode="accept",
+                first_only=True,
+            )
+            if len(npk_ev) > 0:
+                ev_onsets = [minisummary.onsets[itrace][x] for x in npk_ev]
+                minisummary.evoked_event_trace_list.append(
+                    [ev_onsets, [minisummary.smpkindex[itrace][x] for x in npk_ev]]
                 )
-                fit_tau1.append(np.nan) # nothing to measure
-                fit_tau2.append(np.nan)
-                fit_amp.append(np.nan)
-                avg_evoked.append(np.array([]))
-                measures.append([np.array([]), np.array([])])
-                npk = []
-                npk_sp = []
-
-            else:  # store the events (all events first, then subsets)
-                nevents += len(np.array(method.Summary.onsets[i])[npk])
-                onsets.append(np.array(method.Summary.onsets[i])[npk])
-                eventlist.append(tb[np.array(method.Summary.onsets[i])[npk]])
-                tpks.append(np.array(method.Summary.peaks[i])[npk])
-                smpks.append(np.array(method.Summary.smoothed_peaks[i])[npk])
-                smpksindex.append(np.array(method.Summary.smpkindex[i])[npk])
-                spont_dur.append(self.Pars.stimtimes["start"][0])  # window until the FIRST stimulus
-                method.Summary.onsets[i] = np.array(method.Summary.onsets[i])
-                method.Summary.smpkindex[i] = np.array(method.Summary.smpkindex[i])
-                # Define:
-                # spontaneous events are those that are:
-                #   a: not in evoked window, and,
-                #   b: no sooner than 10 msec before a stimulus,
-                # Also, events must be at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
-                # Evoked events are those that occur after the stimulus with in a window (usually ~ 5 msec)
-                # All data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
-                #
-                st_times = np.array(self.Pars.stimtimes["start"])
-                 # process spontaneous events first
-                npk_sp = self.select_events(
-                    method.Summary.onsets[i],
-                    [0.0],
-                    st_times[0] - (0.010),
-                    self.rate,
-                    mode="accept",
-                )
-                if len(npk_sp) > 0:
-                    sp_onsets = method.Summary.onsets[i][npk_sp]
-
-                    avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(data[i], sp_onsets)
-                    avg_spont.append(avg_spont_one)
-                    spont_ev.append(
-                        [method.Summary.onsets[i][npk_sp], method.Summary.smpkindex[i][npk_sp]]
-                    )
-                else:
-                    spont_ev.append([[], []])
-                
-                ok_events = np.array(method.Summary.smpkindex[i])[npk]
-                # print(ok_events*rate)
-
-                npk_ev = self.select_events(
-                    ok_events,
-                    st_times,
-                    self.Pars.response_window,
-                    self.rate,
-                    mode="accept",
-                    first_only=True,
-                )
-                method.Summary.onsets[i] = method.Summary.onsets[i][npk_ev]
-                method.Summary.smpkindex[i] = method.Summary.smpkindex[i][npk_ev]
-                evoked_ev.append(
-                    [method.Summary.onsets[i], method.Summary.smpkindex[i]]
-                )
-            # CP.cprint("r", f"     Nevents (cumul): {nevents:d}, trial: ev_events ={len(npk_ev):d}  sp_events = {len(npk_sp):d}")
-            # CP.cprint("r", f"        ev>1 : {str(method.Summary.onsets[i]):s}")
-            if len(npk) > 0:  # only do this
-                method.average_events(traces=[i], eventlist = method.Summary.onsets, data=data)
+                avg_evoked_one, avg_sponttb, allev_evoked = method.average_events_subset(data[itrace], eventlist = ev_onsets, minisummary=minisummary)
+                minisummary.average_evoked.avgevent.append(avg_evoked_one)
+            else:
+                minisummary.evoked_event_trace_list.append([[], []])
+            ok_events = np.array(minisummary.smpkindex[itrace])[npk_ev]
+            # if len(npk) > 0:  # only do this
+            #     summary = method.average_events(traces=[i], eventlist = summary.onsets, data=data)
             # these are the average fitted values for the i'th trace
-                fit_tau1.append(method.fitted_tau1)
-                fit_tau2.append(method.fitted_tau2)
-                fit_amp.append(method.Amplitude)
-                avg_evoked.append(method.avgevent)
-                measures.append(method.measure_events(data[i], method.Summary.onsets[i]))
+                # fit_tau1.append(method.fitted_tau1)
+                # fit_tau2.append(method.fitted_tau2)
+                # fit_amp.append(method.amplitude)
+                # avg_evoked.append(summary.allevents)
+                # measures.append(method.measure_events(data[i], summary.onsets[i]))
             # if len(method.Summary.average.avgeventtb) > 0:
             #     txb = method.Summary.average.avgeventtb  # only need one of these.
             
-        if method.Summary.average.averaged:  # grand average, calculated after deconvolution
-            avgev.append(method.Summary.average.avgevent)
-            avgtb.append(method.Summary.average.avgeventtb)
-            avgnpts.append(method.Summary.average.avgnpts)
+        sa = np.array(minisummary.average_spont.avgevent)
+        ea = np.array(minisummary.average_evoked.avgevent)
+
+        if sa.shape[0] > 0:
+            minisummary.average_spont.avgevent = np.mean(sa, axis=1)
         else:
-            avgev.append([])
-            avgtb.append(method.Summary.average.avgeventtb)
-            avgnpts.append(0)
-        # if testplots:
-        #     method.plots(title='%d' % i, events=None)
-        # CP.cprint("r", f"   ********** avgtb: {len(avgtb):d}    aveventtb: {len(method.Summary.average.avgeventtb):d}")
-        res = {
-            "criteria": crit,
-            "onsets": onsets,
-            "peaktimes": tpks,
-            "smpks": smpks,
-            "smpksindex": smpksindex,
-            "avgevent": avgev,
-            "avgtb": avgtb,
-            "avgnpts": avgnpts,
-            "avgevoked": avg_evoked,
-            "avgspont": avg_spont,
-            "aveventtb": avgtb,
-            "fit_tau1": fit_tau1,
-            "fit_tau2": fit_tau2,
-            "fit_amp": fit_amp,
-            "spont_dur": spont_dur,
-            "ntraces": 1,
-            "evoked_ev": evoked_ev,
-            "spont_ev": spont_ev,
-            "measures": measures,
-            "nevents": nevents,
-            "event_trace_list": event_trace_list,
-        }
+            minisummary.average_spont.avgevent == None
+        if ea.shape[0] > 0:
+            minisummary.average_evoked.avgevent = np.mean(ea, axis=1)
+        else:
+            minisummary.average_evoked.avgevent = None
+ 
         if self.verbose:
             print("      --trace analyzed")
-        return res
-
+        return minisummary
 
 
     def fix_artifacts(self, data: np.ndarray, AR: Union[object, None] = None) -> Tuple[np.ndarray, np.ndarray]:

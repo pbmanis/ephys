@@ -439,7 +439,11 @@ class Analysis():
                 for dx in self.df.date.values:
                     print(f"    day: {dx:s}")
             # print("  ... Retrieved day:\n", day_x)
-            for icell in cells_in_day.index:  # for all the cells in the day
+            for icell in cells_in_day.index:  # for all the cells in the day (but will check for slice_cell too)
+                # print(f"<{self.slicecell:s}>")
+                # if self.slicecell is None or len(self.slicecell) == 0:
+                #     print("is none")
+                # exit()
                 self.do_cell(icell, pdf=self.pdfFilename)
 
         # get the complete protocols:
@@ -507,7 +511,7 @@ class Analysis():
 
     def make_cellstr(self, df: object, icell: int, shortpath: bool = False):
         """
-        Make a day string including slice and cell from the icell index in the pandas datafram df
+        Make a day string including slice and cell from the icell index in the pandas dataframe df
         Example result:
             s = self.make_cellstr (df, 1)
             s: '2017.01.01_000/slice_000/cell_001'  # Mac/linux path string
@@ -604,6 +608,9 @@ class Analysis():
 
         """
         celltype = self.check_celltype(celltype)
+        if slicecell is None:
+            raise ValueError("iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set")
+
         if self.dry_run or not self.autoout:
             print("Dry run or not automatic output")
             return
@@ -618,8 +625,6 @@ class Analysis():
         # CP.cprint("c",
         #     f"Merging pdfs at {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
         # )
-        if slicecell is None:
-            raise ValueError("iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set")
         if self.autoout:
             # print("  in auto mode")
             pdfname = self.make_cell_filename(celltype, slicecell)
@@ -853,7 +858,7 @@ class Analysis():
 
     def do_cell(self, icell: int, pdf=None):
         """
-        Do analysis on one cell's
+        Do analysis on one cell
         Runs all protocols for the cell 
 
         Includes a dispatcher for different kinds of protocols: IVs, Maps, VCs
@@ -868,14 +873,14 @@ class Analysis():
         """
         celltype, celltypechanged = self.get_celltype(icell)
         datestr, slicestr, cellstr = self.make_cell(icell)
-        # celltype = self.df.iloc[icell].cell_type
         celltype = self.check_celltype(celltype)
-        self.df.iloc[icell].cell_type = celltype  # force relabel in database
+        self.df.at[self.df.index[icell], "cell_type"] = celltype
 
         slicecell = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
         dsday, nx = Path(datestr).name.split("_")
         self.thisday = dsday
 
+        # check dates
         thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
         if thisday < self.after or thisday > self.before:
             CP.cprint(
@@ -884,6 +889,11 @@ class Analysis():
             )
             return
 
+        # check slice/cell:
+        if len(self.slicecell) > 0:
+            compareslice = f"S{int(self.slicecell[1]):02d}C{int(self.slicecell[3]):02d}"
+            if compareslice != slicecell:
+                return
         fullfile = Path(
             self.rawdatapath, self.df.iloc[icell].cell_id)
         #)
@@ -1081,7 +1091,7 @@ class Analysis():
                         if isinstance(u[k], dict):
                             for uk in u[k].keys():
                                 if isinstance(u[k][uk], bool) or isinstance(
-                                    u[k][uk], int32
+                                    u[k][uk], int
                                 ):
                                     u[k][uk] = int(u[k][uk])
                         if k in ["taupars", "RMPs", "Irmp"]:
@@ -1283,7 +1293,7 @@ class Analysis():
         sp_result = {}
 
         protocol_directory = Path(cell_directory, protocol)
-        
+
         if not protocol_directory.is_dir():
             print("cell directory: ", cell_directory)
             print("protocol: ", protocol)
@@ -1365,7 +1375,7 @@ class Analysis():
             return result, nfiles
 
         else:
-            print("Dry Run: would analyze %s" % Path(self.rawdatapath, protocol))
+            print(f"Dry Run: would analyze {str(protocol_directory):s}")
             br_offset = 0
 
             if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):

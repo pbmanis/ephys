@@ -365,20 +365,20 @@ class PlotMapData:
             CP.cprint("r", "**** plot_hist: no events were found")
             return
         rate = results["rate"]
-        tb0 = events[0]["aveventtb"]  # get from first trace in first trial
+        tb0 = events[0].average.avgeventtb  # get from first trace in first trial
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
         for itrial in events.keys():
             if events[itrial] is None:
                 continue
-            for j, jtrace in enumerate(events[itrial]["onsets"]):
+            for j, jtrace in enumerate(events[itrial].onsets):
                 nev += len(jtrace)
         eventtimes = np.zeros(nev)
         iev = 0
         for itrial in events.keys():
             if events[itrial] is None:
                 continue
-            for j, onsets in enumerate(events[itrial]["onsets"]):
+            for j, onsets in enumerate(events[itrial].onsets):
                 ntrialev = len(onsets)
                 eventtimes[iev : iev + ntrialev] = onsets
                 iev += ntrialev
@@ -504,16 +504,14 @@ class PlotMapData:
         for itrial in range(mdata.shape[0]):
             if events[itrial] is None:
                 continue
-            evtr = events[itrial][
-                "event_trace_list"
-            ]  # of course it is the same for every entry.
+            evtr = events[itrial].evoked_event_trace_list # of course it is the same for every entry.
             # iplot_tr = 0
             for itrace in range(mdata.shape[1]):
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
-                smpki = events[itrial]["smpksindex"][itrace]
-                pktimes = events[itrial]["peaktimes"][itrace]
-                # print(itrace, smpki)
+                smpki = events[itrial].smpkindex[itrace]
+                pktimes = np.array(smpki)*events[itrial].dt_seconds
+                # print(smpki)
                 if len(pktimes) > 0:
                     nevtimes += len(smpki)
                     if (
@@ -521,34 +519,40 @@ class PlotMapData:
                         and len(tb[smpki]) > 0
                         and len(mdata[itrial, itrace, smpki]) > 0
                     ):
-                        sd = events[itrial]["spont_dur"][itrace]
-                        tsi = smpki[
-                            np.where(tb[smpki] < sd)[0].astype(int)
-                        ]  # find indices of spontanteous events (before first stimulus)
+                        sd = events[itrial].spont_dur[itrace]
+                        pre_stim_indices = np.where(tb[smpki] < sd)[0].astype(int)
+                        tsi = None
+                        if len(pre_stim_indices) > 0:
+                            tsi = [int(smpki[x]) for x in pre_stim_indices]
+                        else:
+                            continue
+                     # find indices of spontanteous events (before first stimulus)
                         tri = np.ndarray(0)
                         for (
                             iev
                         ) in self.Pars.twin_resp:  # find events in all response windows
-                            tri = np.concatenate(
-                                (
-                                    tri.copy(),
-                                    smpki[
-                                        np.where(
+                             in_stim = np.where(
                                             (tb[smpki] >= iev[0]) & (tb[smpki] < iev[1])
                                         )[0]
+                             if len(in_stim) > 0:
+                                 tri = np.concatenate(
+                                (
+                                    tri.copy(),
+                                    [smpki[x] for x in 
+                                        in_stim
                                     ],
                                 ),
                                 axis=0,
                             ).astype(int)
                         ts2i = list(
                             set(smpki)
-                            - set(tri.astype(int)).union(set(tsi.astype(int)))
+                            - set(tri.astype(int)).union(set(tsi))
                         )  # remainder of events (not spont, not possibly evoked)
                         ms = np.array(
                             mdata[itrial, itrace, tsi]
                         ).ravel()  # spontaneous events
                         mr = np.array(
-                            mdata[itrial, itrace, tri]
+                            [mdata[itrial, itrace, x] for x in tri]
                         ).ravel()  # response in window
                         if len(mr) > 0:
                             crflag[itrial] = True  # flag traces with detected responses
@@ -562,7 +566,8 @@ class PlotMapData:
                         ck = matplotlib.colors.to_rgba("k", alpha=1.0)
                         cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
 
-                        ax.plot(
+                        if len(pre_stim_indices) > 0:
+                            ax.plot(
                             tb[tsi], # -self.Pars.time_zero,
                             ms * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
@@ -573,7 +578,7 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                         ax.plot(
-                            tb[tri], # -self.Pars.time_zero,
+                            [tb[x] for x in tri], # -self.Pars.time_zero,
                             mr * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cr,
@@ -583,7 +588,7 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                         ax.plot(
-                            tb[ts2i], # -self.Pars.time_zero,
+                            [tb[x] for x in ts2i], # -self.Pars.time_zero,
                             ms2 * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
                             "o",
                             color=cg,
@@ -656,7 +661,7 @@ class PlotMapData:
                 return sc[i + 1]
         return sc[-1]
 
-    def plot_avgevent_traces(
+    def plot_event_traces(
         self,
         evtype: str,
         mdata: Union[np.ndarray, None] = None,
@@ -678,6 +683,8 @@ class PlotMapData:
         # the average is recomputed.
         # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
+        # print("results: ", results)
+
         events = results['events']
         if self.plotted_em["avgax"][0] == 0:
             self.plotted_em["avgax"][1] = ax
@@ -687,7 +694,7 @@ class PlotMapData:
             else:
                 self.plotted_em["avgax"][2] = ax
                 self.plotted_em["avgevents"] = True
-        # CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
+        CP.cprint('c', f"plotting avgevent plot for  {evtype:s}, ax={str(ax):s}")
 
         # self.plotted_em['avgevents'] = True
         if events is None or ax is None or trace_tb is None:
@@ -697,9 +704,10 @@ class PlotMapData:
             )
             return
         nevtimes = 0
-        line = {"avgevoked": "k-", "avgspont": "k-"}
-        ltitle = {"avgevoked": "Evoked (%s)" % label, "avgspont": "Spont (%s)" % label}
-        result_names = {"avgevoked": "evoked_ev", "avgspont": "spont_ev"}
+        line = {"avgevoked": "k-", "avgspont": "k-", "evoked_events": "k-", "spont_events": "k-"}
+        ltitle = {"avgevoked": "Evoked (%s)" % label, "evoked_events": "Evoked (%s)" % label,
+                   "avgspont": "Spont (%s)" % label, "spont_events": "Spont (%s)" % label}
+        result_names = {"avgevoked": "evoked_events", "avgspont": "spont_events"}
 
         ax.set_ylabel(ltitle[evtype])
         ax.spines["left"].set_color(line[evtype][0])
@@ -708,99 +716,54 @@ class PlotMapData:
         ax.tick_params(axis="x", colors=line[evtype][0], labelsize=7)
         ev_min = 5e-12
         sp_min = 5e-12
-        if evtype == "avgevoked":
-            eventmin = ev_min
-        else:
-            eventmin = sp_min
+
         ave = []
-        # compute average events and time bases
         minev = 0.0
         maxev = 0.0
-        # for trial in events.keys():
-        spont_ev_count = 0
-        evoked_ev_count = 0
         npev = 0
-        # tau1 = self.Pars.MA.fitresult[1]  # get rising tau so we can make a logical tpre
-        # print("plotting # trials = ", mdata.shape[0])
-        for trial in range(mdata.shape[0]):
-            if self.verbose:
-                print("plotting events for trial: ", trial)
-            if events[trial] is None or len(events[trial]["aveventtb"]) == 0:
-                # print(trial, evtype, result_names[evtype])
-                CP.cprint("r", "**** plot_avgevent_traces: no events....")
-                continue
-            
-            tb0 = events[trial]["aveventtb"]  # get from first trace
 
-            rate = np.mean(np.diff(tb0))
+        # plot events from each trial
+        for trial in range(mdata.shape[0]):
+            CP.cprint("b", f"plotting events for trial: {trial:d}")
+            if events[trial] is None or len(events[trial].average.avgeventtb)  == 0:
+                CP.cprint("r", "**** plot_event_traces: no events....")
+                continue
+
+            tb0 = events[trial].average.avgeventtb  # get from the averaged trace
+
+            rate = events[trial].dt_seconds
             tpre = 0.1 * np.max(tb0)
             tpost = np.max(tb0)
             ipre = int(tpre / rate)
             ipost = int(tpost / rate)
             tb = np.arange(-tpre, tpost + rate, rate) + tpre
             ptfivems = int(0.0005 / rate)
-            pwidth = int(0.0005 / rate / 2.0)
-            # for itrace in events[trial].keys():  # traces in the evtype list
-            iplot_tr = 0
+            allevents = events[trial].allevents
 
             for itrace in range(mdata.shape[1]):  # traces in the evtype list
                 if events is None or trial not in list(events.keys()):
                     if self.verbose:
                         print(f"     NO EVENTS in trace: {itrace:4d}")
                     continue
-
-                evs = events[trial][result_names[evtype]][itrace]
-                if len(evs) == 0:  # skip trace if there are NO events
+                if evtype == "avgevoked":
+                    evs = events[trial].evoked_event_trace_list[itrace]
+                elif evtype == "avgspont":
+                    evs = events[trial].spontaneous_event_trace_list[itrace]
+                else:
+                    continue
+                if evs is None or evs == [[],[]]:  # skip if there are NO event to plot from this trace
                     if self.verbose:
                         print(
                             f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
                         )
                     continue
-                spont_dur = events[trial]["spont_dur"][itrace]
-                for jevent in evs[
-                    0
-                ]:  # evs is 2 element array: [0] are onsets and [1] is peak; this aligns to onsets
-                    if evtype == "avgspont":
-                        spont_ev_count += 1
-                        if (
-                            trace_tb[jevent] + self.Pars.spont_deadtime > spont_dur
-                        ):  # remove events that cross into stimuli
-                            if self.verbose:
-                                print(
-                                    f"     Event {jevent:6d} in trace {itrace:4d} crosses into stimulus"
-                                )
-                            continue
-                    if evtype == "avgevoked":
-                        evoked_ev_count += 1
-                        if trace_tb[jevent] <= spont_dur:  # only post events
-                            if self.verbose:
-                                print(
-                                    f"     Event in spont window, not plotting as evoked: {jevent:6d} [t={float(jevent*rate):8.3f}] trace: {itrace:4d}"
-                                )
-                            continue
-                    # print('ipre: ', ipre, itrace, evtype)
-                    if (
-                        jevent - ipre < 0
-                    ):  # event to be plotted would go before start of trace
-                        if self.verbose:
-                            print(
-                                f"     Event starts too close to trace start {jevent:6d} trace: {itrace:4d}"
-                            )
-                        continue
-                    evdata = mdata[
-                        trial, itrace, jevent - ipre : jevent + ipost
-                    ].copy()  # 0 is onsets
+
+                for j, jevent in enumerate(evs[0]): 
+                    # evs is 2 element array: [0] are onsets and [1] is peak; here we align the traces to onsets
+                    event_id = (itrace, j)
+                    evdata = allevents[event_id]
                     bl = np.mean(evdata[0 : ipre - ptfivems])
                     evdata -= bl
-                    if self.verbose:
-                        print(
-                            "Len EVDATA: ",
-                            len(evdata),
-                            " evdata 0:10",
-                            np.mean(evdata[:10]),
-                            " evtype: ",
-                            evtype,
-                        )
                     if len(evdata) > 0:
                         append = False
                         if plot_minmax is not None:  # only plot events that fall in an ampltidue window
@@ -827,10 +790,7 @@ class PlotMapData:
                             )
                             minev = np.min([minev, np.min(scale * evdata)])
                             maxev = np.max([maxev, np.max(scale * evdata)])
-                # print(f"      {evtype:s} Event Count in AVERAGE: {spont_ev_count:d}, len ave: {len(ave):d}")
 
-        # print('evtype: ', evtype, '  nev plotted: ', npev, ' nevoked: ', evoked_ev_count)
-        # print('maxev, minev: ', maxev, minev)
         nev = len(ave)
         aved = np.asarray(ave)
         if 0 in (len(aved), aved.shape[0],  nev):
@@ -856,10 +816,6 @@ class PlotMapData:
         tb = tb[: len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-        # print(np.max(avedat))
-        # print(np.min(avedat))
-        # print(tpre)
-        # CP.cprint("c", "    plotmapdata: Fitting average event")
         self.Pars.MA.fit_average_event(
             tb,
             avedat,
@@ -875,31 +831,21 @@ class PlotMapData:
         tau2 = self.Pars.MA.fitresult.values["tau_2"]
         bfdelay = self.Pars.MA.fitresult.values["fixed_delay"]
         bfit = self.Pars.MA.avg_best_fit
-        # print("self.Pars.MA.fitresult: ")
-        # print(self.Pars.MA.fitresult.fit_report())
-        # f = mpl.figure()
-        # mpl.plot(tb, avedat)
-        # mpl.plot(tb, bfit, 'r--')
 
         if self.Pars.sign == -1:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
         txt = f"Amp: {scale*amp:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
-        # print(txt)
-        # print(f"Amplitude: {Amplitude:.3e}")
-        # mpl.show()
-        # exit()
+
         if evtype == "avgspont" and events[0] is not None:
-            # print("events[0]: ", events[0])
             srate = float(aved.shape[0]) / (
-                events[0]["spont_dur"][0] * mdata.shape[1]
+                events[0].spont_dur[0] * mdata.shape[1]
             )  # dur should be same for all trials
             txt += f" SR: {srate:.2f} Hz"
         if events[0] is None:
             txt = txt + "SR: No events"
         ax.text(0.05, 0.95, txt, fontsize=7, transform=ax.transAxes)
-        # ax.plot(tx, scale*ave.T, line[evtype], linewidth=0.1, alpha=0.25, rasterized=False)
         ax.plot(
             tb * 1e3,
             scale * bfit,
@@ -916,7 +862,6 @@ class PlotMapData:
             rasterized=self.rasterized,
         )
 
-        # ax.set_label(evtype)
         ylims = ax.get_ylim()
         if evtype == "avgspont":
             PH.calbar(
@@ -960,7 +905,7 @@ class PlotMapData:
         color: str = "k",
     ) -> None:
         """
-        Average the traces
+        Average the traces and plot into an axis
 
         Parameters
         ----------
@@ -1098,10 +1043,10 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
-        print("xlim: ", xlim)
-        print("ylim: ", ylim)
+        # print("xlim: ", xlim)
+        # print("ylim: ", ylim)
         sign = measure["sign"]
-        print(measuretype)
+        # print(measuretype)
         upscale = 1.0
         vmin = 0
         vmax = 1
@@ -1307,8 +1252,7 @@ class PlotMapData:
                     axp.add_collection(ec)
                     if npos > 1:
                         ri += rs
-                # print("arcs", nreps, npos, dtheta, ri, rs)
-                # exit()
+
         if cellmarker:
             CP.cprint("yellow", "Cell marker is plotted")
             axp.plot(
@@ -1576,8 +1520,6 @@ class PlotMapData:
         idm = self.mapfromid[ident]
 
         spotsize = self.Pars.spotsize
-        # print("Spot size: ", spotsize)
-        # exit()
         dt = np.mean(np.diff(self.Data.tb))
         itmax = int(self.Pars.ar_tstart / dt) - 1
         self.newvmax = np.max(results[measuretype])
@@ -1706,7 +1648,7 @@ class PlotMapData:
         #     scale=[1e-3, 1e-12], 
         #     unitNames={"x": 'pA', "y": 'ms'})
 
-        self.plot_avgevent_traces(
+        self.plot_event_traces(
             evtype="avgevoked",
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
@@ -1719,7 +1661,7 @@ class PlotMapData:
             label=label,
             rasterized=rasterized,
         )
-        self.plot_avgevent_traces(
+        self.plot_event_traces(
             evtype="avgspont",
             mdata=self.Data.data_clean,
             trace_tb=self.Data.tb,
