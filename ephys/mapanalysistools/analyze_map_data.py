@@ -551,8 +551,7 @@ class AnalyzeMap(object):
         self.last_dataset = dataset
         if self.Pars.fix_artifact_flag:
             self.Data.data_clean, self.avgdata = self.fix_artifacts(self.data, AR=self.AR)
-            if self.verbose:
-                CP.cprint("c", "        Fixing Artifacts")
+            CP.cprint("c", "        Fixing Artifacts")
         else:
             self.Data.data_clean = self.data
 
@@ -1101,23 +1100,26 @@ class AnalyzeMap(object):
         if ptype is None:
             lbr = np.zeros_like(avgd)
         else:
-            template_file = Path(self.Pars.artifact_file_path, template_file)
-            CP.cprint("w", f"   Artifact template: {str(template_file):s}")
-            with open(template_file, "rb") as fh:
-                d = pickle.load(fh)
-            ct_SR = np.mean(np.diff(d["t"]))
+            crosstalk = None
+            if self.Pars.artifact_file_path is not None:
+                template_file = Path(self.Pars.artifact_file_path, template_file)
+                CP.cprint("w", f"   Artifact template: {str(template_file):s}")
+                with open(template_file, "rb") as fh:
+                    d = pickle.load(fh)
+                ct_SR = np.mean(np.diff(d["t"]))
+ 
 
-            # or if from photodiode:
-            # ct_SR = 1./self.AR.Photodiode_sample_s[0]
-            crosstalk = d["I"] - np.mean(
-                d["I"][0 : int(0.020 / ct_SR)]
-            )  # remove baseline
-            # crosstalk = self.preprocess_data(d['t'], crosstalk)
-            avgdf = avgd - np.mean(avgd[0 : int(0.020 / ct_SR)])
-            # meanpddata = crosstalk
-            # if self.shutter is not None:
-            #     crossshutter = 0* 0.365e-21*Util.SignalFilter_HPFBessel(self.shutter['data'][0], 1900., self.AR.Photodiode_sample_rate[0], NPole=2, bidir=False)
-            #     crosstalk += crossshutter
+                # or if from photodiode:
+                # ct_SR = 1./self.AR.Photodiode_sample_s[0]
+                crosstalk = d["I"] - np.mean(
+                    d["I"][0 : int(0.020 / ct_SR)]
+                )  # remove baseline
+                # crosstalk = self.preprocess_data(d['t'], crosstalk)
+                avgdf = avgd - np.mean(avgd[0 : int(0.020 / ct_SR)])
+                # meanpddata = crosstalk
+                # if self.shutter is not None:
+                #     crossshutter = 0* 0.365e-21*Util.SignalFilter_HPFBessel(self.shutter['data'][0], 1900., self.AR.Photodiode_sample_rate[0], NPole=2, bidir=False)
+                #     crosstalk += crossshutter
 
             maxi = np.argmin(np.fabs(self.Data.tb - self.Pars.analysis_window[1]))
             ifitx = []
@@ -1159,30 +1161,33 @@ class AnalyzeMap(object):
             art_durs = np.append(art_durs, other_artdurs)  # shutter - do 2 msec
 
             for i in range(len(art_times)):
-                strt_time_indx = int(art_times[i] / ct_SR)
-                idur = int(art_durs[i] / ct_SR)
+                strt_time_indx = int(art_times[i] / self.rate)
+                idur = int(art_durs[i] /self.rate)
                 send_time_indx = (
-                    strt_time_indx + idur + int(0.001 / ct_SR)
+                    strt_time_indx + idur + int(0.001 / self.rate)
                 )  # end pulse plus 1 msec
                 # avglaser = np.mean(self.AR.LaserBlue_pCell, axis=0) # FILT.SignalFilter_LPFButter(np.mean(self.AR.LaserBlue_pCell, axis=0), 10000., self.AR.sample_rate[0], NPole=8)
-                fitx = crosstalk[strt_time_indx:send_time_indx]  # -np.mean(crosstalk)
-                ifitx.extend(
-                    [
-                        f[0] + strt_time_indx
-                        for f in np.argwhere((fitx > 0.5e-12) | (fitx < -0.5e-12))
-                    ]
-                )
-            wmax = np.max(np.fabs(crosstalk[ifitx]))
-            weights = np.sqrt(np.fabs(crosstalk[ifitx]) / wmax)
-            scf, intcept = np.polyfit(crosstalk[ifitx], avgdf[ifitx], 1, w=weights)
-            avglaserd = meanpddata  # np.mean(self.AR.LaserBlue_pCell, axis=0)
+                if crosstalk is not None:
+                    fitx = crosstalk[strt_time_indx:send_time_indx]  # -np.mean(crosstalk)
+                    ifitx.extend(
+                        [
+                            f[0] + strt_time_indx
+                            for f in np.argwhere((fitx > 0.5e-12) | (fitx < -0.5e-12))
+                        ]
+                    )
+                    wmax = np.max(np.fabs(crosstalk[ifitx]))
+                    weights = np.sqrt(np.fabs(crosstalk[ifitx]) / wmax)
+                    scf, intcept = np.polyfit(crosstalk[ifitx], avgdf[ifitx], 1, w=weights)
+                    avglaserd = meanpddata  # np.mean(self.AR.LaserBlue_pCell, axis=0)
 
-            lbr = np.zeros_like(crosstalk)
-            lbr[ifitx] = scf * crosstalk[ifitx]
+                    lbr = np.zeros_like(crosstalk)
+                    lbr[ifitx] = scf * crosstalk[ifitx]
 
-        datar = np.zeros_like(data)
-        for i in range(data.shape[0]):
-            datar[i, :] = data[i, :] - lbr
+                    datar = np.zeros_like(data)
+                    for i in range(data.shape[0]):
+                        datar[i, :] = data[i, :] - lbr
+            else:
+                datar = data.copy()
 
         if not self.Pars.noderivative_artifact:
             # derivative=based artifact suppression - for what might be left

@@ -91,6 +91,7 @@ class ClementsBekkers(MiniAnalyses):
     def __init__(self):
         super().__init__()
         self.dt_seconds = None
+        self.timebase = None
         self.data = None
         self.template = None
         self.engine = "cython"
@@ -125,12 +126,13 @@ class ClementsBekkers(MiniAnalyses):
         starttime = timeit.default_timer()
 
         ## Strip out meta-data for faster computation
+
+        self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
         D = self.sign * data.view(np.ndarray)
         if self.template is None:
             self._make_template()
         T = self.template.view(np.ndarray)
 
-        self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
 
         # if self.engine == "numba":
         #     self.Scale, self.Crit = nb_clementsbekkers(D, T)

@@ -553,6 +553,8 @@ class MAP_Analysis(Analysis):
             self.AM.Pars.sign = -1 * self.AM.Pars.sign  # flip analysis sign
 
         # self.AM.set_analysis_window(0.0, 0.599)
+        self.artifact_suppress = True
+        CP.cprint("r", f"Setting artifact suppression to: {str(self.artifact_suppress):s}")
         self.AM.set_artifact_suppression(self.artifact_suppress)
         self.AM.set_noderivative_artifact(self.noderivative_artifact)
         if self.artifactFilename is not None:

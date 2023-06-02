@@ -151,7 +151,11 @@ class MiniAnalyses:
         Private function: make template when it is needed
         """
         tau_1, tau_2 = self.taus  # use the predefined taus
-        t_psc = np.arange(0, self.template_tmax, self.dt_seconds)
+        tmax = self.template_tmax
+        if self.timebase is not None:
+            if self.template_tmax > np.max(self.timebase):
+                tmax = np.max(self.timebase)
+        t_psc = np.arange(0, tmax, self.dt_seconds)
         self.t_template = t_psc
         Aprime = (tau_2 / tau_1) ** (tau_1 / (tau_1 - tau_2))
         self.template = np.zeros_like(t_psc)
