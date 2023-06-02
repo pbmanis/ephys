@@ -330,7 +330,7 @@ class ClementsBekkers(MiniAnalyses):
 
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
-        # self.summarize(self.data)
+
         endtime = timeit.default_timer() - self.starttime
         # print("cb identify events: len onsets:", len(self.onsets))
         # import matplotlib.pyplot as mpl
@@ -342,7 +342,6 @@ class ClementsBekkers(MiniAnalyses):
         #     ax[1].plot(self.onsets[i]*self.dt_seconds, self.sdthr*np.ones_like(self.onsets[i]), 'ro')
         # ax[2].plot([self.timebase[0], self.timebase[-1]], [self.sdthr, self.sdthr], 'r--')
         # mpl.show()
-        # self.summarize(self.data)
         if verbose:
             print("    CB run time: {0:.4f} s".format(endtime))
 
