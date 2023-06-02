@@ -73,8 +73,8 @@ class MiniSummarize():
             self.meanamps.append(np.nanmean(self.d[m]['amplitudes']))
             self.intvls.append(np.nanmean(self.d[m]['intervals']))
             self.nevents.append(len(self.d[m]['intervals']))
-            self.tau1.append(self.average_taus(d[m]['averaged'], 'tau1'))
-            self.tau2.append(self.average_taus(d[m]['averaged'], 'tau2'))
+            self.tau1.append(self.average_taus(self.d[m]['averaged'], 'tau1'))
+            self.tau2.append(self.average_taus(self.d[m]['averaged'], 'tau2'))
             self.mouse.append(m)
         self.pddata = pd.DataFrame({'Genotype': pd.Categorical(self.gtypes),
                                     'Holding': np.array(self.holding),
