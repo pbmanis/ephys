@@ -24,7 +24,7 @@ PMD = mapanalysistools.plot_map_data.PlotMapData()
 class MAP_Analysis(Analysis):
     def __init__(self, args):
         super().__init__(args)
-        print(self._testing_counter)
+        # print(self._testing_counter)
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         if len(allprots["maps"]) == 0:
@@ -581,7 +581,6 @@ class MAP_Analysis(Analysis):
         else:
             pass  # already got the file
 
-        # CP.cprint("c", f"Plotmap: {str(plotmap):s}")
         if plotmap:
             if self.celltype_changed:
                 celltype_text = f"{self.celltype:s}* "
@@ -602,7 +601,7 @@ class MAP_Analysis(Analysis):
                     results = self.AM.last_results
                 mapok = PMD.display_one_map(
                     dataset=mapdir,
-                    results=results,  # self.AM.last_results,
+                    results=results,
                     imagefile=None,
                     rotation=0.0,
                     measuretype=measuretype,
