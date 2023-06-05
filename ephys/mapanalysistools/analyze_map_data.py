@@ -101,7 +101,7 @@ class AnalysisPars:
     stimtimes: dict=field(
         default_factory=def_stimtimes)
     spont_deadtime: float = 0.010  # time after trace onset before counting spont envents
-    direct_window: float = 0.001  # window after stimulus for direct response
+    direct_window: float = 0.0005  # window after stimulus for direct response
     response_window: float = 0.015  # window end for response (response is between direct and response), seconds
     twin_base: list = field(
         default_factory=def_twin_base

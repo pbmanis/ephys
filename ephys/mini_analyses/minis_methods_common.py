@@ -848,6 +848,8 @@ class MiniAnalyses:
         # tag traces and get a clean set for averaging
         k = 0
         pkt = 0
+        overlap_window = int(0.005/summary.dt_seconds) # 5 msec window
+        print("overlap_window (5 msec): ", overlap_window)
         for itrace in traces:
             for j, event_onset in enumerate(summary.onsets[itrace]):
                 thisev = (itrace, j)
@@ -883,14 +885,17 @@ class MiniAnalyses:
                 if (
                     j < len(summary.onsets[itrace]) - 1
                 ):  # check for next event and reject if in the window
-                    if (summary.onsets[itrace][j + 1] - event_onset) < avgnpts:
+                    if (summary.onsets[itrace][j + 1] - event_onset) < overlap_window:
                        # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has overlaps")
-                        overlapping_event_list.append(thisev)
+                        overlapping_event_list.append((itrace, j+1))
 
                 k = k + 1
 
-        tarnished_events = list(set(overlapping_event_list).union(set(wrong_charge_sign_event_list), set(incomplete_event_list)))
-        print(tarnished_events)
+        # tarnished_events = list(set(overlapping_event_list).union(set(wrong_charge_sign_event_list), set(incomplete_event_list)))
+        incomplete_event_list = []
+        wrong_charge_sign_event_list = []
+        tarnished_events = list(set(wrong_charge_sign_event_list).union(set(incomplete_event_list)))
+        print("tarnished events: ", tarnished_events)
 
         print("    # Included Events found: ", len(all_event_indices))
         print("    # Incomplete Events found: ", len(incomplete_event_list))
@@ -898,8 +903,11 @@ class MiniAnalyses:
         # get the clean events (non overlapping, correct charge, complete in trace)
         clean_event_list = tuple([i for i in all_event_indices if i not in tarnished_events])
         # print("clean event:", clean_event_list)
-        clean_event_traces = np.array([allevents[x] for x in clean_event_list])
-        # mpl.plot(clean_event_traces.T)
+        # clean_event_traces = np.array([allevents[x] for x in clean_event_list])
+        # tx = np.array(range(clean_event_traces.shape[1]))*summary.dt_seconds
+        # mpl.plot(tx, clean_event_traces.T)
+        # v = clean_event_traces[summary.peakindices]-clean_event_traces[summary.onsets]
+        # mpl.plot(tx[v], clean_event_traces[v], 'ro')
         # mpl.show()
         # print("    # Clean event array: ", clean_event_traces.shape[0], " events found")
         

@@ -462,7 +462,7 @@ class PlotMapData:
         nevtimes = 0
         spont_ev_count = 0
         dt = np.mean(np.diff(self.Data.tb))
-
+        step_I = self.Pars.stepi
         # print(tb.shape, np.max(tb), tb[itmax], self.Pars.analysis_window, dt)
         # raise
         if trsel is not None:
@@ -501,64 +501,66 @@ class PlotMapData:
         crflag = [False for i in range(mdata.shape[0])]
 
         iplot_tr = 0
-        for itrial in range(mdata.shape[0]):
+        # decorate traces with dots for spont, evoked and "other"
+        for itrial in range(mdata.shape[0]):  # across trials (repeats)
             if events[itrial] is None:
                 continue
-            evtr = events[itrial].evoked_event_trace_list # of course it is the same for every entry.
-            # iplot_tr = 0
-            for itrace in range(mdata.shape[1]):
+            for itrace in range(mdata.shape[1]):  # across all traces
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
-                smpki = events[itrial].smpkindex[itrace]
-                pktimes = np.array(smpki)*events[itrial].dt_seconds
+                smpki = events[itrial].smpkindex[itrace]  # indices to peaks in ths trial/trace
+                pktimes = np.array(smpki)*dt # *events[itrial].dt_seconds  # times
                 # print(smpki)
                 if len(pktimes) > 0:
                     nevtimes += len(smpki)
                     if (
-                        len(smpki) > 0
+                        nevtimes > 0
                         and len(tb[smpki]) > 0
                         and len(mdata[itrial, itrace, smpki]) > 0
                     ):
+                        # identify those events in the spont window - before the first stimulus
                         sd = events[itrial].spont_dur[itrace]
                         pre_stim_indices = np.where(tb[smpki] < sd)[0].astype(int)
-                        tsi = None
+                        tsi = None  # indices of spontaneous events
                         if len(pre_stim_indices) > 0:
                             tsi = [int(smpki[x]) for x in pre_stim_indices]
                         else:
+                            iplot_tr += 1
                             continue
-                     # find indices of spontanteous events (before first stimulus)
+                     # find indices of "response" events (events occuring in a short window after each stimulus)
                         tri = np.ndarray(0)
                         for (
                             iev
                         ) in self.Pars.twin_resp:  # find events in all response windows
-                             in_stim = np.where(
+                             in_stim_indices = np.where(
                                             (tb[smpki] >= iev[0]) & (tb[smpki] < iev[1])
-                                        )[0]
-                             if len(in_stim) > 0:
-                                 tri = np.concatenate(
-                                (
-                                    tri.copy(),
-                                    [smpki[x] for x in 
-                                        in_stim
-                                    ],
-                                ),
-                                axis=0,
-                            ).astype(int)
+                                        )[0].astype(int)
+                             if len(in_stim_indices) > 0:
+                                tri = np.concatenate(
+                                    (
+                                        tri.copy(),
+                                        [smpki[x] for x in 
+                                            in_stim_indices
+                                        ],
+                                    ),
+                                    axis=0,
+                                ).astype(int)
                         ts2i = list(
                             set(smpki)
                             - set(tri.astype(int)).union(set(tsi))
                         )  # remainder of events (not spont, not possibly evoked)
+                        # now get the amplitude of the events in each group
                         ms = np.array(
                             mdata[itrial, itrace, tsi]
-                        ).ravel()  # spontaneous events
+                        )  # spontaneous events
                         mr = np.array(
                             [mdata[itrial, itrace, x] for x in tri]
-                        ).ravel()  # response in window
+                        ) # response in window
                         if len(mr) > 0:
                             crflag[itrial] = True  # flag traces with detected responses
                         ms2 = np.array(
                             mdata[itrial, itrace, ts2i]
-                        ).ravel()  # events not in spont and outside window
+                        )  # events not in spont and outside window
                         spont_ev_count += ms.shape[0]
                         cr = matplotlib.colors.to_rgba(
                             "r", alpha=0.6
@@ -569,7 +571,7 @@ class PlotMapData:
                         if len(pre_stim_indices) > 0:
                             ax.plot(
                             tb[tsi], # -self.Pars.time_zero,
-                            ms * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
+                            ms * self.Pars.scale_factor + step_I * iplot_tr,
                             "o",
                             color=ck,
                             markersize=2,
@@ -579,7 +581,7 @@ class PlotMapData:
                         )
                         ax.plot(
                             [tb[x] for x in tri], # -self.Pars.time_zero,
-                            mr * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
+                            mr * self.Pars.scale_factor + step_I * iplot_tr,
                             "o",
                             color=cr,
                             markersize=2,
@@ -589,7 +591,7 @@ class PlotMapData:
                         )
                         ax.plot(
                             [tb[x] for x in ts2i], # -self.Pars.time_zero,
-                            ms2 * self.Pars.scale_factor + self.Pars.stepi * iplot_tr,
+                            ms2 * self.Pars.scale_factor + step_I * iplot_tr,
                             "o",
                             color=cg,
                             markersize=2,
@@ -598,10 +600,9 @@ class PlotMapData:
                             rasterized=self.rasterized,
                         )
                 iplot_tr += 1
-        # now the traces themselves
-        iplot_tr = 0
+        # now plot the traces in a stacked format
+        iplot_tr = 0  # index to compute stack position
         for itrial in range(mdata.shape[0]):
-            # iplot_tr = 0
             for itrace in range(mdata.shape[1]):
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
@@ -615,7 +616,7 @@ class PlotMapData:
                     ax.plot(
                         tb, # -self.Pars.time_zero,
                         mdata[itrial, itrace, :] * self.Pars.scale_factor
-                        + self.Pars.stepi * iplot_tr,
+                        + step_I * iplot_tr,
                         linewidth=lw,
                         rasterized=False,
                         zorder=10,
@@ -626,7 +627,7 @@ class PlotMapData:
 
         mpl.suptitle(str(title), fontsize=8) # .replace(r"_", r"\_"), fontsize=8)
         self.plot_timemarker(ax)
-        ax.set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
+        # ax.set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
 
     def get_calbar_Yscale(self, amp: float) -> float:
         """
@@ -721,7 +722,7 @@ class PlotMapData:
         minev = 0.0
         maxev = 0.0
         npev = 0
-
+        print("plot minmax:", plot_minmax, " zscore_threshold: ", zscore_threshold)
         # plot events from each trial
         for trial in range(mdata.shape[0]):
             CP.cprint("b", f"plotting events for trial: {trial:d}")
@@ -771,8 +772,8 @@ class PlotMapData:
                                 continue # 
                         if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
                             append = True
-                        elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
-                            append=False
+                        # elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
+                        #     append=False
                         else: # zscore_threshold == None:  # accept all comers.
                             append = True
                         if append:
