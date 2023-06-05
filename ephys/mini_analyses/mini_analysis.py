@@ -585,7 +585,7 @@ class MiniAnalysis:
                     "allevents": method.Summary.allevents,
                     "isolated_event_trace_list": method.Summary.isolated_event_trace_list,
                     "fit": {
-                        "amplitude": method.Summary.average.Amplitude,
+                        "amplitude": method.Summary.average.amplitude,
                         "tau_1": method.Summary.average.fitted_tau1,
                         "tau_2": method.Summary.average.fitted_tau2,
                         "tau_ratio": method.Summary.average.fitted_tau_ratio,

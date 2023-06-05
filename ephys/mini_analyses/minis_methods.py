@@ -283,11 +283,14 @@ class ClementsBekkers(MiniAnalyses):
         self,
         data: np.ndarray,
         itrace: int = 0,
-        lpf: Union[float, None] = None,
+        prepare_data = True,
     ) -> None:
         assert data.ndim == 1
         self.starttime = timeit.default_timer()
-        self.prepare_data(data)  # also does timebase
+        if prepare_data:
+            self.prepare_data(data)  # also does timebase
+        else:
+            self.data = data
         self.clements_bekkers(self.data)  # flip data sign if necessary
         if self.Crit.ndim > 1:
             self.Crit = self.Crit.squeeze()
@@ -377,14 +380,17 @@ class AndradeJonas(MiniAnalyses):
         data: np.ndarray,
         itrace: int = 0,
         llambda: float = 5.0,
-        lpf: Union[float, None] = None,
+        prepare_data = True,
         verbose: bool = False,
     ) -> None:
         # cprint('r', "STARTING AJ")
         assert data.ndim == 1
         self.starttime = timeit.default_timer()
 
-        self.prepare_data(data)  # also generates a timebase
+        if prepare_data:
+            self.prepare_data(data)  # also generates a timebase
+        else:
+            self.data = data
         if self.template is None:
             self._make_template()
 

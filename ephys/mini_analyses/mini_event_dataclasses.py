@@ -15,12 +15,21 @@ import numpy as np
 class Filtering:
     enabled: bool=True
     LPF_applied: bool = False
-    HPF_applied: bool = False
+    LPF_type: str = "ba"  # sos for second order or "ba" (standard)
     LPF_frequency: Union[float, None] = None
+
+    HPF_applied: bool = False
     HPF_frequency: Union[float, None] = None
+    HPF_type: str = "ba"
+    
     Notch_applied: bool = False
     Notch_frequencies: Union[float, None] = None
     Notch_Q: float=None
+    
+    Detrend_applied: bool = True 
+    Detrend_type: str = "meegkit"  # or "scipy"
+    Detrend_order: int = 5
+
 
 
 def def_empty_list():

@@ -27,7 +27,9 @@ import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import scipy.signal as SPS
 import scipy.special
+import meegkit as MEK
 from scipy.optimize import curve_fit
+import ephys.tools.functions as FUNCS
 
 import ephys.tools.digital_filters as dfilt
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
@@ -54,7 +56,9 @@ class MiniAnalyses:
         self.datatype = None
         self.events_ok = []
         self.events_notok = []
-        self.filters_on = True # enable filtering
+        self.filters_enabled = True # enable filtering
+        self.data_prepared = False
+        self.summary = None # This gets set when we run summarize
         super().__init__()
 
     def setup(
@@ -74,10 +78,7 @@ class MiniAnalyses:
         threshold: float = 2.5,
         global_SD: Union[float, None] = None,
         analysis_window: List[Union[float, None]] = [None, None],
-        lpf: Union[float, None] = None,
-        hpf: Union[float, None] = None,
-        notch: Union[float, None] = None,
-        notch_Q: float = 30.0,
+        filters: Union[MEDC.Filtering, None] = None,
     ) -> None:
         """
         Just store the parameters - will compute when needed
@@ -107,16 +108,21 @@ class MiniAnalyses:
         self.threshold = threshold
         self.sdthr = self.threshold  # for starters
         self.analysis_window = analysis_window
-        self.filters = MEDC.Filtering()
-        self.filters.LPF_frequency = lpf
-        self.filters.HPF_frequency = hpf
-        self.filters.Notch_frequencies = notch
-        self.filters.Notch_Q = notch_Q
-        self.filters.enabled = True
-        self.reset_filters()
+        self.set_filters(filters)
         self.set_datatype("VC")
 
-    
+    def set_filters(self, filters):
+        """Set the filtering arguments
+
+        Args:
+            filters (dataclass): Class structure with filtering information
+        """
+        if filters is None:
+            self.filters = MEDC.Filtering()
+        else:
+            self.filters = filters
+        self.reset_filters()
+        print("Filter set in MMC: \n", self.filters)
 
     def set_datatype(self, datatype: str):
         CP.cprint("c", f"data type: {datatype:s}")
@@ -185,6 +191,7 @@ class MiniAnalyses:
         Reset the filtering flags so we know which have been done.
         The purpose of this is to keep from applying filters repeatedly
         """
+        self.filters.Detrend_applied = False
         self.filters.LPF_applied = False
         self.filters.HPF_applied = False
         self.filters.Notch_applied = False
@@ -214,8 +221,10 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
-        assert not self.filters.LPF_applied  # block repeated application of filtering
-        CP.cprint("y", f"        minis_methods_common, LPF data:  {self.filters.LPF_frequency:f}")
+        if not self.filters.enabled:
+            return data
+        if self.verbose:
+            CP.cprint("y", f"        minis_methods_common, LPF data:  {self.filters.LPF_frequency:f}")
         if self.filters.LPF_frequency is not None:
             # CP.cprint('y', f"     ... lpf at {lpf:f}")
             if self.filters.LPF_frequency > 0.49 / self.dt_seconds:
@@ -227,13 +236,23 @@ class MiniAnalyses:
                     1.0 / self.dt_seconds,
                 )
             # data = dfilt.SignalFilter_LPFButter(data, lpf, 1./self.dt_seconds, NPole=8)
-            data = dfilt.SignalFilter_LPFBessel(
-                data,
-                LPF=self.filters.LPF_frequency,
-                samplefreq=1.0 / self.dt_seconds,
-                NPole=4,
-                filtertype="low",
-            )
+            if self.filters.LPF_type == "ba":
+                data = dfilt.SignalFilter_LPFBessel(
+                    data,
+                    LPF=self.filters.LPF_frequency,
+                    samplefreq=1.0 / self.dt_seconds,
+                    NPole=4,
+                    filtertype="low",
+                )
+            elif self.filters.LPF_type == "sos":
+                data = dfilt.SignalFilterLPF_SOS(
+                    data,
+                    LPF=self.filters.LPF_frequency,
+                    samplefreq=1.0 / self.dt_seconds,
+                    NPole=8,
+                )
+            else:
+                raise ValueError(f"Signal filter type must be 'ba' or 'sos': got {self.filters.LPF_type:s}")
             self.filters.LPF_applied = True
         return data.copy()
 
@@ -251,8 +270,10 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
-        assert not self.filters.HPF_applied  # block repeated application of filtering
-        CP.cprint("y", f"        minis_methods_common, HPF data:  {self.filters.HPF_frequency:f}")
+        if not self.filters.enabled:
+            return data
+        if self.verbose:
+            CP.cprint("y", f"        minis_methods_common, HPF data:  {self.filters.HPF_frequency:f}")
         if self.filters.HPF_frequency is None or self.filters.HPF_frequency == 0.0:
             return data
         if len(data.shape) == 1:
@@ -260,7 +281,8 @@ class MiniAnalyses:
         else:
             ndata = data.shape[1]
         nyqf = 0.5 * ndata * self.dt_seconds
-        CP.cprint("y", f"minis_methods: hpf at {self.filters.HPF_frequency:f}")
+        if self.verbose:
+            CP.cprint("y", f"minis_methods: hpf at {self.filters.HPF_frequency:f}")
         if self.filters.HPF_frequency < 1.0 / nyqf:  # duration of a trace
             CP.cprint("r", "unable to apply HPF, trace too short")
             return data
@@ -276,9 +298,20 @@ class MiniAnalyses:
                 "sampelrate",
                 1.0 / self.dt_seconds,
             )
-        data = dfilt.SignalFilter_HPFButter(
-            data - data[0], self.filters.HPF_frequency, 1.0 / self.dt_seconds, NPole=4
-        )
+        if self.filters.HPF_type == "ba":
+            data = dfilt.SignalFilter_HPFButter(
+                data - data[0], self.filters.HPF_frequency, 1.0 / self.dt_seconds, NPole=4
+            )
+        elif self.filters.LPF_type == "sos":
+            data = dfilt.SignalFilterLPF_SOS(
+                data,
+                HPF=self.filters.HPF_frequency,
+                samplefreq=1.0 / self.dt_seconds,
+                NPole=8,
+
+            )
+        else:
+            raise ValueError(f"Signal filter type must be 'ba' or 'sos': got {self.filters.HPF_type:s}")
         self.filters.HPF_applied = True
         return data.copy()
 
@@ -299,7 +332,8 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
-        assert not self.filters.Notch_applied  # block repeated application of filtering
+        if not self.filters.enabled:
+            return data
         CP.cprint("y", f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}")
 
         if self.filters.Notch_frequencies is None or len(self.filters.Notch_frequencies) == 0:
@@ -331,15 +365,14 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
-        assert not self.filters.Notch_applied  # block repeated application of filtering
-        CP.cprint("y", f"minis_methods_common, Notch comb filter data:  {self.filters.Notch_frequencies[0]:f}")
+        if not self.filters.enabled:
+            return data
+        if self.verbose:
+            CP.cprint("y", f"minis_methods_common, Notch comb filter data:  {self.filters.Notch_frequencies[0]:f}")
 
         if self.filters.Notch_frequencies is None or len(self.filters.Notch_frequencies) == 0:
             return data
-        if len(data.shape) == 1:
-            ndata = data.shape[0]
-        else:
-            ndata = data.shape[1]
+
         data = dfilt.NotchFilterComb(
             data,
             notchf=self.filters.Notch_frequencies,
@@ -354,7 +387,10 @@ class MiniAnalyses:
         """
         This function prepares the incoming data for the mini analyses.
         1. Clip the data in time (remove sections with current or voltage steps)
-        2. Filter the data (LPF, HPF)
+        2. detrend (either with meegkit or scipy)
+        3. remove mean using first 10 msec of remaining trace
+        4. Filter the data: order is LPF, HPF (if set)
+        5. Apply a notch filter (if set)
 
         Parameters
         ----------
@@ -362,13 +398,19 @@ class MiniAnalyses:
 
         Returns
         -------
-        nothing. The result is held in the class variable "data", along with a
+        Nothing. The result is held in the class variable "data", along with a
         corresponding timebase.
         """
-        self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
-        # print(
-        #     "preparedata timebase shape, data shape: ", self.timebase.shape, data.shape
-        # )
+        if self.data_prepared:
+            return
+        print("prepare data shape: ", data.shape)
+        if data.ndim == 1:
+            raise ValueError()
+        self.timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
+        print("timebase shape: ", self.timebase.shape)
+        #
+        # 1. Clip the data to a window
+        # 
         if self.analysis_window[1] is not None:
             jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
         else:
@@ -378,30 +420,66 @@ class MiniAnalyses:
         else:
             jmin = 0
         data = data[jmin:jmax]
+        self.timebase = self.timebase[jmin:jmax]
+        if not self.filters.enabled:
+            self.data = data
+            self.data_prepared = False
+            return
+        
+
         if self.verbose:
-            if self.lpf is not None:
+            if self.filters.LPF_frequency is not None:
                 CP.cprint(
-                    "y", f"minis_methods_common, prepare_data: LPF: {self.lpf:.1f} Hz"
+                    "y", f"minis_methods_common, prepare_data: LPF: {str(self.filters.LPF_frequency):s} Hz"
                 )
             else:
                 CP.cprint("r", f"**** minis_methods_common, no LPF applied")
-            if self.hpf is not None:
+            if self.filters.HPF_frequency is not None:
                 CP.cprint(
                     "y",
-                    f"    minis_methods_common, prepare_data: HPF: {self.hpf:.1f} Hz",
+                    f"    minis_methods_common, prepare_data: HPF: {str(self.filters.HPF_frequency):s} Hz",
                 )
             else:
                 CP.cprint("r", f"    minis_methods_common, no HPF applied")
+        #
+        # 2. detrend. Method depends on self.filters.Detrend_type
+        #
+        if self.filters.Detrend_type == "meegkit":
+            for itrace in range(data.shape[0]):
+               data[itrace], _, _ = MEK.detrend.detrend(data[itrace], order=self.filters.Detrend_order)
+        elif self.filters.Detrend_type == "scipy":
+            for itrace in range(data.shape[0]):
+                data[itrace] = FUNCS.adaptiveDetrend(
+                      data[itrace], x=self.timebase[jmin:jmax], threshold=3.0
+                )
+        elif self.filters.Detrend_type == "None":
+            pass
+        else:
+            raise ValueError(f"minis_methods_common: detrending filter type not known: got {self.filters.Detrend_type:s}")
+        
+        #
+        # 4. Perform LPF and HPF filtering
+        #
         if( self.filters.LPF_frequency is not None) and isinstance(self.filters.LPF_frequency, float) and self.filters.enabled:
-            data = self.LPFData(data)
+            for itrace in range(data.shape[0]):
+                data[itrace] = self.LPFData(data[itrace])
         if (self.filters.HPF_frequency is not None) and isinstance(self.filters.HPF_frequency, float) and self.filters.enabled:
-            data = self.HPFData(data)
-        # print("NOTCH: ", self.notch, type(self.notch))
-        if (self.filters.Notch_frequencies is not None) and (isinstance(self.filters.Notch_frequencies, list) or isinstance(self.filters.Notch_frequenciesh, np.ndarray)) and self.filters_on:
-            # CP.cprint("r", "Comb filter notch")
-            data = self.NotchFilterComb(data,)
+            for itrace in range(data.shape[0]):
+                data[itrace] = self.HPFData(data[itrace])
+        #
+        # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
+        #
+        if ((self.filters.Notch_frequencies is not None) and 
+                (isinstance(self.filters.Notch_frequencies, list) or 
+                 isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
+                 self.filters_enabled):
+            if self.verbose:
+                CP.cprint("r", "Comb filter notch")
+            for itrace in range(data.shape[0]):
+                data[itrace] = self.NotchFilterComb(data[itrace])
+        
         self.data = data
-        self.timebase = self.timebase[jmin:jmax]
+        self.data_prepared = True
         # self.template_tmax = np.max(self.timebase)
 
     def moving_average(self, a, n: int = 3) -> Tuple[np.array, int]:
@@ -418,7 +496,7 @@ class MiniAnalyses:
         result = np.where(((a >= quartileSet[0]) & (a <= quartileSet[1])), a, np.nan)
         return result
 
-    def get_data_cleaned_from_stimulus_artifacts(self, data:object, summary: object=None, pars: dict = None):
+    def get_data_prepared_from_stimulus_artifacts(self, data:object, summary: object=None, pars: dict = None):
         """
         After the traces have been analyzed, and amplitudes, peaks and onsets identified, 
         we genetrate a list of events that are free of stimulus artifacts.
@@ -833,7 +911,6 @@ class MiniAnalyses:
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in summary.onsets])
         allevents = {} # np.zeros((n_events, avgnpts))
-        clean_event_traces = np.zeros((n_events, avgnpts))
         event_onset_times = []
         # accepted_events = []
 
@@ -861,7 +938,7 @@ class MiniAnalyses:
                 else:
                     allevents[thisev] = data[
                         itrace,  (ix - npre) : (ix + npost)
-                    ]  # save event, reject later
+                    ].copy()  # save event, reject later
                     all_event_indices.append(thisev)
                     if npre > 0:
                         allevents[thisev] -= np.mean(allevents[thisev][0:npre])
@@ -935,8 +1012,13 @@ class MiniAnalyses:
         summary.allevents = allevents
         summary.all_event_indices = all_event_indices
         summary.isolated_event_trace_list = clean_event_list
+        clean_event_traces = []
+        for ev in clean_event_list:
+            if ev in allevents.keys():
+                clean_event_traces.append(allevents[ev])
+        clean_event_traces = np.array(clean_event_traces)
         # generate the average and some stats on the "clean" events:
-        if len(clean_event_traces) > 0:
+        if len(clean_event_list) > 0:
             if self.sign < 0:
                 evamps = self.sign * np.nanmin(clean_event_traces, axis=1)
             else:
@@ -952,7 +1034,7 @@ class MiniAnalyses:
 
             summary.average.avgevent = np.nanmean(
                 clean_event_traces, axis=0
-            )  # - np.mean(avgevent[:3])
+            ) 
             summary.average.stdevent = np.nanstd(clean_event_traces, axis=0)
             summary.average.averaged = True
             summary.average.avgeventtb = avgeventtb
@@ -985,7 +1067,7 @@ class MiniAnalyses:
             summary.average.fitted_tau2 = self.fitted_tau2
             summary.average.fitted_tau_ratio = self.fitted_tau_ratio
             summary.average.best_fit = self.avg_best_fit
-            summary.average.Amplitude = self.Amplitude
+            summary.average.amplitude = self.amplitude
             summary.average.avg_fiterr = self.avg_fiterr
             summary.average.risetenninety = self.risetenninety
             summary.average.risepower = self.risepower
@@ -994,16 +1076,25 @@ class MiniAnalyses:
             CP.cprint("r", "    average_events: **** No events found that meet criteria ****")
             return
         # for testing, plot out the clean events
-        # fig, ax = mpl.subplots(1,2)
-        # for i in self.summary.isolated_event_trace_list:
-        #     ax[0].plot(avgeventtb+event_onsets[i], self.summary.allevents[i]-self.summary.allevents[i][0], 'b-', lw=0.5, )
-        # # rejected:
-        # for i in range(self.summary.allevents.shape[0]):
-        #     if i not in self.summary.isolated_event_trace_list and i < len(event_onsets):
-        #         ax[0].plot(avgeventtb+event_onsets[i], self.summary.allevents[i]-self.summary.allevents[i][0], 'r-', lw=0.5, )
+        fig, ax = mpl.subplots(1,2)
+        for itrace in traces:
+            for j, onset in enumerate(summary.onsets[itrace]):
+                ev = (itrace, j)
+                if ev in self.summary.isolated_event_trace_list:
+                    ax[0].plot(avgeventtb, 
+                        self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+                        'b-', lw=0.5, )
+        # rejected:
+        for itrace in traces:
+            for j, onset in enumerate(summary.onsets[itrace]):
+                ev = (itrace, j)
+                if ev not in self.summary.isolated_event_trace_list and ev in self.summary.allevents.keys():
+                    ax[1].plot(avgeventtb, 
+                        self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+                        'r-', lw=0.5, )
 
-        # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
-        # mpl.show()
+        # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
+        mpl.show()
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
         return summary
 
@@ -1063,17 +1154,20 @@ class MiniAnalyses:
         self.fitted_tau1 = np.nan
         self.fitted_tau2 = np.nan
         self.fitted_tau_ratio = np.nan
-        self.Amplitude = np.nan
+        self.amplitude = np.nan
         self.avg_fiterr = np.nan
         self.bfdelay = np.nan
         self.avg_best_fit = None
         self.Qtotal = np.nan
         self.risetenninety = np.nan
         self.decaythirtyseven = np.nan
+        print("init delay: ", initdelay)
         res = self.event_fitter_lm(
             tb,
             avgevent,
             time_past_peak=time_past_peak,
+            tau1 = self.tau1,
+            tau2 = self.tau2,
             fixed_delay=initdelay,
             debug=debug,
             label=label,
@@ -1087,14 +1181,17 @@ class MiniAnalyses:
             np.seterr(**self.numpyerror)  # reset error detection
             scipy.special.seterr(**self.scipyerror)
             return
-        # print(res)
-        self.Amplitude = res.values["amp"]
+            
+        amp = np.max(res.best_fit)
+        print("amp, res amp: ", amp, res.values["amp"])
+        self.amplitude = res.values["amp"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
-        self.fitted_tau_ratio = res.values["tau_ratio"] #(
+        self.fitted_tau_ratio = np.nan # res.values["tau_ratio"] #(
            # res.values["tau_2"] / res.values["tau_1"]
        # )  # res.values["tau_ratio"]
         self.bfdelay = res.values["fixed_delay"]
+
         self.avg_best_fit = self.sign * res.best_fit  # self.fitresult.best_fit
         # f, ax = mpl.subplots(1,1)
         # ax.plot(tb, avgevent)
@@ -1256,18 +1353,21 @@ class MiniAnalyses:
                 timebase=self.summary.average.avgeventtb,
                 event=self.summary.allevents[j, :],
                 time_past_peak=time_past_peak,
+                tau1=self.tau1,
+                tau2 = self.tau2,
                 fixed_delay=fixed_delay,
                 label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
             )
             if res is None:  # skip events that won't fit
                 continue
 
+                    
             self.bfdelay[j] = res.values["fixed_delay"]
             self.avg_best_fit = res.best_fit
             self.ev_A_fitamp[j] = res.values["amp"]
             self.ev_tau1[j] = res.values["tau_1"]
             self.ev_tau2[j] = res.values["tau_2"]
-            self.ev_tau_ratio[j] = res.values["tau_ratio"]
+            self.ev_tau_ratio[j] = np.nan # res.values["tau_ratio"]
 
             # print(self.fitresult.params)
             # print('amp: ', self.fitresult.params['amp'].value)
@@ -1283,7 +1383,7 @@ class MiniAnalyses:
                 amp=self.fitresult.params["amp"].value,
                 tau_1=self.fitresult.params["tau_1"].value,
                 tau_2=self.fitresult.params["tau_2"].value,
-                tau_ratio=self.fitresult.params["tau_ratio"].value,
+                # tau_ratio=self.fitresult.params["tau_ratio"].value,
                 # self.sign * self.summary.allevents[j, :],
                 risepower=self.fitresult.params["risepower"].value,
                 fixed_delay=self.fitresult.params[
@@ -1314,7 +1414,7 @@ class MiniAnalyses:
         amp: float,
         tau_1: float,
         tau_2: float,
-        tau_ratio: float=1.0,
+       # tau_ratio: float=1.0,
         risepower: float=1.0,
         fixed_delay: float = 0.0,
         y: np.ndarray = None,
@@ -1341,7 +1441,7 @@ class MiniAnalyses:
                 f"Fitting function failed: {amp:.3e}, tau1: {tau_1:.4e}, risepower: {risepower:.2f}"
             )
             raise ValueError()
-        tm[ix:] *= np.exp(-tx / (tau_1*tau_ratio)) # this gets constrained
+        tm[ix:] *= np.exp(-tx / tau_2) # this gets constrained
         if y is not None:  # return error - single value
             tm = np.sqrt(np.sum((tm - y) * (tm - y)))
         return tm
@@ -1398,8 +1498,9 @@ class MiniAnalyses:
             if tau1min < 1e-4:
                 tau1min = 1e-4
             params["amp"] = lmfit.Parameter(
-                name="amp", value=25.0e-12, min=0.0, max=50e-9, vary=True
+                name="amp", value=-25.0e-12, min=-50e-9, max=50e-9, vary=True,
             )
+            tau2min = 0.2e-3
         elif self.datatype in ["I", "IC"]:
             tau1min = tau1 / 10.0
             if tau1min < 1e-4:
@@ -1410,7 +1511,7 @@ class MiniAnalyses:
             params["amp"] = lmfit.Parameter(
                 name="amp",
                 value=amp,
-                min=0.0,
+                min=-5*amp,
                 max=5 * amp,
                 vary=True,
             )
@@ -1420,35 +1521,44 @@ class MiniAnalyses:
             name="tau_1",
             value=tau1,
             min=tau1min,
-            max=6,  # tau1 * tau1_maxfac,
+            max=50e-3,  # tau1 * tau1_maxfac,
             vary=True,
         )
-        params["tau_ratio"] = lmfit.Parameter(
-            name="tau_ratio",
-            value = 1.5,
-            min=1.2,
-            max=50.,
-            vary=True,
-        )
+        # params["tau_ratio"] = lmfit.Parameter(
+        #     name="tau_ratio",
+        #     value = 1.5,
+        #     min=1.2,
+        #     max=50.,
+        #     vary=True,
+        # )
+        # params["tau_2"] = lmfit.Parameter(
+        #     name="tau_2",
+        #     expr = "tau_1*tau_ratio",
+        # )
         params["tau_2"] = lmfit.Parameter(
             name="tau_2",
-            expr = "tau_1*tau_ratio",
+            value=tau2,
+            min=tau2min,
+            max=100e-3,  # tau1 * tau1_maxfac,
+            vary=True,
         )
 
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,
-            vary=False,
+            vary=True,
+            min=fixed_delay,
+            max = fixed_delay*3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
-
+        print('max fit time: ', np.max(timebase))
         self.fitresult = dexpmodel.fit(evfit, params, nan_policy="raise", time=timebase)
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
-
+        debug = True
         if debug:
             import matplotlib.pyplot as mpl
 

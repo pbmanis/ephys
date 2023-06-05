@@ -144,7 +144,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
         return signal
 
 
-def SignalFilter_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bool=False):
+def SignalFilterLPF_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bool=False):
     # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
     flpf = float(LPF)
     sf = float(samplefreq)
@@ -163,6 +163,26 @@ def SignalFilter_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bo
     if reduce:
         w = spSignal.resample(w, reduction)
     return(w)
+
+def SignalFilterHPF_SOS(signal, HPF:float, samplefreq:float, NPole:int=4):
+    # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
+    flpf = float(LPF)
+    sf = float(samplefreq)
+    wn = [flpf/(sf/2.0)]
+    nyqf = 0.5 * len(signal)/ sf
+    if HPF < 1.0 / nyqf:  # duration of a trace
+        raise ValueError(f"SignalFilterHPF_SOS: Nyquist violation")
+        reduction = int(samplefreq/HPF)
+    sos=spSignal.bessel(
+            NPole,
+            wn,
+            btype = "high",
+            output = 'sos')
+    sm = np.mean(signal)
+    w = spSignal.sosfilt(sos, signal-sm) # filter the incoming signal
+    w = w + sm
+    return(w)
+
 
 def SignalFilter_Bandpass(signal, HPF, LPF, samplefreq):
     """Filter signal within a bandpass with elliptical filter
@@ -221,7 +241,7 @@ def NotchFilter(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
 
 def NotchFilterComb(signal, notchf:Union[list, tuple]=[60.], Q:float=90., QScale=True, samplefreq=None):
     """
-    Zero Phase Sos notch
+    Zero Phase Notch Filter
     """
     assert samplefreq is not None
     # resample the signal so that the timing matches the notch frequency

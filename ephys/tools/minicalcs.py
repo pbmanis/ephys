@@ -19,9 +19,8 @@ from ..datareaders import acq4_reader
 from ..mini_analyses import minis_methods, minis_methods_common
 
 class MiniCalcs():
-    def __init__(self, parent=None, filters_on=True):
+    def __init__(self, parent=None):
         self.parent = parent
-        self.filters_on = filters_on 
         self.hp = []
         self.xp = []
         
@@ -29,8 +28,6 @@ class MiniCalcs():
         self.parent._getpars()
         self.parent.method = minis_methods.ClementsBekkers()
         self.parent.method.set_cb_engine('cython')
-        if not self.filters_on:
-            self.parent.method.filters_off()
 
         rate = np.mean(np.diff(self.parent.tb))
         jmax = int((2 * self.parent.tau1 + 3 * self.parent.tau2) / rate)
@@ -46,19 +43,20 @@ class MiniCalcs():
             threshold=self.parent.thresh_reSD,
             sign=self.parent.sign,
             eventstartthr=None,
-            lpf=self.parent.LPF,
-            hpf=self.parent.HPF,
+            filters = None,
         )
+        # self.parent.MA.filters_off()
         self.parent.imax = int(self.parent.maxT * self.parent.AR.sample_rate[0])
 
         # meandata = np.mean(self.parent.mod_data[:, : self.parent.imax])
         self.parent.method._make_template()
         for i in range(self.parent.mod_data.shape[0]):
             self.parent.method.cbTemplateMatch(
-                self.parent.mod_data[i, : self.parent.imax], itrace=i, lpf=self.parent.LPF
+                self.parent.mod_data[i, : self.parent.imax], itrace=i,
+                prepare_data = False
             )
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
-            self.parent.method.reset_filtering()
+            self.parent.method.reset_filters()
         self.parent.last_method = "CB"
         self.CB_update()
 
@@ -73,10 +71,7 @@ class MiniCalcs():
     def AJ(self):
         self.parent._getpars()
         self.parent.method = minis_methods.AndradeJonas()
-        if not self.filters_on:
-            self.parent.method.filters_off()
-
-        rate = np.mean(np.diff(self.parent.tb))
+        rate = self.parent.MA.dt_seconds # np.mean(np.diff(self.parent.tb))
         jmax = int((2 * self.parent.tau1 + 3 * self.parent.tau2) / rate)
         CP.cprint("g", f"showdata AJ threshold: {self.parent.thresh_reSD:8.2f}")
         print("template len: ", jmax, "template max t: ", rate * (jmax - 1), rate)
@@ -91,19 +86,20 @@ class MiniCalcs():
             threshold=self.parent.thresh_reSD,
             sign=self.parent.sign,
             eventstartthr=None,
-            lpf=self.parent.LPF,
-            hpf=self.parent.HPF,
+            filters=self.parent.filters,
         )
+
         self.parent.imax = int(self.parent.maxT * self.parent.AR.sample_rate[0])
-        meandata = np.mean(self.parent.mod_data[:, : self.parent.imax])
+        # meandata = np.mean(self.parent.mod_data[:, : self.parent.imax])
         # self.parent.AJorder = int(1e-3/rate)
         print(f"AJ: Order={int(self.parent.Order):d}, rate: {rate*1e3:.3f} ms, tau1: {self.parent.tau1*1e3:.5f} ms  tau2: {self.parent.tau2*1e3:.5f}")
         for i in range(self.parent.mod_data.shape[0]):
             self.parent.method.deconvolve(
-                self.parent.mod_data[i, : self.parent.imax] - meandata,
+                self.parent.mod_data[i, : self.parent.imax], #  - meandata,
                 itrace=i,
                 # data_nostim=None,
                 llambda=5.0,
+                prepare_data = False
             )  # assumes times are all in same units of msec
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
             self.parent.method.reset_filters()
@@ -119,25 +115,14 @@ class MiniCalcs():
         self.parent.method.summarize(self.parent.mod_data[:, : self.parent.imax])
         # tot_events = sum([len(x) for x in self.parent.method.onsets])
         self.decorate(self.parent.method)
-        # self.parent.method.average_event()
-        # print(dir(self.parent.method.Summary))
-        # print(dir(self.parent.method.Summary.average))
-        # print(dir(self.parent.method.Summary.average.fitted))
-        # print('tau1: ', self.parent.method.Summary.average.fitted_tau1)
-        # print('tau2: ', self.parent.method.Summary.average.fitted_tau2)
-        # print('Amp:  ', self.parent.method.Summary.average.Amplitude)
-        # print('Nev:  ', self.parent.method.Summary.average.Nevents)
-        # print('1090RT:  ', self.parent.method.Summary.average.risetenninety)
-        # print('37Decay: ', self.parent.method.Summary.average.decaythirtyseven)
-        
-        
+        self.parent.method.average_events(traces = range(self.parent.mod_data.shape[0]),
+                                          data=self.parent.mod_data,
+                                          summary = self.parent.method.summary)
+
 
     def RS(self):
         self.parent._getpars()
         self.parent.method = minis_methods.RSDeconvolve()
-        if not self.filters_on:
-            self.parent.method.filters_off()
-
         rate = np.mean(np.diff(self.parent.tb))
 
         self.parent.method.setup(
@@ -182,8 +167,6 @@ class MiniCalcs():
     def ZC(self):
         self.parent._getpars()
         self.parent.method = minis_methods.ZCFinder()
-        if not self.filters_on:
-            self.parent.method.filters_off()
 
         rate = np.mean(np.diff(self.parent.tb))
         minlen = int(self.parent.ZC_mindur / rate)
@@ -230,33 +213,42 @@ class MiniCalcs():
         #     line.clear()
         self.parent.scatter = []
         self.parent.crits = []
+        if minimethod.summary is not None:
+            if minimethod.summary.onsets is not None and len(minimethod.summary.onsets[self.parent.current_trace]) > 0:
+                self.parent.scatter.append(
+                    self.parent.dataplot.plot(
+                        self.parent.tb[minimethod.summary.peakindices[self.parent.current_trace]],
+                        self.parent.current_data[minimethod.summary.peakindices[self.parent.current_trace]],
+                        pen=None,
+                        symbol="o",
+                        symbolPen=None,
+                        symbolSize=7,
+                        symbolBrush=(0, 255, 255, 255),
+                    )
+                )
 
-        if minimethod.summary.onsets is not None and len(minimethod.summary.onsets[self.parent.current_trace]) > 0:
-            self.parent.scatter.append(
-                self.parent.dataplot.plot(
-                    self.parent.tb[minimethod.summary.peakindices[self.parent.current_trace]],
-                    self.parent.current_data[minimethod.summary.peakindices[self.parent.current_trace]],
-                    pen=None,
-                    symbol="o",
-                    symbolPen=None,
-                    symbolSize=10,
-                    symbolBrush=(255, 0, 0, 255),
+                self.parent.scatter.append(self.parent.dataplot.plot(
+                    np.array(self.parent.tb[minimethod.summary.onsets[self.parent.current_trace]])+self.parent.MA.idelay,
+                    self.parent.current_data[minimethod.summary.onsets[self.parent.current_trace]],
+                    # np.array(minimethod.summary.amplitudes[self.parent.current_trace]),
+                    pen = None, symbol='o', symbolPen=None, symbolSize=5,
+                    symbolBrush=(255, 0, 128, 255)))
+
+        if minimethod.summary is not None:
+            critvalue = minimethod.Criterion[self.parent.current_trace]
+            if len(self.parent.tb) < len(critvalue):
+                imax = len(self.parent.tb)
+            else:
+                imax = len(critvalue)
+            self.parent.crits.append(
+
+            self.parent.dataplot2.plot(
+                    self.parent.tb[: imax],
+                    minimethod.Criterion[self.parent.current_trace][:imax],
+                    pen="r",
                 )
             )
-
-            self.parent.scatter.append(self.parent.dataplot.plot(self.parent.tb[minimethod.summary.peakindices[self.parent.current_trace]],
-            np.array(minimethod.summary.amplitudes[self.parent.current_trace]),
-                      pen = None, symbol='o', symbolPen=None, symbolSize=5,
-            symbolBrush=(255, 0, 0, 255)))
-
-        self.parent.crits.append(
-            self.parent.dataplot2.plot(
-                self.parent.tb[: len(minimethod.Criterion[self.parent.current_trace])],
-                minimethod.Criterion[self.parent.current_trace],
-                pen="r",
-            )
-        )
-        self.parent.threshold_line.setValue(minimethod.sdthr)
+            self.parent.threshold_line.setValue(minimethod.sdthr)
         axl = self.parent.dataplot.getAxis('bottom')
         # self.parent.dataplot.setXRange((axl.range[0], axl.range[1]))
         # self.parent.threshold_line.setLabel(f"SD thr: {self.parent.thresh_reSD:.2f}  Abs: {self.parent.minimethod.sdthr:.3e}")
@@ -270,17 +262,17 @@ class MiniCalcs():
         if self.parent.w1.slider.value() != 0:
             return
         try:
-            if not self.parent.method.Summary.average.averaged:
+            if not self.parent.method.summary.average.averaged:
                 CP.cprint("r", "Fit not yet run")
                 return
         except:
             return
-        avg = self.parent.method.Summary.average
+        avg = self.parent.method.summary.average
         print('-'*60)
         print(f"File: {self.parent.fileName:s}")
         print(f"tau1:    {avg.fitted_tau1*1e3:.3f} msec")
         print(f"tau2:    {avg.fitted_tau2*1e3:.3f} msec")
-        print(f"Amp:     {avg.Amplitude*1e12:.1f} pA")
+        print(f"ampl:     {avg.amplitude*1e12:.3e} pA")
         print(f"Nevents: {avg.Nevents:d}")
         print(f"1090RT:  {avg.risetenninety*1e3:.3f} msec")
         print(f"37Decay: {avg.decaythirtyseven*1e3:.3f} msec")
@@ -294,7 +286,7 @@ class MiniCalcs():
         print('-'*60)
         self.parent.clear_fit_lines()
         # make all events in one long array broken by nans
-        allevents = self.parent.method.Summary.allevents
+        allevents = np.array([self.parent.method.summary.allevents[u] for u in self.parent.method.summary.allevents])
         allev = np.concatenate((allevents*1e12, np.array([np.nan]*allevents.shape[0])[:, None]), axis=1)
         x = np.concatenate((avg.avgeventtb, [np.nan]))
         x = np.reshape(np.tile(x, allevents.shape[0]), (allevents.shape[0], x.shape[0]))
@@ -338,10 +330,11 @@ class MiniCalcs():
         dlen = d.shape[1]
         for k in range(d.shape[0]):
             dn = np.interp(t60, tb, d[k,:])
-            dna = np.reshape(dn, (n60periods, ifold))
+            imax = n60periods * ifold
+            dna = np.reshape(dn[:imax], (n60periods, ifold))
             dna = np.mean(dna, axis=0)
             dnas = scipy.signal.savgol_filter(dna,31, 9, mode='wrap')
-            self.parent.xplot.plot(t60[:ifold], dna, pen=pg.mkColor((k, d.shape[0])))
+            # self.parent.xplot.plot(t60[:ifold], dna, pen=pg.mkColor((k, d.shape[0])))
             self.parent.xplot.plot(t60[:ifold], dnas, pen=pg.mkColor((k, d.shape[0])))
             dnn = np.tile(dna, n60periods+1)[:dlen]
             dnn2 = np.interp(tb, t60_2[:dlen], dnn)

@@ -22,6 +22,8 @@ import ephys.tools.minicalcs as minicalcs
 from ..datareaders import acq4_reader
 from ..ephys_analysis import rm_tau_analysis, spike_analysis
 from ..mini_analyses import minis_methods, minis_methods_common
+import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
+
 from . import digital_filters
 from . import functions as FN
 
@@ -34,6 +36,7 @@ all_modules = [
     minis_methods,
     minis_methods_common,
     minicalcs,
+    MEDC,
     FN,
 ]
 
@@ -44,17 +47,17 @@ class MiniViewer(pg.QtWidgets.QWidget):
     def __init__(self, app=None):
         super(MiniViewer, self).__init__()
         self.app = app
-        self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig4(MRK)/L23_intrinsic"
+        self.verbose = False
+        self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael"
         self.AR = (
             acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
         self.SP = spike_analysis.SpikeAnalysis()
         self.RM = rm_tau_analysis.RmTauAnalysis()
         self.ampdataname = "MultiClamp1.ma"
-        self.LPF = 5000.0
-        self.HPF = None  # high pass filtering
+
         self.tb = None
-      #  self.notch_60HzHarmonics = [60.0, 120.0, 180.0, 240.0]
+        self.notch_60HzHarmonics = np.arange(60., 4000., 60.)
         self.notch_60HzHarmonics_4K = [
             60.0,
             120.0,
@@ -89,9 +92,15 @@ class MiniViewer(pg.QtWidgets.QWidget):
             3061.2,
             4000.0,
         ]
-        self.notch_frequency = "None"
-        self.notch_Q = 90.0
-        self.filtering_applied = False
+       
+        self.filters = MEDC.Filtering() # create filter class
+        # modify some defaults
+        self.filters.Notch_frequencies = None
+        self.filters.Notch_Q = 90.0
+        self.filters.HPF_frequency = None
+        self.filters.LPF_frequency = 2500.
+        self.filters.enabled = True
+
         self.curves = []
         self.crits = []
         self.scatter = []
@@ -107,6 +116,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.tau2 = 0.004  # value in the spinbox
         self.minis_risetau = self.tau1  # will be value returned from analysis
         self.minis_falltau = self.tau2
+        self.risepower=2
         self.method = None
         self.Order = 7
 
@@ -125,8 +135,20 @@ class MiniViewer(pg.QtWidgets.QWidget):
         currentpath = Path.cwd()
         self.filelistpath = Path(currentpath, "ephys/tools/data/files.toml")
         self.maxPreviousFiles = 10  # limit of # of files held in history of filenames
-        self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
-        self.MINC = None # don't set until we need it. = minicalcs.MiniCalcs(parent=self)
+        self.MINC = minicalcs.MiniCalcs(parent=self)
+        self.MA = None
+        self.method_update = {
+            "CB": self.MINC.CB_update,
+            "AJ": self.MINC.AJ_update,
+            "ZC": self.MINC.ZC_update,
+            "RS": self.MINC.RS_update,
+        }
+        self.method_mapper = {
+            "CB": self.MINC.CB,
+            "AJ": self.MINC.AJ,
+            "ZC": self.MINC.ZC,
+            "RS": self.MINC.RS,
+        } 
 
     def getProtocolDir(self, reload_last=False):
         current_filename = None
@@ -175,7 +197,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             file_dict = {"MostRecent": str(self.fileName), "Previous": []}
         with open(self.filelistpath, "w") as fh:
             toml.dump(file_dict, fh)
-        self.updateTraces()
+        self.load_data()
 
     def setProtocol(self, date, sliceno, cellno, protocolName):
         # create an IV protocol path:
@@ -199,12 +221,12 @@ class MiniViewer(pg.QtWidgets.QWidget):
             print("dir not found: ", str(self.protocolPath))
             return
 
-    def updateTraces(self):
+    def load_data(self):
         self.AR.setProtocol(
             self.protocolPath
         )  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
-            self.filtering_applied = False
+            self.filters_applied = False
             # trim time window if needed
             dt = 1.0 / self.AR.sample_rate[0]
             # trx = self.AR.data_array
@@ -217,55 +239,85 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.AR.data_array = self.AR.data_array[:, istart:iend]
             self.mod_data = self.AR.data_array.copy()
             self.trace_end_index = self.mod_data.shape[1]
-            self.maxT = self.AR.sample_rate[0] * self.trace_end_index
-       
+            self.maxT = self.AR.sample_rate[0] * self.trace_end_index       
             self.w1.slider.setValue(0)
-            # self.apply_filtering()
+            # load depends on the analysis... 
+
+            self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+            self.MA.setup(datasource="MiniAnalyses",
+                          ntraces=self.mod_data.shape[0],
+                          tau1 = self.tau1,
+                          tau2 = self.tau2,
+                          dt_seconds = self.AR.sample_interval,
+                          sign = self.sign,
+                          risepower = self.risepower,
+                          threshold = self.thresh_reSD,
+                          filters = self.filters,
+                          )
+            self.MA.verbose = self.verbose
+            if self.verbose:
+                print("after setup, filters: ", self.MA.filters)
+            self.apply_filtering()
+            if self.verbose:
+                print("after filter application: ", self.MA.filters)
             self.update_traces()
 
     def apply_filtering(self):
         """Apply filtering all at onxe to all traxes upon reading
 
         """
-    # detrend traces
-        if self.filtering_applied:
-            return
-        for itrace in range(self.mod_data.shape[0]):
-            self.mod_data[itrace] = FN.adaptiveDetrend(
-                self.mod_data[itrace], x=self.AR.time_base[:self.trace_end_index], threshold=3.0
-            )
 
-            if self.notch_frequency != "None":
-                if self.notch_frequency == "60HzHarm":
-                    notchfreqs = self.notch_60HzHarmonics
-                elif self.notch_frequency == "60HzHarm+4K":
-                    notchfreqs = self.notch_60HzHarmonics_4K
-                else:
-                    notchfreqs = [self.notch_frequency]
-                if itrace == 0:
-                    CP.cprint("y", f"Notch Filtering trace{itrace:d}")
-                self.mod_data[itrace] = digital_filters.NotchFilterComb(
-                    self.mod_data[itrace],
-                    notchf=notchfreqs,
-                    Q=self.notch_Q,
-                    QScale=False,
-                    samplefreq=self.AR.sample_rate[0],
-                )
-            if self.LPF != "None":
-                if itrace == 0:
-                    CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f} trace{itrace:d}")
-                #            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
-                self.mod_data[itrace] = digital_filters.SignalFilter_SOS(
-                    self.mod_data[itrace],
-                    self.LPF,
-                    samplefreq=self.AR.sample_rate[0],
-                    NPole=16,
-                )
-            # self.mod_data = digital_filters.SignalFilter_LPFBessel(
-            #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
-            #     )
-        CP.cprint("y", "Applied filtering to {itrace:d} traces")
-        self.filtering_applied = True
+        if self.filters_applied:
+            print("Filtering already applied")
+            return
+        if not self.filters.enabled:
+            return
+        self.MA.set_dt_seconds(self.AR.sample_interval)
+
+        print("Preparing data...")
+        if self.verbose:
+            print(self.filters)
+        self.MA.prepare_data(data=self.mod_data)
+        if self.verbose:
+            print("data prepared ", self.MA.data_prepared)
+        self.mod_data = self.MA.data
+        itrace = self.mod_data.shape[0]
+        # for itrace in range(self.mod_data.shape[0]):
+        #     self.mod_data[itrace] = FN.adaptiveDetrend(
+        #         self.mod_data[itrace], x=self.AR.time_base[:self.trace_end_index], threshold=3.0
+        #     )
+
+        #     if self.notch_frequency != "None":
+        #         if self.notch_frequency == "60HzHarm":
+        #             notchfreqs = self.notch_60HzHarmonics
+        #         elif self.notch_frequency == "60HzHarm+4K":
+        #             notchfreqs = self.notch_60HzHarmonics_4K
+        #         else:
+        #             notchfreqs = [self.notch_frequency]
+        #         if itrace == 0:
+        #             CP.cprint("y", f"Notch Filtering trace{itrace:d}")
+        #         self.mod_data[itrace] = digital_filters.NotchFilterComb(
+        #             self.mod_data[itrace],
+        #             notchf=notchfreqs,
+        #             Q=self.notch_Q,
+        #             QScale=False,
+        #             samplefreq=self.AR.sample_rate[0],
+        #         )
+        #     if self.LPF != "None":
+        #         if itrace == 0:
+        #             CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f} trace{itrace:d}")
+        #         #            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
+        #         self.mod_data[itrace] = digital_filters.SignalFilter_SOS(
+        #             self.mod_data[itrace],
+        #             self.LPF,
+        #             samplefreq=self.AR.sample_rate[0],
+        #             NPole=16,
+        #         )
+        #     # self.mod_data = digital_filters.SignalFilter_LPFBessel(
+        #     #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
+        #     #     )
+        CP.cprint("y", f"Applied filtering to {itrace:d} traces")
+        self.filters_applied = True
 
 
     def _getpars(self):
@@ -278,14 +330,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def update_threshold(self):
         self.threshold_line.setPos(self.thresh_reSD)
-        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
-        trmap1 = {
-            "CB": self.MINC.CB_update,
-            "AJ": self.MINC.AJ_update,
-            "ZC": self.MINC.ZC_update,
-            "RS": self.MINC.RS_update,
-        }
-        trmap1[self.last_method]()  # threshold/scroll, just update
+  
+        self.method_update[self.last_method]()  # threshold/scroll, just update
 
     def update_traces(self, trace:int=None):
 
@@ -327,16 +373,12 @@ class MiniViewer(pg.QtWidgets.QWidget):
         return
     
     def update_analysis(self):
-        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
-        self.MINC.filters_on = False
+        print("self.method: ", self.method)
+        self.MA.set_filters(self.filters)
+        self.MINC = minicalcs.MiniCalcs(parent=self)
 
-        trmap2 = {
-            "CB": self.MINC.CB,
-            "AJ": self.MINC.AJ,
-            "ZC": self.MINC.ZC,
-            "RS": self.MINC.RS,
-        } 
-        trmap2[self.last_method]()  # recompute from scratch
+ 
+        self.method_mapper[self.last_method]()  # recompute from scratch
         if self.method is not None:
             self.MINC.decorate(self.method)
         self.MINC.show_fitting_pars()
@@ -445,11 +487,11 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.fitlines = []
 
     def copy_fits(self):
-        if not self.method.Summary.average.averaged:
+        if not self.method.summary.average.averaged:
             CP.cprint("r", "Fit not yet run")
             return
-        self.minis_risetau = self.method.Summary.average.fitted_tau1
-        self.minis_falltau = self.method.Summary.average.fitted_tau2
+        self.minis_risetau = self.method.summary.average.fitted_tau1
+        self.minis_falltau = self.method.summary.average.fitted_tau2
 
     def write_dataset(self):
         pass
@@ -487,19 +529,16 @@ class MiniViewer(pg.QtWidgets.QWidget):
                         "default": 0.0,
                     },
                     {
-                        "name": "Notch Frequency",
+                        "name": "Enable Filtering",
+                        "type": "bool",
+                        "value": True,
+                        "default": True,
+                    },
+                    {
+                        "name": "Detrend Method",
                         "type": "list",
-                        "values": [
-                            "None",
-                            "60HzHarm",
-                            "60HzHarm+4K",
-                            30.0,
-                            60.0,
-                            120.0,
-                            180.0,
-                            240.0,
-                        ],
-                        "value": "None",
+                        "values": ["None", "meegkit", "scipy"],
+                        "default": "meegkit",
                     },
                     {
                         "name": "LPF",
@@ -517,13 +556,45 @@ class MiniViewer(pg.QtWidgets.QWidget):
                             4000.0,
                             5000.0,
                         ],
-                        "value": None,
+                        "value": self.filters.LPF_frequency,
+                        "default": self.filters.LPF_frequency,
                         "renamable": True,
+                    },
+                    {
+                        "name": "HPF",
+                        "type": "list",
+                        "values": [
+                            "None",
+                            0.1,
+                            0.5,
+                            1.0,
+                            2.0,
+                            5.0,
+                            10.0,
+                        ],
+                        "value": self.filters.HPF_frequency,
+                        "default": self.filters.HPF_frequency,
+                        "renamable": True,
+                    },
+                    {
+                        "name": "Notch Frequency",
+                        "type": "list",
+                        "values": [
+                            "None",
+                            "60HzHarm",
+                            "60HzHarm+4K",
+                            30.0,
+                            60.0,
+                            120.0,
+                            180.0,
+                            240.0,
+                        ],
+                        "value": self.filters.Notch_frequencies,
                     },
                     {
                         "name": "Notch Q",
                         "type": "float",
-                        "value": 60.0,
+                        "value": self.filters.Notch_Q,
                         "limits": (1, 300.0),
                         "default": 60.0,
                     },
@@ -591,6 +662,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 "value": False,
                 "tip": "Try to compare with events previously analyzed",
             },
+            {"name": "Verbose", "type": "bool", "value": False, "default": False},
             {"name": "Show Fitting Pars", "type": "action"},
             {"name": "Copy Fit to template", "type": "action"},
             {"name": "Write Dataset text", "type": "action"},
@@ -615,7 +687,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         """
         for param, change, data in changes:
             path = self.ptreedata.childPath(param)
-
+            print("Path: ", path)
             if path[0] == "Quit":
                 self.quit()
             elif path[0] == "Get Protocol":
@@ -624,6 +696,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             elif path[0] == "Reload Last Protocol":
                 self.getProtocolDir(reload_last=True)
                 self.update_traces()
+            elif path[0] == "Verbose":
+                self.verbose = data
             elif path[0] == "Show Fitting Pars":
                 print("Fitting Parameters: ")
                 if self.MINC is not None:
@@ -640,16 +714,26 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 self.compare_flag = data
                 print("compare flg: ", self.compare_flag)
                 self.compareEvents()
-                
             elif path[0] == "PreProcessing":
                 if path[1] == "Channel Name":
                     self.ampdataname = data
+                elif path[1] == "Enable Filtering":
+                    self.filters.enabled = data
+                elif path[1] == "Detrend Method":
+                    self.filters.Detrend_type = data
                 elif path[1] == "LPF":
-                    self.LPF = data
+                    self.filters.LPF_frequency = data
+                elif path[1] == "HPF":
+                    self.filters.HPF_frequency = data
                 elif path[1] == "Notch Frequency":
-                    self.notch_frequency = data
+                    if isinstance(data, str):
+                        if data == "60HzHarm+4K":
+                            data = self.notch_60HzHarmonics_4K
+                        elif data == "60HzHarm":
+                            data = self.notch_60HzHarmonics
+                        self.filters.Notch_frequencies = data
                 elif path[1] == "Notch Q":
-                    self.notch_Q = data
+                    self.filters.Notch_Q = data
                 elif path[1] == "Set Start (s)":
                     self.tstart = data
                 elif path[1] == "Set End (s)":
@@ -659,7 +743,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
                         pass
                 # elif path[0] == "Apply Filters":
                 #     self.update_traces(update_analysis=False)
-
+                else:
+                    print("argument: ", path[1], "is not handled in: ", path[0])
+                    raise ValueError()
+                
             elif path[0] == "Mini Analysis":
                 if path[1] == "Rise Tau":
                     self.tau1 = data
@@ -680,6 +767,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 elif path[1] == "Analyze Events": # call the analysis function
                     self.update_analysis()
 
+                else: 
+                    print("argument: ", path[1], "is not handled in: ", path[0])
+                    raise ValueError()
 
             elif path[0] == "Reload":
                 self.reload()
@@ -693,7 +783,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             print("reloading: ", module)
             module = importlib.reload(module)
 
-        self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
+        self.MINC = minicalcs.MiniCalcs(parent=self)
 
     def set_window(self, parent=None):
         super(MiniViewer, self).__init__(parent=parent)
