@@ -106,7 +106,7 @@ class MiniCalcs():
                 llambda=5.0,
             )  # assumes times are all in same units of msec
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
-            self.parent.method.reset_filtering()
+            self.parent.method.reset_filters()
 
         self.parent.last_method = "AJ"
         self.AJ_update()
@@ -231,11 +231,11 @@ class MiniCalcs():
         self.parent.scatter = []
         self.parent.crits = []
 
-        if minimethod.Summary.onsets is not None and len(minimethod.Summary.onsets[self.parent.current_trace]) > 0:
+        if minimethod.summary.onsets is not None and len(minimethod.summary.onsets[self.parent.current_trace]) > 0:
             self.parent.scatter.append(
                 self.parent.dataplot.plot(
-                    self.parent.tb[minimethod.Summary.peaks[self.parent.current_trace]],
-                    self.parent.current_data[minimethod.Summary.peaks[self.parent.current_trace]],
+                    self.parent.tb[minimethod.summary.peakindices[self.parent.current_trace]],
+                    self.parent.current_data[minimethod.summary.peakindices[self.parent.current_trace]],
                     pen=None,
                     symbol="o",
                     symbolPen=None,
@@ -244,8 +244,8 @@ class MiniCalcs():
                 )
             )
 
-            self.parent.scatter.append(self.parent.dataplot.plot(self.parent.tb[minimethod.Summary.peaks[self.parent.current_trace]],
-            np.array(minimethod.Summary.amplitudes[self.parent.current_trace]),
+            self.parent.scatter.append(self.parent.dataplot.plot(self.parent.tb[minimethod.summary.peakindices[self.parent.current_trace]],
+            np.array(minimethod.summary.amplitudes[self.parent.current_trace]),
                       pen = None, symbol='o', symbolPen=None, symbolSize=5,
             symbolBrush=(255, 0, 0, 255)))
 
@@ -257,8 +257,11 @@ class MiniCalcs():
             )
         )
         self.parent.threshold_line.setValue(minimethod.sdthr)
+        axl = self.parent.dataplot.getAxis('bottom')
+        # self.parent.dataplot.setXRange((axl.range[0], axl.range[1]))
         # self.parent.threshold_line.setLabel(f"SD thr: {self.parent.thresh_reSD:.2f}  Abs: {self.parent.minimethod.sdthr:.3e}")
         # print(' ... decorated')
+    
     def fold_data(self, t, d, period):
         """
         Fold a data set within a time period

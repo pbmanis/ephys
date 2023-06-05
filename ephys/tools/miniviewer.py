@@ -52,9 +52,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.RM = rm_tau_analysis.RmTauAnalysis()
         self.ampdataname = "MultiClamp1.ma"
         self.LPF = 5000.0
-        self.HPF = 1.0  # high pass filtering
+        self.HPF = None  # high pass filtering
         self.tb = None
-        self.notch_60HzHarmonics = [60.0, 120.0, 180.0, 240.0]
+      #  self.notch_60HzHarmonics = [60.0, 120.0, 180.0, 240.0]
         self.notch_60HzHarmonics_4K = [
             60.0,
             120.0,
@@ -91,7 +91,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         ]
         self.notch_frequency = "None"
         self.notch_Q = 90.0
-
+        self.filtering_applied = False
         self.curves = []
         self.crits = []
         self.scatter = []
@@ -156,19 +156,14 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.fileName = current_filename
         self.win.setWindowTitle(wt)
         self.w1.slider.setValue(0)
-        print("# clamp files: ", len(self.clampfiles))
-        self.w1.slider.setRange(0, len(self.clampfiles))
+        print("# clamp files (traces): ", len(self.clampfiles))
+        self.w1.slider.setRange(0, len(self.clampfiles)-1)
         self.w1.slider.setTickInterval(10)
-        # self.w1.slider.setMaximum(len(self.clampfiles))
-        # setMinimum(0)
-        # self.w1.slider.setMaximum(len(self.clampfiles))
         self.protocolPath = self.fileName
         self.compare_data = False  # new prototocol; trigger new comparision if needed
-        # print('protocolpath: ', sel.fileName)
         # first attempt to read the current recent files file
         if self.filelistpath.is_file():  # read the old file
             file_dict = toml.load(self.filelistpath)
-            print(file_dict)
             if "Previous" not in list(file_dict.keys()):
                 file_dict["Previous"] = []
             file_dict["MostRecent"] = str(self.fileName)
@@ -180,7 +175,6 @@ class MiniViewer(pg.QtWidgets.QWidget):
             file_dict = {"MostRecent": str(self.fileName), "Previous": []}
         with open(self.filelistpath, "w") as fh:
             toml.dump(file_dict, fh)
-
         self.updateTraces()
 
     def setProtocol(self, date, sliceno, cellno, protocolName):
@@ -210,6 +204,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.protocolPath
         )  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            self.filtering_applied = False
             # trim time window if needed
             dt = 1.0 / self.AR.sample_rate[0]
             # trx = self.AR.data_array
@@ -221,8 +216,57 @@ class MiniViewer(pg.QtWidgets.QWidget):
             iend = int(tend / dt)
             self.AR.data_array = self.AR.data_array[:, istart:iend]
             self.mod_data = self.AR.data_array.copy()
+            self.trace_end_index = self.mod_data.shape[1]
+            self.maxT = self.AR.sample_rate[0] * self.trace_end_index
+       
             self.w1.slider.setValue(0)
+            # self.apply_filtering()
             self.update_traces()
+
+    def apply_filtering(self):
+        """Apply filtering all at onxe to all traxes upon reading
+
+        """
+    # detrend traces
+        if self.filtering_applied:
+            return
+        for itrace in range(self.mod_data.shape[0]):
+            self.mod_data[itrace] = FN.adaptiveDetrend(
+                self.mod_data[itrace], x=self.AR.time_base[:self.trace_end_index], threshold=3.0
+            )
+
+            if self.notch_frequency != "None":
+                if self.notch_frequency == "60HzHarm":
+                    notchfreqs = self.notch_60HzHarmonics
+                elif self.notch_frequency == "60HzHarm+4K":
+                    notchfreqs = self.notch_60HzHarmonics_4K
+                else:
+                    notchfreqs = [self.notch_frequency]
+                if itrace == 0:
+                    CP.cprint("y", f"Notch Filtering trace{itrace:d}")
+                self.mod_data[itrace] = digital_filters.NotchFilterComb(
+                    self.mod_data[itrace],
+                    notchf=notchfreqs,
+                    Q=self.notch_Q,
+                    QScale=False,
+                    samplefreq=self.AR.sample_rate[0],
+                )
+            if self.LPF != "None":
+                if itrace == 0:
+                    CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f} trace{itrace:d}")
+                #            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
+                self.mod_data[itrace] = digital_filters.SignalFilter_SOS(
+                    self.mod_data[itrace],
+                    self.LPF,
+                    samplefreq=self.AR.sample_rate[0],
+                    NPole=16,
+                )
+            # self.mod_data = digital_filters.SignalFilter_LPFBessel(
+            #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
+            #     )
+        CP.cprint("y", "Applied filtering to {itrace:d} traces")
+        self.filtering_applied = True
+
 
     def _getpars(self):
         signdict = {"-": -1, "+": 1}
@@ -243,13 +287,14 @@ class MiniViewer(pg.QtWidgets.QWidget):
         }
         trmap1[self.last_method]()  # threshold/scroll, just update
 
-    def update_traces(self, value=None):
-        if isinstance(value, int):
-            self.current_trace = value
+    def update_traces(self, trace:int=None):
 
         if len(self.AR.traces) == 0:
             return
-        self.current_trace = int(self.w1.x)
+        if trace is None:
+            self.current_trace = int(self.w1.x)
+        else:
+            self.current_trace = trace
         self.dataplot.setTitle(f"Trace: {self.current_trace:d}")
         for c in self.curves:
             c.clear()
@@ -267,62 +312,24 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 f"Trace > Max traces: {self.AR.data_array.shape[0]:d}"
             )
             return
-        # imax = int(self.maxT*self.AR.sample_rate[0])
-        imax = len(self.AR.data_array[self.current_trace])
-        self.imax = imax
-        self.maxT = self.AR.sample_rate[0] * imax
-        self.mod_data[self.current_trace] = self.AR.data_array[
-            self.current_trace, :imax
-        ]
-        # detrend traces
-        self.mod_data[self.current_trace] = FN.adaptiveDetrend(
-            self.mod_data[self.current_trace], x=self.AR.time_base[:imax], threshold=3.0
-        )
-
-        if self.notch_frequency != "None":
-            if self.notch_frequency == "60HzHarm":
-                notchfreqs = self.notch_60HzHarmonics
-            elif self.notch_frequency == "60HzHarm+4K":
-                notchfreqs = self.notch_60HzHarmonics_4K
-            else:
-                notchfreqs = [self.notch_frequency]
-            CP.cprint("y", f"Notch Filtering")
-            self.mod_data[self.current_trace] = digital_filters.NotchFilterComb(
-                self.mod_data[self.current_trace],
-                notchf=notchfreqs,
-                Q=self.notch_Q,
-                QScale=False,
-                samplefreq=self.AR.sample_rate[0],
-            )
-        if self.LPF != "None":
-            # CP.cprint("y", f"LPF Filtering at: {self.LPF:.2f}")
-            #            self.mod_data[self.current_trace]  = digital_filters.SignalFilter_LPFBessel(
-            self.mod_data[self.current_trace] = digital_filters.SignalFilter_SOS(
-                self.mod_data[self.current_trace],
-                self.LPF,
-                samplefreq=self.AR.sample_rate[0],
-                NPole=16,
-            )
-        # self.mod_data = digital_filters.SignalFilter_LPFBessel(
-        #         self.mod_data, self.HPF, samplefreq=self.AR.sample_rate[0], filtertype="high", NPole=8
-        #     )
-
         self.curves.append(
             self.dataplot.plot(
-                self.AR.time_base[:imax],
-                # self.AR.traces[i,:],
-                self.mod_data[self.current_trace],
+                self.AR.time_base[:self.trace_end_index],
+                self.mod_data[self.current_trace][:self.trace_end_index],
                 pen=pg.intColor(1),
             )
         )
         self.current_data = self.mod_data[self.current_trace]
-        self.tb = self.AR.time_base[:imax]
-        # print(self.tb.shape, imax)
+        self.tb = self.AR.time_base[:self.trace_end_index]
         self.curve_set = True
+        if self.method is not None:
+            self.MINC.decorate(self.method)
         return
     
     def update_analysis(self):
         self.MINC = minicalcs.MiniCalcs(parent=self, filters_on=False)
+        self.MINC.filters_on = False
+
         trmap2 = {
             "CB": self.MINC.CB,
             "AJ": self.MINC.AJ,
@@ -333,8 +340,6 @@ class MiniViewer(pg.QtWidgets.QWidget):
         if self.method is not None:
             self.MINC.decorate(self.method)
         self.MINC.show_fitting_pars()
-        # if self.method is not None:
-        #     self.decorate(self.method)
         # self.compareEvents()
 
     def quit(self):
@@ -347,9 +352,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def on_key(self, event):
         print("Got event key: ", event.key())
-        if event.key() == pg.Qt.Key_Right:
+        if event.key() == pg.Qt.Key_Right and self.slider_value < len(self.clampfiles):
             self.w1.slider.setValue(self.slider.value() + 1)
-        elif event.key() == pg.Qt.Key_Left:
+        elif event.key() == pg.Qt.Key_Left and self.slider_value() > 0:
             self.w1.slider.setValue(self.slider.value() - 1)
         else:
             pg.QtGui.QWidget.keyPressEvent(self, event)  # just pass it on
@@ -833,7 +838,7 @@ class Slider(pg.QtWidgets.QWidget):
 def main():
     app = pg.QtWidgets.QApplication([])
     app.setStyle("Fusion")
-
+    pg.setConfigOption("antialias", True)
     MV = MiniViewer(app)
     app.aboutToQuit.connect(
         MV.quit

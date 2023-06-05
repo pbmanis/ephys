@@ -145,7 +145,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
 
 
 def SignalFilter_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bool=False):
-    print("Filter: SOS at ", LPF, " Poles: ", NPole)
+    # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
