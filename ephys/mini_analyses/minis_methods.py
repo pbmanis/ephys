@@ -330,7 +330,7 @@ class ClementsBekkers(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + int(self.template_pre_time/self.dt_seconds)
+                + int(self.template_pre_time/self.dt_seconds) # offset onset to remove template baseline offset
             )
 
             endtime = timeit.default_timer() - self.starttime
@@ -402,6 +402,8 @@ class AndradeJonas(MiniAnalyses):
         H = np.fft.fft(self.template)
         if H.shape[0] < self.data.shape[0]:
             H = np.hstack((H, np.zeros(self.data.shape[0] - H.shape[0])))
+        if H.shape[0] > self.data.shape[0]:
+            H = H[:self.data.shape[0]]
         self.quot = np.fft.ifft(
             np.fft.fft(self.data) * np.conj(H) / (H * np.conj(H) + llambda**2.0)
         )
@@ -438,6 +440,7 @@ class AndradeJonas(MiniAnalyses):
             valid_data[i, :] = self.remove_outliers(criterion[i], outlier_scale)
         sd = np.nanstd(valid_data)
 
+        print("pre offset: ", int(self.template_pre_time/self.dt_seconds), self.template_pre_time)
         self.sdthr = sd * self.threshold  # set the threshold to multiple SD
         self.onsets = [None] * criterion.shape[0]
         for i in range(criterion.shape[0]):
@@ -445,7 +448,7 @@ class AndradeJonas(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + int(self.template_pre_time/self.dt_seconds)
+                + 2 * int(self.template_pre_time/self.dt_seconds) # offset onset to remove template baseline offset
             )
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime

@@ -905,7 +905,7 @@ class MiniAnalysis:
         
         # put in averaged event too
         # self.cell_summary['averaged'].extend([{'tb': aj.avgeventtb,
-        # 'avg': aj.avgevent, 'fit': {'amplitude': aj.Amplitude,
+        # 'avg': aj.avgevent, 'fit': {'amplitude': aj.amplitude,
         #     'tau1': aj.tau1, 'tau2': aj.tau2, 'risepower': aj.risepower}, 'best_fit': aj.avg_best_fit,
         #     'risetenninety': aj.risetenninety, 'decaythirtyseven': aj.decaythirtyseven}])
         aev = self.cell_summary["averaged"]

@@ -59,10 +59,13 @@ class AverageEvent:
     fitted: bool = False  # Set True if data has been fitted
     fitted_tau1: float = np.nan  # rising time constant for 2-exp fit
     fitted_tau2: float = np.nan  # falling time constant for 2-exp fit
+    fitted_tau3: float = np.nan  # slow superimposed event
+    fitted_tau4: float = np.nan
     fitted_tau_ratio: float = np.nan
     risepower: float = np.nan
     best_fit: object = None  # best fit trace
     amplitude: float = np.nan  # amplitude from the fit
+    amplitude2: float = np.nan  # amplitude for slow event
     avg_fiterr: float = np.nan  # fit error
     risetenninety: float = np.nan  # rise time (seconds), 10-90 %
     decaythirtyseven: float = np.nan  # fall time to 37% of peak

@@ -137,18 +137,18 @@ class MAP_Analysis(Analysis):
             if sh != (0,) and sh1 != (0,) and sh2 != (0,):
                 if not self.signflip:
                     if self.alternate_fit1:
-                        self.AM.Pars.taus = [
+                        self.AM.Pars.taus[0:2] = [
                             cell_df["alt1_tau1"].values[0] * 1e-3,
                             cell_df["alt1_tau2"].values[0] * 1e-3,
                         ]
                     else:
-                        self.AM.Pars.taus = [
+                        self.AM.Pars.taus[0:2] = [
                             cell_df["tau1"].values[0] * 1e-3,
                             cell_df["tau2"].values[0] * 1e-3,
                         ]
                     print("    Setting VC taus: ", end="")
                 else:
-                    self.AM.Pars.taus = [
+                    self.AM.Pars.taus[0:2] = [
                         cell_df["fl_tau1"].values[0] * 1e-3,
                         cell_df["fl_tau2"].values[0] * 1e-3,
                     ]
@@ -176,7 +176,7 @@ class MAP_Analysis(Analysis):
             )
             sh = cell_df["cc_tau1"].shape
             if cell_df is not None and sh != (0,):
-                self.AM.Pars.taus = [
+                self.AM.Pars.taus[0:2] = [
                     cell_df["cc_tau1"].values[0] * 1e-3,
                     cell_df["cc_tau2"].values[0] * 1e-3,
                 ]
@@ -295,7 +295,7 @@ class MAP_Analysis(Analysis):
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
-            self.AM.Pars.taus = [1e-3, 3e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [1e-3, 3e-3]  # fast events
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
@@ -312,7 +312,7 @@ class MAP_Analysis(Analysis):
             else:
                 self.AM.Pars.sign = 1
             self.AM.Pars.scale_factor = 1e12
-            self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
+            self.AM.Pars.taus[0:2] = [2e-3, 10e-3]  # slow events
             # self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.threshold = self.threshold  # low threshold
             self.set_vc_taus(icell, path_to_map)
@@ -327,7 +327,7 @@ class MAP_Analysis(Analysis):
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1  # trigger on negative current
             self.AM.Pars.scale_factor = 1e12
-            self.AM.Pars.taus = [0.5e-3, 0.75e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [0.5e-3, 0.75e-3]  # fast events
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
             self.set_vc_taus(icell, path_to_map)
             self.set_vc_threshold(icell, path_to_map)
@@ -340,7 +340,7 @@ class MAP_Analysis(Analysis):
             print(f"Excitatory PSP, IC or I=0, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
-            self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
             self.set_cc_taus(icell, path_to_map)
@@ -352,7 +352,7 @@ class MAP_Analysis(Analysis):
             print(f"Inhibitory PSP, IC, VGAT")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
             self.AM.Pars.scale_factor = 1e3
-            self.AM.Pars.taus = [3e-3, 10e-3]  # slow events
+            self.AM.Pars.taus[0:2] = [3e-3, 10e-3]  # slow events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  #
             # self.AM.Pars.analysis_window = [0, 0.999]
@@ -384,7 +384,7 @@ class MAP_Analysis(Analysis):
                 )
             # self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.scale_factor = 1e12
-            self.AM.Pars.taus = [2e-3, 10e-3]  # slow events
+            self.AM.Pars.taus[0:2] = [2e-3, 10e-3]  # slow events
             self.AM.Pars.threshold = self.threshold  # setthreshold...
 
             if self.AM.datatype == "V":
@@ -403,7 +403,7 @@ class MAP_Analysis(Analysis):
             self.AM.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
-            self.AM.Pars.taus = [1e-3, 3e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [1e-3, 3e-3]  # fast events
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
@@ -417,7 +417,7 @@ class MAP_Analysis(Analysis):
             self.AM.datatype = "I"
             self.AM.Pars.sign = 1
             self.AM.Pars.scale_factor = 1e3
-            self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
             self.set_cc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_cc_threshold(icell, path_to_map)
@@ -430,7 +430,7 @@ class MAP_Analysis(Analysis):
             CP.cprint("g", f"Excitatory PSP, IC or I=0, LED, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
-            self.AM.Pars.taus = [1e-3, 4e-3]  # fast events
+            self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
             self.AM.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
             self.set_cc_taus(icell, path_to_map)
@@ -466,7 +466,7 @@ class MAP_Analysis(Analysis):
         picklefilename: Union[Path, str, None] = None,
     ) -> Union[None, dict]:
         """
-        Analyze the i_protocol th map in the allprots dict of maps
+        Analyze the i_protocol map in the allprots dict of maps
         This routine is designed so that it can be called for parallel processing.
 
         Parameters

@@ -67,6 +67,8 @@ class MiniAnalyses:
         ntraces: int = 1,
         tau1: Union[float, None] = None,
         tau2: Union[float, None] = None,
+        tau3: Union[float, None] = 2e-3,
+        tau4: Union[float, None] = 30e-3,
         template_tmax: float = 0.05,
         template_pre_time: float = 0.0,
         dt_seconds: Union[float, None] = None,
@@ -94,7 +96,7 @@ class MiniAnalyses:
         self.ntraces = ntraces
         self.Criterion = [[None] for x in range(ntraces)]
         self.sign = sign
-        self.taus = [tau1, tau2]
+        self.taus = [tau1, tau2, tau3, tau4]
         self.dt_seconds = dt_seconds
         self.template_tmax = template_tmax
         self.idelay = int(delay / self.dt_seconds)
@@ -134,6 +136,9 @@ class MiniAnalyses:
     def set_dt_seconds(self, dt_seconds: Union[None, float] = None):
         self.dt_seconds = dt_seconds
 
+    def set_timebase(self, timebase: np.ndarray):
+        self.timebase = timebase
+
     def set_risepower(self, risepower: float = 4):
         if risepower > 0 and risepower <= 8:
             self.risepower = risepower
@@ -156,11 +161,12 @@ class MiniAnalyses:
         """
         Private function: make template when it is needed
         """
-        tau_1, tau_2 = self.taus  # use the predefined taus
-        tmax = self.template_tmax
-        if self.timebase is not None:
-            if self.template_tmax > np.max(self.timebase):
-                tmax = np.max(self.timebase)
+        assert self.timebase is not None
+        tau_1, tau_2 = self.taus[:2]  # use the predefined taus
+        tmax = np.min((self.template_tmax+self.template_pre_time, self.timebase.max()))
+        # print("tmax: ", tmax, "timebase max: ", self.timebase.max())
+        # if self.template_tmax > np.max(self.timebase):
+        #     tmax = np.max(self.timebase)
         t_psc = np.arange(0, tmax, self.dt_seconds)
         self.t_template = t_psc
         Aprime = (tau_2 / tau_1) ** (tau_1 / (tau_1 - tau_2))
@@ -173,6 +179,7 @@ class MiniAnalyses:
                 * np.exp((-t_psc / tau_2))
             )
         )
+        print("template pre, dt, len(tm): ", self.template_tmax, self.timebase.max(), self.template_pre_time, self.dt_seconds, len(tm), tmax, self.timebase.max())
         # tm = 1./2. * (np.exp(-t_psc/tau_1) - np.exp(-t_psc/tau_2))
         if self.template_pre_time > 0:
             t_delay = int(self.template_pre_time / self.dt_seconds)
@@ -185,6 +192,7 @@ class MiniAnalyses:
         else:
             self.template = -self.template
             self.template_amax = np.min(self.template)
+        print("len template: ", self.template.shape, "len tb: ", len(self.timebase))
 
     def reset_filters(self):
         """
@@ -403,6 +411,8 @@ class MiniAnalyses:
         """
         if self.data_prepared:
             return
+        if data.ndim > 2:
+            raise ValueError
         print("prepare data shape: ", data.shape)
         if data.ndim == 1:
             raise ValueError()
@@ -496,7 +506,7 @@ class MiniAnalyses:
         result = np.where(((a >= quartileSet[0]) & (a <= quartileSet[1])), a, np.nan)
         return result
 
-    def get_data_prepared_from_stimulus_artifacts(self, data:object, summary: object=None, pars: dict = None):
+    def get_data_cleaned_of_stimulus_artifacts(self, data:object, summary: object=None, pars: dict = None):
         """
         After the traces have been analyzed, and amplitudes, peaks and onsets identified, 
         we genetrate a list of events that are free of stimulus artifacts.
@@ -563,6 +573,7 @@ class MiniAnalyses:
         and events where the charge is of the wrong sign.
         """
         CP.cprint("c", "    Summarizing data")
+        print(self.taus[1], self.dt_seconds)
         i_decay_pts = int(
             2.0 * self.taus[1] / self.dt_seconds
         )  # decay window time (points) Units all seconds
@@ -1065,9 +1076,12 @@ class MiniAnalyses:
             )
             summary.average.fitted_tau1 = self.fitted_tau1
             summary.average.fitted_tau2 = self.fitted_tau2
+            summary.average.fitted_tau3 = self.fitted_tau3
+            summary.average.fitted_tau4 = self.fitted_tau4
             summary.average.fitted_tau_ratio = self.fitted_tau_ratio
             summary.average.best_fit = self.avg_best_fit
             summary.average.amplitude = self.amplitude
+            summary.average.amplitude2 = self.amplitude2
             summary.average.avg_fiterr = self.avg_fiterr
             summary.average.risetenninety = self.risetenninety
             summary.average.risepower = self.risepower
@@ -1135,7 +1149,7 @@ class MiniAnalyses:
         avgevent,
         debug: bool = False,
         label: str = "",
-        inittaus: List = [0.001, 0.005],
+        inittaus: List = [0.001, 0.005, 0.005, 0.030],
         initdelay: Union[float, None] = 0.0,
     ) -> None:
         """
@@ -1147,14 +1161,21 @@ class MiniAnalyses:
         self.tsel = tsel
         self.tau1 = inittaus[0]
         self.tau2 = inittaus[1]
+        self.tau3 = inittaus[2]
+        self.tau4 = inittaus[3]
         self.tau_ratio = self.tau2 / self.tau1
         self.tau2_range = 10.0
         self.tau1_minimum_factor = 5.0
         time_past_peak = 2.5e-4
         self.fitted_tau1 = np.nan
         self.fitted_tau2 = np.nan
+        self.fitted_tau3 = np.nan
+        self.fitted_tau4 = np.nan
+        
+
         self.fitted_tau_ratio = np.nan
         self.amplitude = np.nan
+        self.amplitude2 = np.nan
         self.avg_fiterr = np.nan
         self.bfdelay = np.nan
         self.avg_best_fit = None
@@ -1168,6 +1189,7 @@ class MiniAnalyses:
             time_past_peak=time_past_peak,
             tau1 = self.tau1,
             tau2 = self.tau2,
+            tau3 = self.tau3,
             fixed_delay=initdelay,
             debug=debug,
             label=label,
@@ -1185,8 +1207,11 @@ class MiniAnalyses:
         amp = np.max(res.best_fit)
         print("amp, res amp: ", amp, res.values["amp"])
         self.amplitude = res.values["amp"]
+        self.amplitude2 = res.values["amp2"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
+        self.fitted_tau3 = res.values["tau_3"]
+        self.fitted_tau4 = res.values["tau_4"]
         self.fitted_tau_ratio = np.nan # res.values["tau_ratio"] #(
            # res.values["tau_2"] / res.values["tau_1"]
        # )  # res.values["tau_ratio"]
@@ -1263,7 +1288,6 @@ class MiniAnalyses:
             raise (ValueError)
         onsets = self.summary.onsets
         time_past_peak = 0.1  # msec - time after peak to start fitting
-        fixed_delay = self.template_pre_time
         # allocate arrays for results. Arrays have space for ALL events
         # okevents, notok, and self.events_ok are indices
         nevents = np.sum(np.sum(len(o)) for o in onsets)
@@ -1355,7 +1379,7 @@ class MiniAnalyses:
                 time_past_peak=time_past_peak,
                 tau1=self.tau1,
                 tau2 = self.tau2,
-                fixed_delay=fixed_delay,
+                fixed_delay=self.template_pre_time,
                 label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
             )
             if res is None:  # skip events that won't fit
@@ -1383,6 +1407,7 @@ class MiniAnalyses:
                 amp=self.fitresult.params["amp"].value,
                 tau_1=self.fitresult.params["tau_1"].value,
                 tau_2=self.fitresult.params["tau_2"].value,
+                tau_3=self.fitresult.params["tau_3"].value,
                 # tau_ratio=self.fitresult.params["tau_ratio"].value,
                 # self.sign * self.summary.allevents[j, :],
                 risepower=self.fitresult.params["risepower"].value,
@@ -1412,8 +1437,11 @@ class MiniAnalyses:
     def doubleexp_lm(
         time: np.ndarray,
         amp: float,
+        amp2: float,
         tau_1: float,
         tau_2: float,
+        tau_3: float,
+        tau_4: float,
        # tau_ratio: float=1.0,
         risepower: float=1.0,
         fixed_delay: float = 0.0,
@@ -1441,7 +1469,9 @@ class MiniAnalyses:
                 f"Fitting function failed: {amp:.3e}, tau1: {tau_1:.4e}, risepower: {risepower:.2f}"
             )
             raise ValueError()
-        tm[ix:] *= np.exp(-tx / tau_2) # this gets constrained
+        tm[ix:] *= np.exp(-tx / tau_2)
+        tm[ix:] += (amp2*(1-np.exp(-tx/tau_3))**risepower) * np.exp(-tx/tau_4)
+         # this gets constrained
         if y is not None:  # return error - single value
             tm = np.sqrt(np.sum((tm - y) * (tm - y)))
         return tm
@@ -1453,6 +1483,8 @@ class MiniAnalyses:
         time_past_peak: float = 1e-4,
         tau1: float = None,
         tau2: float = None,
+        tau3: float=None,
+        tau4: float=None,
         init_amp: float = None,
         fixed_delay: float = 0.0,
         debug: bool = False,
@@ -1498,9 +1530,13 @@ class MiniAnalyses:
             if tau1min < 1e-4:
                 tau1min = 1e-4
             params["amp"] = lmfit.Parameter(
-                name="amp", value=-25.0e-12, min=-50e-9, max=50e-9, vary=True,
+                name="amp", value=25.0e-12, min=0e-9, max=50e-9, vary=True,
+            )
+            params["amp2"] = lmfit.Parameter(
+                name="amp2", value=25.0e-12, min=0e-9, max=50e-9, vary=True,
             )
             tau2min = 0.2e-3
+            tau3min = 5.0e-3
         elif self.datatype in ["I", "IC"]:
             tau1min = tau1 / 10.0
             if tau1min < 1e-4:
@@ -1510,6 +1546,13 @@ class MiniAnalyses:
             # )
             params["amp"] = lmfit.Parameter(
                 name="amp",
+                value=amp,
+                min=-5*amp,
+                max=5 * amp,
+                vary=True,
+            )
+            params["amp2"] = lmfit.Parameter(
+                name="amp2",
                 value=amp,
                 min=-5*amp,
                 max=5 * amp,
@@ -1542,13 +1585,26 @@ class MiniAnalyses:
             max=100e-3,  # tau1 * tau1_maxfac,
             vary=True,
         )
-
+        params["tau_3"] = lmfit.Parameter(
+                    name="tau_3",
+                    value=tau3,
+                    min=tau1min,
+                    max=50e-3,  # tau1 * tau1_maxfac,
+                    vary=True,
+                )
+        params["tau_4"] = lmfit.Parameter(
+                    name="tau_4",
+                    value=tau3,
+                    min=tau3min,
+                    max=50e-3,  # tau1 * tau1_maxfac,
+                    vary=True,
+                )
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,
-            vary=True,
-            min=fixed_delay,
-            max = fixed_delay*3,
+            vary=False,
+            min = fixed_delay,
+            max = fixed_delay+1e-3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False

@@ -526,7 +526,7 @@ class acq4_reader:
                 info = tr[0].infoCopy()
                 self.parseClampInfo(info)
             except:
-                pass
+                raise FileExistsError(f"The file: {str(fn):s} could not be parsed... ")
         return info
 
     def parseClampInfo(self, info: list, switchchan):
@@ -693,29 +693,29 @@ class acq4_reader:
         self.values = []
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
-        info = self.getIndex()  # self.protocol)
+        self.info = self.getIndex(self.protocol)  # self.protocol)
         holdcheck = False
         holdvalue = 0.0
         switchchan = False
 
-        if info is not None and "devices" in list(info.keys()):
-            devices = list(info["devices"].keys())
+        if self.info is not None and "devices" in list(self.info.keys()):
+            devices = list(self.info["devices"].keys())
             if devices[0] == 'DAQ':
                 device = devices[1]
             else:
                 device = devices[0]
 
             if device in self.clampdevices:
-                if device not in list(info["devices"].keys()):
+                if device not in list(self.info["devices"].keys()):
                     print(f"**Unable to match device: {device:s} in ")
-                    print(info["devices"].keys())
+                    print(self.info["devices"].keys())
                     raise ValueError
 
-                holdcheck = info["devices"][device]["holdingCheck"]
-                holdvalue = info["devices"][device]["holdingSpin"]
-                priSignal = info["devices"][device]["primarySignalCombo"]
-                secSignal = info["devices"][device]["secondarySignalCombo"]
-                icampmode = info["devices"][device]["icModeRadio"]
+                holdcheck = self.info["devices"][device]["holdingCheck"]
+                holdvalue = self.info["devices"][device]["holdingSpin"]
+                priSignal = self.info["devices"][device]["primarySignalCombo"]
+                secSignal = self.info["devices"][device]["secondarySignalCombo"]
+                icampmode = self.info["devices"][device]["icModeRadio"]
                 # CP.cprint('r', f"priSignal: {priSignal:s}   secSignal: {secSignal:s}  ic_ampmode: {icampmode:d}")
                 if icampmode == 1 and priSignal == "Membrane Current":
                     # Erroneous report from mulitclamp - force switch of channels below
@@ -730,7 +730,7 @@ class acq4_reader:
         trx = []
         cmd = []
         self.protocol_important = self._getImportant(
-            info
+            self.info
         )  # save the protocol importance flag
         # CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
         sequence_values = None

@@ -828,8 +828,11 @@ class PlotMapData:
         # CP.cprint("c", "        Event fitting completed")
  
         Amplitude = self.Pars.MA.fitresult.values["amp"]
+        Amplitude2 = self.Pars.MA.fitresult.values["amp2"]
         tau1 = self.Pars.MA.fitresult.values["tau_1"]
         tau2 = self.Pars.MA.fitresult.values["tau_2"]
+        tau3 = self.Pars.MA.fitresult.values["tau_3"]
+        tau4 = self.Pars.MA.fitresult.values["tau_4"]
         bfdelay = self.Pars.MA.fitresult.values["fixed_delay"]
         bfit = self.Pars.MA.avg_best_fit
 
@@ -838,6 +841,7 @@ class PlotMapData:
         else:
             amp = np.max(bfit)
         txt = f"Amp: {scale*amp:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
+        txt = f"Amp2: {scale*amp2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
 
         if evtype == "avgspont" and events[0] is not None:
             srate = float(aved.shape[0]) / (
