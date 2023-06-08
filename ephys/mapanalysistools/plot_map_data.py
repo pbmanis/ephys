@@ -200,21 +200,21 @@ def testplot():
     p1r.addItem(sp)
     p1r.plot(lx, ly, pen=pg.mkPen("r", width=0.75))
     for i in range(10):
-        p1.plot(self.Data.tb, data[0, i, :] + 2e-11 * i, pen=pg.mkPen("r"))
-        p1.plot(self.Data.tb, datar[0, i, :] + 2e-11 * i, pen=pg.mkPen("g"))
+        p1.plot(self.Data.timebase, data[0, i, :] + 2e-11 * i, pen=pg.mkPen("r"))
+        p1.plot(self.Data.timebase, datar[0, i, :] + 2e-11 * i, pen=pg.mkPen("g"))
 
-    p1.plot(self.Data.tb, lbr, pen=pg.mkPen("c"))
-    p2.plot(self.Data.tb, crosstalk, pen=pg.mkPen("m"))
-    p2.plot(self.Data.tb, lbr, pen=pg.mkPen("c"))
+    p1.plot(self.Data.timebase, lbr, pen=pg.mkPen("c"))
+    p2.plot(self.Data.timebase, crosstalk, pen=pg.mkPen("m"))
+    p2.plot(self.Data.timebase, lbr, pen=pg.mkPen("c"))
     p2.setXLink(p1)
     p3.setXLink(p1)
-    p3.plot(self.Data.tb, avgdf, pen=pg.mkPen("w", width=1.0))  # original
-    p3.plot(self.Data.tb, olddatar, pen=pg.mkPen("b", width=1.0))  # original
+    p3.plot(self.Data.timebase, avgdf, pen=pg.mkPen("w", width=1.0))  # original
+    p3.plot(self.Data.timebase, olddatar, pen=pg.mkPen("b", width=1.0))  # original
     meandata = np.mean(datar[0], axis=0)
     meandata -= np.mean(meandata[0 : int(0.020 / ct_SR)])
-    p3.plot(self.Data.tb, meandata, pen=pg.mkPen("y"))  # fixed
+    p3.plot(self.Data.timebase, meandata, pen=pg.mkPen("y"))  # fixed
     p3sp = pg.ScatterPlotItem(
-        self.Data.tb[tpts],
+        self.Data.timebase[tpts],
         meandata[tpts],
         pen=None,
         symbol="o",
@@ -223,7 +223,7 @@ def testplot():
         brush=pg.mkBrush("r"),
     )  # points corrected?
     p3.addItem(p3sp)
-    p4.plot(self.Data.tb[:-1], diff_avgd, pen=pg.mkPen("c"))
+    p4.plot(self.Data.timebase[:-1], diff_avgd, pen=pg.mkPen("c"))
     p2.setXLink(p1)
     p3.setXLink(p1)
     p4.setXLink(p1)
@@ -247,13 +247,15 @@ class PlotMapData:
             "avgax": [0, None, None],
         }
 
-    def set_Pars_and_Data(self, pars, data):
+    def set_Pars_and_Data(self, pars, data, minianalyzer):
         """
         save parameters passed from analyze Map Data
         Analysis parameters and data are in separae data classes.
         """
         self.Pars = pars
         self.Data = data
+        self.MA = minianalyzer
+        self.Data.timebase = self.MA.timebase
 
     def gamma_correction(self, image, gamma=2.2, imagescale=np.power(2, 16)):
         if gamma == 0.0:
@@ -461,7 +463,7 @@ class PlotMapData:
         # print('event keys: ', events.keys())
         nevtimes = 0
         spont_ev_count = 0
-        dt = np.mean(np.diff(self.Data.tb))
+        dt = np.mean(np.diff(self.Data.timebase))
         step_I = self.Pars.stepi
         # print(tb.shape, np.max(tb), tb[itmax], self.Pars.analysis_window, dt)
         # raise
@@ -810,14 +812,14 @@ class PlotMapData:
         tx = np.broadcast_to(tb, (aved.shape[0], tb.shape[0])).T
         if self.Pars.sign < 0:
             maxev = -minev
-        self.Pars.MA.set_sign(self.Pars.sign)
-        self.Pars.MA.set_dt_seconds(rate)
-        self.Pars.MA.set_datatype(datatype)
+        self.MA.set_sign(self.Pars.sign)
+        self.MA.set_dt_seconds(rate)
+        self.MA.set_datatype(datatype)
         avedat = np.mean(aved, axis=0)
         tb = tb[: len(avedat)]
         avebl = np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-        self.Pars.MA.fit_average_event(
+        self.MA.fit_average_event(
             tb,
             avedat,
             debug=False,
@@ -827,21 +829,21 @@ class PlotMapData:
         )
         # CP.cprint("c", "        Event fitting completed")
  
-        Amplitude = self.Pars.MA.fitresult.values["amp"]
-        Amplitude2 = self.Pars.MA.fitresult.values["amp2"]
-        tau1 = self.Pars.MA.fitresult.values["tau_1"]
-        tau2 = self.Pars.MA.fitresult.values["tau_2"]
-        tau3 = self.Pars.MA.fitresult.values["tau_3"]
-        tau4 = self.Pars.MA.fitresult.values["tau_4"]
-        bfdelay = self.Pars.MA.fitresult.values["fixed_delay"]
-        bfit = self.Pars.MA.avg_best_fit
+        Amplitude = self.MA.fitresult.values["amp"]
+        Amplitude2 = self.MA.fitresult.values["amp2"]
+        tau1 = self.MA.fitresult.values["tau_1"]
+        tau2 = self.MA.fitresult.values["tau_2"]
+        tau3 = self.MA.fitresult.values["tau_3"]
+        tau4 = self.MA.fitresult.values["tau_4"]
+        bfdelay = self.MA.fitresult.values["fixed_delay"]
+        bfit = self.MA.avg_best_fit
 
         if self.Pars.sign == -1:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
-        txt = f"Amp: {scale*amp:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
-        txt = f"Amp2: {scale*amp2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
+        txt = f"Amp: {scale*Amplitude:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
+        txt = f"Amp2: {scale*Amplitude2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
 
         if evtype == "avgspont" and events[0] is not None:
             srate = float(aved.shape[0]) / (
@@ -928,6 +930,7 @@ class PlotMapData:
             return
         while mdata.ndim > 1:
             mdata = mdata.mean(axis=0)
+        print("plot_average_traces, pars: ", self.Pars)
         if len(tb) > 0 and len(mdata) > 0:
             ax.plot(
                 (tb-self.Pars.time_zero) * 1e3,
@@ -1071,6 +1074,8 @@ class PlotMapData:
             data  = np.clip(data, 0., np.inf)
             vmin = 0.0
             vmax = np.max(data)
+            if vmax == vmin:
+                vmax = vmin + 1
 
         elif measuretype in ("A", "Q") and measure["events"][0] is not None:
             events = measure["events"]
@@ -1178,7 +1183,11 @@ class PlotMapData:
 
         if vmax == 0:
             vmax = 1e-10
-        # print("vmax: ", vmax, "vmin : ", vmin)
+        if vmax == np.nan:
+            vmax = 1
+        if vmin == np.nan:
+            vmin = 0
+        print("vmax: ", vmax, "vmin : ", vmin)
 
         scaler = PH.NiceScale(vmin, vmax)
 
@@ -1515,7 +1524,7 @@ class PlotMapData:
         # print (self.MT.imagemetadata)
         # self.MT.show_images()
         # exit(1)
-        # self.plot_average_traces(self.P.axdict['C'], self.Data.tb, self.Data.data_clean)
+        # self.plot_average_traces(self.P.axdict['C'], self.Data.timebase, self.Data.data_clean)
 
         ident = 0
         if ident == 0:
@@ -1525,7 +1534,7 @@ class PlotMapData:
         idm = self.mapfromid[ident]
 
         spotsize = self.Pars.spotsize
-        dt = np.mean(np.diff(self.Data.tb))
+        dt = np.mean(np.diff(self.Data.timebase))
         itmax = int(self.Pars.ar_tstart / dt) - 1
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.0:
@@ -1548,7 +1557,7 @@ class PlotMapData:
 
         if plotmode == "document":  # always show all responses/events, regardless of amplitude
             self.plot_stacked_traces(
-                tb = self.Data.tb-self.Pars.time_zero,
+                tb = self.Data.timebase-self.Pars.time_zero,
                 mdata = self.Data.data_clean,
                 title = dataset,
                 results=results,
@@ -1561,8 +1570,8 @@ class PlotMapData:
                 avedata = np.squeeze(np.mean(self.Data.data_clean, axis=0))
                 if avedata.ndim > 1:
                     avedata = np.mean(avedata, axis=0)
-                dt = np.mean(np.diff(self.Data.tb))
-                self.P.axdict[self.panels["average_panel"]].plot((self.Data.tb-self.Pars.time_zero), avedata, 'k-', linewidth=0.7)
+                dt = np.mean(np.diff(self.Data.timebase))
+                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', linewidth=0.7)
                 self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
 
                 # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
@@ -1609,7 +1618,7 @@ class PlotMapData:
                     print(f"plotMapData:DisplayOneMap:publication mode: Averaging {len(iplot):d} traces, min/max = ", plot_minmax)
                 if len(plotable) > 0:
                     d = np.mean(plotable, axis=0)
-                    self.P.axdict[trace_panel].plot(self.Data.tb-self.Pars.time_zero, d-np.mean(d[0:50]))
+                    self.P.axdict[trace_panel].plot(self.Data.timebase-self.Pars.time_zero, d-np.mean(d[0:50]))
 
         self.P.axdict[trace_panel].set_xlim(0, self.Pars.time_end)
         PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
@@ -1656,7 +1665,7 @@ class PlotMapData:
         self.plot_event_traces(
             evtype="avgevoked",
             mdata=self.Data.data_clean,
-            trace_tb=self.Data.tb,
+            trace_tb=self.Data.timebase,
             datatype = datatype,
             ax=self.P.axdict[evoked_panel],
             results = results,
@@ -1669,7 +1678,7 @@ class PlotMapData:
         self.plot_event_traces(
             evtype="avgspont",
             mdata=self.Data.data_clean,
-            trace_tb=self.Data.tb,
+            trace_tb=self.Data.timebase,
             datatype = datatype,
             ax=self.P.axdict[spont_panel],
             results = results,
@@ -1681,11 +1690,12 @@ class PlotMapData:
         )
 
         if self.Data.photodiode is not None and not "LED" in str(dataset.name):
-            self.plot_photodiode(
-                self.P.axdict[photodiode_panel],
-                self.Data.photodiode_timebase[0],
-                self.Data.photodiode,
-            )
+            if len(self.Data.photodiode_timebase) > 0:
+                    self.plot_photodiode(
+                    self.P.axdict[photodiode_panel],
+                    self.Data.photodiode_timebase[0],
+                    self.Data.photodiode,
+                )
             self.P.axdict[photodiode_panel].set_xlim(0., self.Pars.time_end - self.Pars.time_zero)
             PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
                 ticklength=3, position=-0.03)

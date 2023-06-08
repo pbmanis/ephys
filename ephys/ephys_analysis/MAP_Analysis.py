@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Union
 
 import dill
-import ephys.mapanalysistools as mapanalysistools
 import matplotlib
 import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import numpy as np
@@ -13,10 +12,12 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
-from ephys.ephys_analysis.analysis_common import Analysis
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
+
+import ephys.mapanalysistools as mapanalysistools
+from ephys.ephys_analysis.analysis_common import Analysis
 
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
@@ -235,7 +236,7 @@ class MAP_Analysis(Analysis):
                 self.AM.set_stimdur(cell_df["stimdur"].values[0])
             else:
                 print("using default stimdur")
-  
+
     def set_map_factors(self, icell: int, path_to_map: Union[Path, str]):
         """
         Configure signs, scale factors and E/IPSP/C template shape
@@ -539,7 +540,7 @@ class MAP_Analysis(Analysis):
             result = results[str(mapkey)]  # get individual map result
 
         self.set_map_factors(icell, mapdir)
-        self.AM.reset_filtering() # for every protocol! 
+        self.AM.reset_filtering()  # for every protocol!
         if self.LPF > 0:
             self.AM.set_LPF(self.LPF)
         if self.HPF > 0:
@@ -552,9 +553,14 @@ class MAP_Analysis(Analysis):
         if self.signflip:
             self.AM.Pars.sign = -1 * self.AM.Pars.sign  # flip analysis sign
 
-        # self.AM.set_analysis_window(0.0, 0.599)
+        self.AM.set_analysis_window(*self.AM.Pars.analysis_window)
+        CP.cprint(
+            "r", f"Setting analysis window to : {str(self.AM.Pars.analysis_window):s}"
+        )
         self.artifact_suppress = True
-        CP.cprint("r", f"Setting artifact suppression to: {str(self.artifact_suppress):s}")
+        CP.cprint(
+            "r", f"Setting artifact suppression to: {str(self.artifact_suppress):s}"
+        )
         self.AM.set_artifact_suppression(self.artifact_suppress)
         self.AM.set_noderivative_artifact(self.noderivative_artifact)
         if self.artifactFilename is not None:
@@ -591,7 +597,9 @@ class MAP_Analysis(Analysis):
             getimage = False
             plotevents = True
             self.AM.Pars.overlay_scale = 0.0
-            PMD.set_Pars_and_Data(self.AM.Pars, self.AM.Data)
+            PMD.set_Pars_and_Data(
+                pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA
+            )
             if self.mapsZQA_plot:
                 mapok = PMD.display_position_maps(
                     dataset_name=mapdir, result=result, pars=self.AM.Pars
@@ -621,7 +629,7 @@ class MAP_Analysis(Analysis):
                 infostr = ""
                 colnames = self.df.columns
                 if "animal identifier" in colnames:
-                    if isinstance(self.df.at[icell, 'animal identifier'], str):
+                    if isinstance(self.df.at[icell, "animal identifier"], str):
                         infostr += f"ID: {self.df.at[icell, 'animal identifier']:s} "
                     else:
                         infostr += f"ID: None "
@@ -632,7 +640,7 @@ class MAP_Analysis(Analysis):
                 infostr += celltype_text
                 if "cell_expression" in colnames:
                     infostr += f"Exp: {self.df.at[icell, 'cell_expression']:s}, "
-                
+
                 # notes = self.df.at[icell,'notes']
                 if self.internal_Cs:
                     if self.high_Cl:
@@ -660,7 +668,7 @@ class MAP_Analysis(Analysis):
                     self.AM.Pars.scale_factor,
                     self.AM.methodname,
                 )
-                fix_mapdir = str(mapdir) # .replace("_", "\_")
+                fix_mapdir = str(mapdir)  # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(
                     f"{fix_mapdir:s}\n{infostr:s} {params:s}",
                     fontsize=8,
@@ -677,7 +685,7 @@ class MAP_Analysis(Analysis):
                 pp = PdfPages(t_path)
                 # try:
                 print("        ***** Temp file to : ", t_path)
-                # mpl.show()
+                mpl.show()
                 mpl.savefig(
                     pp, format="pdf"
                 )  # use the map filename, as we will sort by this later

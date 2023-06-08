@@ -127,10 +127,9 @@ class ClementsBekkers(MiniAnalyses):
 
         ## Strip out meta-data for faster computation
 
-        self.timebase = np.arange(0.0, data.shape[0] * self.dt_seconds, self.dt_seconds)
         D = self.sign * data.view(np.ndarray)
         if self.template is None:
-            self._make_template()
+            self._make_template(self.timebase)
         T = self.template.view(np.ndarray)
 
 
@@ -378,6 +377,7 @@ class AndradeJonas(MiniAnalyses):
     def deconvolve(
         self,
         data: np.ndarray,
+        timebase: np.ndarray,
         itrace: int = 0,
         llambda: float = 5.0,
         prepare_data = True,
@@ -389,21 +389,29 @@ class AndradeJonas(MiniAnalyses):
 
         if prepare_data:
             self.prepare_data(data)  # also generates a timebase
+            timebase = self.Data.timebase # get timebase associated with prepare_data
         else:
             self.data = data
+            assert timebase is not None
         if self.template is None:
-            self._make_template()
+            self._make_template(timebase)
 
         starttime = timeit.default_timer()
 
         self.data = self.data - np.mean(self.data)
         # Weiner filtering
 
-        H = np.fft.fft(self.template)
-        if H.shape[0] < self.data.shape[0]:
-            H = np.hstack((H, np.zeros(self.data.shape[0] - H.shape[0])))
-        if H.shape[0] > self.data.shape[0]:
-            H = H[:self.data.shape[0]]
+        templ = self.template.copy()
+        if templ.shape[0] < self.data.shape[0]:
+            templ = np.hstack((templ, np.zeros(self.data.shape[0] - templ.shape[0])))
+        elif templ.shape[0] > self.data.shape[0]:
+            templ = templ[:self.data.shape[0]]
+        H = np.fft.fft(templ)
+
+        # if H.shape[0] < self.data.shape[0]:
+        #     H = np.hstack((H, np.zeros(self.data.shape[0] - H.shape[0])))
+        # if H.shape[0] > self.data.shape[0]:
+        #     H = H[:self.data.shape[0]]
         self.quot = np.fft.ifft(
             np.fft.fft(self.data) * np.conj(H) / (H * np.conj(H) + llambda**2.0)
         )
@@ -478,10 +486,12 @@ class RSDeconvolve(MiniAnalyses):
         data: np.ndarray,
         itrace: int = 0,
         data_nostim: Union[list, np.ndarray, None] = None,
+        prepare_data = True,
         verbose: bool = False,
     ) -> None:
         self.starttime = timeit.default_timer()
-        self.prepare_data(data)  # windowing, filtering and timebase
+        if prepare_data:
+            self.prepare_data(data)  # windowing, filtering and timebase
         # if data_nostim is None:
         #     data_nostim = [range(self.Crit.shape[0])]  # whole trace, otherwise remove stimuli
         # else:  # clip to max of crit array, and be sure index array is integer, not float
@@ -616,11 +626,12 @@ class ZCFinder(MiniAnalyses):
         minPeak: float = 0.0,
         minSum: float = 0.0,
         minLength: int = 3,
+        prepare_data = True,
         verbose: bool = False,
     ) -> None:
 
-        print("Called DECONVOLVE")
-        self.prepare_data(data)  # windowing, filtering and timebase
+        if prepare_data:
+            self.prepare_data(data)  # windowing, filtering and timebase
         starttime = timeit.default_timer()
 
         events = FN.zeroCrossingEvents(

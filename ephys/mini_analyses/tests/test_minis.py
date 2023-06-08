@@ -254,6 +254,7 @@ def run_ZeroCrossing(
             minPeak=3e-12,
             minSum=0,
             minLength=3,
+            prepare_data=False,
         )
 
     print("testpscn: ", testpscn)
@@ -463,6 +464,7 @@ def run_AndradeJonas(
             testpscn[i],
             itrace=i,
             llambda=5.0,
+            prepare_data=False,
         )
         testpscn[i] = aj.data  # # get filtered data
         aj.reset_filters()

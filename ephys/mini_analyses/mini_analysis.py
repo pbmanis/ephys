@@ -548,7 +548,8 @@ class MiniAnalysis:
             for i in tracelist:
                 aj.reset_filtering()
                 aj.deconvolve(
-                    data[i], itrace=i, llambda=10.0
+                    data[i], itrace=i, llambda=10.0,
+                    prepare_data = False,
                 )  # , order=order) # threshold=float(mousedata['thr']),
                 data[i] = aj.data.copy()
             aj.identify_events(order=order)
@@ -562,6 +563,7 @@ class MiniAnalysis:
                 cb.cbTemplateMatch(
                     data[i],
                     itrace=i,  # order=order, #  threshold=float(mousedata["thr"]),
+                    prepare_data=False,
                 )
                 data[i] = cb.data.copy()
 

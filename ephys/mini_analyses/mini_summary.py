@@ -71,7 +71,7 @@ class Mini_summary():
             data[i] = data[i] - data[i].mean()
             # low pass and high pass the data
             # clip the data time window
-            aj.deconvolve(data[i], thresh=datasets[ds]['thr'], llambda=20., order=7)
+            aj.deconvolve(data[i], thresh=datasets[ds]['thr'], llambda=20., order=7, prepare_data=False)
             ampd.extend(aj.amplitudes)
             intv.extend(aj.intervals)
             if i == 0: # get event shape

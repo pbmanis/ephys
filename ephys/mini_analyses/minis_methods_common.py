@@ -124,7 +124,7 @@ class MiniAnalyses:
         else:
             self.filters = filters
         self.reset_filters()
-        print("Filter set in MMC: \n", self.filters)
+        # print("Filter set in MMC: \n", self.filters)
 
     def set_datatype(self, datatype: str):
         CP.cprint("c", f"data type: {datatype:s}")
@@ -136,8 +136,8 @@ class MiniAnalyses:
     def set_dt_seconds(self, dt_seconds: Union[None, float] = None):
         self.dt_seconds = dt_seconds
 
-    def set_timebase(self, timebase: np.ndarray):
-        self.timebase = timebase
+    # def set_timebase(self, timebase: np.ndarray):
+    #     self.timebase = timebase
 
     def set_risepower(self, risepower: float = 4):
         if risepower > 0 and risepower <= 8:
@@ -157,13 +157,13 @@ class MiniAnalyses:
     #     else:
     #         raise ValueError("set_notch: Notch must be list, float or None")
 
-    def _make_template(self):
+    def _make_template(self, timebase:np.array):
         """
         Private function: make template when it is needed
         """
-        assert self.timebase is not None
+        assert timebase is not None
         tau_1, tau_2 = self.taus[:2]  # use the predefined taus
-        tmax = np.min((self.template_tmax+self.template_pre_time, self.timebase.max()))
+        tmax = np.min((self.template_tmax+self.template_pre_time, timebase.max()))
         # print("tmax: ", tmax, "timebase max: ", self.timebase.max())
         # if self.template_tmax > np.max(self.timebase):
         #     tmax = np.max(self.timebase)
@@ -179,7 +179,6 @@ class MiniAnalyses:
                 * np.exp((-t_psc / tau_2))
             )
         )
-        print("template pre, dt, len(tm): ", self.template_tmax, self.timebase.max(), self.template_pre_time, self.dt_seconds, len(tm), tmax, self.timebase.max())
         # tm = 1./2. * (np.exp(-t_psc/tau_1) - np.exp(-t_psc/tau_2))
         if self.template_pre_time > 0:
             t_delay = int(self.template_pre_time / self.dt_seconds)
@@ -192,7 +191,7 @@ class MiniAnalyses:
         else:
             self.template = -self.template
             self.template_amax = np.min(self.template)
-        print("len template: ", self.template.shape, "len tb: ", len(self.timebase))
+        print("len template: ", self.template.shape, "len tb: ", len(timebase))
 
     def reset_filters(self):
         """
@@ -203,6 +202,7 @@ class MiniAnalyses:
         self.filters.LPF_applied = False
         self.filters.HPF_applied = False
         self.filters.Notch_applied = False
+        self.data_prepared = False
 
     def filters_on(self):
         """Turn the filtering OFF (e.g., data is pre-filtered)
@@ -411,32 +411,33 @@ class MiniAnalyses:
         """
         if self.data_prepared:
             return
-        if data.ndim > 2:
+        if data.ndim != 2:
             raise ValueError
-        print("prepare data shape: ", data.shape)
-        if data.ndim == 1:
-            raise ValueError()
-        self.timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
-        print("timebase shape: ", self.timebase.shape)
+        
+        CP.cprint("c", "Preparing data")
+        timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
+        print("original data : ", data.shape, " timebase: ", timebase.shape, np.max(timebase))
+        print("analysis window: ", self.analysis_window)
         #
-        # 1. Clip the data to a window
+        # 1. Clip the timespan of the data to the values in analysis_window
         # 
         if self.analysis_window[1] is not None:
-            jmax = np.argmin(np.fabs(self.timebase - self.analysis_window[1]))
+            jmax = np.argmin(np.fabs(timebase - self.analysis_window[1]))
         else:
             jmax = len(self.timebase)
         if self.analysis_window[0] is not None:
-            jmin = np.argmin(np.fabs(self.timebase) - self.analysis_window[0])
+            jmin = np.argmin(np.fabs(timebase - self.analysis_window[0]))
         else:
             jmin = 0
-        data = data[jmin:jmax]
-        self.timebase = self.timebase[jmin:jmax]
+        data = data[:, jmin:jmax]
+        self.timebase = timebase[jmin:jmax]
+        print("    Preparing data: Window clipped: ", data.shape, jmin, jmax, np.min(timebase), np.max(timebase), self.analysis_window)
+
         if not self.filters.enabled:
             self.data = data
             self.data_prepared = False
             return
         
-
         if self.verbose:
             if self.filters.LPF_frequency is not None:
                 CP.cprint(
@@ -454,6 +455,7 @@ class MiniAnalyses:
         #
         # 2. detrend. Method depends on self.filters.Detrend_type
         #
+
         if self.filters.Detrend_type == "meegkit":
             for itrace in range(data.shape[0]):
                data[itrace], _, _ = MEK.detrend.detrend(data[itrace], order=self.filters.Detrend_order)
@@ -479,16 +481,20 @@ class MiniAnalyses:
         #
         # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
         #
-        if ((self.filters.Notch_frequencies is not None) and 
-                (isinstance(self.filters.Notch_frequencies, list) or 
-                 isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
-                 self.filters_enabled):
-            if self.verbose:
-                CP.cprint("r", "Comb filter notch")
-            for itrace in range(data.shape[0]):
-                data[itrace] = self.NotchFilterComb(data[itrace])
-        
-        self.data = data
+        # if ((self.filters.Notch_frequencies is not None) and 
+        #         (isinstance(self.filters.Notch_frequencies, list) or 
+        #          isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
+        #          self.filters_enabled):
+        #     if self.verbose:
+        #         CP.cprint("r", "Comb filter notch")
+        #     for itrace in range(data.shape[0]):
+        #         data[itrace] = self.NotchFilterComb(data[itrace])
+        self.data = data.copy()
+        print("data : ", self.data.shape, " timebase: ", self.timebase.shape, np.max(self.timebase))
+        # f, ax = mpl.subplots(1,1)
+        # for i in range(self.data.shape[0]):
+        #     mpl.plot(self.timebase, self.data[i])
+        # mpl.show()
         self.data_prepared = True
         # self.template_tmax = np.max(self.timebase)
 
@@ -573,7 +579,6 @@ class MiniAnalyses:
         and events where the charge is of the wrong sign.
         """
         CP.cprint("c", "    Summarizing data")
-        print(self.taus[1], self.dt_seconds)
         i_decay_pts = int(
             2.0 * self.taus[1] / self.dt_seconds
         )  # decay window time (points) Units all seconds
@@ -596,14 +601,13 @@ class MiniAnalyses:
         else:
             nparg = np.less
         self.intervals = []
-        self.timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
 
         nrejected_too_small = 0
         for itrial, dataset in enumerate(data):  # each trial/trace
             if len(self.onsets[itrial]) == 0:  # original events
                 continue
             acceptlist_trial = []
-            ons = np.where(self.onsets[itrial] < len(self.timebase))
+            ons = np.where(self.onsets[itrial] < data.shape[1])
             self.intervals.append(np.diff(ons))  # event intervals
             ev_accept = []
             for j, onset in enumerate(
@@ -914,7 +918,7 @@ class MiniAnalyses:
         self.data_for_average = data
         self.traces_for_average = traces
         summary.average.averaged = False
-        tdur = np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
+        tdur =  0.025 # np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = self.template_pre_time
         npre = int(tpre / self.dt_seconds)  # points for the pre time
         npost = int(tdur / self.dt_seconds)
@@ -1090,25 +1094,25 @@ class MiniAnalyses:
             CP.cprint("r", "    average_events: **** No events found that meet criteria ****")
             return
         # for testing, plot out the clean events
-        fig, ax = mpl.subplots(1,2)
-        for itrace in traces:
-            for j, onset in enumerate(summary.onsets[itrace]):
-                ev = (itrace, j)
-                if ev in self.summary.isolated_event_trace_list:
-                    ax[0].plot(avgeventtb, 
-                        self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
-                        'b-', lw=0.5, )
-        # rejected:
-        for itrace in traces:
-            for j, onset in enumerate(summary.onsets[itrace]):
-                ev = (itrace, j)
-                if ev not in self.summary.isolated_event_trace_list and ev in self.summary.allevents.keys():
-                    ax[1].plot(avgeventtb, 
-                        self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
-                        'r-', lw=0.5, )
+        # fig, ax = mpl.subplots(1,2)
+        # for itrace in traces:
+        #     for j, onset in enumerate(summary.onsets[itrace]):
+        #         ev = (itrace, j)
+        #         if ev in self.summary.isolated_event_trace_list:
+        #             ax[0].plot(avgeventtb, 
+        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+        #                 'b-', lw=0.5, )
+        # # rejected:
+        # for itrace in traces:
+        #     for j, onset in enumerate(summary.onsets[itrace]):
+        #         ev = (itrace, j)
+        #         if ev not in self.summary.isolated_event_trace_list and ev in self.summary.allevents.keys():
+        #             ax[1].plot(avgeventtb, 
+        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+        #                 'r-', lw=0.5, )
 
-        # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
-        mpl.show()
+        # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
+        # mpl.show()
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
         return summary
 
@@ -1610,11 +1614,13 @@ class MiniAnalyses:
             name="risepower", value=self.risepower, vary=False
         )
         print('max fit time: ', np.max(timebase))
+
         self.fitresult = dexpmodel.fit(evfit, params, nan_policy="raise", time=timebase)
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
-        debug = True
+
+        debug=False
         if debug:
             import matplotlib.pyplot as mpl
 

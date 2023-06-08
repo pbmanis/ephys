@@ -224,10 +224,10 @@ class Analysis():
         self.RM = EP.rm_tau_analysis.RmTauAnalysis()
         self.EPIV = EP.iv_analysis.IVAnalysis()
         self.AR = DR.acq4_reader.acq4_reader()
-        self.MM = MINIS.minis_methods.MiniAnalyses()
+        self.MA = MINIS.minis_methods.MiniAnalyses()
         self.AM = mapanalysistools.analyze_map_data.AnalyzeMap(rasterize=self.rasterize)
         self.AM.configure(reader=self.AR, spikeanalyzer=self.SP, rmtauanalyzer=self.RM,
-                            minianalyzer=self.MM)
+                            minianalyzer=self.MA)
         if self.detector == "cb":
             self.AM.set_methodname("cb_cython")
         elif self.detector == "aj":
