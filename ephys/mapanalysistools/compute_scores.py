@@ -6,7 +6,7 @@ from typing import Union
 
 
 def ZScore(
-    tb: np.ndarray,
+    timebase: np.ndarray,
     data: np.ndarray,
     pre_std: Union[float, None] = None,
     pre_mean: Union[float, None] = None,
@@ -22,7 +22,7 @@ def ZScore(
     from an external aggregate value computed across a group of traces.
 
     Args:
-        tb (np.ndarray): _description_
+        timebase (np.ndarray): _description_
         data (np.ndarray): _description_
         pre_std (Union[float, None], optional): _description_. Defaults to None.
             if pre_std is not None, pre_mean must also be provided
@@ -38,11 +38,11 @@ def ZScore(
 
     # check if we need to compute here, or if we use precomputed values
     if pre_std is None:
-        tbindx = np.where((tb >= twin_base[0]) & (tb < twin_base[1]))
-        pre_mean = np.nanmean(data[tbindx])  # baseline
-        pre_std = np.nanstd(data[tbindx])
+        timebaseindx = np.where((timebase >= twin_base[0]) & (timebase < twin_base[1]))
+        pre_mean = np.nanmean(data[timebaseindx])  # baseline
+        pre_std = np.nanstd(data[timebaseindx])
 
-    trindx = np.where((tb >= twin_resp[0]) & (tb < twin_resp[1]))
+    trindx = np.where((timebase >= twin_resp[0]) & (timebase < twin_resp[1]))
     mpost = np.nanmean(data[trindx])  # response
 
     try:
@@ -53,7 +53,7 @@ def ZScore(
 
 
 def ZScore2D(
-    tb: np.ndarray,
+    timebase: np.ndarray,
     data: np.ndarray,
     pre_std: Union[float, None] = None,
     pre_mean: Union[float, None] = None,
@@ -63,7 +63,7 @@ def ZScore2D(
     """Compute ZScore over a group of traces in 2D
 
     Args:
-        tb (np.ndarray): _description_
+        timebase (np.ndarray): _description_
         data (np.ndarray): _description_
         pre_std (Union[float, None], optional): _description_. Defaults to None.
             if pre_std is not None, pre_mean must also be provided
@@ -74,16 +74,16 @@ def ZScore2D(
     """
     zscores = np.zeros(data.shape[0])
     for i in range(data.shape[0]):
-        zscores[i] = ZScore(tb, data[i, :], pre_std, pre_mean, twin_base, twin_resp)
+        zscores[i] = ZScore(timebase, data[i, :], pre_std, pre_mean, twin_base, twin_resp)
     return zscores
 
 
-def grand_mean_std(tb: np.ndarray, data: np.ndarray, window: list = [0, 0.1]):
+def grand_mean_std(timebase: np.ndarray, data: np.ndarray, window: list = [0, 0.1]):
     if len(data.shape) != 2:
         raise ValueError(
             "grand_mean_std: Input data must be a 2D array: ntraces x trace"
         )
-    trindex = np.where((tb >= window[0]) & (tb < window[1]))[0]
+    trindex = np.where((timebase >= window[0]) & (timebase < window[1]))[0]
     print(trindex[0], trindex[-1])
     grandmean = np.nanmean(data[:, trindex[0]:trindex[-1]])
     grandstd = np.nanstd(data[:, trindex[0]:trindex[-1]])
@@ -91,14 +91,21 @@ def grand_mean_std(tb: np.ndarray, data: np.ndarray, window: list = [0, 0.1]):
 
 
 def Imax(
-    tb: np.ndarray,
+    timebase: np.ndarray,
     data: np.ndarray,
     twin_base: list = [0, 0.1],
     twin_resp: list = [[0.101, 0.130]],
     sign: int = 1,
 ) -> float:
 
-    tbindex = np.where((tb >= twin_base[0]) & (tb < twin_base[1]))[0]
-    trindex = np.where((tb >= twin_resp[0]) & (tb < twin_resp[1]))[0]
+    # print(np.min(timebase), np.max(timebase))
+    # print(twin_base)
+    # print(twin_resp)
+    timebaseindex = np.where((timebase >= twin_base[0]) & (timebase < twin_base[1]))[0]
+    if len(timebaseindex) == 0:
+        return 1e-12
+    # print(timebaseindex)
+    trindex = np.where((timebase >= twin_resp[0]) & (timebase < twin_resp[1]))[0]
+    # print(trindex)
     mpost = np.nanmax(sign * data[trindex[0]:trindex[-1]])  # response goes negative...
     return mpost
