@@ -6,6 +6,7 @@ analyze ChR2 or uncaging map data
 """
 import argparse
 import datetime
+import logging
 import math
 import os.path
 import re
@@ -40,7 +41,8 @@ from ephys.mini_analyses import minis_methods
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
 re_duration = re.compile(r"(\d{1,3}ms)")
 np.seterr(divide="raise")
-
+Logger = logging.getLogger(__name__)
+Logger.setLevel(logging.DEBUG)
 
 def def_notch():
     """defaults for notch frequencies"""
@@ -418,7 +420,10 @@ class AnalyzeMap(object):
         if "LED" in str(protocolFilename):
             self.Pars.spotsize = 1e-4
         data = self.AR.data_array.copy()
-        if self.AR.repetitions > 1:
+        msg = f"{str(protocolFilename):s}\n    Repetitions: {self.AR.repetitions:d}\n    data shape: {str(data.shape):s}"
+        Logger.critical(msg)
+        print(msg)
+        if self.AR.repetitions > 1 and data.ndim == 3:
             print("reshape array to account for repetitions")
             data = np.reshape(
                 data,
@@ -434,6 +439,7 @@ class AnalyzeMap(object):
             :, :, self.Pars.time_zero_index : self.Pars.time_end_index
         ]  # clip the data to the analysis window
         endtime = timeit.default_timer()
+        print("data shape: ", data.shape)
         CP.cprint(
             "g",
             "    Reading protocol {0:s} took {1:6.1f} s".format(
@@ -502,7 +508,6 @@ class AnalyzeMap(object):
             CP.cprint("r", f"Unable to read the file: {str(mapdir):s}")
             return None
             datasource: str = "",
-
         self.MA.setup(
             datasource="analyze_map_data",
             ntraces=self.mod_data.shape[0],
@@ -613,7 +618,7 @@ class AnalyzeMap(object):
                 I_max[s, t] = (
                     compute_scores.Imax(
                         timebase=timebase,
-                        data=data[t, :],
+                        data=mdata[t, :],
                         twin_base=self.Pars.twin_base,
                         twin_resp=self.Pars.twin_resp[s],
                         sign=self.Pars.sign,
@@ -749,6 +754,8 @@ class AnalyzeMap(object):
         summary = method.average_events(
             traces=range(data.shape[0]), data=data, summary=summary
         )
+        if summary is None:
+            return None
         summary = self.average_trial_events(
             method, data=data, minisummary=summary, pars=self.Pars
         )

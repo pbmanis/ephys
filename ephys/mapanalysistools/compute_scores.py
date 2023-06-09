@@ -1,8 +1,12 @@
 import numpy as np
 from typing import Union
+import logging
+
 
 """Various calculations on traces
 """
+
+Logger = logging.getLogger(__name__)
 
 
 def ZScore(
@@ -101,11 +105,13 @@ def Imax(
     # print(np.min(timebase), np.max(timebase))
     # print(twin_base)
     # print(twin_resp)
-    timebaseindex = np.where((timebase >= twin_base[0]) & (timebase < twin_base[1]))[0]
-    if len(timebaseindex) == 0:
-        return 1e-12
+    try:
+        timebaseindex = np.where((timebase >= twin_base[0]) & (timebase < twin_base[1]))[0]
     # print(timebaseindex)
-    trindex = np.where((timebase >= twin_resp[0]) & (timebase < twin_resp[1]))[0]
+        trindex = np.where((timebase >= twin_resp[0]) & (timebase < twin_resp[1]))[0]
     # print(trindex)
-    mpost = np.nanmax(sign * data[trindex[0]:trindex[-1]])  # response goes negative...
+        mpost = np.nanmax(sign * data[trindex[0]:trindex[-1]])  # response goes negative...
+    except:
+        Logger.critical("Imax has no data to operation on")
+        return 0
     return mpost

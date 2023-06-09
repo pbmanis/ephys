@@ -2,6 +2,7 @@ import datetime
 import re
 from pathlib import Path
 from typing import Union
+import logging
 
 import dill
 import matplotlib
@@ -21,6 +22,22 @@ from ephys.ephys_analysis.analysis_common import Analysis
 
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
+logging.getLogger('fontTools.subset').disabled = True
+Logger = logging.getLogger(__name__)
+level = logging.DEBUG
+Logger.setLevel(level)
+# create file handler which logs even debug messages
+logging_fh = logging.FileHandler(filename="map_analysis.log")
+logging_fh.setLevel(level)
+logging_ch = logging.StreamHandler()
+logging_ch.setLevel(level)
+Logger.addHandler(logging_fh)
+Logger.addHandler(logging_ch)
+# setFileConfig(filename="map_analysis.log", encoding='utf=8')
+log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")
+logging_fh.setFormatter(log_formatter)
+logging_ch.setFormatter(log_formatter)
+Logger.info("Starting map_analysis")
 
 class MAP_Analysis(Analysis):
     def __init__(self, args):
@@ -29,7 +46,9 @@ class MAP_Analysis(Analysis):
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         if len(allprots["maps"]) == 0:
-            print(f"No maps to analyze for {icell:d}")
+            msg = f"No maps to analyze for {icell:d}"
+            print(msg)
+            Logger.warning(msg)
             return
         CP.cprint(
             "c",
@@ -41,22 +60,20 @@ class MAP_Analysis(Analysis):
         self.celltype, self.celltype_changed = self.get_celltype(icell)
         CP.cprint(
             "c",
-            f"      {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+            f"    {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
-        if self.dry_run:
-            print("MAP_Analysis:analyze_maps: DRY_RUN")
-
-            print("       Celltype: {0:s}".format(celltype))
-            print("   with {0:4d} protocols".format(len(allprots["maps"])))
-            for i, p in enumerate(allprots["maps"]):
-                print(f"      {i+1:d}. {Path(p).name:s}")
+        print("    Celltype: {0:s}".format(celltype))
+        print("    with {0:4d} protocols".format(len(allprots["maps"])))
+        for i, p in enumerate(allprots["maps"]):
+            print(f"        {i+1:d}. {Path(p).name:s}")
 
         validmaps = []
         for p in allprots["maps"]:  # first remove excluded protocols
             if self.exclusions is None or str(p) not in self.exclusions:
                 validmaps.append(p)
         allprots["maps"] = validmaps
+
         nworkers = 16  # number of cores/threads to use
         tasks = range(len(allprots["maps"]))  # number of tasks that will be needed
         results = dict()  # storage for results
@@ -72,7 +89,9 @@ class MAP_Analysis(Analysis):
 
         foname += ".pkl"
         picklefilename = Path(self.analyzeddatapath, "events", foname)
-        CP.cprint("m", f"      Analyzed data filename: {str(picklefilename):s}")
+        msg = f"\n    Analyzing data filename: {str(picklefilename):s}, dry_run={str(self.dry_run):s}"
+        CP.cprint("m", msg)
+        Logger.info(msg)
         if self.dry_run:
             return
 
@@ -80,6 +99,7 @@ class MAP_Analysis(Analysis):
         ###
         ### Parallel is done at lowest level of analyzing a trace, not at this top level
         ###
+
         for protocol, x in enumerate(tasks):
             result = self.analyze_map(
                 icell,
@@ -94,6 +114,8 @@ class MAP_Analysis(Analysis):
             if result is None:
                 continue
             results[allprots["maps"][x]] = result
+
+
         # terminate early when testing
         # if i == 0:
         #     break
@@ -104,19 +126,21 @@ class MAP_Analysis(Analysis):
         # #                        print(x)
         #                         tasker.results[allprots['maps'][x]] = result
         if self.recalculate_events:  # save the recalculated events to the events file
-            CP.cprint("g", f"Events written to :  {str(picklefilename):s}")
+            CP.cprint("g", f"    Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
                 dill.dump(results, fh)
 
         if self.celltype_changed:
-            CP.cprint("yellow", f"cell annotated celltype: {self.celltype:s})")
+            CP.cprint("yellow", f"    cell annotated celltype: {self.celltype:s})")
         else:
             txt = self.celltype.strip()
             print("celltype: ", self.celltype)
             if len(txt) == 0 or txt == " " or txt is None:
-                CP.cprint("magenta", f"Database celltype: Not specified")
+                msg = f"    Database celltype: Not specified"
+                CP.cprint("magenta", msg)
+                Logger.warning(msg)
             else:
-                CP.cprint("g", f"Database celltype: {txt:s}")
+                CP.cprint("g", f"    Database celltype: {txt:s}")
 
         self.merge_pdfs(celltype=celltype, slicecell=slicecellstr, pdf=pdf)
 
@@ -156,10 +180,12 @@ class MAP_Analysis(Analysis):
                     print("   SIGN flip, set VC taus: ", end="")
 
             else:
+                msg = "Using default VC taus for detection - likely no entry in excel file"
                 CP.cprint(
                     "r",
-                    "Using default VC taus for detection - likely no entry in excel file",
+                    msg,
                 )
+                Logger.warning(msg)
                 # exit()
         CP.cprint(
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
@@ -208,7 +234,9 @@ class MAP_Analysis(Analysis):
             else:
                 print("    Using default threshold", end=" ")
         else:
-            CP.cprint("r", "No map annotation file has been read; using default values")
+            msg = "No map annotation file has been read; using default values"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
         print(f"      Threshold: {self.AM.Pars.threshold:6.1f}")
 
     def set_cc_threshold(self, icell: int, path: Union[Path, str]):
@@ -222,7 +250,9 @@ class MAP_Analysis(Analysis):
                 self.AM.Pars.threshold = cell_df["cc_threshold"].values[0]
                 print("set cc_threshold from map annotation")
             else:
-                print("using default cc threshold")
+                msg = "using default cc threshold"
+                print(msg)
+                Logger.warning(msg)
 
     def set_stimdur(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -494,14 +524,19 @@ class MAP_Analysis(Analysis):
             true if there data was processed; otherwise False
         """
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
-        print(f"    Map protocol: {str(allprots['maps'][i_protocol]):s}")
         self.map_name = allprots["maps"][i_protocol]
         if len(self.map_name) == 0:
+            Logger.warning(f"No map name found! for {str(allprots['maps'][i_protocol]):s}")
             return None
-        print("protocolname: ", self.map_name)
+ 
+        msg = f"    Map protocol: {str(allprots['maps'][i_protocol]):s} map name: {self.map_name}"
+        print(msg)
+        Logger.info(msg)
         mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
         if not mapdir.is_dir():
-            raise ValueError(f"Map name did not resolve to directory: {str(mapdir):s}")
+            msg = f"Map name did not resolve to directory: {str(mapdir):s}"
+            Logger.error(msg)
+            raise ValueError(msg)
         if "_IC__" in str(mapdir.name) or "CC" in str(mapdir.name):
             scf = 1e3  # mV
         else:
@@ -530,12 +565,14 @@ class MAP_Analysis(Analysis):
                 # try prepending path to data
                 mapkey = Path(self.rawdatapath, mapkey)
                 if str(mapkey) not in results.keys():
-                    CP.cprint("r", "**** Map key missing from result dictionary: ")
-                    CP.cprint("r", f"     {str(mapkey):s}")
-                    CP.cprint("r", f"     Known keys:")
+                    msg = "**** Map key missing from result dictionary: \n"
+                    msg += f"     {str(mapkey):s}\n"
+                    msg += f"     Known keys:\n"
                     for k in results.keys():
-                        CP.cprint("r", f"     {str(k):s}")
-                    return
+                        msg += f"     {str(k):s}\n"
+                    CP.cprint("r", msg)
+                    Logger.error(msg)
+                    return None
 
             result = results[str(mapkey)]  # get individual map result
 
@@ -623,7 +660,9 @@ class MAP_Analysis(Analysis):
                     rasterized=False,
                     datatype=self.AM.datatype,
                 )  # self.AM.rasterized, firstonly=True, average=False)
-            print(f"Map analysis done: {str(self.map_name):s}")
+            msg = f"Map analysis done: {str(self.map_name):s}"
+            print(msg)
+            Logger.info(msg)
 
             if mapok:
                 infostr = ""
@@ -684,13 +723,17 @@ class MAP_Analysis(Analysis):
                     t_path.unlink()
                 pp = PdfPages(t_path)
                 # try:
-                print("        ***** Temp file to : ", t_path)
-                mpl.show()
-                mpl.savefig(
-                    pp, format="pdf"
-                )  # use the map filename, as we will sort by this later
-                pp.close()
-                # except ValueError:
-                #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
-                mpl.close(PMD.P.figure_handle)
+                try:
+                    print("        ***** Temp file to : ", t_path)
+                    mpl.savefig(
+                        pp, format="pdf"
+                        )  # use the map filename, as we will sort by this later
+                    pp.close()
+                    # except ValueError:
+                    #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
+                    mpl.close(PMD.P.figure_handle)
+                except:
+                    Logger.error("map_analysis savefig failed")
+                    return
+
         return result

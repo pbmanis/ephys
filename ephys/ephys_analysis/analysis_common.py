@@ -6,6 +6,7 @@ including IV curves (current and voltage clamp), and optogenetic experiments, in
 laser scanning photstimulation and glutamate uncaging maps.
 """
 import gc
+import logging
 import sys
 from collections.abc import Iterable
 from multiprocessing import set_start_method
@@ -38,8 +39,8 @@ import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 
-import ephys.ephys_analysis as EP
 import ephys.datareaders as DR
+import ephys.ephys_analysis as EP
 import ephys.mapanalysistools as mapanalysistools
 import ephys.mini_analyses as MINIS
 import ephys.tools.build_info_string as BIS
@@ -51,6 +52,7 @@ PMD = mapanalysistools.plot_map_data.PlotMapData()
 # do not silently pass some common numpy errors
 np.seterr(divide="raise", invalid="raise")
 
+Logger = logging.getLogger(__name__)
 
 @dataclass
 class cmdargs:
@@ -649,8 +651,12 @@ class Analysis():
             self.cell_pdfFilename.unlink(missing_ok=True)
         fns.insert(0, str(self.cell_pdfFilename))
         for i, fn in enumerate(fns):
-            if Path(fn).is_file():
-                mergeFile.append(PdfReader(open(fn, "rb")))
+            if Path(fn).is_file() and fn.stat().st_size > 0:
+                try:
+                    mergeFile.append(PdfReader(open(fn, "rb")))
+                except:
+                    Logger.critical(f"Unable to merge PDF: {str(fn):s}")
+                    continue
         with open(self.cell_pdfFilename, "wb") as fout:
             mergeFile.write(fout)
         CP.cprint("g", f"Wrote output pdf to : {str(self.cell_pdfFilename):s}")
