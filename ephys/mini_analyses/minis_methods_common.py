@@ -136,8 +136,15 @@ class MiniAnalyses:
     def set_dt_seconds(self, dt_seconds: Union[None, float] = None):
         self.dt_seconds = dt_seconds
 
-    # def set_timebase(self, timebase: np.ndarray):
-    #     self.timebase = timebase
+    def set_timebase(self, timebase: np.ndarray):
+        """Set the timebase - this should usually be called from
+        somewhere outside this module. The timebase will be set
+        automatically if we are using the routines here
+
+        Args:
+            timebase (np.ndarray): timebase array corresponding to the data
+        """
+        self.timebase = timebase
 
     def set_risepower(self, risepower: float = 4):
         if risepower > 0 and risepower <= 8:
@@ -191,7 +198,7 @@ class MiniAnalyses:
         else:
             self.template = -self.template
             self.template_amax = np.min(self.template)
-        print("len template: ", self.template.shape, "len tb: ", len(timebase))
+        # print("len template: ", self.template.shape, "len tb: ", len(timebase))
 
     def reset_filters(self):
         """
@@ -432,12 +439,15 @@ class MiniAnalyses:
         data = data[:, jmin:jmax]
         self.timebase = timebase[jmin:jmax]
         print("    Preparing data: Window clipped: ", data.shape, jmin, jmax, np.min(timebase), np.max(timebase), self.analysis_window)
-
+        print(f"    Preparing Data: Filters Enabled = {str(self.filters.enabled):s}")
         if not self.filters.enabled:
             self.data = data
             self.data_prepared = False
             return
-        
+        print(f"    Preparing data: LPF = {str(self.filters.LPF_frequency):s}")
+        print(f"    Preparing data: HPF = {str(self.filters.HPF_frequency):s}")
+        print(f"    Preparing data: Notch = {str(self.filters.Notch_frequencies):s}")
+        print(f"    Preparing data: detrend: {self.filters.Detrend_type:s}")
         if self.verbose:
             if self.filters.LPF_frequency is not None:
                 CP.cprint(
@@ -481,14 +491,14 @@ class MiniAnalyses:
         #
         # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
         #
-        # if ((self.filters.Notch_frequencies is not None) and 
-        #         (isinstance(self.filters.Notch_frequencies, list) or 
-        #          isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
-        #          self.filters_enabled):
-        #     if self.verbose:
-        #         CP.cprint("r", "Comb filter notch")
-        #     for itrace in range(data.shape[0]):
-        #         data[itrace] = self.NotchFilterComb(data[itrace])
+        if ((self.filters.Notch_frequencies is not None) and 
+                (isinstance(self.filters.Notch_frequencies, list) or 
+                 isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
+                 self.filters_enabled):
+            if self.verbose:
+                CP.cprint("r", "Comb filter notch")
+            for itrace in range(data.shape[0]):
+                data[itrace] = self.NotchFilterComb(data[itrace])
         self.data = data.copy()
         print("data : ", self.data.shape, " timebase: ", self.timebase.shape, np.max(self.timebase))
         # f, ax = mpl.subplots(1,1)
@@ -940,7 +950,7 @@ class MiniAnalyses:
         # tag traces and get a clean set for averaging
         k = 0
         pkt = 0
-        overlap_window = int(0.005/summary.dt_seconds) # 5 msec window
+        overlap_window = int(0.010/summary.dt_seconds) # 5 msec window
         print("overlap_window (5 msec): ", overlap_window)
         for itrace in traces:
             for j, event_onset in enumerate(summary.onsets[itrace]):
@@ -984,10 +994,10 @@ class MiniAnalyses:
                 k = k + 1
 
         # tarnished_events = list(set(overlapping_event_list).union(set(wrong_charge_sign_event_list), set(incomplete_event_list)))
-        incomplete_event_list = []
-        wrong_charge_sign_event_list = []
-        tarnished_events = list(set(wrong_charge_sign_event_list).union(set(incomplete_event_list)))
-        print("tarnished events: ", tarnished_events)
+        # incomplete_event_list = []
+        # wrong_charge_sign_event_list = []
+        tarnished_events = [] #list(set(wrong_charge_sign_event_list).union(set(tuple(incomplete_event_list)), set(tuple(overlapping_event_list))))
+        # print("tarnished events: ", tarnished_events)
 
         print("    # Included Events found: ", len(all_event_indices))
         print("    # Incomplete Events found: ", len(incomplete_event_list))

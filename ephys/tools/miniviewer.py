@@ -225,6 +225,9 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.AR.setProtocol(
             self.protocolPath
         )  # define the protocol path where the data is
+        # self.info = self.AR.getDataInfo(Path(mapdir))  # copy out the info
+
+        
         if self.AR.getData():  # get that data.
             self.filters_applied = False
             # trim time window if needed
@@ -243,17 +246,23 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.w1.slider.setValue(0)
             # load depends on the analysis... 
 
+
             self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+
+
             self.MA.setup(datasource="MiniAnalyses",
-                          ntraces=self.mod_data.shape[0],
-                          tau1 = self.tau1,
-                          tau2 = self.tau2,
-                          dt_seconds = self.AR.sample_interval,
-                          sign = self.sign,
-                          risepower = self.risepower,
-                          threshold = self.thresh_reSD,
-                          filters = self.filters,
-                          )
+                ntraces=self.mod_data.shape[0],
+                tau1 = self.tau1,
+                tau2 = self.tau2,
+                dt_seconds = self.AR.sample_interval,
+                template_tmax= 0.05, # sec
+                template_pre_time= 0.001, # sec
+                sign = self.sign,
+                risepower = self.risepower,
+                threshold = self.thresh_reSD,
+                filters = self.filters,
+            )
+            self.MA.set_timebase(self.AR.time_base)
             self.MA.verbose = self.verbose
             if self.verbose:
                 print("after setup, filters: ", self.MA.filters)
@@ -263,7 +272,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.update_traces()
 
     def apply_filtering(self):
-        """Apply filtering all at onxe to all traxes upon reading
+        """Apply filtering all at once to all traxes upon reading
 
         """
 
@@ -623,7 +632,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                         "name": "Rise Tau",
                         "type": "float",
                         "value": self.default_tau1,
-                        "step": 0.0005,
+                        "step": 0.0001,
                         "limits": (0.0001, 0.100),
                         "default": self.default_tau1,
                         "units": "s",
@@ -632,8 +641,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
                         "name": "Fall Tau",
                         "type": "float",
                         "value": self.default_tau2,
-                        "step": 0.001,
-                        "limits": (0.0015, 1.00),
+                        "step": 0.0005,
+                        "limits": (0.001, 1.00),
                         "default": self.default_tau2,
                         "units": "s",
                     },

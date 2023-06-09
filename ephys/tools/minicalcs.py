@@ -49,14 +49,14 @@ class MiniCalcs():
         self.parent.imax = int(self.parent.maxT * self.parent.AR.sample_rate[0])
 
         # meandata = np.mean(self.parent.mod_data[:, : self.parent.imax])
-        self.parent.method._make_template()
+        self.parent.method._make_template(timebase=self.parent.tb)
         for i in range(self.parent.mod_data.shape[0]):
             self.parent.method.cbTemplateMatch(
                 self.parent.mod_data[i, : self.parent.imax], itrace=i,
                 prepare_data = False
             )
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
-            self.parent.method.reset_filters()
+            # self.parent.method.reset_filters()
         self.parent.last_method = "CB"
         self.CB_update()
 
@@ -96,13 +96,14 @@ class MiniCalcs():
         for i in range(self.parent.mod_data.shape[0]):
             self.parent.method.deconvolve(
                 self.parent.mod_data[i, : self.parent.imax], #  - meandata,
+                timebase = self.parent.MA.timebase[:self.parent.imax],
                 itrace=i,
                 # data_nostim=None,
                 llambda=5.0,
                 prepare_data = False
             )  # assumes times are all in same units of msec
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
-            self.parent.method.reset_filters()
+            # self.parent.method.reset_filters()
 
         self.parent.last_method = "AJ"
         self.AJ_update()
@@ -298,10 +299,10 @@ class MiniCalcs():
         self.parent.fitplot.setXRange(0, np.nanmax(x))  # preset to avoid rescaling during plotting
         self.parent.fitplot.setYRange(np.nanmin(allev), np.nanmax(allev))
         
-        l = self.parent.fitplot.plot(x, allev, pen=pg.mkPen({'color': "#66F", 'width': 0.25}),
+        l = self.parent.fitplot.plot(x, allev, pen=pg.mkPen({'color': "#FFF", 'width': 0.45}),
             connect="finite")
         self.parent.fitlines.append(l)
-        l = self.parent.fitplot.plot(avg.avgeventtb, avg.avgevent*1e12, pen="w")
+        l = self.parent.fitplot.plot(avg.avgeventtb, avg.avgevent*1e12, pen="c")
         self.parent.fitlines.append(l)
         l = self.parent.fitplot.plot(avg.avgeventtb, self.parent.method.avg_best_fit*1e12, pen="r")
         self.parent.fitlines.append(l)
