@@ -15,6 +15,7 @@ import scipy.signal
 import pyqtgraph as pg
 
 import ephys.mini_analyses.minis_methods as MM
+import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 from ephys.mini_analyses.util import UserTester
 
 testmode = True # set True show hold graphs for just a few seconds;
@@ -144,7 +145,7 @@ def generate_testdata(
         gmax = np.max(g)
         g = pars.sign * g * pars.amp / gmax
     elif baseclass is not None:  # use template from the class
-        baseclass._make_template()
+        baseclass._make_template(timebase=timebase)
         gmax = np.max(pars.sign * baseclass.template)
 
         g = pars.amp * baseclass.template / gmax
@@ -284,8 +285,10 @@ def run_ClementsBekkers(
     if mpl is None:
         import matplotlib.pyplot as mpl
     pars.threshold = 4.5
-    pars.LPF = 5000.0
-    # pars.HPF = None
+    filters = MEDC.Filtering()
+    filters.LPF_frequency = 5000.0
+    filters.Notch_frequencies = None
+    filters.Detrend_type = None
     cb = MM.ClementsBekkers()
     pars.baseclass = cb
     crit = [None] * pars.ntraces
@@ -298,22 +301,23 @@ def run_ClementsBekkers(
         template_tmax=5.0 * pars.template_taus[1],
         sign=pars.sign,
         threshold=pars.threshold,
-        lpf=pars.LPF,
-        hpf=pars.HPF,
+        filters=filters,
+    
     )
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
         pars, ntrials=pars.ntraces, baseclass=cb
     )
+    cb.set_timebase(timebase)
+    cb.prepare_data(testpscn)
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
 
-    cb._make_template()
+    cb._make_template(timebase=timebase)
     cb.set_cb_engine(extra)
-
     for i in range(pars.ntraces):
-        cb.cbTemplateMatch(testpscn[i], itrace=i, lpf=pars.LPF)
-        testpscn[i] = cb.data  # # get filtered data
-        cb.reset_filters()
+        cb.cbTemplateMatch(testpscn[0], itrace=i, prepare_data=False)
+        # testpscn[0][i] = cb.data[0]  # # get filtered data
+        # cb.reset_filters()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", cb.threshold)
 
@@ -332,7 +336,7 @@ def run_ClementsBekkers(
         )  # i_events)
         mpl.show()
         # time.sleep(5)
-    return cb, summary, fig_handle
+    return cb, fig_handle
 
 
 def run_ClementsBekkers_multiscale(
@@ -354,6 +358,11 @@ def run_ClementsBekkers_multiscale(
     i_events = [[] for x in range(len(pars_list))]
     t_events = [[] for x in range(len(pars_list))]
     cb = [None for x in range(len(pars_list))]
+    filters = MEDC.Filtering()
+    filters.LPF_frequency = 5000.0
+    filters.Notch_frequencies = None
+    filters.Detrend_type = None
+ 
     for i, pars in enumerate(pars_list):
         pars.threshold = pars_list[i].threshold
         pars.LPF = 5000.0
@@ -370,8 +379,7 @@ def run_ClementsBekkers_multiscale(
             template_tmax=5.0 * pars.template_taus[1],
             sign=pars.sign,
             threshold=pars.threshold,
-            lpf=pars.LPF,
-            hpf=pars.HPF,
+            filters = filters,
         )
         print("pars: ", i, pars)
         if i > 0:
@@ -383,11 +391,6 @@ def run_ClementsBekkers_multiscale(
         print("total seeded events: ", tot_seeded)
 
     testpscn = np.array(testpscn)
-    # print("shape: ", testpscn.shape)
-    # for i in range(1, pars.ntraces):
-    #     testpscn[0, :] += testpscn[i, :]
-    # mpl.plot(testpscn[0, 0, :])
-    # mpl.show()
 
     fig_handle = None
     for i, pars in enumerate(pars_list):
@@ -435,25 +438,32 @@ def run_AndradeJonas(
         pars.bigevent = {"t": 1.0, "I": 20.0}
     aj = MM.AndradeJonas()
     pars.baseclass = aj
-    pars.LPF = 5000.0
     # pars.HPF = None
     crit = [None] * pars.ntraces
+    filters = MEDC.Filtering()
+    filters.LPF_frequency = 5000.0
+    filters.LPF_type = "ba"
+    filters.Notch_frequencies = None
+    filters.Detrend_type = None
+ 
     aj.setup(
         ntraces=pars.ntraces,
-        tau1=pars.template_taus[0],
-        tau2=pars.template_taus[1],
+        tau1=5e-4,  # pars.template_taus[0],
+        tau2=2e-3,  # pars.template_taus[1],
         dt_seconds=pars.dt,
         delay=0.0,
         template_tmax=pars.maxt,  # taus are for template
         sign=pars.sign,
         risepower=4.0,
         threshold=pars.threshold,
-        lpf=pars.LPF,
-        hpf=pars.HPF,
+        filters=filters,
     )
     timebase, testpsc, testpscn, i_events, t_events = generate_testdata(
         pars, ntrials=pars.ntraces, baseclass=aj
     )
+    aj.set_timebase(timebase)
+    aj.prepare_data(testpscn)
+
     tot_seeded = sum([len(x) for x in i_events])
     print("Total # of seeded events: ", tot_seeded)
     order = int(0.001 / pars.dt)
@@ -462,12 +472,13 @@ def run_AndradeJonas(
     for i in range(pars.ntraces):
         aj.deconvolve(
             testpscn[i],
+            timebase=timebase,
             itrace=i,
             llambda=5.0,
             prepare_data=False,
         )
-        testpscn[i] = aj.data  # # get filtered data
-        aj.reset_filters()
+        # testpscn[i] = aj.data  # # get filtered data
+        # aj.reset_filters()
         print("# events in template: ", len(t_events[i]))
         print("threshold: ", aj.threshold)
     aj.identify_events(order=order)
@@ -485,7 +496,7 @@ def run_AndradeJonas(
         )  # i_events)
         mpl.show()
         # time.sleep(5)
-    return aj, summary, fig_handle
+    return aj, fig_handle
 
 
 def run_RSDeconvolve(
@@ -577,18 +588,20 @@ class MiniTestMethods:
             #         mpl.plot(zct, summary.allevents[a])
             #     mpl.show()
         if self.testmethod in ["CB", "cb"]:
-            result, summary, figh = run_ClementsBekkers(
+            cb, figh = run_ClementsBekkers(
                 pars, extra=self.extra, plot=True, exp_test_set=True
             )
-            print("Events found: ", len(summary.allevents))
+            print("Events found: ", len(cb.summary.allevents))
+            summary = cb.summary
             # if self.plot:
             #     for a in range(len(summary.allevents)):
             #         mpl.plot(result.t_template, summary.allevents[a])
             #     mpl.show()
         if self.testmethod in ["AJ", "aj"]:
 
-            result, summary, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
-            print("Events found: ", len(summary.allevents))
+            aj, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
+            print("Events found: ", len(aj.summary.allevents))
+            summary = aj.summary
             # k = summary.allevents[0]
             # ajt = result.t_template[0 : summary.allevents[k][1]]
             # if self.plot:
@@ -661,39 +674,47 @@ class MinisTester(UserTester):
 def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
     if mpl is None:
         import matplotlib.pyplot as mpl
-    tba = method.timebase[: len(method.summary.allevents[0])]
+    tba = method.timebase[: len(method.summary.allevents[(0,0)])]
     last_tr = 0
     dyi = 0
     for i, a in enumerate(method.summary.allevents):
         dyi += dy
         if np.isnan(a[0]):  # didn't fit.
             continue
-        mpl.plot(tba, sf * a + dyi)
-        jtr = method.summary.event_trace_list[i]  # get trace and event number in trace
-        if len(jtr) == 0:
-            continue
-        if jtr[0] > last_tr:
-            last_tr = jtr[0]
-            dyi = dyi + 10 * dy
+        mpl.plot(tba, sf * method.summary.allevents[a] + dyi, linewidth=0.5)
+        # jtr = method.summary.event_trace_list[i]  # get trace and event number in trace
+        # if len(jtr) == 0:
+        #     continue
+        # if jtr[0] > last_tr:
+        #     last_tr = jtr[0]
+        #     dyi = dyi + 10 * dy
         # print('sm, on', i, jtr, len(method.summary.smpkindex[jtr[0]]), len(method.summary.onsets[jtr[0]]))
-        pk = method.summary.smpkindex[jtr[0]][jtr[1]]
-        on = method.summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt_seconds
+        pk_sm = method.summary.smpkindex[0][i] # [jtr[0]][jtr[1]]
+        on = method.summary.onsets[0][i] # [jtr[0]][jtr[1]]
+        onpk_sm = (pk_sm - on) * method.dt_seconds
         mpl.plot(
-            onpk,
-            sf * method.summary.smoothed_peaks[jtr[0]][jtr[1]] + dyi,
+            onpk_sm,
+            sf * method.summary.smoothed_peaks[0][i]+dyi, # [jtr[0]][jtr[1]] + dyi,
             "ro",
             markersize=4,
         )
-        pk = method.summary.peaks[jtr[0]][jtr[1]]
-        on = method.summary.onsets[jtr[0]][jtr[1]]
-        onpk = (pk - on) * method.dt_seconds
+        pk_indx = method.summary.peakindices[0][i] # [jtr[0]][jtr[1]]
+        onpk_indx = (pk_indx - on) * method.dt_seconds
         mpl.plot(
-            onpk,
-            sf * method.summary.amplitudes[jtr[0]][jtr[1]] + dyi,
-            "ys",
+            onpk_indx,
+            sf * method.summary.amplitudes[0][i]+dyi, # [jtr[0]][jtr[1]] + dyi,
+            "yo",
             markersize=4,
         )
+        on_indx = method.summary.onsets[0][i]
+        # mpl.plot(
+        #     tba[on_indx],
+        #     #sf * method.summary.allevents[a][method.summary.onsets[0][i]]+dyi, # [jtr[0]][jtr[1]] + dyi,
+        #     0 *method.summary.onsets[0][i]+dyi,
+        #     "ko",
+        #     markersize=4,
+        # )
+
 
 
 if __name__ == "__main__":
@@ -776,7 +797,7 @@ if __name__ == "__main__":
                 pars.threshold = 3.0
                 cb, fig = run_ClementsBekkers(pars, extra=extras, plot=plot)
                 if plot:
-                    print("All detected events: ", len(cb.Summary.allevents))
+                    print("All detected events: ", len(cb.summary.allevents))
                     f, ax = mpl.subplots(1, 1)
                     f.set_size_inches(5, 10)
                     plot_traces_and_markers(cb)
@@ -785,9 +806,8 @@ if __name__ == "__main__":
         if testmethod in ["AJ", "aj"]:
             pars.threshold = 5.0
             aj, fig = run_AndradeJonas(pars, plot=plot)
-            # mpl.show()
             if plot:
-                print("# detected events: ", len(aj.Summary.allevents))
+                print("# detected events: ", len(aj.summary.allevents))
                 f, ax = mpl.subplots(1, 1)
                 f.set_size_inches(5, 10)
                 plot_traces_and_markers(aj)
@@ -795,7 +815,7 @@ if __name__ == "__main__":
 
         if testmethod in ["RS", "rs"]:
             rs, fig = run_RSDeconvolve(pars, plot=plot)
-            print("All detected events: ", len(rs.Summary.allevents))
+            print("All detected events: ", len(rs.summary.allevents))
             if plot:
                 f, ax = mpl.subplots(1, 1)
             # f.set_size_inches(5, 10)
