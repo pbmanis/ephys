@@ -282,7 +282,7 @@ class ClementsBekkers(MiniAnalyses):
         self,
         data: np.ndarray,
         itrace: int = 0,
-        prepare_data = True,
+        prepare_data = False,
     ) -> None:
         assert data.ndim == 1
         self.starttime = timeit.default_timer()
@@ -380,7 +380,7 @@ class AndradeJonas(MiniAnalyses):
         timebase: np.ndarray,
         itrace: int = 0,
         llambda: float = 5.0,
-        prepare_data = True,
+        prepare_data = False,
         verbose: bool = False,
     ) -> None:
         # cprint('r', "STARTING AJ")
