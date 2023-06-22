@@ -61,7 +61,12 @@ class UserTester(object):
         """
         # Check test structures are the same
 
-       # print(type(info), type(expect))
+        # handle case where numpy deprecated np.float 
+        if type(info) is np.float64:
+            info = float(info)
+        if type(expect)  is np.float64:
+            expect = float(expect)
+
         assert type(info) is type(expect)
         if hasattr(info, '__len__'):
             if len(info) != len(expect):
