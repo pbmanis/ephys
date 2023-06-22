@@ -500,7 +500,7 @@ class MiniAnalyses:
             for itrace in range(data.shape[0]):
                 data[itrace] = self.NotchFilterComb(data[itrace])
         self.data = data.copy()
-        print("data : ", self.data.shape, " timebase: ", self.timebase.shape, np.max(self.timebase))
+        # print("data : ", self.data.shape, " timebase: ", self.timebase.shape, np.max(self.timebase))
         # f, ax = mpl.subplots(1,1)
         # for i in range(self.data.shape[0]):
         #     mpl.plot(self.timebase, self.data[i])
@@ -746,7 +746,7 @@ class MiniAnalyses:
                         npk[k] = None
                 elif (mode == "threshold_reject") and (data is not None):
                     if (pk >= ts) and (pk < te) and (np.fabs(data[k]) < thr):
-                        print("np.fabs: ", np.fabs(data[k]), thr)
+                        # print("np.fabs: ", np.fabs(data[k]), thr)
                         npk[k] = None
                 elif mode == "accept":
                     if debug:
@@ -951,7 +951,7 @@ class MiniAnalyses:
         k = 0
         pkt = 0
         overlap_window = int(0.010/summary.dt_seconds) # 5 msec window
-        print("overlap_window (5 msec): ", overlap_window)
+        # print("overlap_window (5 msec): ", overlap_window)
         for itrace in traces:
             for j, event_onset in enumerate(summary.onsets[itrace]):
                 thisev = (itrace, j)
@@ -1091,7 +1091,7 @@ class MiniAnalyses:
                 initdelay=self.template_pre_time,
                 debug=False,
             )
-            print("fit: ", self.fitted_tau1, self.fitted_tau2, self.amplitude, self.amplitude2, self.avg_fiterr)
+            # print("fit: ", self.fitted_tau1, self.fitted_tau2, self.amplitude, self.amplitude2, self.avg_fiterr)
             summary.average.fitted_tau1 = self.fitted_tau1
             summary.average.fitted_tau2 = self.fitted_tau2
             summary.average.fitted_tau3 = self.fitted_tau3
@@ -1200,7 +1200,7 @@ class MiniAnalyses:
         self.Qtotal = np.nan
         self.risetenninety = np.nan
         self.decaythirtyseven = np.nan
-        print("init delay: ", initdelay)
+        # print("init delay: ", initdelay)
         res = self.event_fitter_lm(
             tb,
             avgevent,
@@ -1636,14 +1636,13 @@ class MiniAnalyses:
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
 
-        debug=True
+        debug=False
         if debug:
             import matplotlib.pyplot as mpl
-
             mpl.figure()
             mpl.plot(timebase, evfit, "k-")
             mpl.plot(timebase, self.fitresult.best_fit, "r--")
-            print(self.fitresult.fit_report())
+            # print(self.fitresult.fit_report())
             mpl.show()
 
         return self.fitresult

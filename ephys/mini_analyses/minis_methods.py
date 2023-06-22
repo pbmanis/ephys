@@ -448,7 +448,7 @@ class AndradeJonas(MiniAnalyses):
             valid_data[i, :] = self.remove_outliers(criterion[i], outlier_scale)
         sd = np.nanstd(valid_data)
 
-        print("pre offset: ", int(self.template_pre_time/self.dt_seconds), self.template_pre_time)
+        # print("pre offset: ", int(self.template_pre_time/self.dt_seconds), self.template_pre_time)
         self.sdthr = sd * self.threshold  # set the threshold to multiple SD
         self.onsets = [None] * criterion.shape[0]
         for i in range(criterion.shape[0]):
@@ -644,8 +644,8 @@ class ZCFinder(MiniAnalyses):
         )
         self.Criterion[itrace] = np.zeros_like(self.data)
         self.events = events
-        print("events: ", events)
-        print('len events: ', len(events))
+        # print("events: ", events)
+        # print('len events: ', len(events))
 
     def identify_events(
         self,
