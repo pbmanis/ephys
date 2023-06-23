@@ -20,6 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 import seaborn as sns
+import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 
 repo = git.Repo(search_parent_directories=True)
 repo_sha = repo.head.object.hexsha[-12:]
@@ -122,7 +123,7 @@ class MiniAnalysis:
             self.override_decay = True
         else:
             self.override_decay = False
-        print("override decay: ", self.override_decay, self.override_threshold)
+        # print("override decay: ", self.override_decay, self.override_threshold)
 
         self.filter = False
         self.filterstring = "no_notch_filter"
@@ -251,6 +252,7 @@ class MiniAnalysis:
             "averaged": [],
             "sign": [],
             "threshold": [],
+            "individual_fits": [],
             "indiv_evok": [],
             "indiv_notok": [],
             "indiv_amp": [],
@@ -275,6 +277,7 @@ class MiniAnalysis:
         check=False,
         method="aj",
         engine="cython",
+        do_individual_fits:bool=False,
     ):
         """
         Provide analysis of one entry in the data table using the Andrade_Jonas algorithm
@@ -416,7 +419,7 @@ class MiniAnalysis:
             maxt = np.max(time_base)
 
             tracelist, nused = self.analyze_protocol_traces(
-                method=method,
+                method_name=method,
                 engine=engine,
                 data=data,
                 time_base=time_base,
@@ -424,6 +427,7 @@ class MiniAnalysis:
                 dt_seconds=dt_seconds,
                 mousedata=mousedata,
                 ntr=ntr,
+                do_individual_fits=do_individual_fits,
             )
             ntr = ntr + len(tracelist)  # - len(exclude_traces)
             if nused == 0:
@@ -464,7 +468,7 @@ class MiniAnalysis:
 
     def analyze_protocol_traces(
         self,
-        method: str = "cb",
+        method_name: str = "cb",
         engine: str="cython",
         data: Union[object, None] = None,
         time_base: Union[np.ndarray, None] = None,
@@ -472,6 +476,7 @@ class MiniAnalysis:
         dt_seconds: Union[float, None] = None,
         mousedata: Union[dict, None] = None,
         ntr: int = 0,
+        do_individual_fits:bool = False
     ):
         """
         perform mini analyzis on all the traces in one protocol
@@ -493,11 +498,21 @@ class MiniAnalysis:
         tasks = []
         for i in tracelist:
             tasks.append(i)
-        print("*** Method: ", method, " engine: ", engine, "notch: ", mousedata["notch"])
+        print("*** Method: ", method_name, " engine: ", engine, "notch: ", mousedata["notch"])
 
-        if method == "aj":
+        if method_name == "aj":
             aj = minis.AndradeJonas()
+            method = aj
+            filters = MEDC.Filtering()
+            filters.LPF_frequency=mousedata["lpf"]
+            filters.LPF_type = "ba"
+            filters.HPF_frequency=mousedata["hpf"]
+            filters.HPF_type = "ba"
+            filters.Notch_frequencies=mousedata["notch"]
+            filters.Notch_Q = mousedata["notch_Q"]
+            filters.Detrend_type = None
             print("Calling setup for Andrade-Jonas (2012)")
+            print("threshold: ", float(mousedata["thr"]))
             aj.setup(
                 ntraces=ntraces,
                 tau1=mousedata["rt"],
@@ -507,18 +522,31 @@ class MiniAnalysis:
                 dt_seconds=dt_seconds,
                 delay=0.,  # delay before analysis into each trace/sweep
                 sign=self.sign,
-                risepower=1.0,
+                risepower=4.0,
                 min_event_amplitude=float(
                     mousedata["min_event_amplitude"]
                 ),  # self.min_event_amplitude,
                 threshold=float(mousedata["thr"]),
                 analysis_window=mousedata["analysis_window"],
-                lpf=mousedata["lpf"],
-                hpf=mousedata["hpf"],
-                notch=mousedata["notch"],
-                notch_Q=mousedata["notch_Q"],
+                filters = filters,
+                do_individual_fits=do_individual_fits,
+            
             )
-        elif method == "cb":
+            aj.set_timebase(time_base)
+            aj.prepare_data(data=data)
+            for i in tracelist:
+                aj.deconvolve(
+                    aj.data[i], timebase=aj.timebase,  itrace=i, llambda=10.0,
+                    prepare_data = False,
+                )  # , order=order) # threshold=float(mousedata['thr']),
+                # data[i] = aj.data.copy()
+            aj.identify_events(order=order)
+            summary = aj.summarize(aj.data)
+            summary = aj.average_events(  # also does the fitting
+                traces=range(aj.data.shape[0]), data=aj.data, summary=summary
+                )
+
+        elif method_name == "cb":
             cb = minis.ClementsBekkers()
             cb.setup(
                 ntraces=ntraces,
@@ -540,24 +568,7 @@ class MiniAnalysis:
                 notch_Q=mousedata["notch_Q"],
             )
             cb.set_cb_engine(engine)
-        else:
-            raise ValueError("Method must be aj or cb for event detection")
 
-        # now detect events...
-        if method == "aj":
-            for i in tracelist:
-                aj.reset_filtering()
-                aj.deconvolve(
-                    data[i], itrace=i, llambda=10.0,
-                    prepare_data = False,
-                )  # , order=order) # threshold=float(mousedata['thr']),
-                data[i] = aj.data.copy()
-            aj.identify_events(order=order)
-            aj.summarize(np.array(data))
-
-            # print(aj.Summary)
-            method = aj
-        elif method == "cb":
             for i in tracelist:
                 cb.reset_filtering()
                 cb.cbTemplateMatch(
@@ -567,47 +578,52 @@ class MiniAnalysis:
                 )
                 data[i] = cb.data.copy()
 
-            cb.identify_events(outlier_scale=3.0, order=101)
+            cb.identify_events(outlier_scale=3.0, order=101) 
             cb.summarize(np.array(data))
             method = cb
-        
+ 
+        else:
+            raise ValueError("Method must be aj or cb for event detection")
+
+
         # method.summarize(np.array(data))  # then trim
         # method.fit_individual_events(fit_err_limit=2000., tau2_range=2.5)  # on the data just analyzed
-        method.re_average_events()
-        method.fit_individual_events()  # on the data just analyzed
+        if method.do_individual_fits:
+            method.fit_individual_events()  # on the data just analyzed
 
         self.cell_summary["averaged"].extend(
             [
                 {
-                    "tb": method.Summary.average.avgeventtb,
-                    "avg": method.Summary.average.avgevent,
-                    "stdevent": method.Summary.average.stdevent,
-                    "avgevent25": method.Summary.average.avgevent25,
-                    "avgevent75": method.Summary.average.avgevent75,
-                    "allevents": method.Summary.allevents,
-                    "isolated_event_trace_list": method.Summary.isolated_event_trace_list,
+                    "tb": method.summary.average.avgeventtb,
+                    "avg": method.summary.average.avgevent,
+                    "stdevent": method.summary.average.stdevent,
+                    "avgevent25": method.summary.average.avgevent25,
+                    "avgevent75": method.summary.average.avgevent75,
+                    "allevents": method.summary.allevents,
+                    "isolated_event_trace_list": method.summary.isolated_event_trace_list,
                     "fit": {
-                        "amplitude": method.Summary.average.amplitude,
-                        "tau_1": method.Summary.average.fitted_tau1,
-                        "tau_2": method.Summary.average.fitted_tau2,
-                        "tau_ratio": method.Summary.average.fitted_tau_ratio,
+                        "amplitude": method.summary.average.amplitude,
+                        "tau_1": method.summary.average.fitted_tau1,
+                        "tau_2": method.summary.average.fitted_tau2,
+                        "tau_ratio": method.summary.average.fitted_tau_ratio,
                         "risepower": method.risepower,
-                        "best_fit": method.Summary.average.best_fit,
+                        "best_fit": method.summary.average.best_fit,
                         
                     },
                     "best_fit": method.avg_best_fit,
-                    "risetenninety": method.Summary.average.risetenninety,
-                    "decaythirtyseven": method.Summary.average.decaythirtyseven,
-                    "Qtotal": method.Summary.Qtotal,
+                    "risetenninety": method.summary.average.risetenninety,
+                    "decaythirtyseven": method.summary.average.decaythirtyseven,
+                    "Qtotal": method.summary.Qtotal,
                 }
             ]
         )
 
         for i in tracelist:
-            intervals = np.diff(method.timebase[method.onsets[i]])
+            # tbl = len(method.timebase)
+            intervals = np.diff(time_base[method.onsets[i]])
             self.cell_summary["intervals"].extend(intervals)
             self.cell_summary["amplitudes"].extend(
-                method.sign * data[i][method.Summary.smpkindex[i]]
+                method.sign * data[i][method.summary.smpkindex[i]]
             )  # smoothed peak amplitudes
             self.cell_summary["protocols"].append((self.nprot, i))
             holding = self.measure_baseline(data[i])
@@ -619,43 +635,48 @@ class MiniAnalysis:
         #
         # print(dir(method))
         # print(dir(method.individual_events))
-        self.cell_summary["indiv_amp"].append(method.ev_amp)
-        self.cell_summary["indiv_fitamp"].append(method.ev_fitamp)
-        self.cell_summary["indiv_tau1"].append(method.ev_tau1)
-        self.cell_summary["indiv_tau2"].append(method.ev_tau2)
-        self.cell_summary["indiv_fiterr"].append(method.fiterr)
-        self.cell_summary["fitted_events"].append(method.fitted_events)
-        self.cell_summary["indiv_Qtotal"].append(method.ev_Qtotal)
-        self.cell_summary["indiv_evok"].append(method.events_ok)
-        self.cell_summary["indiv_notok"].append(method.events_notok)
-        self.cell_summary["indiv_tb"].append(method.Summary.average.avgeventtb)
+        if method.individual_events:
+            self.cell_summary["individual_fits"].append(True)
+            self.cell_summary["indiv_amp"].append(method.ev_amp)
+            self.cell_summary["indiv_fitamp"].append(method.ev_fitamp)
+            self.cell_summary["indiv_tau1"].append(method.ev_tau1)
+            self.cell_summary["indiv_tau2"].append(method.ev_tau2)
+            self.cell_summary["indiv_fiterr"].append(method.fiterr)
+            self.cell_summary["fitted_events"].append(method.fitted_events)
+            self.cell_summary["indiv_Qtotal"].append(method.ev_Qtotal)
+            self.cell_summary["indiv_evok"].append(method.events_ok)
+            self.cell_summary["indiv_notok"].append(method.events_notok)
+            self.cell_summary["indiv_tb"].append(method.summary.average.avgeventtb)
         # self.cell_summary['allevents'].append(np.array(method.allevents))
         # self.cell_summary['best_fit'].append(np.array(method.best_fit))
         # self.cell_summary['best_decay_fit'].append(np.array(method.best_decay_fit))
-        #
+        
+        else:
+            self.cell_summary["individual_fits"].append(False)
         #
         # for jev in range(len(method.allevents)):
-        #    self.cell_summary['allevents'].append(method.Summary.allevents[jev])
+        #    self.cell_summary['allevents'].append(method.summary.allevents[jev])
         #    self.cell_summary['best_fit'].append(method.best_fit[jev])
         scf = 1e12
         for i, dat in enumerate(
-            data
+            method.data
         ):  # this copy of data is lpf/hpf/notch filtered as requested
             yp = (ntr + i) * self.yspan
             ypq = (ntr * i) * self.ypqspan
             linefit = np.polyfit(time_base, dat, 1)
-            refline = np.polyval(linefit, time_base)
-            # jtr = method.Summary.event_trace_list[
+            refline = np.polyval(linefit, time_base)# [:len(method.timebase)]
+            # jtr = method.summary.event_trace_list[
             #     i
             # ]  # get trace and event number in trace
             # if len(jtr) == 0:
             #     continue
-            peaks = method.Summary.smpkindex[i]
-            onsets = method.Summary.onsets[i]
+            peaks = method.summary.smpkindex[i]
+            onsets = method.summary.onsets[i]
             onset_times = np.array(onsets) * method.dt_seconds
             peak_times = np.array(peaks) * method.dt_seconds
+            # print(len(method.timebase), len(dat), len(refline))
             self.ax0.plot(
-                method.timebase,
+                time_base, # method.timebase,
                 scf * (dat - refline) + yp,
                 "k-",
                 linewidth=0.25,
@@ -676,7 +697,7 @@ class MiniAnalysis:
             self.ax0.plot(
                 peak_times,
                 scf * (dat[peaks] - refline[peaks])
-                + yp,  # method.Summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
+                + yp,  # method.summary.smoothed_peaks[jtr[0]][jtr[1]] + yp,
                 "ro",
                 markersize=1.0,
                 rasterized=self.rasterize,
@@ -715,23 +736,8 @@ class MiniAnalysis:
     def plot_individual_events(
         self, fit_err_limit=1000.0, tau2_range=2.5, mousedata:str="", title="", pdf=None
     ):
-        P = PH.regular_grid(
-            3,
-            3,
-            order="columnsfirst",
-            figsize=(8.0, 8.0),
-            showgrid=False,
-            verticalspacing=0.1,
-            horizontalspacing=0.1,
-            margins={
-                "leftmargin": 0.12,
-                "rightmargin": 0.12,
-                "topmargin": 0.06,
-                "bottommargin": 0.12,
-            },
-            labelposition=(-0.05, 0.95),
-        )
-        P.figure_handle.suptitle(title)
+        if len(self.cell_summary["individual_fits"]) == 0 or self.cell_summary["individual_fits"][0] is False:
+            return
         all_evok = self.cell_summary[
             "indiv_evok"
         ]  # this is the list of ok events - a 2d list by
@@ -751,6 +757,24 @@ class MiniAnalysis:
         ]
         msize = 2
         alpha = 0.45
+        P = PH.regular_grid(
+            3,
+            3,
+            order="columnsfirst",
+            figsize=(8.0, 8.0),
+            showgrid=False,
+            verticalspacing=0.1,
+            horizontalspacing=0.1,
+            margins={
+                "leftmargin": 0.12,
+                "rightmargin": 0.12,
+                "topmargin": 0.06,
+                "bottommargin": 0.12,
+            },
+            labelposition=(-0.05, 0.95),
+        )
+        P.figure_handle.suptitle(title)
+
         for i in range(len(all_evok)):
             cs = csym[i]
             facecolor = facecolorlist[i]
@@ -913,17 +937,18 @@ class MiniAnalysis:
         aev = self.cell_summary["averaged"]
         P.axdict["F"].plot([np.min(aev[i]["tb"]), np.max(aev[i]["tb"])], 
                             [0,0], "k--", linewidth=0.3)
+
         for i in range(len(aev)):  # show data from all protocols
             P.axdict["F"].fill_between(aev[i]["tb"], 
                                        aev[i]["avg"] - aev[i]["stdevent"], 
                                        aev[i]["avg"] + aev[i]["stdevent"],
                                        color='gray', alpha=0.2)
             
-            for j in range(len(aev[i]["allevents"])):
+            for j, ij in enumerate(aev[i]["allevents"].keys()):
                 # if np.sum(aev[i]["allevents"][j]) > 0:
                 #     continue
-                if aev[i]["isolated_event_trace_list"][j]:
-                    P.axdict["F"].plot(aev[i]["tb"],aev[i]["allevents"][j], 'b-', linewidth=0.3, alpha=0.1)
+                if ij in aev[i]["isolated_event_trace_list"]:
+                    P.axdict["F"].plot(aev[i]["tb"], aev[i]["allevents"][ij], 'b-', linewidth=0.3, alpha=0.1)
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avg"], "k-", linewidth=0.8)
             # sns.lineplot(x=aev[i]["tb"], y = aev[i]["allevents"], estimator="median", errorbar=('ci', 90), ax=P.axdict["F"])
             P.axdict["F"].plot(aev[i]["tb"], aev[i]["avgevent25"], "m-", linewidth=0.5)
@@ -1091,13 +1116,17 @@ class MiniAnalysis:
                 ampgamma[0], ampgamma[1], ampgamma[2], gamma_midpoint
             ),
         )  # ampgamma[0]*ampgamma[2]))
+        gammapdf = scipy.stats.gamma.pdf(
+                    [gamma_midpoint], a=ampgamma[0], loc=ampgamma[1], scale=ampgamma[2]
+                )
+        print(gammapdf)
+        print(gamma_midpoint)
+
         self.axAmps.plot(
             [gamma_midpoint, gamma_midpoint],
             [
                 0.0,
-                scipy.stats.gamma.pdf(
-                    [gamma_midpoint], a=ampgamma[0], loc=ampgamma[1], scale=ampgamma[2]
-                ),
+                gammapdf[0],
             ],
             "k--",
             lw=2,
@@ -1228,6 +1257,9 @@ if __name__ == "__main__":
         "-c", "--check", action="store_true", help="Check for files; no analysis"
     )
     parser.add_argument(
+        "-i", "--individual_fits", action="store_true", help="do individual fitting (expensive)"
+    )
+    parser.add_argument(
         "-m",
         "--method",
         type=str,
@@ -1288,10 +1320,12 @@ if __name__ == "__main__":
                     check=args.check,
                     mode=args.mode,
                     engine=args.engine,
+                    do_individual_fits=args.individual_fits
                 )
         else:
             MI.analyze_one_cell(
-                args.do_one, pdf=None, maxprot=10, check=args.check, mode=args.mode
+                args.do_one, pdf=None, maxprot=10, check=args.check, mode=args.mode,
+                do_individual_fits=args.individual_fits,
             )
 
         # print('MI summary: ', MI.cell_summary)
