@@ -389,23 +389,23 @@ class AndradeJonas(MiniAnalyses):
 
         if prepare_data:
             self.prepare_data(data)  # also generates a timebase
+            data = self.data
             timebase = self.Data.timebase # get timebase associated with prepare_data
         else:
-            self.data = data
             assert timebase is not None
         if self.template is None:
             self._make_template(timebase)
 
         starttime = timeit.default_timer()
 
-        self.data = self.data - np.mean(self.data)
+        data -= np.mean(data)
         # Weiner filtering
 
         templ = self.template.copy()
-        if templ.shape[0] < self.data.shape[0]:
-            templ = np.hstack((templ, np.zeros(self.data.shape[0] - templ.shape[0])))
-        elif templ.shape[0] > self.data.shape[0]:
-            templ = templ[:self.data.shape[0]]
+        if templ.shape[0] < data.shape[0]:
+            templ = np.hstack((templ, np.zeros(data.shape[0] - templ.shape[0])))
+        elif templ.shape[0] > data.shape[0]:
+            templ = templ[:data.shape[0]]
         H = np.fft.fft(templ)
 
         # if H.shape[0] < self.data.shape[0]:
@@ -413,7 +413,7 @@ class AndradeJonas(MiniAnalyses):
         # if H.shape[0] > self.data.shape[0]:
         #     H = H[:self.data.shape[0]]
         self.quot = np.fft.ifft(
-            np.fft.fft(self.data) * np.conj(H) / (H * np.conj(H) + llambda**2.0)
+            np.fft.fft(data) * np.conj(H) / (H * np.conj(H) + llambda**2.0)
         )
         self.Crit = np.real(self.quot) * llambda
         self.Crit = self.Crit.squeeze()
