@@ -26,8 +26,8 @@ class Filtering:
     Notch_frequencies: Union[float, None] = None
     Notch_Q: float=None
     
-    Detrend_applied: bool = True 
-    Detrend_type: str = "meegkit"  # or "scipy"
+    Detrend_applied: bool = False
+    Detrend_type: str = "meegkit"  # or "scipy" or None
     Detrend_order: int = 5
 
 
