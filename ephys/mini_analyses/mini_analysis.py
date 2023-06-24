@@ -441,6 +441,8 @@ class MiniAnalysis:
         # skewed normal and gamma distributions.
         print("Plotting histograms: ")
         self.plot_hists()
+        print("Plotting average EPSC and fit")
+        self.plot_EPSC_fit()
         # show to sceen or save plots to a file
         if pdf is None:
             mpl.show()
@@ -612,6 +614,8 @@ class MiniAnalysis:
                     },
                     "best_fit": method.avg_best_fit,
                     "risetenninety": method.summary.average.risetenninety,
+                    "t10": method.summary.average.t10,
+                    "t90": method.summary.average.t90,
                     "decaythirtyseven": method.summary.average.decaythirtyseven,
                     "Qtotal": method.summary.Qtotal,
                 }
@@ -732,6 +736,80 @@ class MiniAnalysis:
         # print("--- finished run %d/%d ---" % (i + 1, tot_runs))
 
         return tracelist, nused
+
+    def plot_EPSC_fit(self):
+        aev = self.cell_summary["averaged"]
+        sf = 1e12 # convert to pA
+        for i in range(len(aev)):  # show data from all protocols
+            self.axEPSC.plot([np.min(aev[i]["tb"]), np.max(aev[i]["tb"])], 
+                            [0,0], "k--", linewidth=0.3)
+
+            self.axEPSC.fill_between(aev[i]["tb"], 
+                                       (aev[i]["avg"] - aev[i]["stdevent"])*sf, 
+                                       (aev[i]["avg"] + aev[i]["stdevent"])*sf,
+                                       color='gray', alpha=0.2)
+            
+            # for j, ij in enumerate(aev[i]["allevents"].keys()):
+            #     # if np.sum(aev[i]["allevents"][j]) > 0:
+            #     #     continue
+            #     if ij in aev[i]["isolated_event_trace_list"]:
+            #         P.axdict["F"].plot(aev[i]["tb"], aev[i]["allevents"][ij], 'b-', linewidth=0.3, alpha=0.1)
+            self.axEPSC.plot(aev[i]["tb"], aev[i]["avg"]*sf, "k-", linewidth=0.8)
+            # sns.lineplot(x=aev[i]["tb"], y = aev[i]["allevents"], estimator="median", errorbar=('ci', 90), ax=P.axdict["F"])
+            self.axEPSC.plot(aev[i]["tb"], aev[i]["avgevent25"]*sf, "m-", linewidth=0.5)
+            self.axEPSC.plot(aev[i]["tb"], aev[i]["avgevent75"]*sf, "c-", linewidth=0.5)
+            self.axEPSC.plot(aev[i]["tb"], aev[i]["fit"]["best_fit"]*sf, "r--", linewidth=0.6)
+        yl = self.axEPSC.get_ylim()
+        for i in range(len(aev)):
+            self.axEPSC.plot([aev[i]['t10'], aev[i]['t10']],
+                             yl, 'r-', linewidth=0.5)
+            self.axEPSC.plot([aev[i]['t90'], aev[i]['t90']],
+                             yl, 'b-', linewidth=0.5)
+        print("10-90 rt: ", self.cell_summary['averaged'][0]['risetenninety'])
+        print("t10, t90: ", self.cell_summary['averaged'][0]['t10'], self.cell_summary['averaged'][0]['t90'])
+        print("t37: ", self.cell_summary['averaged'][0]['decaythirtyseven'])
+
+        self.axEPSC.text(
+            1.0,
+            0.28,
+            s=f"N_ev = {len(self.cell_summary['averaged'][0]['isolated_event_trace_list']):d}",
+            ha="right",
+            transform=self.axEPSC.transAxes,
+            fontsize=8,
+        )
+        self.axEPSC.text(
+            1.0,
+            0.22,
+            s=f"10-90 = {1e3*self.cell_summary['averaged'][0]['risetenninety']:.3f} ms",
+            ha="right",
+            transform=self.axEPSC.transAxes,
+            fontsize=8,
+        )
+        self.axEPSC.text(
+            1.0,
+            0.15,
+            s=f"decay37 = {1e3*self.cell_summary['averaged'][0]['decaythirtyseven']:.3f} ms",
+            ha="right",
+            transform=self.axEPSC.transAxes,
+            fontsize=8,
+        )
+        self.axEPSC.text(
+            1.0,
+            0.09,
+            s=f"tau_1 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_1']:.3f} ms",
+            ha="right",
+            transform=self.axEPSC.transAxes,
+            fontsize=8,
+        )
+        self.axEPSC.text(
+            1.0,
+            0.03,
+            s=f"tau_2 = {1e3*self.cell_summary['averaged'][0]['fit']['tau_2']:.3f} ms",
+            ha="right",
+            transform=self.axEPSC.transAxes,
+            fontsize=8,
+        )
+
 
     def plot_individual_events(
         self, fit_err_limit=1000.0, tau2_range=2.5, mousedata:str="", title="", pdf=None
@@ -1215,8 +1293,9 @@ class MiniAnalysis:
             [
                 ("A", {"pos": [0.12, 0.8, 0.4, 0.55], "labelpos": (-0.05, 1.05)}),
                 #  ('A1', {'pos': [0.52, 0.35, 0.35, 0.60]}),
-                ("B", {"pos": [0.12, 0.35, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
-                ("C", {"pos": [0.60, 0.35, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
+                ("B", {"pos": [0.12, 0.25, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
+                ("C", {"pos": [0.42, 0.25, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
+                ("D", {"pos": [0.70, 0.25, 0.14, 0.20], "labelpos": (-0.05, 1.05)}),
             ]
         )  # dict elements are [left, width, bottom, height] for the axes in the plot.
         n_panels = len(sizer.keys())
@@ -1238,9 +1317,14 @@ class MiniAnalysis:
         axAmps.set_ylabel("Fraction of Events", fontsize=9)
         axAmps.set_xlabel("Event Amplitude (pA)", fontsize=9)
         axAmps.set_title("mEPSC Amplitude Distribution", fontsize=10)
+        axEPSC = self.P.axdict["D"]
+        axEPSC.set_ylabel("EPSC (pA)", fontsize=9)
+        axEPSC.set_xlabel("Time (ms)", fontsize=9)
+        axEPSC.set_title("Average mEPSC", fontsize=10)
         self.ax0 = ax0
         self.axIntvls = axIntvls
         self.axAmps = axAmps
+        self.axEPSC = axEPSC
 
 
 if __name__ == "__main__":

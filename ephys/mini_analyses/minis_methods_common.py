@@ -58,9 +58,9 @@ class MiniAnalyses:
         self.individual_events = False
         self.do_individual_fits = False
         self.events_notok = []
-        self.filters_enabled = True # enable filtering
+        self.filters_enabled = True  # enable filtering
         self.data_prepared = False
-        self.summary = None # This gets set when we run summarize
+        self.summary = None  # This gets set when we run summarize
         super().__init__()
 
     def setup(
@@ -83,7 +83,7 @@ class MiniAnalyses:
         global_SD: Union[float, None] = None,
         analysis_window: List[Union[float, None]] = [None, None],
         filters: Union[MEDC.Filtering, None] = None,
-        do_individual_fits: bool = False
+        do_individual_fits: bool = False,
     ) -> None:
         """
         Just store the parameters - will compute when needed
@@ -113,7 +113,7 @@ class MiniAnalyses:
         self.threshold = threshold
         self.sdthr = self.threshold  # for starters
         self.analysis_window = analysis_window
-        self.do_individual_fits=do_individual_fits
+        self.do_individual_fits = do_individual_fits
         self.set_filters(filters)
         self.set_datatype("VC")
 
@@ -168,25 +168,28 @@ class MiniAnalyses:
     #     else:
     #         raise ValueError("set_notch: Notch must be list, float or None")
 
-    def _make_template(self, timebase:np.array):
-        """ Private function: make template when it is needed
+    def _make_template(self, timebase: np.array):
+        """Private function: make template when it is needed
 
         Args:
             timebase (np.array): time points for computation of the template array
-        """ 
+        """
         assert timebase is not None
         tau_1, tau_2 = self.taus[:2]  # use the predefined taus
-        tmax = np.min((self.template_tmax+self.template_pre_time, timebase.max()))
+        tmax = np.min((self.template_tmax + self.template_pre_time, timebase.max()))
         # make template time base
         t_psc = np.arange(0, tmax, self.dt_seconds)
         # give the template a possible pre-event baseline
-        i_delay = int(self.template_pre_time / self.dt_seconds)  # delay to template waveform start
+        i_delay = int(
+            self.template_pre_time / self.dt_seconds
+        )  # delay to template waveform start
         self.template = np.zeros_like(t_psc)
         i_pscend = len(t_psc) - i_delay
         Aprime = (tau_2 / tau_1) ** (tau_1 / (tau_1 - tau_2))
-        # calculate template waveform - just one rising/falling tau. 
+        # calculate template waveform - just one rising/falling tau.
         self.template[i_delay:] = (
-            1.0 / Aprime
+            1.0
+            / Aprime
             * (
                 (1 - (np.exp(-t_psc[:i_pscend] / tau_1))) ** self.risepower
                 * np.exp((-t_psc[:i_pscend] / tau_2))
@@ -197,7 +200,7 @@ class MiniAnalyses:
         else:
             self.template = -self.template
             self.template_amax = np.min(self.template)
- 
+
     def reset_filters(self):
         """
         Reset the filtering flags so we know which have been done.
@@ -210,19 +213,14 @@ class MiniAnalyses:
         self.data_prepared = False
 
     def filters_on(self):
-        """Turn the filtering OFF (e.g., data is pre-filtered)
-        """
+        """Turn the filtering OFF (e.g., data is pre-filtered)"""
         self.filters.enabled = True
 
     def filters_off(self):
-        """Turn the filtering OFF (e.g., data is pre-filtered)
-        """
+        """Turn the filtering OFF (e.g., data is pre-filtered)"""
         self.filters.enabled = False
 
-
-    def LPFData(
-        self, data: np.ndarray,  NPole: int = 8
-    ) -> np.ndarray:
+    def LPFData(self, data: np.ndarray, NPole: int = 8) -> np.ndarray:
         """
         Low pass filter the data. This uses the LPF_frequency in
         the self.filters dataclass for the value
@@ -239,7 +237,10 @@ class MiniAnalyses:
         if not self.filters.enabled:
             return data
         if self.verbose:
-            CP.cprint("y", f"        minis_methods_common, LPF data:  {self.filters.LPF_frequency:f}")
+            CP.cprint(
+                "y",
+                f"        minis_methods_common, LPF data:  {self.filters.LPF_frequency:f}",
+            )
         if self.filters.LPF_frequency is not None:
             # CP.cprint('y', f"     ... lpf at {lpf:f}")
             if self.filters.LPF_frequency > 0.49 / self.dt_seconds:
@@ -267,13 +268,13 @@ class MiniAnalyses:
                     NPole=8,
                 )
             else:
-                raise ValueError(f"Signal filter type must be 'ba' or 'sos': got {self.filters.LPF_type:s}")
+                raise ValueError(
+                    f"Signal filter type must be 'ba' or 'sos': got {self.filters.LPF_type:s}"
+                )
             self.filters.LPF_applied = True
             return fdata
 
-    def HPFData(
-        self, data: np.ndarray, NPole: int = 8
-    ) -> np.ndarray:
+    def HPFData(self, data: np.ndarray, NPole: int = 8) -> np.ndarray:
         """
         High pass filter the data. This uses the HPF_frequency in
         the self.filters dataclass for the value
@@ -290,7 +291,10 @@ class MiniAnalyses:
         if not self.filters.enabled:
             return data
         if self.verbose:
-            CP.cprint("y", f"        minis_methods_common, HPF data:  {self.filters.HPF_frequency:f}")
+            CP.cprint(
+                "y",
+                f"        minis_methods_common, HPF data:  {self.filters.HPF_frequency:f}",
+            )
         if self.filters.HPF_frequency is None or self.filters.HPF_frequency == 0.0:
             return data
         if len(data.shape) == 1:
@@ -317,7 +321,10 @@ class MiniAnalyses:
             )
         if self.filters.HPF_type == "ba":
             fdata = dfilt.SignalFilter_HPFButter(
-                data - data[0], self.filters.HPF_frequency, 1.0 / self.dt_seconds, NPole=4
+                data - data[0],
+                self.filters.HPF_frequency,
+                1.0 / self.dt_seconds,
+                NPole=4,
             )
         elif self.filters.LPF_type == "sos":
             fdata = dfilt.SignalFilterLPF_SOS(
@@ -325,20 +332,22 @@ class MiniAnalyses:
                 HPF=self.filters.HPF_frequency,
                 samplefreq=1.0 / self.dt_seconds,
                 NPole=8,
-
             )
         else:
-            raise ValueError(f"Signal filter type must be 'ba' or 'sos': got {self.filters.HPF_type:s}")
+            raise ValueError(
+                f"Signal filter type must be 'ba' or 'sos': got {self.filters.HPF_type:s}"
+            )
         self.filters.HPF_applied = True
         return fdata
 
     def NotchData(
-        self, data: np.ndarray,
+        self,
+        data: np.ndarray,
     ) -> np.ndarray:
         """
         Notch filter the data
         This routine can apply multiple notch filters to the data at once.
-        The filter values         
+        The filter values
             notch: list : list of notch frequencies, in Hz
             notch_Q : the Q of the filter (higher is narrower)
         are in the self.filters dataclass
@@ -353,9 +362,15 @@ class MiniAnalyses:
         """
         if not self.filters.enabled:
             return data
-        CP.cprint("y", f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}")
+        CP.cprint(
+            "y",
+            f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}",
+        )
 
-        if self.filters.Notch_frequencies is None or len(self.filters.Notch_frequencies) == 0:
+        if (
+            self.filters.Notch_frequencies is None
+            or len(self.filters.Notch_frequencies) == 0
+        ):
             return data
         fdata = dfilt.NotchFilterZP(
             data,
@@ -368,7 +383,8 @@ class MiniAnalyses:
         return fdata
 
     def NotchFilterComb(
-        self, data: np.ndarray,
+        self,
+        data: np.ndarray,
     ) -> np.ndarray:
         """
         Notch filter the data with a comb filter
@@ -387,9 +403,15 @@ class MiniAnalyses:
         if not self.filters.enabled:
             return data
         if self.verbose:
-            CP.cprint("y", f"minis_methods_common, Notch comb filter data:  {self.filters.Notch_frequencies[0]:f}")
+            CP.cprint(
+                "y",
+                f"minis_methods_common, Notch comb filter data:  {self.filters.Notch_frequencies[0]:f}",
+            )
 
-        if self.filters.Notch_frequencies is None or len(self.filters.Notch_frequencies) == 0:
+        if (
+            self.filters.Notch_frequencies is None
+            or len(self.filters.Notch_frequencies) == 0
+        ):
             return data
 
         fdata = dfilt.NotchFilterComb(
@@ -401,7 +423,7 @@ class MiniAnalyses:
         )
         self.filters.Notch_applied = True
         return fdata
-    
+
     def prepare_data(self, data: np.array):
         """
         This function prepares the incoming data for the mini analyses.
@@ -424,14 +446,20 @@ class MiniAnalyses:
             return
         if data.ndim != 2:
             raise ValueError
-        
+
         CP.cprint("c", "Preparing data")
         timebase = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
-        print("original data : ", data.shape, " timebase: ", timebase.shape, np.max(timebase))
+        print(
+            "original data : ",
+            data.shape,
+            " timebase: ",
+            timebase.shape,
+            np.max(timebase),
+        )
         print("analysis window: ", self.analysis_window)
         #
         # 1. Clip the timespan of the data to the values in analysis_window
-        # 
+        #
         if self.analysis_window[1] is not None:
             jmax = np.argmin(np.fabs(timebase - self.analysis_window[1]))
         else:
@@ -442,7 +470,15 @@ class MiniAnalyses:
             jmin = 0
         data = data[:, jmin:jmax]
         self.timebase = timebase[jmin:jmax]
-        print("    Preparing data: Window clipped: ", data.shape, jmin, jmax, np.min(timebase), np.max(timebase), self.analysis_window)
+        print(
+            "    Preparing data: Window clipped: ",
+            data.shape,
+            jmin,
+            jmax,
+            np.min(timebase),
+            np.max(timebase),
+            self.analysis_window,
+        )
         print(f"    Preparing Data: Filters Enabled = {str(self.filters.enabled):s}")
         if not self.filters.enabled:
             self.data = data
@@ -455,7 +491,8 @@ class MiniAnalyses:
         if self.verbose:
             if self.filters.LPF_frequency is not None:
                 CP.cprint(
-                    "y", f"minis_methods_common, prepare_data: LPF: {str(self.filters.LPF_frequency):s} Hz"
+                    "y",
+                    f"minis_methods_common, prepare_data: LPF: {str(self.filters.LPF_frequency):s} Hz",
                 )
             else:
                 CP.cprint("r", f"**** minis_methods_common, no LPF applied")
@@ -472,35 +509,51 @@ class MiniAnalyses:
 
         if self.filters.Detrend_type == "meegkit":
             for itrace in range(data.shape[0]):
-               data[itrace], _, _ = MEK.detrend.detrend(data[itrace], order=self.filters.Detrend_order)
-               self.filters.Detrend_applied = True
+                data[itrace], _, _ = MEK.detrend.detrend(
+                    data[itrace], order=self.filters.Detrend_order
+                )
+                self.filters.Detrend_applied = True
         elif self.filters.Detrend_type == "scipy":
             for itrace in range(data.shape[0]):
                 data[itrace] = FUNCS.adaptiveDetrend(
-                      data[itrace], x=self.timebase[jmin:jmax], threshold=3.0
+                    data[itrace], x=self.timebase[jmin:jmax], threshold=3.0
                 )
             self.filters.Detrend_applied = True
         elif self.filters.Detrend_type == "None" or self.filters.Detrend_type == None:
             pass
         else:
-            raise ValueError(f"minis_methods_common: detrending filter type not known: got {self.filters.Detrend_type:s}")
+            raise ValueError(
+                f"minis_methods_common: detrending filter type not known: got {self.filters.Detrend_type:s}"
+            )
 
         #
         # 4. Perform LPF and HPF filtering
         #
-        if( self.filters.LPF_frequency is not None) and isinstance(self.filters.LPF_frequency, float) and self.filters.enabled:
+        if (
+            (self.filters.LPF_frequency is not None)
+            and isinstance(self.filters.LPF_frequency, float)
+            and self.filters.enabled
+        ):
             for itrace in range(data.shape[0]):
                 data[itrace] = self.LPFData(data[itrace])
-        if (self.filters.HPF_frequency is not None) and isinstance(self.filters.HPF_frequency, float) and self.filters.enabled:
+        if (
+            (self.filters.HPF_frequency is not None)
+            and isinstance(self.filters.HPF_frequency, float)
+            and self.filters.enabled
+        ):
             for itrace in range(data.shape[0]):
                 data[itrace] = self.HPFData(data[itrace])
         #
         # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
         #
-        if ((self.filters.Notch_frequencies is not None) and 
-                (isinstance(self.filters.Notch_frequencies, list) or 
-                 isinstance(self.filters.Notch_frequencies, np.ndarray)) and 
-                 self.filters_enabled):
+        if (
+            (self.filters.Notch_frequencies is not None)
+            and (
+                isinstance(self.filters.Notch_frequencies, list)
+                or isinstance(self.filters.Notch_frequencies, np.ndarray)
+            )
+            and self.filters_enabled
+        ):
             if self.verbose:
                 CP.cprint("r", "Comb filter notch")
             for itrace in range(data.shape[0]):
@@ -513,7 +566,6 @@ class MiniAnalyses:
         #     mpl.plot(self.timebase, self.data[i], linewidth = 0.35)
         # mpl.show()
         self.data_prepared = True
-
 
     def moving_average(self, a, n: int = 3) -> Tuple[np.array, int]:
         ret = np.cumsum(a, dtype=float)
@@ -529,9 +581,11 @@ class MiniAnalyses:
         result = np.where(((a >= quartileSet[0]) & (a <= quartileSet[1])), a, np.nan)
         return result
 
-    def get_data_cleaned_of_stimulus_artifacts(self, data:object, summary: object=None, pars: dict = None):
+    def get_data_cleaned_of_stimulus_artifacts(
+        self, data: object, summary: object = None, pars: dict = None
+    ):
         """
-        After the traces have been analyzed, and amplitudes, peaks and onsets identified, 
+        After the traces have been analyzed, and amplitudes, peaks and onsets identified,
         we genetrate a list of events that are free of stimulus artifacts.
         This list is used to filter the trace data later.
         """
@@ -544,7 +598,7 @@ class MiniAnalyses:
         art_starts = [
             pars.analysis_window[1],
             pars.shutter_artifact,
-        ]  
+        ]
         # generic artifact times and arrays
         art_durs = [2, 2 * self.dt_seconds]
         if pars.artifact_suppress:
@@ -566,11 +620,15 @@ class MiniAnalyses:
                 art_durs.append(2.0 * self.dt_seconds)
                 art_durs.append(2.0 * self.dt_seconds)
 
-        ok_onsets = [[]]*ntraces
+        ok_onsets = [[]] * ntraces
         for i in range(ntraces):
             # CP.cprint("r", f"analyzing trace: {i:d}")
             npk0 = self.select_events(
-                summary.smpkindex[i], art_starts, art_durs, self.dt_seconds, mode="reject"
+                summary.smpkindex[i],
+                art_starts,
+                art_durs,
+                self.dt_seconds,
+                mode="reject",
             )
             # npk4 = self.select_by_sign(
             #     itrace=i, npks=npk0, data=data[i], min_event=5e-12
@@ -587,7 +645,6 @@ class MiniAnalyses:
                 ok_onsets[i] = [summary.onsets[i][n] for n in npk]
         return ok_onsets
 
-
     def summarize(self, data, order: int = 11, verbose: bool = False) -> None:
         """
         Compute peaks, smoothed peaks, and ampitudes for all found events in a
@@ -601,7 +658,9 @@ class MiniAnalyses:
         )  # decay window time (points) Units all seconds
         assert i_decay_pts > 5
 
-        summary = MEDC.Mini_Event_Summary()  # a single summary class is created each time we are called
+        summary = (
+            MEDC.Mini_Event_Summary()
+        )  # a single summary class is created each time we are called
         ndata = len(data)
         # set up arrays : note construction to avoid "same memory but different index" problem
         summary.dt_seconds = self.dt_seconds
@@ -704,9 +763,9 @@ class MiniAnalyses:
             "y",
             f"    methods common: identify_events: {nrejected_too_small:5d} events were smaller than threshold of {1e12*self.min_event_amplitude:6.1f} pA",
         )
-        self.summary = summary # keep a local copy, but only for resting. 
+        self.summary = summary  # keep a local copy, but only for resting.
         return summary
-    
+
     def select_events(
         self,
         pkt: Union[list, np.ndarray],
@@ -781,7 +840,12 @@ class MiniAnalyses:
         return npks
 
     def select_by_sign(
-        self, method: object, itrace:int, npks: int, data: np.ndarray, min_event: float = 5e-12
+        self,
+        method: object,
+        itrace: int,
+        npks: int,
+        data: np.ndarray,
+        min_event: float = 5e-12,
     ) -> Union[list, np.ndarray]:
         """
         Screen events for correct sign and minimum amplitude.
@@ -804,7 +868,7 @@ class MiniAnalyses:
         """
 
         pkt = []
-        if len(method.onsets) == 0 or not method.Summary.average.averaged :
+        if len(method.onsets) == 0 or not method.Summary.average.averaged:
             return pkt
         tb = method.timebase  # full time base
         smpks = np.array(method.Summary.smpkindex[itrace])
@@ -910,7 +974,7 @@ class MiniAnalyses:
         self,
         traces: list,
         data: Union[list, object, None] = None,
-        summary: object=None, # dataclass Summary
+        summary: object = None,  # dataclass Summary
     ) -> tuple:
         """
         compute average event with length of template
@@ -936,14 +1000,14 @@ class MiniAnalyses:
         self.data_for_average = data
         self.traces_for_average = traces
         summary.average.averaged = False
-        tdur =  0.025 # np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
+        tdur = 0.025  # np.max((np.max(self.taus) * 5.0, 0.010))  # go 5 taus or 10 ms past event
         tpre = self.template_pre_time
         npre = int(tpre / self.dt_seconds)  # points for the pre time
         npost = int(tdur / self.dt_seconds)
         avgnpts = npre + npost  # points for the average
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in summary.onsets])
-        allevents = {} # np.zeros((n_events, avgnpts))
+        allevents = {}  # np.zeros((n_events, avgnpts))
         event_onset_times = []
         # accepted_events = []
 
@@ -954,14 +1018,16 @@ class MiniAnalyses:
         wrong_charge_sign_event_list = []
         clean_event_list = []
 
-        CP.cprint("y", "methods common: average_events: Categorize then average clean events")
+        CP.cprint(
+            "y", "methods common: average_events: Categorize then average clean events"
+        )
         # tag traces and get a clean set for averaging
         k = 0
         pkt = 0
         overlap_dur = 0.005
-        overlap_window = int(overlap_dur/summary.dt_seconds) # 5 msec window
+        overlap_window = int(overlap_dur / summary.dt_seconds)  # 5 msec window
         # print(f"overlap_window ({overlap_dur:f} sec): {overlap_window:d}")
-        print("npre: ", npre, "template: ", self.template_pre_time, "npost: ", npost)
+        # print("npre: ", npre, "template: ", self.template_pre_time, "npost: ", npost)
         for itrace in traces:
             for j, event_onset in enumerate(summary.onsets[itrace]):
                 thisev = (itrace, j)
@@ -972,22 +1038,26 @@ class MiniAnalyses:
                     incomplete_event_list.append(thisev)
                 else:
                     allevents[thisev] = data[
-                        itrace,  (ix - npre) : (ix + npost)
+                        itrace, (ix - npre) : (ix + npost)
                     ].copy()  # save event, reject later
                     all_event_indices.append(thisev)
-                    if npre > 0:
-                        allevents[thisev] -= np.mean(allevents[thisev][0:npre])
-                    event_onset_times.append(event_onset*self.dt_seconds)  # keep track of where event came from
+                    # if npre > 0:
+                    #     allevents[thisev] -= np.mean(allevents[thisev][0:npre])
+                    event_onset_times.append(
+                        event_onset * self.dt_seconds
+                    )  # keep track of where event came from
 
                 # Test for sign of the charge of the event
                 if npre > 0:
                     baseline = np.nanmean(data[itrace][(ix - npre) : ix])
                 else:
                     baseline = 0.0
-                td = data[itrace][ix+int(0.8*float(npost)) : (ix + npost)]
-                if len(td) > 0 and (self.sign*np.mean(
+                td = data[itrace][ix + int(0.8 * float(npost)) : (ix + npost)]
+                if len(td) > 0 and (
+                    self.sign
+                    * np.mean(
                         td
-                       # - baseline
+                        # - baseline
                     )
                     < -5e-12
                 ):
@@ -1001,11 +1071,15 @@ class MiniAnalyses:
                     if (summary.onsets[itrace][j + 1] - event_onset) < overlap_window:
                         # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has overlaps")
                         # print("      ", summary.onsets[itrace][j+1], event_onset, overlap_window)
-                        overlapping_event_list.append((itrace, j+1))
+                        overlapping_event_list.append((itrace, j + 1))
 
                 k = k + 1
 
-        tarnished_events = list(set(wrong_charge_sign_event_list).union(set(tuple(incomplete_event_list)), set(tuple(overlapping_event_list))))
+        tarnished_events = list(
+            set(wrong_charge_sign_event_list).union(
+                set(tuple(incomplete_event_list)), set(tuple(overlapping_event_list))
+            )
+        )
 
         print("    # Included Events found: ", len(all_event_indices))
         print("    # Incomplete Events found: ", len(incomplete_event_list))
@@ -1013,8 +1087,12 @@ class MiniAnalyses:
         print("    # Wrong chage Events found: ", len(wrong_charge_sign_event_list))
         print("    # Tarnished events: ", len(tarnished_events))
         # get the clean events (non overlapping, correct charge, complete in trace)
-        clean_event_list = tuple([i for i in all_event_indices if i not in tarnished_events])
-        wrong_event_list = tuple([i for i in all_event_indices if i  in wrong_charge_sign_event_list])
+        clean_event_list = tuple(
+            [i for i in all_event_indices if i not in tarnished_events]
+        )
+        wrong_event_list = tuple(
+            [i for i in all_event_indices if i in wrong_charge_sign_event_list]
+        )
         clean_event_traces = np.array([allevents[x] for x in clean_event_list])
         wrong_event_traces = np.array([allevents[x] for x in wrong_event_list])
         # f, ax = mpl.subplots(2, 1)
@@ -1025,12 +1103,11 @@ class MiniAnalyses:
         # # mpl.plot(tx[v], clean_event_traces[v], 'ro')
         # mpl.show()
         # print("    # Clean event array: ", clean_event_traces.shape[0], " events found")
-        
+
         # get all events that are within the trace, whether overlappingn or charge is wrong
         event_indices = [i for i in all_event_indices if i not in incomplete_event_list]
         # allevents = allevents[event_indices]
         # np.array([x for i, x in enumerate(allevents) if not all(np.isnan(allevents[i,:]))])
-        
 
         if len(incomplete_event_list) > 0:
             CP.cprint(
@@ -1071,9 +1148,7 @@ class MiniAnalyses:
                 q=75,
             )  #  method="median_unbiased")
 
-            summary.average.avgevent = np.nanmean(
-                clean_event_traces, axis=0
-            ) 
+            summary.average.avgevent = np.nanmean(clean_event_traces, axis=0)
             # print("Clean event traces: ", clean_event_traces)
             # print(summary.average.avgevent)
             # print(np.min(summary.average.avgevent), np.max(summary.average.avgevent), summary.average.avgevent.shape)
@@ -1082,8 +1157,12 @@ class MiniAnalyses:
             summary.average.avgeventtb = avgeventtb
             summary.average.avgnpts = avgnpts
             summary.average.Nevents = len(clean_event_traces)
-            summary.average.avgevent25 = np.nanmean(clean_event_traces[evamps < ev25], axis=0)
-            summary.average.avgevent75 = np.nanmean(clean_event_traces[evamps > ev75], axis=0)
+            summary.average.avgevent25 = np.nanmean(
+                clean_event_traces[evamps < ev25], axis=0
+            )
+            summary.average.avgevent75 = np.nanmean(
+                clean_event_traces[evamps > ev75], axis=0
+            )
             summary.isolated_event_trace_list = clean_event_list
         else:
             summary.average.averaged = False
@@ -1096,7 +1175,7 @@ class MiniAnalyses:
             summary.average.avgevent = []
             summary.average.avgevent25 = []
             summary.average.avgevent75 = []
-        
+
         if summary.average.averaged:
             CP.cprint("m", "    Fitting averaged event")
             self.fit_average_event(
@@ -1116,10 +1195,14 @@ class MiniAnalyses:
             summary.average.amplitude2 = self.amplitude2
             summary.average.avg_fiterr = self.avg_fiterr
             summary.average.risetenninety = self.risetenninety
+            summary.average.t10 = self.t10
+            summary.average.t90 = self.t90
             summary.average.risepower = self.risepower
             summary.average.decaythirtyseven = self.decaythirtyseven
         else:
-            CP.cprint("r", "    average_events: **** No events found that meet criteria ****")
+            CP.cprint(
+                "r", "    average_events: **** No events found that meet criteria ****"
+            )
             return
         # for testing, plot out the clean events
         # fig, ax = mpl.subplots(1,2)
@@ -1127,16 +1210,16 @@ class MiniAnalyses:
         #     for j, onset in enumerate(summary.onsets[itrace]):
         #         ev = (itrace, j)
         #         if ev in self.summary.isolated_event_trace_list:
-        #             ax[0].plot(avgeventtb, 
-        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+        #             ax[0].plot(avgeventtb,
+        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0],
         #                 'b-', lw=0.5, )
         # # rejected:
         # for itrace in traces:
         #     for j, onset in enumerate(summary.onsets[itrace]):
         #         ev = (itrace, j)
         #         if ev not in self.summary.isolated_event_trace_list and ev in self.summary.allevents.keys():
-        #             ax[1].plot(avgeventtb, 
-        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0], 
+        #             ax[1].plot(avgeventtb,
+        #                 self.summary.allevents[ev], # -self.summary.allevents[ev][0],
         #                 'r-', lw=0.5, )
 
         # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
@@ -1144,7 +1227,9 @@ class MiniAnalyses:
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
         return summary
 
-    def average_events_subset(self, data: np.ndarray, eventlist:list=None, minisummary:object=None) -> tuple:
+    def average_events_subset(
+        self, data: np.ndarray, eventlist: list = None, minisummary: object = None
+    ) -> tuple:
         """
         compute average event with length of template
         Parameters
@@ -1175,6 +1260,57 @@ class MiniAnalyses:
                 k = k + 1
         return np.mean(allevents, axis=0), avgeventtb, allevents
 
+    def measure_psc_shape(self, ave):
+        move_avg, n = self.moving_average(  # apply 3 point moving average
+            ave,
+            n=min(3, len(ave)),
+        )
+        ipk = np.argmax(move_avg)
+        pk = move_avg[ipk]
+        p10 = 0.10 * pk
+        p90 = 0.90 * pk
+        p37 = 0.37 * pk
+
+        i10 = np.nonzero(move_avg[:ipk] <= p10)[0]
+        if len(i10) == 0:
+            self.risetenninety = np.nan
+            self.t10 = np.nan
+            self.t90 = np.nan
+        else:
+            i10 = i10[-1]  # get the last point where this condition was met
+            ix10 = np.interp(p10, move_avg[i10 : i10 + 2], [0, self.dt_seconds])
+            i90 = np.where(move_avg[:ipk] <= p90)[0][-1]
+            ix90 = np.interp(p90, move_avg[i90 - 1 : i90 + 1], [0, self.dt_seconds])
+            t10 = ix10 + i10 * self.dt_seconds
+            t90 = ix90 + (i90 - 1) * self.dt_seconds
+            # try:
+            #     i90 = i90  # get the first point where this condition was met
+            # except:
+            #     CP.cprint("r", "**** Error in fit_average computing 10-90 RT")
+            #     print(move_avg[:ipk], p90)
+            #     print(t90, ix90, ix90 + ipk - 2)
+            #     print(t10, ix10, ix10 + i10)
+            #     exit()
+            self.risetenninety = t90 - t10
+            self.t10 = t10
+            self.t90 = t90
+
+        i37 = np.nonzero(move_avg[ipk:] >= p37)[
+            0
+        ]  # find last point greater than 37% of peak
+        if len(i37) == 0:
+            self.decaythirtyseven = np.nan
+        else:
+            i37 = i37[-1]  # last point
+            self.decaythirtyseven = self.dt_seconds * i37
+        print(
+            "Measures t10, 90, t1 init, t37: ",
+            self.t10,
+            self.t90,
+            (t90 - t10) / 2.0,
+            self.decaythirtyseven,
+        )
+
     def fit_average_event(
         self,
         tb: np.ndarray,
@@ -1189,12 +1325,21 @@ class MiniAnalyses:
         Operates on the AverageEvent data structure
         """
         CP.cprint("c", f"        Fitting average event, fixed_delay={initdelay:f}")
+
+        self.risetenninety = np.nan
+        self.t10 = np.nan
+        self.t90 = np.nan
+        self.decaythirtyseven = np.nan
+
+        ave = self.sign * avgevent
+        self.measure_psc_shape(ave)  # first get 10-90 times and t37
+
         tsel = 0  # use whole averaged trace
         self.tsel = tsel
-        self.tau1 = inittaus[0]
-        self.tau2 = inittaus[1]
-        self.tau3 = inittaus[2]
-        self.tau4 = inittaus[3]
+        self.tau1 = (self.t90 - self.t10) / 2.0  # inittaus[0]
+        self.tau2 = self.decaythirtyseven  # inittaus[1]
+        self.tau3 = self.tau1 * 3.0
+        self.tau4 = self.tau2 * 5
         self.tau_ratio = self.tau2 / self.tau1
         self.tau2_range = 10.0
         self.tau1_minimum_factor = 5.0
@@ -1203,7 +1348,6 @@ class MiniAnalyses:
         self.fitted_tau2 = np.nan
         self.fitted_tau3 = np.nan
         self.fitted_tau4 = np.nan
-        
 
         self.fitted_tau_ratio = np.nan
         self.amplitude = np.nan
@@ -1212,16 +1356,15 @@ class MiniAnalyses:
         self.bfdelay = np.nan
         self.avg_best_fit = None
         self.Qtotal = np.nan
-        self.risetenninety = np.nan
-        self.decaythirtyseven = np.nan
+
         # print("init delay: ", initdelay)
         res = self.event_fitter_lm(
             tb,
             avgevent,
             time_past_peak=time_past_peak,
-            tau1 = self.tau1,
-            tau2 = self.tau2,
-            tau3 = self.tau3,
+            tau1=self.tau1,
+            tau2=self.tau2,
+            tau3=self.tau3,
             fixed_delay=initdelay,
             debug=debug,
             label=label,
@@ -1235,7 +1378,7 @@ class MiniAnalyses:
             np.seterr(**self.numpyerror)  # reset error detection
             scipy.special.seterr(**self.scipyerror)
             return
-            
+
         amp = np.max(res.best_fit)
         # print("amp, res amp: ", amp, res.values["amp"])
         self.amplitude = res.values["amp"]
@@ -1244,9 +1387,9 @@ class MiniAnalyses:
         self.fitted_tau2 = res.values["tau_2"]
         self.fitted_tau3 = res.values["tau_3"]
         self.fitted_tau4 = res.values["tau_4"]
-        self.fitted_tau_ratio = np.nan # res.values["tau_ratio"] #(
-           # res.values["tau_2"] / res.values["tau_1"]
-       # )  # res.values["tau_ratio"]
+        self.fitted_tau_ratio = np.nan  # res.values["tau_ratio"] #(
+        # res.values["tau_2"] / res.values["tau_1"]
+        # )  # res.values["tau_ratio"]
         self.bfdelay = res.values["fixed_delay"]
 
         self.avg_best_fit = self.sign * res.best_fit  # self.fitresult.best_fit
@@ -1258,43 +1401,7 @@ class MiniAnalyses:
         # print(self.fitted_tau1, self.fitted_tau2)
         fiterr = np.linalg.norm(self.avg_best_fit - avgevent[self.tsel :])
         self.avg_fiterr = fiterr
-        ave = self.sign * avgevent
-        move_avg, n = self.moving_average(  # apply 5 point moving average
-            ave,
-            n=min(5, len(ave)),
-        )
-        ipk = np.argmax(move_avg)
-        pk = move_avg[ipk]
-        p10 = 0.10 * pk
-        p90 = 0.90 * pk
-        p37 = 0.37 * pk
 
-        i10 = np.nonzero(move_avg[:ipk] <= p10)[0]
-        if len(i10) == 0:
-            self.risetenninety = np.nan
-        else:
-            i10 = i10[-1]  # get the last point where this condition was met
-            ix10 = np.interp(p10, move_avg[i10 : i10 + 2], [0, self.dt_seconds])
-            i90 = np.nonzero(move_avg[: ipk + 1] >= p90)[0]
-            ix90 = np.interp(p90, move_avg[ipk - 2 : ipk], [0, self.dt_seconds])
-            it10 = ix10 + i10 * self.dt_seconds
-            it90 = ix90 + (ipk - 2) * self.dt_seconds
-            try:
-                i90 = i90[0]  # get the first point where this condition was met
-            except:
-                CP.cprint("r", "**** Error in fit_average computing 10-90 RT")
-                print(move_avg[:ipk], p90)
-                print(i90, ix90, ix90 + ipk - 2)
-                print(i10, ix10, ix10 + i10)
-                exit()
-            self.risetenninety = it90 - it10
-
-        i37 = np.nonzero(move_avg[ipk:] >= p37)[0]  # find last point greater than 37% of peak
-        if len(i37) == 0:
-            self.decaythirtyseven = np.nan
-        else:
-            i37 = i37[-1]  # last point
-            self.decaythirtyseven = self.dt_seconds * i37
         self.Qtotal = self.dt_seconds * np.sum(avgevent[self.tsel :])
         self.fitted = True
         # np.seterr(**self.numpyerror)
@@ -1374,14 +1481,11 @@ class MiniAnalyses:
         #     mpl.plot(self.summary.allevents[ev_tr], linewidth=0.35)
         # mpl.show()
 
-        
         # only use "well-isolated" events in time to make the fit measurements.
-        print(f"Fitting individual events: {len(self.summary.isolated_event_trace_list):d}")
-        for j, ev_tr in enumerate(
-            self.summary.isolated_event_trace_list
-        ):  
-            
-            
+        print(
+            f"Fitting individual events: {len(self.summary.isolated_event_trace_list):d}"
+        )
+        for j, ev_tr in enumerate(self.summary.isolated_event_trace_list):
             # trace list of events
             # print('onsetsj: ', len(onsets[j]))
             if not ev_tr:  # event in this trace could be outside data window, so skip
@@ -1390,7 +1494,7 @@ class MiniAnalyses:
             if onsets[i_tr][j_tr] >= len(self.timebase):
                 continue
             te = self.timebase[onsets[i_tr][j_tr]]  # get current event time
-           
+
             j_nan = np.count_nonzero(np.isnan(self.summary.allevents[ev_tr]))
             if j_nan > 0:
                 raise ValueError(
@@ -1412,20 +1516,19 @@ class MiniAnalyses:
                 event=self.summary.allevents[ev_tr],
                 time_past_peak=time_past_peak,
                 tau1=self.tau1,
-                tau2 = self.tau2,
+                tau2=self.tau2,
                 fixed_delay=self.template_pre_time,
                 label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
             )
             if res is None:  # skip events that won't fit
                 continue
 
-                    
             self.bfdelay[j] = res.values["fixed_delay"]
             self.avg_best_fit = res.best_fit
             self.ev_A_fitamp[j] = res.values["amp"]
             self.ev_tau1[j] = res.values["tau_1"]
             self.ev_tau2[j] = res.values["tau_2"]
-            self.ev_tau_ratio[j] = np.nan # res.values["tau_ratio"]
+            self.ev_tau_ratio[j] = np.nan  # res.values["tau_ratio"]
 
             # print(self.fitresult.params)
             # print('amp: ', self.fitresult.params['amp'].value)
@@ -1478,14 +1581,14 @@ class MiniAnalyses:
         tau_2: float,
         tau_3: float,
         tau_4: float,
-       # tau_ratio: float=1.0,
-        risepower: float=1.0,
+        # tau_ratio: float=1.0,
+        risepower: float = 1.0,
         fixed_delay: float = 0.0,
         y: np.ndarray = None,
     ) -> np.ndarray:
         """
         Calculate a double exponential EPSC-like waveform, with 2 double functions added together.
-        The rising phase of each 
+        The rising phase of each
         is taken to a power to make it sigmoidal
         Note that the parameters p[1] and p[2] are multiplied, rather
         than divided here, so the values must be inverted in the caller
@@ -1507,8 +1610,8 @@ class MiniAnalyses:
             )
             raise ValueError()
         tm[ix:] *= np.exp(-tx / tau_2)
-        tm[ix:] += (amp2*(1-np.exp(-tx/tau_3))**risepower) * np.exp(-tx/tau_4)
-         # this gets constrained
+        tm[ix:] += (amp2 * (1 - np.exp(-tx / tau_3)) ** risepower) * np.exp(-tx / tau_4)
+        # this gets constrained
         if y is not None:  # return error - single value
             tm = np.sqrt(np.sum((tm - y) * (tm - y)))
         return tm
@@ -1520,8 +1623,8 @@ class MiniAnalyses:
         amp2: float,
         tau_1: float,
         tau_2: float,
-       # tau_ratio: float=1.0,
-        risepower: float=1.0,
+        # tau_ratio: float=1.0,
+        risepower: float = 1.0,
         fixed_delay: float = 0.0,
         y: np.ndarray = None,
     ) -> np.ndarray:
@@ -1548,11 +1651,11 @@ class MiniAnalyses:
             )
             raise ValueError()
         tm[ix:] *= np.exp(-tx / tau_2)
-         # this gets constrained
+        # this gets constrained
         if y is not None:  # return error - single value
             tm = np.sqrt(np.sum((tm - y) * (tm - y)))
         return tm
-    
+
     def event_fitter_lm(
         self,
         timebase: np.ndarray,
@@ -1560,8 +1663,8 @@ class MiniAnalyses:
         time_past_peak: float = 1e-4,
         tau1: float = None,
         tau2: float = None,
-        tau3: float=None,
-        tau4: float=None,
+        tau3: float = None,
+        tau4: float = None,
         init_amp: float = None,
         fixed_delay: float = 0.0,
         debug: bool = False,
@@ -1597,21 +1700,33 @@ class MiniAnalyses:
                         int(0.005 - fixed_delay) / self.dt_seconds
                     ]  # print("itau2: ", itau2)
             tau2 = (itau2[0] - fixed_delay) * self.dt_seconds
-        if tau2 <= 1.5 * tau1:
-            tau2 = 5 * tau1  # move it further out
-        
+            if tau2 <= 1.5 * tau1:
+                tau2 = 5 * tau1  # move it further out
+
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
 
         if self.datatype in ["V", "VC"]:
-            tau1min = tau1 / 10.0
-            if tau1min < 1e-4:
-                tau1min = 1e-4
+            tau1min = tau1 / 4.0
+            tau2min = tau2 / 2.0
+            tau1max = tau1 * 2.0
+            tau2max = tau2 * 2.0
+
+            if tau1min < 2e-5:
+                tau1min = 2e-5
             params["amp"] = lmfit.Parameter(
-                name="amp", value=25.0e-12, min=0e-9, max=50e-9, vary=True,
+                name="amp",
+                value=25.0e-12,
+                min=0e-9,
+                max=50e-9,
+                vary=True,
             )
             params["amp2"] = lmfit.Parameter(
-                name="amp2", value=25.0e-12, min=0e-9, max=50e-9, vary=True,
+                name="amp2",
+                value=25.0e-12,
+                min=0e-9,
+                max=50e-9,
+                vary=True,
             )
             tau2min = 0.2e-3
             tau3min = 5.0e-3
@@ -1625,14 +1740,14 @@ class MiniAnalyses:
             params["amp"] = lmfit.Parameter(
                 name="amp",
                 value=amp,
-                min=-5*amp,
+                min=-5 * amp,
                 max=5 * amp,
                 vary=True,
             )
             params["amp2"] = lmfit.Parameter(
                 name="amp2",
                 value=amp,
-                min=-5*amp,
+                min=-5 * amp,
                 max=5 * amp,
                 vary=True,
             )
@@ -1642,7 +1757,7 @@ class MiniAnalyses:
             name="tau_1",
             value=tau1,
             min=tau1min,
-            max=50e-3,  # tau1 * tau1_maxfac,
+            max=tau1max,  # tau1 * tau1_maxfac,
             vary=True,
         )
         # params["tau_ratio"] = lmfit.Parameter(
@@ -1660,57 +1775,62 @@ class MiniAnalyses:
             name="tau_2",
             value=tau2,
             min=tau2min,
-            max=100e-3,  # tau1 * tau1_maxfac,
+            max=tau2max,  # tau1 * tau1_maxfac,
             vary=True,
         )
         params["tau_3"] = lmfit.Parameter(
-                    name="tau_3",
-                    value=tau3,
-                    min=tau1min,
-                    max=50e-3,  # tau1 * tau1_maxfac,
-                    vary=True,
-                )
+            name="tau_3",
+            value=tau3,
+            min=tau1min,
+            max=50e-3,  # tau1 * tau1_maxfac,
+            vary=True,
+        )
         params["tau_4"] = lmfit.Parameter(
-                    name="tau_4",
-                    value=tau3,
-                    min=tau3min,
-                    max=50e-3,  # tau1 * tau1_maxfac,
-                    vary=True,
-                )
+            name="tau_4",
+            value=tau3,
+            min=tau3min,
+            max=50e-3,  # tau1 * tau1_maxfac,
+            vary=True,
+        )
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,
             vary=False,
-            min = fixed_delay,
-            max = fixed_delay+1e-3,
+            min=fixed_delay,
+            max=fixed_delay + 1e-3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
-        self.fitresult = dexpmodel.fit(evfit, params, 
-                                       nan_policy="raise", 
-                                       time=timebase,
-                                       max_nfev=3000,
-                                       method="nelder",
+        self.fitresult = dexpmodel.fit(
+            evfit,
+            params,
+            nan_policy="raise",
+            time=timebase,
+            max_nfev=3000,
+            method="nelder",
         )
         # now repeat with 2 exponentials.
         dexpmodel = lmfit.Model(self.doubleexp_lm)
-        params['tau_1'].value = self.fitresult.best_values['tau_1']
-        params['tau_2'].value = self.fitresult.best_values['tau_2']
-        params['amp'].value = self.fitresult.best_values['amp']
-        self.fitresult = dexpmodel.fit(evfit, params, 
-                                       nan_policy="raise", 
-                                       time=timebase,
-                                       max_nfev=3000,
-                                       method="nelder",
+        params["tau_1"].value = self.fitresult.best_values["tau_1"]
+        params["tau_2"].value = self.fitresult.best_values["tau_2"]
+        params["amp"].value = self.fitresult.best_values["amp"]
+        self.fitresult = dexpmodel.fit(
+            evfit,
+            params,
+            nan_policy="raise",
+            time=timebase,
+            max_nfev=3000,
+            method="nelder",
         )
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
 
-        debug=False
+        debug = False
         if debug:
             import matplotlib.pyplot as mpl
+
             mpl.figure()
             mpl.plot(timebase, evfit, "k-")
             mpl.plot(timebase, self.fitresult.best_fit, "r--")
@@ -1786,7 +1906,10 @@ class MiniAnalyses:
                                 print(f"  failed tau min factor")
                     else:
                         if verbose:
-                            print(f"  failed, < min amplitude. {1e12*self.ev_fitamp[i]:f} < {1e12*self.min_event_amplitude:f} ", end="")
+                            print(
+                                f"  failed, < min amplitude. {1e12*self.ev_fitamp[i]:f} < {1e12*self.min_event_amplitude:f} ",
+                                end="",
+                            )
 
             if verbose:
                 print()
@@ -2088,7 +2211,7 @@ class MiniAnalyses:
                 label7 = ""
             evlen = len(self.summary.average.avgevent)
             ax[2].plot(
-                self.summary.average.avgeventtb[:evlen]*1e3,
+                self.summary.average.avgeventtb[:evlen] * 1e3,
                 scf * self.summary.average.avgevent,
                 "k-",
                 label=label7,
@@ -2104,7 +2227,7 @@ class MiniAnalyses:
                 else:
                     label8 = ""
                 ax[2].plot(
-                    self.summary.average.avgeventtb[:maxl]*1e3 + self.bfdelay,
+                    self.summary.average.avgeventtb[:maxl] * 1e3 + self.bfdelay,
                     scf * self.sign * self.template[:maxl] * maxa / self.template_amax,
                     "m-",
                     label=label8,
@@ -2126,7 +2249,7 @@ class MiniAnalyses:
             else:
                 label9 = ""
             ax[2].plot(
-                self.summary.average.avgeventtb[: len(self.avg_best_fit)]*1e3,
+                self.summary.average.avgeventtb[: len(self.avg_best_fit)] * 1e3,
                 scf * self.avg_best_fit,
                 "c--",
                 linewidth=2.0,
