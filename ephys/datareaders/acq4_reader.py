@@ -524,7 +524,7 @@ class acq4_reader:
             try:
                 tr = EM.MetaArray(file=fn, readAllData=False)
                 info = tr[0].infoCopy()
-                self.parseClampInfo(info)
+                self.parseClampInfo(info, switchchan=False)
             except:
                 raise FileExistsError(f"The file: {str(fn):s} could not be parsed... ")
         return info
