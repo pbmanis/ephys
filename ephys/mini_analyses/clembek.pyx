@@ -51,7 +51,7 @@ def clembek(
     sumy2 = 0.0
     for j in range(nt):  # initialize sums from data
         sumy += p_data[j]
-        sumy2 += p_data[j] * p_data[j]
+        sumy2 += (p_data[j] * p_data[j])
 
     for i in range(nd-nt): 
         sumy += (p_data[i+nt-1] - p_data[i-1])
