@@ -157,6 +157,10 @@ class MiniAnalysis:
     def set_protocol_name(self, name):
         self.protocol_name = name
 
+    def set_template_parameters(self, tmax=0.010, pre_time=0.0):
+        self.template_tmax = tmax
+        self.template_pre_time = pre_time
+
     # from acq4 functions:
     def measure_baseline(self, data, threshold=2.0, iterations=2):
         """Find the baseline value of a signal by iteratively measuring the median value, then excluding outliers."""
@@ -197,7 +201,7 @@ class MiniAnalysis:
         Nothing
 
         """
-        print("analyze_all")
+        print("Starting routine: analyze_all")
         acqr = DR.acq4_reader.acq4_reader(
             dataname=self.clamp_name
         )  # creates a new instance every time - probably should just create one.
@@ -416,14 +420,18 @@ class MiniAnalysis:
                     fontsize=6,
                 )
 
-            maxt = np.max(time_base)
+            if method == 'aj':
+                template_tmax = np.max(time_base)
+            else:
+                template_tmax = self.template_tmax
 
             tracelist, nused = self.analyze_protocol_traces(
                 method_name=method,
                 engine=engine,
                 data=data,
                 time_base=time_base,
-                maxt=maxt,
+                template_maxt=template_tmax,
+                template_pre_time=self.template_pre_time,
                 dt_seconds=dt_seconds,
                 mousedata=mousedata,
                 ntr=ntr,
@@ -474,7 +482,8 @@ class MiniAnalysis:
         engine: str="cython",
         data: Union[object, None] = None,
         time_base: Union[np.ndarray, None] = None,
-        maxt: float = 0.0,
+        template_tmax: float = 0.01,
+        template_pre_time: float = 0.0000,
         dt_seconds: Union[float, None] = None,
         mousedata: Union[dict, None] = None,
         ntr: int = 0,
@@ -519,8 +528,8 @@ class MiniAnalysis:
                 ntraces=ntraces,
                 tau1=mousedata["rt"],
                 tau2=mousedata["decay"],
-                template_tmax=maxt,
-                template_pre_time = 1e-3, # seconds
+                template_tmax=template_tmax,
+                template_pre_time = template_pre_time, # seconds
                 dt_seconds=dt_seconds,
                 delay=0.,  # delay before analysis into each trace/sweep
                 sign=self.sign,
@@ -542,6 +551,7 @@ class MiniAnalysis:
                     prepare_data = False,
                 )  # , order=order) # threshold=float(mousedata['thr']),
                 # data[i] = aj.data.copy()
+            raise()
             aj.identify_events(order=order)
             summary = aj.summarize(aj.data)
             summary = aj.average_events(  # also does the fitting
@@ -982,8 +992,8 @@ class MiniAnalysis:
         try:
             np.nanmean(t1)
         except:
-            print(len(self.cell_summary['indiv_tau1']))
-            print(self.cell_summary['indiv_tau1'])
+            print("len individual tau1: ", len(self.cell_summary['indiv_tau1']))
+            print("Individual Tau1s: ", self.cell_summary['indiv_tau1'])
             raise ValueError
         
         P.axdict["F"].text(
@@ -1197,8 +1207,8 @@ class MiniAnalysis:
         gammapdf = scipy.stats.gamma.pdf(
                     [gamma_midpoint], a=ampgamma[0], loc=ampgamma[1], scale=ampgamma[2]
                 )
-        print(gammapdf)
-        print(gamma_midpoint)
+        # print(gammapdf)
+        # print(gamma_midpoint)
 
         self.axAmps.plot(
             [gamma_midpoint, gamma_midpoint],
@@ -1395,7 +1405,7 @@ if __name__ == "__main__":
             fofilename = "summarydata_{0:s}_{1:s}_{2:s}.pdf".format(
                 args.do_one, filterstring, args.mode
             )
-            print("fofile: ", fofilename)
+            print("Summary output file for one cell:\n     ", fofilename)
             with PdfPages(fofilename) as pdf:
                 MI.analyze_one_cell(
                     args.do_one,

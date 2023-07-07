@@ -329,7 +329,7 @@ class ClementsBekkers(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + int(self.template_pre_time/self.dt_seconds) # offset onset to remove template baseline offset
+           #     + int(self.template_pre_time/self.dt_seconds) # offset onset to remove template baseline offset
             )
 
             endtime = timeit.default_timer() - self.starttime
@@ -369,7 +369,6 @@ class AndradeJonas(MiniAnalyses):
         self.sign = 1
         self.taus = None
         self.template_max = None
-        self.idelay = 0
         self.method = "aj"
         self.Crit = None
         super().__init__()
@@ -456,7 +455,7 @@ class AndradeJonas(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                + 2 * int(self.template_pre_time/self.dt_seconds) # offset onset to remove template baseline offset
+                + int(self.template_pre_time/self.dt_seconds) # adjust for template pre-event time
             )
             endtime = timeit.default_timer() - self.starttime
         self.runtime = endtime
@@ -476,7 +475,7 @@ class RSDeconvolve(MiniAnalyses):
         self.sign = 1
         self.taus = None
         self.template_max = None
-        self.idelay = 0
+        self.template_pre_time = 0.0
         self.threshold = 2.0
         self.method = "rs"
         super().__init__()
@@ -589,7 +588,6 @@ class RSDeconvolve(MiniAnalyses):
             self.onsets[i] = (
                 scipy.signal.argrelextrema(self.above, np.greater, order=int(order))[0]
                 - 1
-                #+ self.idelay
             )
 
             endtime = timeit.default_timer() - self.starttime
@@ -613,7 +611,6 @@ class ZCFinder(MiniAnalyses):
         self.sign = 1
         self.taus = None
         self.template_max = None
-        self.idelay = 0
         self.threshold = 2.5  # x SD
         self.method = "zc"
         super().__init__()

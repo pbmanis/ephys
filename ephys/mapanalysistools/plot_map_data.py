@@ -733,12 +733,9 @@ class PlotMapData:
                 continue
 
             tb0 = events[trial].average.avgeventtb  # get from the averaged trace
-
             rate = events[trial].dt_seconds
-            tpre = 0.1 * np.max(tb0)
+            tpre = 0 # 0.1 * np.max(tb0)  tpre should be specified already.
             tpost = np.max(tb0)
-            ipre = int(tpre / rate)
-            ipost = int(tpost / rate)
             tb = np.arange(-tpre, tpost + rate, rate) + tpre
             ptfivems = int(0.0005 / rate)
             allevents = events[trial].allevents
@@ -765,7 +762,8 @@ class PlotMapData:
                     # evs is 2 element array: [0] are onsets and [1] is peak; here we align the traces to onsets
                     event_id = (itrace, j)
                     evdata = allevents[event_id]
-                    bl = np.mean(evdata[0 : ipre - ptfivems])
+                    # print("ipre: ", ipre, "ptfivems: ", ptfivems)
+                    bl = np.mean(evdata[0 : ptfivems]) # ipre - ptfivems])
                     evdata -= bl
                     if len(evdata) > 0:
                         append = False
@@ -817,7 +815,7 @@ class PlotMapData:
         self.MA.set_datatype(datatype)
         avedat = np.mean(aved, axis=0)
         tb = tb[: len(avedat)]
-        avebl = np.mean(avedat[:ptfivems])
+        avebl = 0 # np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
         self.MA.fit_average_event(
             tb,
@@ -842,8 +840,8 @@ class PlotMapData:
             amp = np.min(bfit)
         else:
             amp = np.max(bfit)
-        txt = f"Amp: {scale*Amplitude:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d})"
-        txt = f"Amp2: {scale*Amplitude2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
+        txt = f"Amp: {scale*Amplitude:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d} del={bfdelay:.4f})"
+        txt2 = f"Amp2: {scale*Amplitude2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
 
         if evtype == "avgspont" and events[0] is not None:
             srate = float(aved.shape[0]) / (
@@ -852,7 +850,8 @@ class PlotMapData:
             txt += f" SR: {srate:.2f} Hz"
         if events[0] is None:
             txt = txt + "SR: No events"
-        ax.text(0.05, 0.95, txt, fontsize=7, transform=ax.transAxes)
+        ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
+        ax.text(0.05, 0.91, txt2, fontsize=6, transform=ax.transAxes)
         ax.plot(
             tb * 1e3,
             scale * bfit,
@@ -874,13 +873,13 @@ class PlotMapData:
             PH.calbar(
                 ax,
                 calbar=[
-                    np.max(tb) - 2.0,
+                    np.max(tb*1e3) - 2.0,
                     ylims[0],
-                    2.0,
+                    2,
                     self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0),
                 ],
                 axesoff=True,
-                orient="left",
+                orient="right",
                 unitNames={"x": "ms", "y": label},
                 fontsize=11,
                 weight="normal",
@@ -890,13 +889,13 @@ class PlotMapData:
             PH.calbar(
                 ax,
                 calbar=[
-                    np.max(tb) - 2.0,
+                    np.max(tb*1e3) - 2.0,
                     ylims[0],
-                    2.0,
+                    2,
                     self.get_calbar_Yscale(maxev / 4.0),
                 ],
                 axesoff=True,
-                orient="left",
+                orient="right",
                 unitNames={"x": "ms", "y": label},
                 fontsize=11,
                 weight="normal",

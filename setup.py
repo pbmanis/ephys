@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from Cython.Build import cythonize
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 3, 11, 'a')
+version_info = (0, 3, 15, 'a')
 __version__ = '%d.%d.%d%s' % version_info
 
 

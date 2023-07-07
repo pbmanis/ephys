@@ -23,7 +23,7 @@ class Filtering:
     HPF_type: str = "ba"
     
     Notch_applied: bool = False
-    Notch_frequencies: Union[float, None] = None
+    Notch_frequencies: Union[float, list, None] = None
     Notch_Q: float=None
     
     Detrend_applied: bool = False
@@ -35,10 +35,11 @@ class Filtering:
 def def_empty_list():
     return [] 
 
-
 def def_empty_list2D():
     return [[None]]
 
+def def_mini_events():
+    return Mini_Event()
 
 @dataclass
 class AverageEvent:
@@ -70,7 +71,26 @@ class AverageEvent:
     risetenninety: float = np.nan  # rise time (seconds), 10-90 %
     decaythirtyseven: float = np.nan  # fall time to 37% of peak
 
+@dataclass
+class Mini_Event:
+    """Define parameters of a single event, including the waveform itself
+    This is a proposed structure for refactoring.
+    """
+    tag: tuple = (0,0)  # (trace, event#)
+    onset_time: float=np.nan
+    onset_index: int= 0
+    peak_index: int=0
+    smpk_index: int=0
+    smoothed_peak: float=np.nan
+    amplitude: float=np.nan
+    Qtotal: float=np.nan
+    baseline: float=np.nan
+    event: np.ndarray = field(  # the event waveform
+        default_factory=def_empty_list
+    )
+    classification: str="" # 'isolated', 'toosmall', 'evoked', 'spontaneous', 'artifact'
 
+    
 @dataclass
 class Mini_Event_Summary:
     """
@@ -85,7 +105,7 @@ class Mini_Event_Summary:
     filtering: object = field(default_factory=Filtering)
 
     spont_dur: float = 0.1  # seconds
-
+    events: list=field(default_factory=def_mini_events)
     onsets: Union[List, np.ndarray] = field(  # onset indices for detected events
         default_factory=def_empty_list2D
     )

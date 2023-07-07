@@ -486,6 +486,7 @@ class MAP_Analysis(Analysis):
                 )
             )
 
+
     def analyze_map(
         self,
         icell: int,
@@ -583,7 +584,7 @@ class MAP_Analysis(Analysis):
         if self.HPF > 0:
             self.AM.set_HPF(self.HPF)
         if self.notchfilter:
-            self.AM.set_notch(True, self.notchfreqs, self.notch_Q)
+            self.AM.set_notch(enable=True, freqs=self.notchfreqs, Q=self.notch_Q)
         else:
             self.AM.set_notch(False)
         self.AM.set_methodname(self.detector)
@@ -614,8 +615,10 @@ class MAP_Analysis(Analysis):
                 "g",
                 f"MAP_Analysis:analyze_map  Running map analysis: {str(self.map_name):s}",
             )
+            print("map_analysis: tmax/pre time: ", self.AM.Pars.template_tmax, self.AM.Pars.template_pre_time)
             result = self.AM.analyze_one_map(
-                mapdir, noparallel=self.noparallel, verbose=verbose
+                mapdir, noparallel=self.noparallel, verbose=verbose,
+                template_tmax=self.AM.Pars.template_tmax, template_pre_time=self.AM.Pars.template_pre_time,
             )
 
             if result is not None:

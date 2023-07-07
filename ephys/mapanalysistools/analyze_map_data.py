@@ -114,6 +114,8 @@ class AnalysisPars:
         default_factory=def_analysis_window
     )  # window for data analysis
     # taus = [0.5, 2.0]
+    template_tmax = 0.0025 # seconds
+    template_pre_time:float = 0.0 # seconds
     risepower: float = 4.0
     taus: list = field(
         default_factory=def_taus
@@ -226,7 +228,7 @@ class AnalyzeMap(object):
         self.filters.HPF_applied = False
         self.filters.Notch_applied = False
 
-    def set_notch(self, notch, freqs=[60], Q=90.0):
+    def set_notch(self, enable:bool=True, freqs:Union[list, np.array]=[60.], Q:float=90.0):
         self.filters.Notch_applied = False
         self.filters.Notch_frequencies = freqs
         self.filters.Notch_Q = Q
@@ -284,6 +286,10 @@ class AnalyzeMap(object):
             )
         self.Pars.taus[0:2] = sorted(taus[0:2])
         self.Pars.taus[2:4] = sorted(taus[2:4])
+
+    def set_template_parameters(self, tmax=0.010, pre_time=0.0):
+        self.Pars.template_tmax = tmax
+        self.Pars.template_pre_time = pre_time
 
     def set_shutter_artifact_time(self, t):
         self.Pars.shutter_artifact = t
@@ -478,10 +484,12 @@ class AnalyzeMap(object):
     def analyze_one_map(
         self,
         mapdir: Union[str, Path] = None,
-        plotevents=False,
-        raster=False,
-        noparallel=False,
-        verbose=False,
+        plotevents:bool=False,
+        raster:bool=False,
+        noparallel:bool=False,
+        verbose:bool=False,
+        template_tmax:float = 0.020,
+        template_pre_time:float = 0.0,
     ) -> Union[None, dict]:
         """_summary_
 
@@ -508,6 +516,7 @@ class AnalyzeMap(object):
             CP.cprint("r", f"Unable to read the file: {str(mapdir):s}")
             return None
             datasource: str = "",
+        print("calling MA.setup with template: ", self.Pars.template_tmax, self.Pars.template_pre_time)
         self.MA.setup(
             datasource="analyze_map_data",
             ntraces=self.mod_data.shape[0],
@@ -515,8 +524,8 @@ class AnalyzeMap(object):
             tau2=self.Pars.taus[1],
             tau3=self.Pars.taus[2],
             tau4=self.Pars.taus[3],
-            template_tmax= 0.05, # sec
-            template_pre_time= 0.001, # sec
+            template_tmax=self.Pars.template_tmax, # sec
+            template_pre_time=self.Pars.template_pre_time, # sec
             dt_seconds=self.AR.sample_interval,
             sign=self.Pars.sign,
             risepower=self.Pars.risepower,
@@ -601,8 +610,8 @@ class AnalyzeMap(object):
 
         for ix, t in enumerate(range(data.shape[1])):  # compute for each target
             for s in range(len(self.Pars.twin_resp)):  # and for each stimulus
-                print(t, s)
-                print(self.Pars.twin_base, self.Pars.twin_resp[s])
+                # print("target, stimulus time: ", t, s)
+                # print("Stim time windows: ", self.Pars.twin_base, self.Pars.twin_resp[s])
                 Qr[s, t], Qb[s, t] = self.calculate_charge(
                     timebase=timebase,
                     data=mdata[t, :],
@@ -819,7 +828,8 @@ class AnalyzeMap(object):
                 tau4=self.Pars.taus[3],  # taus are for template
                 dt_seconds=1.0 / self.rate,
                 delay=0.0,
-                template_tmax=self.Pars.analysis_window[1],
+                template_tmax=self.Pars.template_tmax, # analysis_window[1],
+                template_pre_time=self.Pars.template_pre_time,
                 sign=self.Pars.sign,
                 risepower=4.0,
                 threshold=self.Pars.threshold,
