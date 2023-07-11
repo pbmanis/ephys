@@ -169,11 +169,12 @@ def wedges(
     if c is not None:
         c = np.broadcast_to(c, zipped.shape).ravel()
         collection.set_array(c)
-        collection.set_clim(vmin, vmax)
+        # collection.set_clim(vmin, vmax)
     return collection
 
 
-def testplot():
+def testplot(crosstalk: np.ndarray, ifitx: list, avgdf: np.ndarray, 
+             intcept: float, scf:float=1e12):
     """
     Note: This cannot be used if we are running in multiprocessing mode - will throw an error
     """
@@ -334,8 +335,8 @@ class PlotMapData:
         Plot a vertical time line marker for the stimuli
         """
         yl = ax.get_ylim()
-        for j in range(len(self.Pars.stimtimes["start"])):
-            t = self.Pars.stimtimes["start"][j]-self.Pars.time_zero
+        for j in range(len(self.Pars.stimtimes["starts"])):
+            t = self.Pars.stimtimes["starts"][j]-self.Pars.time_zero
             if isinstance(t, float) and np.diff(yl) > 0:  # check that plot is ok to try
                 ax.plot(
                     [t, t],
@@ -361,12 +362,11 @@ class PlotMapData:
         plotFlag = True
         idn = 0
         self.newvmax = None
-        eventtimes = []
         events = results["events"]
         if events[0] == None:
             CP.cprint("r", "**** plot_hist: no events were found")
             return
-        rate = results["rate"]
+        rate = 1.0/results["rate"]
         tb0 = events[0].average.avgeventtb  # get from first trace in first trial
         # rate = np.mean(np.diff(tb0))
         nev = 0  # first count up events
@@ -375,7 +375,7 @@ class PlotMapData:
                 continue
             for j, jtrace in enumerate(events[itrial].onsets):
                 nev += len(jtrace)
-        eventtimes = np.zeros(nev)
+        eventtimes:np.ndarray = np.zeros(nev)
         iev = 0
         for itrial in events.keys():
             if events[itrial] is None:
@@ -422,7 +422,7 @@ class PlotMapData:
         title: str,
         results: dict,
         zscore_threshold: Union[list, None] = None,
-        ax: Union[object, None] = None,
+        ax: matplotlib.pyplot.axes = None,
         trsel: Union[int, None] = None,
     ) -> None:
         """Plot the data traces in a stacked array
@@ -438,10 +438,12 @@ class PlotMapData:
             ax (Union[object, None], optional): _description_. Defaults to None.
             trsel (Union[int, None], optional): _description_. Defaults to None.
         """
-        print("stacked trace title: ", title)
         # assert not self.plotted_em['stack']
-        CP.cprint("c", "    Starting stack plot")
+        CP.cprint("c", f"    Starting stack plot: {str(title):s}")
         now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
+        if ax is None:
+            f, ax = mpl.subplots(1, 1)
+            self.figure_handle = f
         mpl.text(
             0.96,
             0.01,
@@ -452,21 +454,16 @@ class PlotMapData:
         )
         linewidth = 0.35  # base linewidth
         self.plotted_em["stack"] = True
-        if ax is None:
-            f, ax = mpl.subplots(1, 1)
-            self.figure_handle = f
+    
         events = results["events"]
 
         if zscore_threshold is not None:
             zs = np.max(np.array(results['ZScore']), axis=0)
 
-        # print('event keys: ', events.keys())
         nevtimes = 0
         spont_ev_count = 0
         dt = np.mean(np.diff(self.Data.timebase))
         step_I = self.Pars.stepi
-        # print(tb.shape, np.max(tb), tb[itmax], self.Pars.analysis_window, dt)
-        # raise
         if trsel is not None:
             # only plot the selected traces
             for jtrial in range(mdata.shape[0]):
@@ -510,7 +507,12 @@ class PlotMapData:
             for itrace in range(mdata.shape[1]):  # across all traces
                 if zscore_threshold is not None and zs[itrace] < zscore_threshold:
                     continue
-                smpki = events[itrial].smpkindex[itrace]  # indices to peaks in ths trial/trace
+                smpki_original = events[itrial].smpkindex[itrace]  # indices to peaks in ths trial/trace
+                smpki = smpki_original
+                # for k, smpk in enumerate(smpki_original):
+                #     if smpk > len(tb):
+                #         smpki.pop(k)
+
                 pktimes = np.array(smpki)*dt # *events[itrial].dt_seconds  # times
                 # print(smpki)
                 if len(pktimes) > 0:
@@ -523,21 +525,16 @@ class PlotMapData:
                         # identify those events in the spont window - before the first stimulus
                         sd = events[itrial].spont_dur[itrace]
                         pre_stim_indices = np.where(tb[smpki] < sd)[0].astype(int)
-                        tsi = None  # indices of spontaneous events
-                        if len(pre_stim_indices) > 0:
-                            tsi = [int(smpki[x]) for x in pre_stim_indices]
-                        else:
-                            iplot_tr += 1
-                            continue
+                        tsi = [int(smpki[x]) for x in pre_stim_indices]
                      # find indices of "response" events (events occuring in a short window after each stimulus)
                         tri = np.ndarray(0)
                         for (
-                            iev
+                            t_ev
                         ) in self.Pars.twin_resp:  # find events in all response windows
-                             in_stim_indices = np.where(
-                                            (tb[smpki] >= iev[0]) & (tb[smpki] < iev[1])
+                            in_stim_indices = np.where(
+                                            (tb[smpki] >= t_ev[0]) & (tb[smpki] < t_ev[1])
                                         )[0].astype(int)
-                             if len(in_stim_indices) > 0:
+                            if len(in_stim_indices) > 0:
                                 tri = np.concatenate(
                                     (
                                         tri.copy(),
@@ -570,8 +567,7 @@ class PlotMapData:
                         ck = matplotlib.colors.to_rgba("k", alpha=1.0)
                         cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
 
-                        if len(pre_stim_indices) > 0:
-                            ax.plot(
+                        ax.plot(
                             tb[tsi], # -self.Pars.time_zero,
                             ms * self.Pars.scale_factor + step_I * iplot_tr,
                             "o",
@@ -667,10 +663,11 @@ class PlotMapData:
     def plot_event_traces(
         self,
         evtype: str,
-        mdata: Union[np.ndarray, None] = None,
-        trace_tb: Union[np.ndarray, None] = None,
-        datatype: Union[str, None] = None,
-        results: Union[dict, None] = None,
+        mdata: np.ndarray,
+        trace_tb: np.ndarray,
+        datatype: str,
+        results: dict,
+        tpre: float=0.0,
         zscore_threshold: Union[float, None] = None,
         plot_minmax:Union[list, None] = None,  # put bounds on amplitude of events that are plotted
         ax: Union[object, None] = None,
@@ -734,9 +731,8 @@ class PlotMapData:
 
             tb0 = events[trial].average.avgeventtb  # get from the averaged trace
             rate = events[trial].dt_seconds
-            tpre = 0 # 0.1 * np.max(tb0)  tpre should be specified already.
             tpost = np.max(tb0)
-            tb = np.arange(-tpre, tpost + rate, rate) + tpre
+            tb = np.arange(0, tpost + rate, rate)
             ptfivems = int(0.0005 / rate)
             allevents = events[trial].allevents
 
@@ -761,6 +757,8 @@ class PlotMapData:
                 for j, jevent in enumerate(evs[0]): 
                     # evs is 2 element array: [0] are onsets and [1] is peak; here we align the traces to onsets
                     event_id = (itrace, j)
+                    if event_id not in allevents.keys():
+                        continue
                     evdata = allevents[event_id]
                     # print("ipre: ", ipre, "ptfivems: ", ptfivems)
                     bl = np.mean(evdata[0 : ptfivems]) # ipre - ptfivems])
@@ -817,15 +815,16 @@ class PlotMapData:
         tb = tb[: len(avedat)]
         avebl = 0 # np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
+        print("pmd, tpre: ", tpre)
         self.MA.fit_average_event(
             tb,
             avedat,
             debug=False,
             label="Map average",
             inittaus=self.Pars.taus,
-            initdelay=tpre,
+            initdelay= tpre,
         )
-        # CP.cprint("c", "        Event fitting completed")
+        CP.cprint("c", "        Event fitting completed")
  
         Amplitude = self.MA.fitresult.values["amp"]
         Amplitude2 = self.MA.fitresult.values["amp2"]
@@ -851,7 +850,7 @@ class PlotMapData:
         if events[0] is None:
             txt = txt + "SR: No events"
         ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
-        ax.text(0.05, 0.91, txt2, fontsize=6, transform=ax.transAxes)
+        ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
         ax.plot(
             tb * 1e3,
             scale * bfit,
@@ -869,6 +868,9 @@ class PlotMapData:
         )
 
         ylims = ax.get_ylim()
+        ylimsn = 1.4*ylims[0]
+        ylimsp = 1.4*ylims[1]
+        ax.set_ylim([ylimsn, ylimsp])
         if evtype == "avgspont":
             PH.calbar(
                 ax,
@@ -906,8 +908,8 @@ class PlotMapData:
         self,
         ax: object,
         results: dict,
-        tb: Union[np.ndarray, None],
-        mdata: Union[np.ndarray, None],
+        tb: np.ndarray,
+        mdata: np.ndarray,
         color: str = "k",
     ) -> None:
         """
@@ -938,6 +940,7 @@ class PlotMapData:
                 rasterized=self.rasterized,
                 linewidth=0.6,
             )
+
         ax.set_xlim(0.0, self.Pars.time_end * 1e3 - 1.0)
 
     def clip_colors(self, cmap, clipcolor):
@@ -1186,7 +1189,7 @@ class PlotMapData:
             vmax = 1
         if vmin == np.nan:
             vmin = 0
-        print("vmax: ", vmax, "vmin : ", vmin)
+        # print("vmax: ", vmax, "vmin : ", vmin)
 
         scaler = PH.NiceScale(vmin, vmax)
 
@@ -1570,7 +1573,9 @@ class PlotMapData:
                 if avedata.ndim > 1:
                     avedata = np.mean(avedata, axis=0)
                 dt = np.mean(np.diff(self.Data.timebase))
-                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', linewidth=0.7)
+                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', alpha=0.5, linewidth=0.4)
+                self.P.axdict[self.panels["average_panel"]].plot(self.Data.raw_timebase, self.Data.raw_data_averaged,
+                                                                'r-', linewidth=0.3, alpha=0.5)
                 self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
 
                 # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
@@ -1668,6 +1673,7 @@ class PlotMapData:
             datatype = datatype,
             ax=self.P.axdict[evoked_panel],
             results = results,
+            tpre=self.Pars.template_pre_time,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
             scale=scf,
@@ -1681,6 +1687,7 @@ class PlotMapData:
             datatype = datatype,
             ax=self.P.axdict[spont_panel],
             results = results,
+            tpre=self.Pars.template_pre_time,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
             scale=scf,

@@ -122,7 +122,8 @@ class IVAnalysis:
             return False
         else:
             return True
-
+    
+    import matplotlib.figure
     def compute_iv(
         self,
         threshold: float = -0.010,
@@ -133,7 +134,7 @@ class IVAnalysis:
         full_spike_analysis: bool = True,
         max_spikeshape: int = 2,
         to_peak: bool = True,
-    ) -> Union[None, object]:
+    ) -> Union[matplotlib.figure.Figure, None]:
         """
         Simple plot of spikes, FI and subthreshold IV
 

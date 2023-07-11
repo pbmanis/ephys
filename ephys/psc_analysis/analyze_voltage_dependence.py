@@ -215,7 +215,7 @@ def analyze_VDEP(
     PSC.analysis_summary["meas_times"] = {"tAMPA": mintime, "tNMDA": ndelay}
     PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim_I)
     PSC.analysis_summary["psc_intervals"] = np.array(stimintvl)
-    PSC.analysis_summary["stim_times"] = PSC.pulse_train["start"]
+    PSC.analysis_summary["stim_times"] = PSC.pulse_train["starts"]
     PSC.analysis_summary["Vcmd"] = cmds
     PSC.analysis_summary["Window"] = [PSC.T0, PSC.T1]
     return True

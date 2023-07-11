@@ -55,6 +55,7 @@ class EventParameters:
     # if so, the event is {'t', 'I'} np arrays.
     expseed: Union[int, None] = 1  # starting seed for intervals
     noiseseed: Union[int, None] = 1  # starting seed for background noise
+    artifact_suppression: bool=False
 
 
 def printPars(pars):
@@ -300,6 +301,7 @@ def run_ClementsBekkers(
         delay=0.0,
         template_tmax=5.0 * pars.template_taus[1],
         sign=pars.sign,
+        risepower=4.0,
         threshold=pars.threshold,
         filters=filters,
     
@@ -308,7 +310,7 @@ def run_ClementsBekkers(
         pars, ntrials=pars.ntraces, baseclass=cb
     )
     cb.set_timebase(timebase)
-    cb.prepare_data(testpscn)
+    cb.prepare_data(testpscn, pars=pars)
     tot_seeded = sum([len(x) for x in i_events])
     print("total seeded events: ", tot_seeded)
 
@@ -462,7 +464,7 @@ def run_AndradeJonas(
         pars, ntrials=pars.ntraces, baseclass=aj
     )
     aj.set_timebase(timebase)
-    aj.prepare_data(testpscn)
+    aj.prepare_data(testpscn, pars=pars)
 
     tot_seeded = sum([len(x) for x in i_events])
     print("Total # of seeded events: ", tot_seeded)

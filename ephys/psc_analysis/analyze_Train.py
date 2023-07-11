@@ -174,7 +174,7 @@ def analyze_Train(
     PSC.analysis_summary["Train_traces_R"] = train_traces_R # trace current data
     PSC.analysis_summary["psc_amp"] = psc_amp
     PSC.analysis_summary["psc_stim_amplitudes"] = np.array(stim['amplitude'])
-    PSC.analysis_summary["stim_times"] = np.array(stim['start'])
+    PSC.analysis_summary["stim_times"] = np.array(stim['starts'])
     PSC.analysis_summary['sample_interval'] = sinterval
     PSC.analysis_summary["window"] = train_windows
     PSC.analysis_summary["Group"] = PSC.Group
