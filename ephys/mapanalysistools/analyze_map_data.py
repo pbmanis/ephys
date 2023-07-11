@@ -44,120 +44,7 @@ np.seterr(divide="raise")
 Logger = logging.getLogger(__name__)
 Logger.setLevel(logging.DEBUG)
 
-def def_notch():
-    """defaults for notch frequencies"""
-    return [60.0, 120.0, 180.0, 240.0]
 
-
-def def_stimtimes():
-    return {"start": [0.3], "duration": [1e-3]}
-
-def def_steptimes():
-    return {"start": [0.6], "duration": [1e-2]}
-
-def def_twin_base():
-    return [0.0, 0.295]
-
-
-def def_twin_response():
-    return [0.301, 0.325]
-
-
-def def_taus():
-    return [0.0002, 0.005, 0.005, 0.030]
-
-
-def def_shutter_artifacts():
-    return [0.055]
-
-
-def def_analysis_window():
-    return [0.0, 0.999]
-
-
-@dataclass
-class AnalysisPars:
-    """
-    Data class that holds most of the analysis parameters
-    This class is also passed to the plotMapdata routines
-    (display_one_map).
-    """
-
-    dt_seconds: float = 2e-5  # sample rate in seconds
-    spotsize: float = 42e-6  # spot size in meters
-    baseline_flag: bool = False
-    baseline_subtracted: bool = False
-    filters: object = field(default_factory=MEDC.Filtering)
-    fix_artifact_flag: bool = False  # flag enabling removeal of artifacts
-    artifact_file: Union[Path, None] = None
-    artifact_file_path: Union[Path, None] = None
-    ar_tstart: float = 0.10  # starting time for VC or IC stimulus pulse
-    ar_tend: float = 0.015  # end time for VC or IC stimulus pulse
-    time_zero: float = 0.0  # in seconds, where we start the trace
-    time_zero_index: int = 0
-    time_end: float = 1.0  # in seconds, end time of the trace
-    time_end_index: int = 0  # needs to be set from the data
-    stimtimes: dict = field(default_factory=def_stimtimes)
-    currentsteptimes: dict = field(default_factory=def_steptimes)
-    spont_deadtime: float = (
-        0.010  # time after trace onset before counting spont envents
-    )
-    direct_window: float = 0.0005  # window after stimulus for direct response
-    response_window: float = 0.015  # window end for response (response is between direct and response), seconds
-    twin_base: list = field(
-        default_factory=def_twin_base
-    )  # time windows baseline measures
-    twin_resp: list = field(
-        default_factory=def_twin_response
-    )  # time windows for repeated responses
-    analysis_window: list = field(
-        default_factory=def_analysis_window
-    )  # window for data analysis
-    # taus = [0.5, 2.0]
-    template_tmax = 0.0025 # seconds
-    template_pre_time:float = 0.0 # seconds
-    risepower: float = 4.0
-    taus: list = field(
-        default_factory=def_taus
-    )  # initial taus for fitting detected events
-    threshold: float = 3.0  # default threshold for CB, AJ or ZC
-    sign: int = -1  # negative for EPSC, positive for IPSC
-    datatype: str = "V"  # data type - VC or IC
-    stepi: float = (
-        25.0  # step size for stacked traces, in pA (25 default for cc; 2 for cc)
-    )
-    scale_factor: float = 1.0  # scale factore for data (convert to pA or mV,,, )
-    overlay_scale: float = 0.0
-    shutter_artifact: list = field(
-        default_factory=def_shutter_artifacts
-    )  # time of shutter electrical artifat
-    artifact_suppress: bool = True  # flag enabling suppression of artifacts
-    artifact_duration: float = 2e-3  # length of artifat, in seconds
-    stimdur: Union[float, None] = None  # duration of stimuli
-    noderivative_artifact: bool = (
-        True  # flag enableing artifact suppression based on derivative of trace
-    )
-    sd_thr: float = 3.0  # threshold in sd for diff based artifact suppression.
-    global_SD: float = 0.0  # raw global SD
-    global_mean: float = 0.0  # raw global mean
-    global_trim_scale: float = 3.0
-    global_trimmed_SD: float = 0.0  # raw global trimeed SD with outliers > 3.0
-    global_trimmed_median: float = 0.0
-
-
-@dataclass
-class AnalysisData:
-    """
-    Data class that holds the analysis data separate from the parameters
-    and metadata
-    This class is also made available to the plotMapdata routines
-    """
-
-    timebase: Union[None, np.ndarray] = None  # the time base corresponding to the clean data
-    data_clean: Union[None, np.ndarray] = None  # data with filtering, detrending, artifact removal
-    photodiode: Union[None, np.ndarray] = None  # photodiode current trace (monitor)
-    photodiode_timebase: Union[None, np.ndarray] = None # photodiode time base matching current trace
-    MA: Union[object, None] = None  # point to minanalysis instance used for analysis
 
 
 class AnalyzeMap(object):
@@ -169,8 +56,8 @@ class AnalyzeMap(object):
         self.timebase = None
 
     def reset(self):
-        self.Pars = AnalysisPars()
-        self.Data = AnalysisData()
+        self.Pars = MEDC.AnalysisPars()
+        self.Data = MEDC.AnalysisData()
 
         self.verbose = True
         self.last_dataset = None
@@ -228,7 +115,7 @@ class AnalyzeMap(object):
         self.filters.HPF_applied = False
         self.filters.Notch_applied = False
 
-    def set_notch(self, enable:bool=True, freqs:Union[list, np.array]=[60.], Q:float=90.0):
+    def set_notch(self, enable:bool=True, freqs:Union[list, np.ndarray]=[60.], Q:float=90.0):
         self.filters.Notch_applied = False
         self.filters.Notch_frequencies = freqs
         self.filters.Notch_Q = Q
@@ -294,13 +181,20 @@ class AnalyzeMap(object):
     def set_shutter_artifact_time(self, t):
         self.Pars.shutter_artifact = t
 
-    def set_artifact_suppression(self, suppr=True):
-        if not isinstance(suppr, bool):
+    def set_artifact_suppression(self, enable=False):
+        if not isinstance(enable, bool):
             raise ValueError(
                 "analyzeMapData: artifact suppresion must be True or False"
             )
-        self.Pars.artifact_suppress = suppr
-        self.Pars.fix_artifact_flag = suppr
+        self.Pars.artifact_suppression = enable
+
+    def set_post_analysis_artifact_rejection(self, enable=False):
+        if not isinstance(enable, bool):
+            raise ValueError(
+                "analyzeMapData: post-analysis artifact suppresion must be True or False"
+            )
+        self.Pars.post_analysis_artifact_rejection = enable
+
 
     def set_artifact_duration(self, duration=2.0):
         self.Pars.artifact_duration = duration
@@ -308,12 +202,12 @@ class AnalyzeMap(object):
     def set_stimdur(self, duration=None):
         self.Pars.stimdur = duration
 
-    def set_noderivative_artifact(self, suppr=True):
-        if not isinstance(suppr, bool):
+    def set_artifact_derivative(self, enable=True):
+        if not isinstance(enable, bool):
             raise ValueError(
                 "analyzeMapData: derivative artifact suppresion must be True or False"
             )
-        self.Pars.noderivative_artifact = suppr
+        self.Pars.artifact_derivative = enable
 
     def set_artifact_file(self, filename):
         self.template_file = filename
@@ -343,7 +237,9 @@ class AnalyzeMap(object):
 
         # get the laser pulse times
         self.AR.getLaserBlueTimes()
-        self.Pars.stimtimes = self.AR.LaserBlueTimes
+        self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
+        self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
+
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.ar_tend = self.AR.tend
         self.Pars.dt_seconds = 1.0 / self.AR.sample_interval
@@ -356,7 +252,7 @@ class AnalyzeMap(object):
         self.Pars.time_zero = 0.0
         self.Pars.time_zero_index = 0
         if (
-            self.Pars.ar_tend < self.Pars.stimtimes["start"][0]
+            self.Pars.ar_tend < self.Pars.stimtimes["starts"][0]
         ):  # VC/IC pulse precedes stimuli
             self.Pars.time_zero = (
                 self.Pars.ar_tend + 0.010
@@ -365,7 +261,7 @@ class AnalyzeMap(object):
             if self.Pars.twin_base[0] < self.Pars.time_zero:
                 self.Pars.twin_base[0] = self.Pars.time_zero
         elif (
-            self.Pars.ar_tstart > self.Pars.stimtimes["start"][-1]
+            self.Pars.ar_tstart > self.Pars.stimtimes["starts"][-1]
         ):  # after the last stimulus:
             self.Pars.time_end = (
                 self.Pars.ar_tstart - 0.001
@@ -378,16 +274,16 @@ class AnalyzeMap(object):
         if self.Pars.stimtimes is not None:
             self.Pars.twin_base = [
                 0.0,
-                self.Pars.stimtimes["start"][0] - 0.001 - self.Pars.time_zero,
+                self.Pars.stimtimes["starts"][0] - self.Pars.time_zero,
             ]  # remember times are in seconds
             self.Pars.twin_resp = []
-            for j in range(len(self.Pars.stimtimes["start"])):
+            for j in range(len(self.Pars.stimtimes["starts"])):
                 self.Pars.twin_resp.append(
                     [
-                        self.Pars.stimtimes["start"][j]
+                        self.Pars.stimtimes["starts"][j]
                         + self.Pars.direct_window
                         - self.Pars.time_zero,
-                        self.Pars.stimtimes["start"][j]
+                        self.Pars.stimtimes["starts"][j]
                         + self.Pars.response_window
                         - self.Pars.time_zero,
                     ]
@@ -515,8 +411,8 @@ class AnalyzeMap(object):
         if self.mod_data is None:
             CP.cprint("r", f"Unable to read the file: {str(mapdir):s}")
             return None
-            datasource: str = "",
-        print("calling MA.setup with template: ", self.Pars.template_tmax, self.Pars.template_pre_time)
+
+        print("calling MA.setup with template pre, tmax (s): ", self.Pars.template_pre_time, self.Pars.template_tmax )
         self.MA.setup(
             datasource="analyze_map_data",
             ntraces=self.mod_data.shape[0],
@@ -536,27 +432,28 @@ class AnalyzeMap(object):
         if self.verbose:
             CP.cprint("c", "  ANALYZE ONE MAP")
         self.noparallel = noparallel
+        # only clip window after setting analysis window
+        raw_data, self.raw_timebase = self.MA.clip_window(self.mod_data[0], timebase=self.AR.time_base)
+        self.raw_data_averaged = np.mean(raw_data, axis=0) - np.mean(raw_data[:, 0:100])
+        self.raw_data_std = np.std(raw_data, axis=0)
+
         self.rate = self.AR.sample_rate[0]  # sample frequency in Hz
         self.last_dataset = mapdir
-        if self.Pars.fix_artifact_flag:
-            self.mod_data, self.avgdata = self.fix_artifacts(self.mod_data)
-            CP.cprint("c", "        Fixing Artifacts")
-
         self.Data.data_clean = []
-        for i in range(self.mod_data.shape[0]):
-            self.MA.prepare_data(self.mod_data[i])
+        for i in range(self.mod_data.shape[0]):  # for each trial
+            self.MA.prepare_data(self.mod_data[i], pars=self.Pars)
             self.Data.data_clean.append(self.MA.data)
         self.Data.data_clean = np.array(self.Data.data_clean)
         self.Data.timebase = self.MA.timebase
+        self.Data.raw_data_averaged = self.raw_data_averaged
+        self.Data.raw_timebase = self.raw_timebase
 
-        data_nostim = []
-    
+        data_nostim:List = []
         if self.verbose:
             CP.cprint(
                 "c",
                 f"        Data shape going into analyze_protocol: str(self.data_clean.shape:s)",
             )
-        print("before analyze protocol, timebase max is: ", np.max(self.Data.timebase))
         results = self.analyze_protocol(
             data=self.Data.data_clean,
             timebase=self.Data.timebase,
@@ -656,10 +553,10 @@ class AnalyzeMap(object):
         #     key2.append(k2)
         self.nreps = data.shape[0]  # len(set(list(key1)))
         self.nspots = len(self.AR.scanner_positions)
-        events = {}
-        eventlist = []  # event histogram across ALL events/trials
+        events:Dict = {}
+        eventlist:List = []  # event histogram across ALL events/trials
         nevents = 0
-        avgevents = []
+        avgevents:List = []
         if not eventhist:
             return None
 
@@ -706,7 +603,7 @@ class AnalyzeMap(object):
         }
 
     def analyze_one_trial(
-        self, data: np.ndarray, pars: dict = None, datatype: str = None
+        self, data: np.ndarray, pars: dict, datatype: str
     ) -> dict:
         """Analyze one trial in a protocol (one map; maps may have been repeated)
 
@@ -755,11 +652,11 @@ class AnalyzeMap(object):
         method = self.analyze_traces_in_trial(data, pars=pars, datatype=datatype)
         method.identify_events(verbose=True)  # order=order)
         summary = method.summarize(data, verbose=True)
-        ok_onsets = method.get_data_cleaned_of_stimulus_artifacts(
-            data, summary=summary, pars=self.Pars
-        )
-        summary.ok_onsets = ok_onsets
-        summary.spont_dur = [self.Pars.stimtimes["start"][0]] * data.shape[0]
+        # ok_onsets = method.get_data_cleaned_of_stimulus_artifacts(
+        #     data, summary=summary, pars=self.Pars
+        # )
+        # summary.ok_onsets = ok_onsets
+        summary.spont_dur = [self.Pars.stimtimes["starts"][0]] * data.shape[0]
         summary = method.average_events(
             traces=range(data.shape[0]), data=data, summary=summary
         )
@@ -864,14 +761,16 @@ class AnalyzeMap(object):
                 dt_seconds=1.0 / self.rate,
                 delay=0.0,
                 template_tmax=5.0 * self.Pars.taus[1],  # rate * (jmax - 1),
+                template_pre_time=self.Pars.template_pre_time,
                 sign=self.Pars.sign,
+                risepower=self.Pars.risepower,
                 # eventstartthr=eventstartthr,
                 threshold=self.Pars.threshold,
                 filters=self.filters,
             )
             cb.set_datatype(datatype)
             cb.set_cb_engine(engine=self.engine)
-            cb._make_template()
+            cb._make_template(timebase=self.Data.timebase)
             idata = data.view(np.ndarray)  # [jtrial, itarget, :]
 
             for i in range(data.shape[0]):
@@ -883,45 +782,11 @@ class AnalyzeMap(object):
                 f'analyzeMapData:analyzetracesintrial: Method <{self.methodname:s}> is not valid (use "aj" or "cb")'
             )
 
-    def get_artifact_times(self):
-        """Compute the artifact times and store them in a structure
-
-        Returns:
-            artifacts structure: dataclass holding artifact times (starts, durations)
-        """
-        # set up parameters for artifact exclusion
-        artifacts = MEDC.Artifacts()
-        artifacts.starts = [
-            self.Pars.analysis_window[1],
-            self.Pars.shutter_artifact,
-        ]  # generic artifacts
-        artifacts.durations = [2, 2 * self.Pars.dt_seconds]
-        if self.Pars.artifact_suppress:
-            for si, s in enumerate(self.Pars.stimtimes["start"]):
-                if s in artifacts.starts:
-                    continue
-                artifacts.starts.append(s)
-                if isinstance(self.Pars.stimtimes["duration"], float):
-                    if pd.isnull(self.Pars.stimdur):  # allow override
-                        artifacts.starts.append(s + self.Pars.stimtimes["duration"])
-                    else:
-                        artifacts.starts.append(s + self.Pars.stimdur)
-
-                else:
-                    if pd.isnull(self.Pars.stimdur):
-                        artifacts.starts.append(s + self.Pars.stimtimes["duration"][si])
-                    else:
-                        artifacts.starts.append(s + self.Pars.stimdur)
-                artifacts.durations.append(2.0 * self.Pars.dt_seconds)
-                artifacts.durations.append(2.0 * self.Pars.dt_seconds)
-
-        return artifacts
-
     def average_trial_events(
         self,
-        method: object,
-        data: object,
-        minisummary: object = None,
+        method: minis_methods.MiniAnalyses,
+        data: np.ndarray,
+        minisummary: MEDC.Mini_Event_Summary,
         pars: dict = None,
     ):
         """
@@ -934,7 +799,7 @@ class AnalyzeMap(object):
         assert data.ndim == 2
         assert minisummary is not None
         assert pars is not None
-        artifacts = self.get_artifact_times()
+
 
         CP.cprint("c", "\nanalyze_map_data: Average Trial Events")
         ev_done = []
@@ -942,15 +807,15 @@ class AnalyzeMap(object):
             # get events in the trace:
             # CP.cprint("c", f"    AMD: analyzing trace: {itrace:d}")
             evtr = list(
-                [x[1] for x in minisummary.isolated_event_trace_list if x[0] == itrace]
+                [x[1] for x in minisummary.all_event_indices if x[0] == itrace] # isolated_event_trace_list if x[0] == itrace] #  and x not in minisummary.artifact_event_list]
             )
 
-            # Define:
-            # spontaneous events are those that are:
+            # Definitions:
+            # Spontaneous events are those that are:
             #   a: not in evoked window, and,
             #   b: no sooner than 10 msec before a stimulus,
             # Also, events must be at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
-            # Evoked events are those that occur after the stimulus with in a window (usually ~ 5 msec)
+            # Evoked events are those that occur after the stimulus with in a window (usually ~ 5-15 msec)
             # All data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
             #
             # process spontaneous events first
@@ -959,7 +824,7 @@ class AnalyzeMap(object):
             npk_sp = method.select_events(
                 pkt=[minisummary.onsets[itrace][x] for x in evtr],
                 tstarts=[0.0],
-                tdurs=self.Pars.stimtimes["start"][0] - (0.010),
+                tdurs=self.Pars.stimtimes["starts"][0] - (0.010),
                 rate=minisummary.dt_seconds,
                 mode="accept",
             )
@@ -979,7 +844,7 @@ class AnalyzeMap(object):
             # Now get the events in the evoked event window across all traces
             npk_ev = method.select_events(
                 pkt=[minisummary.onsets[itrace][x] for x in evtr],
-                tstarts=self.Pars.stimtimes["start"],
+                tstarts=self.Pars.stimtimes["starts"],
                 tdurs=self.Pars.response_window,
                 rate=minisummary.dt_seconds,
                 mode="accept",
@@ -1001,17 +866,7 @@ class AnalyzeMap(object):
             else:
                 minisummary.evoked_event_trace_list.append([[], []])
             ok_events = np.array(minisummary.smpkindex[itrace])[npk_ev]
-            # if len(npk) > 0:  # only do this
-            #     summary = method.average_events(traces=[i], eventlist = summary.onsets, data=data)
-            # these are the average fitted values for the i'th trace
-            # fit_tau1.append(method.fitted_tau1)
-            # fit_tau2.append(method.fitted_tau2)
-            # fit_amp.append(method.amplitude)
-            # avg_evoked.append(summary.allevents)
-            # measures.append(method.measure_events(data[i], summary.onsets[i]))
-            # if len(method.Summary.average.avgeventtb) > 0:
-            #     txb = method.Summary.average.avgeventtb  # only need one of these.
-
+            
         sa = np.array(minisummary.average_spont.avgevent)
         ea = np.array(minisummary.average_evoked.avgevent)
 
@@ -1099,40 +954,41 @@ class AnalyzeMap(object):
                 #     crossshutter = 0* 0.365e-21*Util.SignalFilter_HPFBessel(self.shutter['data'][0], 1900., self.AR.Photodiode_sample_rate[0], NPole=2, bidir=False)
                 #     crosstalk += crossshutter
 
-            ifitx = []
-            art_times = np.array(self.Pars.stimtimes["start"])
+            ifitx:List = []
+            art_times = np.array(self.Pars.stimtimes["starts"])
             # known artifacts are:
             # 0.030 - 0.050: Camera
             # 0.050: Shutter
             # 0.055 : Probably shutter actual opening
             # 0.0390, 0.0410: Camera
             # 0.600 : shutter closing
+
             if ptype == "10Hz":
                 other_arts = np.array(
                     [
                         0.030,
-                        shutter["start"],
+                        shutter["starts"],
                         0.055,
                         0.390,
                         0.410,
-                        shutter["start"] + shutter["duration"],
+                        shutter["starts"] + shutter["durations"],
                     ]
                 )
             else:
                 other_arts = np.array(
                     [
                         0.010,
-                        shutter["start"],
+                        shutter["starts"],
                         0.055,
                         0.305,
                         0.320,
-                        shutter["start"] + shutter["duration"],
+                        shutter["stars"] + shutter["durations"],
                     ]
                 )
             art_times = np.append(
                 art_times, other_arts
             )  # unknown (shutter is at 50 msec)
-            art_durs = np.array(self.Pars.stimtimes["duration"])
+            art_durs = np.array(self.Pars.stimtimes["durations"])
             other_artdurs = self.Pars.artifact_duration * np.ones_like(other_arts)
             art_durs = np.append(art_durs, other_artdurs)  # shutter - do 2 msec
             datar = data.copy()
@@ -1140,7 +996,7 @@ class AnalyzeMap(object):
                 strt_time_indx = int(art_times[i] * self.rate)
                 idur = int(art_durs[i] * self.rate)
                 send_time_indx = (
-                    strt_time_indx + idur + int(0.001 * self.rate)
+                    strt_time_indx + idur + int(0.00 * self.rate)
                 )  # end pulse plus 1 msec
                 if crosstalk is not None:
                     fitx = crosstalk[
@@ -1161,9 +1017,15 @@ class AnalyzeMap(object):
 
                     lbr = np.zeros_like(crosstalk)
                     lbr[ifitx] = scf * crosstalk[ifitx]
-                    datar[i, :] = data[i, :] - lbr
+                    for rep in range(data.shape[0]):
+                        for j in range(data.shape[1]):
+                            datar[rep, j, :] = data[rep, j, :] - lbr
+                else:
+                    for rep in range(data.shape[0]):
+                        for j in range(data.shape[1]):
+                            datar[rep, j, strt_time_indx:send_time_indx] = data[rep, j, strt_time_indx-1]
 
-        if not self.Pars.noderivative_artifact:
+        if self.Pars.artifact_derivative:
             # derivative=based artifact suppression - for what might be left
             # just for fast artifacts
             CP.cprint("w", f"   Derivative-based artifact suppression is ON")
@@ -1211,8 +1073,11 @@ class AnalyzeMap(object):
                                     i, j, tpts[k]
                                 ]  # but next point is set
 
+        else:
+            CP.cprint("w", f"   Derivative-based artifact suppression is OFF")
+
         if testplot:
-            PMD.testplot()
+            PMD.testplot(crosstalk=crosstalk, ifitx=ifitx, avgdf=avgdf, intcept=intcept)
 
         return (datar, avgd)
 

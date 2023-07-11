@@ -287,6 +287,7 @@ class MAP_Analysis(Analysis):
         """
         notes = self.df.at[icell, "notes"]
         internal_sol = self.df.at[icell, "internal"]
+        str_path_to_map = str(path_to_map)
         self.internal_Cs = False
         self.high_Cl = False
         csstr = re.compile("(Cs|Cesium|Cs)", re.IGNORECASE)
@@ -308,9 +309,9 @@ class MAP_Analysis(Analysis):
             protocol = self.AM.AR.readDirIndex(str(protodir))
             record_mode = protocol["."]["devices"]["MultiClamp1"]["mode"]
         except:
-            if path_to_map.match("*_VC_*"):
+            if "_VC_" in str_path_to_map:
                 record_mode = "VC"
-            elif path_to_map.match("*_IC_*"):
+            elif "_IC_" in str_path_to_map:
                 record_mode = "IC"
             else:
                 raise ValueError("Cant figure record mode")
@@ -318,12 +319,12 @@ class MAP_Analysis(Analysis):
         self.set_stimdur(icell, path_to_map)
 
         if (
-            path_to_map.match("*_VC_*") or record_mode == "VC"
+            "_VC_" in str_path_to_map or record_mode == "VC"
         ) and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSC
-            print(f"Excitatory PSC, VC, not VGAT")
-            self.AM.datatype = "V"
+            print(f"Exscitatory PSC, VC, not VGAT")
+            self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus[0:2] = [1e-3, 3e-3]  # fast events
@@ -332,12 +333,12 @@ class MAP_Analysis(Analysis):
             self.set_vc_threshold(icell, path_to_map)
 
         elif (
-            path_to_map.match("*_VC_*") or record_mode == "VC"
+            "_VC_" in str_path_to_map or record_mode == "VC"
         ) and self.rawdatapath.match(
             "*VGAT_*"
         ):  # inhibitory PSC
             print(f"Inhibitory PSC, VC, VGAT")
-            self.AM.datatype = "V"
+            self.AM.Pars.datatype = "V"
             if self.high_Cl:
                 self.AM.Pars.sign = -1
             else:
@@ -352,10 +353,10 @@ class MAP_Analysis(Analysis):
             print("sign: ", self.AM.Pars.sign)
 
         elif (
-            path_to_map.match("*_CA_*") and record_mode == "VC"
+            "_CA_" in str_path_to_map and record_mode == "VC"
         ):  # cell attached (spikes)
-            print(f"Cell attachee, VC")
-            self.AM.datatype = "V"
+            print(f"Cell attached, VC")
+            self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1  # trigger on negative current
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus[0:2] = [0.5e-3, 0.75e-3]  # fast events
@@ -364,47 +365,45 @@ class MAP_Analysis(Analysis):
             self.set_vc_threshold(icell, path_to_map)
 
         elif (
-            path_to_map.match("*_IC_*") and record_mode in ["IC", "I=0"]
-        ) and not self.rawdatapath.match(
-            "*VGAT_*"
+            "_IC_" in str_path_to_map and record_mode in ["IC", "I=0"]
+             and not ("VGAT_" in self.rawdatapath)
         ):  # excitatory PSP
             print(f"Excitatory PSP, IC or I=0, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
-            self.AM.datatype = "I"
+            self.AM.Pars.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
 
-        elif path_to_map.match("*_IC_*") and self.rawdatapath.match(
-            "*VGAT_*"
+        elif ("_IC_" in str_path_to_map and "VGAT_" in self.rawdatapath
         ):  # inhibitory PSP
             print(f"Inhibitory PSP, IC, VGAT")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus[0:2] = [3e-3, 10e-3]  # slow events
-            self.AM.datatype = "I"
+            self.AM.Pars.datatype = "I"
             self.AM.Pars.threshold = self.threshold  #
             # self.AM.Pars.analysis_window = [0, 0.999]
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
 
-        elif path_to_map.match("VGAT_*") and not (
-            path_to_map.match("*_IC_*")
-            or path_to_map.match("*_VC_*")
-            or path_to_map.match("*_CA_*")
+        elif "VGAT_" in str_path_to_map and not (
+            "_IC_" in str_path_to_map
+            or "_VC_" in str_path_to_map
+            or "_CA_" in str_path_to_map
         ):  # VGAT but no mode information
             print(f"VGAT but no mode information")
 
             if record_mode in ["IC", "I=0"]:
-                self.AM.datatype = "I"
+                self.AM.Pars.datatype = "I"
                 if self.high_Cl:
                     self.AM.Pars.sign = 1
                 else:
                     self.AM.Pars.sign = -1
             elif record_mode in ["VC"]:
-                self.AM.datatype = "V"
+                self.AM.Pars.datatype = "V"
                 if self.high_Cl:
                     self.AM.Pars.sign = -1
                 else:
@@ -418,7 +417,7 @@ class MAP_Analysis(Analysis):
             self.AM.Pars.taus[0:2] = [2e-3, 10e-3]  # slow events
             self.AM.Pars.threshold = self.threshold  # setthreshold...
 
-            if self.AM.datatype == "V":
+            if self.AM.Pars.datatype == "V":
                 self.set_vc_taus(icell, path_to_map)
                 self.set_vc_threshold(icell, path_to_map)
             else:
@@ -426,12 +425,10 @@ class MAP_Analysis(Analysis):
                 self.set_cc_threshold(icell, path_to_map)
 
         elif (
-            path_to_map.match("Vc_LED*") and record_mode == "VC"
-        ) and not self.rawdatapath.match(
-            "*VGAT_*"
-        ):  # excitatory PSC
+            "Vc_LED" in str_path_to_map and record_mode == "VC"
+        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSC
             print(f"Excitatory PSC, VC, LED, not VGAT")
-            self.AM.datatype = "V"
+            self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus[0:2] = [1e-3, 3e-3]  # fast events
@@ -440,12 +437,10 @@ class MAP_Analysis(Analysis):
             self.set_vc_threshold(icell, path_to_map)
 
         elif (
-            path_to_map.match("Vc_LED_stim*") and record_mode == "I=0"
-        ) and not self.rawdatapath.match(
-            "*VGAT_*"
-        ):  # excitatory PSC, but recorded with the WRONG PROTOCOL?
+            "Vc_LED_stim" in str_path_to_map and record_mode == "I=0"
+        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSC, but recorded with the WRONG PROTOCOL?
             CP.cprint("r", f"Excitatory PSC, VC, LED, I = 0 (wrong mode!),  not VGAT")
-            self.AM.datatype = "I"
+            self.AM.Pars.datatype = "I"
             self.AM.Pars.sign = 1
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
@@ -454,15 +449,13 @@ class MAP_Analysis(Analysis):
             self.set_cc_threshold(icell, path_to_map)
 
         elif (
-            path_to_map.match("Ic_LED*") and record_mode in ["IC", "I=0"]
-        ) and not self.rawdatapath.match(
-            "*VGAT_*"
-        ):  # excitatory PSP
+            ("Ic_LED" in str_path_to_map) and (record_mode in ["IC", "I=0"])
+        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSP
             CP.cprint("g", f"Excitatory PSP, IC or I=0, LED, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
             self.AM.Pars.taus[0:2] = [1e-3, 4e-3]  # fast events
-            self.AM.datatype = "I"
+            self.AM.Pars.datatype = "I"
             self.AM.Pars.threshold = self.threshold  # somewhat high threshold...
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
@@ -477,7 +470,7 @@ class MAP_Analysis(Analysis):
         if self.verbose:
             print(
                 "Data Type: {0:s}/{1:s}  Sign: {2:d}  taus: {3:s}  thr: {4:5.2f}  Scale: {4:.3e}".format(
-                    self.AM.datatype,
+                    self.AM.Pars.datatype,
                     record_mode,
                     self.AM.Pars.sign,
                     str(np.array(self.AM.Pars.taus) * 1e3),
@@ -595,12 +588,12 @@ class MAP_Analysis(Analysis):
         CP.cprint(
             "r", f"Setting analysis window to : {str(self.AM.Pars.analysis_window):s}"
         )
-        self.artifact_suppress = True
+
         CP.cprint(
-            "r", f"Setting artifact suppression to: {str(self.artifact_suppress):s}"
+            "r", f"Setting artifact suppression to: {str(self.artifact_suppression):s}"
         )
-        self.AM.set_artifact_suppression(self.artifact_suppress)
-        self.AM.set_noderivative_artifact(self.noderivative_artifact)
+        self.AM.set_artifact_suppression(self.artifact_suppression)
+        self.AM.set_artifact_derivative(self.artifact_derivative)
         if self.artifactFilename is not None:
             self.AM.set_artifact_file(
                 Path(
@@ -661,7 +654,7 @@ class MAP_Analysis(Analysis):
                     plotmode=self.plotmode,
                     average=False,
                     rasterized=False,
-                    datatype=self.AM.datatype,
+                    datatype=self.AM.Pars.datatype,
                 )  # self.AM.rasterized, firstonly=True, average=False)
             msg = f"Map analysis done: {str(self.map_name):s}"
             print(msg)
@@ -702,7 +695,7 @@ class MAP_Analysis(Analysis):
                 # ftau2 = np.nanmean(np.array(result['events'][0]['fit_tau2']))
                 # famp = np.nanmean(np.array(result['events'][0]['fit_amp']))
                 params = "Mode: {0:s}  Sign: {1:d}  taus: {2:.2f}, {3:.2f}  thr: {4:5.2f}  Scale: {5:.1e} Det: {6:2s}".format(
-                    self.AM.datatype,
+                    self.AM.Pars.datatype,
                     self.AM.Pars.sign,
                     self.AM.Pars.taus[0] * 1e3,
                     self.AM.Pars.taus[1] * 1e3,

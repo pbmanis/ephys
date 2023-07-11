@@ -282,11 +282,18 @@ def build_parser(experiments):
         help="Turn ON artifact suppression (for stimuli only)",
     )
     parser.add_argument(
-        "--noderivative_artifact",
+        "--artifact_derivative",
         action="store_true",
-        dest="noderivative",
+        dest="artifact_derivative",
         help="Turn off derivative-based artifact suppression (any fast event)",
     )
+    parser.add_argument(
+        "--post_artifact_suppression",
+        action="store_true",
+        dest="post_analysis_artifact_rejection",
+        help="Turn ON artifact suppression post-analysis",
+    )
+
     parser.add_argument(
         "-n",
         "--notchfilter",

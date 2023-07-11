@@ -380,7 +380,7 @@ class MiniAnalysis:
                     CP("r", f"        dataname: {fn:s}")
                 continue
             acqr.getData()
-            acqr.data_array = np.array(acqr.data_array)
+            acqr.data_array = np.ndarray(acqr.data_array)
 
             oktraces = [
                 x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces
@@ -407,10 +407,11 @@ class MiniAnalysis:
                     weight="normal",
                 )
                 datanameposted = True
+                mousedata.replace('"', "")
+                mousedata.replace("'", "")
                 textdata = wrapper.wrap(str(mousedata))
                 textdata = "\n".join(textdata)
-                textdata.replace('"', "")
-                textdata.replace("'", "")
+
                 self.P.figure_handle.text(0.02, 0.05, s=f"{textdata:s}", fontsize=6)
                 self.P.figure_handle.text(
                     0.95,

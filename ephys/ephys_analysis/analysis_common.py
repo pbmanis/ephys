@@ -5,6 +5,7 @@ This entry point is used as a wrapper for multiple experimental protocols,
 including IV curves (current and voltage clamp), and optogenetic experiments, including
 laser scanning photstimulation and glutamate uncaging maps.
 """
+import argparse
 import gc
 import logging
 import sys
@@ -14,27 +15,22 @@ from multiprocessing import set_start_method
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
 import datetime
-import json
 import random
-import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Type, Union
+from typing import Union, List, Dict
 
+import dateutil
 import dateutil.parser as DUP
-import dill
 import matplotlib
 import numpy as np
 import pandas as pd
-import toml
-from pandas import HDFStore
 
 matplotlib.use("QtAgg")
 import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
-import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
@@ -54,6 +50,9 @@ np.seterr(divide="raise", invalid="raise")
 
 Logger = logging.getLogger(__name__)
 
+def def_empty_list():
+    return [] 
+
 @dataclass
 class cmdargs:
     """ This data class holds the "command arguments" that control
@@ -68,7 +67,7 @@ class cmdargs:
 
     """
     # Files and filenames:
-    experiment: Union[str, list, None] = None
+    experiment: Union[str, List, None] = None
     rawdatapath: Union[str, Path, None] = None
     directory:  Union[str, Path, None] = None
     analyzeddatapath: Union[str, Path, None] = None
@@ -80,16 +79,15 @@ class cmdargs:
     map_annotationFilename: Union[str, Path, None] = None
     map_pdfs: bool=False
     iv_analysisFilename: Union[str, Path, None] = None
-    map_pdfs: bool=False
-    extra_subdirectories: object = None
+    extra_subdirectories: List = field(default_factory=def_empty_list)
 
     # analysis flags and experiment selection
     update_results:bool = False
     day: str = "all"
     after: str = "1970.1.1"
     before: str = "2266.1.1"
-    slicecell: str = ""
-    protocol: str = ""
+    slicecell: Union[str, None] = None
+    protocol: Union[str, None]= None
     configfile: Union[str, None] = None
     iv_flag: bool = False
     vc_flag: bool = False
@@ -120,7 +118,7 @@ class cmdargs:
     measuretype: str = "ZScore"  # display measure for spot plot in maps
     spike_threshold: float = -0.035
     artifact_suppression: bool = False
-    noderivative: bool = False
+    artifiact_derivative: bool = False
     whichstim: int = -1
     trsel: Union[int, None] = None
     notchfilter: bool = False
@@ -140,14 +138,14 @@ class Analysis():
         3. Generate PDF files for output, including merging pdfs into a single large book. Seemed
         like a good idea, but the PDFs get large (approaching 1 GB). 
     """
-    def __init__(self, args: object):
+    def __init__(self, args: argparse.Namespace):
 
         # args = vars(in_args)  # convert to dict
 
         self._testing_counter = 0  # useful to run small tests
         self._testing_count = 400  # should be 0 in production
 
-        self.rawdatapath = None
+        self.rawdatapath: Path = Path()
         self.analyzeddatapath = None
         self.directory = None
         self.inputFilename = None
@@ -157,7 +155,7 @@ class Analysis():
         self.skip_subdirectories = None
         self.artifactFilename = None
         self.pdfFilename = None
-        self.exclusions = None
+        self.exclusions:Dict = {}
         self.map_annotations = None  # this will be the map_annotationsFilename DATA (pandas from excel)
         self.experiment = args.experiment
 
@@ -205,8 +203,9 @@ class Analysis():
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
         self.spike_threshold = args.spike_threshold
-        self.artifact_suppress = args.artifact_suppression
-        self.noderivative_artifact = args.noderivative
+        self.artifact_suppression = args.artifact_suppression
+        self.artifact_derivative = args.artifact_derivative
+        self.post_analysis_artifact_rejection = args.post_analysis_artifact_rejection
         self.whichstim = args.whichstim
         self.trsel = args.trsel
         self.notchfilter = args.notchfilter
@@ -218,7 +217,7 @@ class Analysis():
 
         self.cell_tempdir = None
         self.annotated_dataframe: Union[pd.DataFrame, None] = None
-        self.allprots = []
+        self.allprots:List = []
 
     
         # load up the analysis modules (don't allow multiple instances to exist)
@@ -241,7 +240,7 @@ class Analysis():
 
         super().__init__()
 
-    def set_exclusions(self, exclusions: Union[dict, None] = None):
+    def set_exclusions(self, exclusions: dict):
         """Set the datasets that will be excluded
 
         Args:
@@ -511,7 +510,7 @@ class Analysis():
                 sheet_name="Sheet1",
             )
 
-    def make_cellstr(self, df: object, icell: int, shortpath: bool = False):
+    def make_cellstr(self, df: pd.DataFrame, icell: int, shortpath: bool = False):
         """
         Make a day string including slice and cell from the icell index in the pandas dataframe df
         Example result:
@@ -599,10 +598,9 @@ class Analysis():
         elif self.vc_flag:
             file_name += "_VC"
 
-        file_name = Path(file_name)
-        return file_name
+        return Path(file_name)
     
-    def merge_pdfs(self, celltype: Union[str, None] = None, slicecell:Union[str, None]=None, pdf=None, overwrite:bool=True):
+    def merge_pdfs(self, celltype: str, slicecell: str=None, pdf=None, overwrite:bool=True):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
@@ -686,8 +684,8 @@ class Analysis():
         self,
         protocols: list,
         prots: dict,
-        allprots: Union[dict, None] = None,
-        day: Union[str, None] = None,
+        allprots: dict=None,
+        day: str=None,
     ):
         """
         Gather all the protocols and sort by functions/types
@@ -732,24 +730,24 @@ class Analysis():
                 c = Path(
                     day, prots.iloc[i]["slice_slice"], prots.iloc[i]["cell_cell"], x
                 )
-            c = str(c)  # make sure it is serializable for later on with JSON.
+            c_str = str(c)  # make sure it is serializable for later on with JSON.
             # maps
             if x.startswith("Map"):
-                allprots["maps"].append(c)
+                allprots["maps"].append(c_str)
             if x.startswith("VGAT_"):
-                allprots["maps"].append(c)
+                allprots["maps"].append(c_str)
             if x.startswith("Vc_LED"):  # these are treated as maps, even though they are just repeated... 
-                allprots["maps"].append(c)
+                allprots["maps"].append(c_str)
             # Standard IVs (100 msec, devined as above)
             for piv in self.stdIVs:
                 if x.startswith(piv):
-                    allprots["stdIVs"].append(c)
+                    allprots["stdIVs"].append(c_str)
             # Long IVs (0.5 or 1 second)
             if x.startswith("CCIV_long"):
-                allprots["CCIV_long"].append(c)
+                allprots["CCIV_long"].append(c_str)
             # VCIVs
             if x.startswith("VCIV"):
-                allprots["VCIVs"].append(c)
+                allprots["VCIVs"].append(c_str)
         return allprots
 
     def make_cell(self, icell: int):
@@ -764,7 +762,7 @@ class Analysis():
         datestr: str,
         slicestr: str,
         cellstr: str,
-        protocolstr: Union[Path, str, None] = None,
+        protocolstr: Path,
     ):
         """Find the dataframe element for the specified date, slice, cell and
         protocol in the input dataframe
@@ -829,7 +827,7 @@ class Analysis():
         if self.annotated_dataframe is None:
             return original_celltype, None
         # print("have annotated df")
-        cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr)
+        cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None)
         if cell_df.empty:  # cell was not in annotated dataframe
             if self.verbose:
                 print(datestr, cellstr, slicestr, " Not annotated")
@@ -1169,7 +1167,7 @@ class Analysis():
             validivs = allivs
         nworkers = 16  # number of cores/threads to use
         tasks = range(len(validivs))  # number of tasks that will be needed
-        results = dict(
+        results:Dict = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
         if self.noparallel:  # just serial...
@@ -1359,9 +1357,9 @@ class Analysis():
             print("Checking for figure, plothandle is: ", plot_handle)
             if plot_handle is not None:
                 shortpath = protocol_directory.parts
-                shortpath = str(Path(*shortpath[4:]))
+                shortpath2 = str(Path(*shortpath[4:]))
                 plot_handle.suptitle(
-                    f"{str(shortpath):s}\n{BIS.build_info_string(self.EPIV.AR, protocol_directory):s}",
+                    f"{str(shortpath2):s}\n{BIS.build_info_string(self.EPIV.AR, protocol_directory):s}",
                     fontsize=8,
                 )
                 t_path = Path(self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
@@ -1422,6 +1420,7 @@ class Analysis():
         self.df.iloc[icell].cell_type = celltype
 
         self.make_tempdir()
+        nfiles = 0
         for pname in ["VCIVs"]:  # the different VCIV protocols
             if len(allprots[pname]) == 0:
                 continue
