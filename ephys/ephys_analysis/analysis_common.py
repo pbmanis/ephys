@@ -434,12 +434,13 @@ class Analysis():
             if "_" not in day:
                 day = day + "_000"
             cells_in_day = self.df.loc[self.df.day == day]
-
+            print("cells in day: ", cells_in_day)
             if len(cells_in_day) == 0:
-                print("date not found: here are the valid dates:")
+                CP.cprint("r", f"date not found: here are the valid dates:")
                 for dx in self.df.date.values:
-                    print(f"    day: {dx:s}")
-            # print("  ... Retrieved day:\n", day_x)
+                    CP.cprint("r", f"    day: {dx:s}")
+                return None
+            CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
             for icell in cells_in_day.index:  # for all the cells in the day (but will check for slice_cell too)
                 # print(f"<{self.slicecell:s}>")
                 # if self.slicecell is None or len(self.slicecell) == 0:
@@ -823,42 +824,71 @@ class Analysis():
         """
         original_celltype = self.df.at[icell, "cell_type"]
         datestr, slicestr, cellstr = self.make_cell(icell)
-
         if self.annotated_dataframe is None:
             return original_celltype, None
-        # print("have annotated df")
         cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None)
         if cell_df.empty:  # cell was not in annotated dataframe
-            if self.verbose:
-                print(datestr, cellstr, slicestr, " Not annotated")
+            # CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation entry (that is ok)")
             return original_celltype, False
 
         celltype = cell_df["cell_type"].values[0].strip()
-        if not pd.isnull(celltype) and not isinstance(celltype, str):
-            if self.verbose:
-                print(
-                    "   Annotated dataFrame: celltype = ",
-                    cell_df["cell_type"],
-                    "vs. ",
-                    original_celltype,
-                )
-            CP.cprint("yellow", f"   Annotation did not change celltype: {celltype:s}")
-            return original_celltype, False
+        # if not pd.isnull(celltype) and not isinstance(celltype, str):
+        #     CP.print("c",
+        #             f"    Annotated dataFrame: new celltype = {cell_df['cell_type']:s} vs. {original_celltype:s}"
+        #         )
+        #     CP.cprint("c", f"    Annotation did not change celltype: {celltype:s}")
+        #     return original_celltype, False
 
         if not pd.isnull(celltype) and isinstance(celltype, str):
             if celltype != original_celltype:
                 CP.cprint(
                     "red",
-                    f"   Cell re-annotated celltype: {celltype:s} (original: {original_celltype:s})",
+                    f"   Cell type was re-annotated from: {original_celltype:s} to: {celltype:s})",
                 )
                 return celltype, True
             else:
-                if self.verbose:
-                    print(
-                        "celltype and original cell type are the same: ",
-                        original_celltype,
-                    )
+                CP.cprint("c", f"    Annotation and original cell types were identical, not changed from: {celltype:s}")
                 return original_celltype, False
+
+    def compare_slice_cell(self, icell:int, datestr:str, slicestr:str, cellstr:str) -> [bool, str]:
+        """compare_slice_cell - compare the slice and cell strings in the dataframe
+        with the specified self.slicecell value. 
+
+        Parameters
+        ----------
+        icell : int
+            index into the dataframe
+
+        Returns
+        -------
+        bool
+            True if the slice and cell match, False otherwise
+        
+        """
+
+        slicecell = f"S{int(slicestr[-3:]):03d}C{int(cellstr[-3:]):03d}"  # recognize that slices and cells may be more than 10 (# 9)
+        dsday, nx = Path(datestr).name.split("_")
+        self.thisday = dsday
+        # check dates
+        thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
+        if thisday < self.after or thisday > self.before:
+            CP.cprint(
+                "y",
+                f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
+            )
+            return False,""
+        # check slice/cell:
+        compareslice = ""
+        if len(self.slicecell) == 2: # 01
+            compareslice = f"S{int(self.slicecell[0]):03d}C{int(self.slicecell[1]):03d}"
+        elif len(self.slicecell) == 4: # S0C1
+            compareslice = f"S{int(self.slicecell[1]):03d}C{int(self.slicecell[3]):03d}"
+        elif len(self.slicecell) == 6: # S00C01
+            compareslice = f"S{int(self.slicecell[1:3]):03d}C{int(self.slicecell[1:3]):03d}"
+        if compareslice != slicecell:
+            return False, ""
+        else:
+            return True, slicecell
 
     def do_cell(self, icell: int, pdf=None):
         """
@@ -875,33 +905,18 @@ class Analysis():
         pdf : bool, default=False
 
         """
-        celltype, celltypechanged = self.get_celltype(icell)
         datestr, slicestr, cellstr = self.make_cell(icell)
-        celltype = self.check_celltype(celltype)
-        self.df.at[self.df.index[icell], "cell_type"] = celltype
-
-        slicecell = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
-        dsday, nx = Path(datestr).name.split("_")
-        self.thisday = dsday
-
-        # check dates
-        thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
-        if thisday < self.after or thisday > self.before:
-            CP.cprint(
-                "y",
-                f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
-            )
+        matchcell, slicecell = self.compare_slice_cell(icell, datestr=datestr, slicestr=slicestr, cellstr=cellstr)
+        if not matchcell:
             return
+        # reassign cell type if the annotation table changes it.
+        celltype, celltypechanged = self.get_celltype(icell)
+        celltype = self.check_celltype(celltype)
+        self.df.at[self.df.index[icell], "cell_type"] = celltype  # updates cell type 
 
-        # check slice/cell:
-        if len(self.slicecell) > 0:
-            compareslice = f"S{int(self.slicecell[1]):02d}C{int(self.slicecell[3]):02d}"
-            if compareslice != slicecell:
-                return
         fullfile = Path(
             self.rawdatapath, self.df.iloc[icell].cell_id)
-        #)
-        # print("fullfile: ", fullfile, fullfile.is_dir())
+
         if self.skip_subdirectories is not None:
             # skip matching subdirectories
             for skip in self.skip_subdirectories:
@@ -937,7 +952,6 @@ class Analysis():
             if not fullfile.is_dir():
                 CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
                 return
-
 
         prots = self.df.iloc[icell]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
