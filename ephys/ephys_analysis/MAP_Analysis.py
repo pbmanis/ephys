@@ -46,8 +46,9 @@ class MAP_Analysis(Analysis):
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         if len(allprots["maps"]) == 0:
-            msg = f"No maps to analyze for {icell:d}"
-            print(msg)
+            datestr, slicestr, cellstr = self.make_cell(icell)
+            msg = f"No maps to analyze for entry #{icell:d}: {datestr:s}/{slicestr:s}/{cellstr:s}"
+            CP.cprint('r', msg)
             Logger.warning(msg)
             return
         CP.cprint(
@@ -586,11 +587,11 @@ class MAP_Analysis(Analysis):
 
         self.AM.set_analysis_window(*self.AM.Pars.analysis_window)
         CP.cprint(
-            "r", f"Setting analysis window to : {str(self.AM.Pars.analysis_window):s}"
+            "c", f"    Setting analysis window to : {str(self.AM.Pars.analysis_window):s}"
         )
 
         CP.cprint(
-            "r", f"Setting artifact suppression to: {str(self.artifact_suppression):s}"
+            "c", f"    Setting artifact suppression to: {str(self.artifact_suppression):s}"
         )
         self.AM.set_artifact_suppression(self.artifact_suppression)
         self.AM.set_artifact_derivative(self.artifact_derivative)
