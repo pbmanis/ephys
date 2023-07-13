@@ -86,10 +86,6 @@ class AnalyzeMap(object):
     def set_analysis_window(self, t0: float = 0.0, t1: Union[float, None] = None):
         assert t1 is not None  # force usage of t1
         self.Pars.analysis_window = [t0, t1]
-        CP.cprint(
-            "r",
-            f"analyze_map_data: set_analysis_window:  {str(self.Pars.analysis_window):s}",
-        )
 
     def set_filters(self, filters):
         """Set the filtering arguments

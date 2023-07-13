@@ -1220,7 +1220,7 @@ class MiniAnalyses:
         clean_event_traces = np.array([allevents[ev] for ev in clean_event_list])
         clean_event_onsets = np.array([allevents_onsets[ev] for ev in clean_event_list])
         wrong_event_traces = np.array([allevents[ev] for ev in wrong_event_list])
-        overlapping_event_traces = np.array([allevents[ev] for ev in overlapping_event_list])
+        overlapping_event_traces = np.array([allevents[ev] for ev in overlapping_event_list if ev in allevents.keys()])
         
         if self.verbose:
             f, ax = mpl.subplots(2, 1)

@@ -815,7 +815,6 @@ class PlotMapData:
         tb = tb[: len(avedat)]
         avebl = 0 # np.mean(avedat[:ptfivems])
         avedat = avedat - avebl
-        print("pmd, tpre: ", tpre)
         self.MA.fit_average_event(
             tb,
             avedat,
