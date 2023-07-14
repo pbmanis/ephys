@@ -1063,8 +1063,8 @@ class acq4_reader:
         elif "Pulse3" in stimuli.keys():
             times = {}
             times["start"] = [stimuli["Pulse3"]["start"]["value"]]
-            times["duration"] = stimuli["Pulse3"]["length"]["value"]
-            times["amplitude"] = stimuli["Pulse3"]["amplitude"]["value"]
+            times["duration"] = [stimuli["Pulse3"]["length"]["value"]]
+            times["amplitude"] = [stimuli["Pulse3"]["amplitude"]["value"]]
             times["type"] = stimuli["Pulse3"]["type"]
 
         elif "Pulse5" in stimuli.keys():
@@ -1078,8 +1078,8 @@ class acq4_reader:
             #  ('type', 'pulse')]))])
             times = {}
             times["start"] = [stimuli["Pulse5"]["start"]["value"]]
-            times["duration"] = stimuli["Pulse5"]["length"]["value"]
-            times["amplitude"] = stimuli["Pulse5"]["amplitude"]["value"]
+            times["duration"] = [stimuli["Pulse5"]["length"]["value"]]
+            times["amplitude"] = [stimuli["Pulse5"]["amplitude"]["value"]]
             times["type"] = stimuli["Pulse5"]["type"]
         else:
             print("Stimuli: ", stimuli)
