@@ -53,7 +53,7 @@ class MAP_Analysis(Analysis):
             return
         CP.cprint(
             "c",
-            f"Analyze MAPS for index: {icell: d} ({str(self.df.at[icell, 'date']):s} )",
+            f"Analyze MAPS for index: {icell: d} ({str(self.df.at[icell, 'date']):s} incoming celltype: {celltype:s})",
         )
         file = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id)
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -64,15 +64,33 @@ class MAP_Analysis(Analysis):
             f"    {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
-        print("    Celltype: {0:s}".format(celltype))
-        print("    with {0:4d} protocols".format(len(allprots["maps"])))
+        print(f"    Celltype: {celltype:s}")
+        print(f"    with {len(allprots['maps']):4d} protocols")
+
+        
         for i, p in enumerate(allprots["maps"]):
-            print(f"        {i+1:d}. {Path(p).name:s}")
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, Path(p)
+            )
+            if cell_df is None:
+                continue
+            print(f"        {i+1:4d}. {Path(p).name:24s}  {str(cell_df['Usable'].values[0]):3s} {str(cell_df['notes2'].values[0]):56s}")
 
         validmaps = []
         for p in allprots["maps"]:  # first remove excluded protocols
-            if self.exclusions is None or str(p) not in self.exclusions:
-                validmaps.append(p)
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, Path(p)
+            )
+            if cell_df is None:
+                continue
+            if self.map_annotations is not None:  # determine from the map annotation table
+                if (cell_df['Usable'].values[0] in ['Y', 'y']):
+                    validmaps.append(p)
+                if cell_df['Usable'].values[0] not in ['Y', 'y', 'N', 'n']:
+                    raise ValueError("Please fill the map annotation table with Y or N for 'Usable'")
+            else: # determine from the exclusions dictionary
+                if self.exclusions is None or (str(p) not in self.exclusions):
+                    validmaps.append(p)
         allprots["maps"] = validmaps
 
         nworkers = 16  # number of cores/threads to use
