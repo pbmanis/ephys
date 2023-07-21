@@ -55,7 +55,7 @@ class MiniAnalyses:
         self.Criterion = [None]  # array for C-B
         self.template = None  # template for C-B
         self.template_tmax = 0.0
-        self.event_post_time = 0.020
+        self.event_post_time = 0.010
         self.analysis_window = [None, None]  # specify window or entire data set
         self.datatype = None
         self.onsets = []  # list of event onsets
@@ -82,7 +82,7 @@ class MiniAnalyses:
         tau4: float=30e-3,
         template_tmax: float = 0.05,
         template_pre_time: float = 0.0,
-        event_post_time: float=0.020,
+        event_post_time: float=0.010,
         delay: float = 0.0,  # into start of each trace for analysis, seconds
         sign: int = 1,
         eventstartthr: Union[float, None] = None,
@@ -884,7 +884,8 @@ class MiniAnalyses:
         mode: str = "reject",
         thr: float = 5e-12,
         data: Union[np.ndarray, None] = None,
-        first_only: bool = False,
+        first_stim_only: bool = False,  # only select events from the first stim in a train
+        first_event_in_stim_only: bool = False,  # only select the first event in response to each selected stimulus
         debug: bool = False,
     ) -> list:
         """
@@ -893,62 +894,56 @@ class MiniAnalyses:
         tdurs is the duration of each window
         rate is the data sample rate (in sec...)
         pkt is the list of times to compare against.
+        first_stim_only: selects only events in response to the first stim in a train
+        first_event_in_stim_only: selects only the first event in response to each selected stimulus
         """
 
         # print('rate: ', rate)
         debug = False
-        if mode in ["reject", "threshold_reject"]:
-            npk = list(range(len(pkt)))  # assume all
+        # npk = list(range(len(pkt)))  # assume all
+        npk = []
+        rejectlist = []
+
+        if first_stim_only:  # only analyze for the first start time
+            tstarts_local = [tstarts[0]]
+            tdurs_local = [tdurs[0]]
         else:
-            npk = []
-        for itw, tw in enumerate(tstarts):  # and for each time window
-            first = False
-            if isinstance(tdurs, list) or isinstance(
-                tdurs, np.ndarray
-            ):  # either use array parallel to tstarts, or
-                ttwin = tdurs[itw]
-            else:
-                ttwin = tdurs  # or use just a single value
-            ts = int(tw / rate)
-            te = ts + int(ttwin / rate)
-            for k, pk in enumerate(pkt):  # over each index
-                if (
-                    mode == "reject" and npk[k] is None
-                ):  # means we have already rejected the n'th one
-                    continue
-                pk_in_win = (pk >= ts) and (pk < te)
+            tstarts_local = tstarts
+            tdurs_local = tdurs
+        for k, pk in enumerate(pkt):  # check each event
+            for itw, tw in enumerate(tstarts_local):  # and for each time window
+                first_event_in_stim = False  # reset for each stimulus
+                ts = int(tw / rate)
+                te = ts + int(tdurs_local[itw] / rate)
+                pk_in_win = (pk >= ts) and (pk < te)  # determine whether event falls in our current window
+                if pk_in_win and mode == "accept":
+                    if first_event_in_stim_only and not first_event_in_stim:
+                        first_event_in_stim = True
+                        npk.append(k)
+                    elif not first_event_in_stim_only:
+                        npk.append(k)
+                        # if debug:
+                        CP.cprint("c", f"accepted:  k: {k:d}, stim#: {itw:d} ts: {ts:d} -- ev: {pk:d} --te: {te:d}")
+
                 if mode == "reject":
-                    if pk_in_win:
-                        npk[k] = None
-                        CP.cprint("m", f"rejecting ?:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
-                elif (mode == "threshold_reject") and (data is not None):
-                    if pk_in_win and (np.fabs(data[k]) < thr):
+                    if not pk_in_win:
+                        rejectlist.append(k)
+                        CP.cprint("m", f"Rejecting:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
+                if pk_in_win and (mode == "threshold_reject") and (data is not None):
+                    if pk_in_win and (np.fabs(data[k]) <= thr):
                         # print("np.fabs: ", np.fabs(data[k]), thr)
-                        npk[k] = None
-                        CP.cprint("y", f"thr reject?:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
-                elif mode == "accept":
-                    if pk_in_win and not first:
-                        if debug:
-                            CP.cprint("c", f"accepting ?:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
-                        if k not in npk:
-                            npk.append(k)
-                        if first_only and not first:
-                            first = True
-                            break
-                    else:
-                        if debug:
-                            CP.cprint("y", f"rejecting ?:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
-                else:
-                    raise ValueError(
-                        "analyzeMapData:select_times: mode must be accept, threshold_reject, or reject; got: %s"
-                        % mode
-                    )
+                        rejectlist.append(k)
+                        CP.cprint("y", f"Below Threshold rejection:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
+
         if debug:
             print("npk: ", npk)
-        npks = [
-            n for n in npk if n is not None
-        ]  # return the truncated list of indices into pkt
-        return npks
+        if mode == 'accept':
+            return npk
+        else:
+            npks = list(range(len(pkt)))
+            npks = [n for n in npks if n not in rejectlist]
+        # return the truncated list of indices into pkt
+            return npks
 
     def select_by_sign(
         self,
@@ -1128,7 +1123,8 @@ class MiniAnalyses:
         artifact_event_list:List = []
         overlapping_event_list:List = []
         wrong_charge_sign_event_list:List = []
-        clean_event_list:List = []
+        isolated_event_list:List = []  # events without other events around them for measuring time courses
+
 
         CP.cprint(
             "y", "methods common: average_events: Categorize events, then average clean events"
@@ -1212,21 +1208,21 @@ class MiniAnalyses:
         print("    # Tarnished events: ", len(tarnished_events))
         # get the clean events (non overlapping, correct charge, complete in trace)
 
-        clean_event_list = tuple(
+        isolated_event_list = tuple(
             [ev for ev in all_event_indices if ev not in tarnished_events]
         )
         wrong_event_list = tuple(
             [ev for ev in all_event_indices if ev in wrong_charge_sign_event_list]
         )
-        clean_event_traces = np.array([allevents[ev] for ev in clean_event_list])
-        clean_event_onsets = np.array([allevents_onsets[ev] for ev in clean_event_list])
+        clean_event_traces = np.array([allevents[ev] for ev in isolated_event_list])
+        clean_event_onsets = np.array([allevents_onsets[ev] for ev in isolated_event_list])
         wrong_event_traces = np.array([allevents[ev] for ev in wrong_event_list])
         overlapping_event_traces = np.array([allevents[ev] for ev in overlapping_event_list if ev in allevents.keys()])
         
         if self.verbose:
             f, ax = mpl.subplots(2, 1)
             tx = np.array(range(clean_event_traces.shape[1]))*summary.dt_seconds
-            for i, ev in enumerate(clean_event_list):
+            for i, ev in enumerate(isolated_event_list):
                 ax[0].plot(tx+(clean_event_onsets[i]-npre)*summary.dt_seconds, clean_event_traces[i], linewidth=0.35, color='m')
                 ax[0].plot(event_onset_times[ev], data[ev[0]][summary.onsets[ev[0]][ev[1]]], 'ro', markersize=3)
             for i, ev in enumerate(overlapping_event_list):
@@ -1237,7 +1233,7 @@ class MiniAnalyses:
         
         print("    # Clean event array: ", clean_event_traces.shape[0], " events found")
 
-        # get all events that are within the trace, whether overlappingn or charge is wrong
+        # get all events that are within the trace, whether overlapping or charge is wrong
         event_indices = [i for i in all_event_indices if i not in incomplete_event_list]
         # allevents = allevents[event_indices]
         # np.array([x for i, x in enumerate(allevents) if not all(np.isnan(allevents[i,:]))])
@@ -1257,18 +1253,18 @@ class MiniAnalyses:
                 "y",
                 f"    {len(wrong_charge_sign_event_list):d} event(s) excluded the sign of the charge was wrong\n",
             )
-        CP.cprint("m", f"# clean event traces: {len(clean_event_list):d}")
+        CP.cprint("m", f"# clean event traces: {len(isolated_event_list):d}")
         summary.allevents = allevents
         summary.all_event_indices = all_event_indices
-        summary.isolated_event_trace_list = clean_event_list
+        summary.isolated_event_trace_list = isolated_event_list
         summary.artifact_event_list = artifact_event_list
         clean_event_traces = []
-        for ev in clean_event_list:
+        for ev in isolated_event_list:
             if ev in allevents.keys():
                 clean_event_traces.append(allevents[ev])
         clean_event_traces = np.array(clean_event_traces)
         # generate the average and some stats on the "clean" events:
-        if len(clean_event_list) > 0:
+        if len(isolated_event_list) > 0:
             if self.sign < 0:
                 evamps = self.sign * np.nanmin(clean_event_traces, axis=1)
             else:
@@ -1297,7 +1293,7 @@ class MiniAnalyses:
             summary.average.avgevent75 = np.nanmean(
                 clean_event_traces[evamps > ev75], axis=0
             )
-            summary.isolated_event_trace_list = clean_event_list
+            summary.isolated_event_trace_list = isolated_event_list
         else:
             summary.average.averaged = False
             summary.average.Nevents = 0

@@ -429,7 +429,7 @@ class AnalyzeMap(object):
             CP.cprint("c", "  ANALYZE ONE MAP")
         self.noparallel = noparallel
         # only clip window after setting analysis window
-        raw_data, self.raw_timebase = self.MA.clip_window(self.mod_data[0], timebase=self.AR.time_base)
+        raw_data, self.raw_timebase, (jmin, jmax) = self.MA.clip_window(self.mod_data[0], timebase=self.AR.time_base)
         self.raw_data_averaged = np.mean(raw_data, axis=0) - np.mean(raw_data[:, 0:100])
         self.raw_data_std = np.std(raw_data, axis=0)
 
@@ -798,12 +798,10 @@ class AnalyzeMap(object):
 
 
         CP.cprint("c", "\nanalyze_map_data: Average Trial Events")
-        ev_done = []
+
         for itrace in range(data.shape[0]):
-            # get events in the trace:
-            # CP.cprint("c", f"    AMD: analyzing trace: {itrace:d}")
             evtr = list(
-                [x[1] for x in minisummary.all_event_indices if x[0] == itrace] # isolated_event_trace_list if x[0] == itrace] #  and x not in minisummary.artifact_event_list]
+                [x[1] for x in minisummary.all_event_indices if x[0] == itrace]
             )
 
             # Definitions:
@@ -820,9 +818,11 @@ class AnalyzeMap(object):
             npk_sp = method.select_events(
                 pkt=[minisummary.onsets[itrace][x] for x in evtr],
                 tstarts=[0.0],
-                tdurs=self.Pars.stimtimes["starts"][0] - (0.010),
+                tdurs=[self.Pars.stimtimes["starts"][0] - (0.010)],
                 rate=minisummary.dt_seconds,
                 mode="accept",
+                first_event_in_stim_only=False,
+                first_stim_only=False,
             )
             if len(npk_sp) > 0:
                 sp_onsets = [minisummary.onsets[itrace][x] for x in npk_sp]
@@ -841,10 +841,11 @@ class AnalyzeMap(object):
             npk_ev = method.select_events(
                 pkt=[minisummary.onsets[itrace][x] for x in evtr],
                 tstarts=self.Pars.stimtimes["starts"],
-                tdurs=self.Pars.response_window,
+                tdurs=[self.Pars.response_window]*len(self.Pars.stimtimes["starts"]),
                 rate=minisummary.dt_seconds,
                 mode="accept",
-                first_only=True,
+                first_stim_only=False,
+                first_event_in_stim_only=False,
             )
             if len(npk_ev) > 0:
                 ev_onsets = [minisummary.onsets[itrace][x] for x in npk_ev]
