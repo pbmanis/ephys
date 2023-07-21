@@ -959,6 +959,10 @@ class PlotMapData:
                 rasterized=self.rasterized,
                 linewidth=0.6,
             )
+            maxpower = np.max(pddata)*1e3 # in mW
+            ax.text(x=0.05, y=0.95, s=f"Max = {maxpower:.2f} mW", fontsize=6, transform=ax.transAxes)
+            PH.talbotTicks(ax, axes="xy", density=(1.0, 1.0), insideMargin=0.05, pointSize=6, tickPlacesAdd={"x": 1, "y": 1})
+
         ax.set_xlim(0.0, self.Pars.ar_tstart - 0.001)
         ax.set_ylabel("P (mW)", fontsize=10)
         ax.set_xlabel("Time (s)", fontsize=10)

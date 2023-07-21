@@ -74,7 +74,7 @@ class cmdargs:
     databasepath: Union[str, Path, None] = None
     inputFilename: Union[str, Path, None] = None
     pdfFilename: Union[str, Path, None] = None
-    annotationFilename: Union[str, Path, None] = None
+    cell_annotationFilename: Union[str, Path, None] = None
     artifactFilename: Union[str, Path, None] = None
     map_annotationFilename: Union[str, Path, None] = None
     map_pdfs: bool=False
@@ -149,7 +149,7 @@ class Analysis():
         self.analyzeddatapath = None
         self.directory = None
         self.inputFilename = None
-        self.annotationFilename = None
+        self.cell_annotationFilename = None
         self.map_annotationFilename = None
         self.extra_subdirectories = None
         self.skip_subdirectories = None
@@ -261,7 +261,7 @@ class Analysis():
                 self.rawdatapath = Path(self.rawdatapath, self.experiment["directory"])
                 self.analyzeddatapath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
                 self.databasepath = Path(self.experiment["databasepath"], self.experiment["directory"])
-    
+     
             self.inputFilename = Path(
                 self.databasepath, self.experiment["datasummaryFilename"]
             ).with_suffix(".pkl")
@@ -273,15 +273,16 @@ class Analysis():
             else:
                 self.pdfFilename = None
 
-            if self.experiment["annotationFilename"] is not None:
-                self.annotationFilename = Path(
+            if self.experiment["cell_annotationFilename"] is not None:
+                self.cell_annotationFilename = Path(
                     self.analyzeddatapath, self.experiment["annotationFilename"]
                 )
-                if not self.annotationFilename.is_file():
-                    raise FileNotFoundError(f"{str(self.annotationFilename):s}")
+                if not self.cell_annotationFilename.is_file():
+                    raise FileNotFoundError(f"{str(self.cell_annotationFilename):s}")
             else:
-                self.annotationFilename = None
+                self.cell_annotationFilename = None
 
+            
             if (
                 "map_annotationFilename" in list(self.experiment.keys())
                 and self.experiment["map_annotationFilename"] is not None
@@ -293,7 +294,7 @@ class Analysis():
                     raise FileNotFoundError(f" missing file: {str(self.map_annotationFilename):s}")
             else:
                 self.map_annotationFilename = None
-
+   
 
              # always specify the temporary directory for intermediate plot results
             self.cell_tempdir = Path(self.analyzeddatapath, "temppdfs")
@@ -336,7 +337,7 @@ class Analysis():
 
         if self.artifactFilename is not None and len(self.artifactFilename) > 0 :
             self.artifactFilename = Path(self.analyzeddatapath, self.artifactFilename)
-            if not self.annotationFilename.is_file():
+            if not self.cell_annotationFilename.is_file():
                 raise FileNotFoundError
         else:
             self.artifactFilename = None
@@ -368,18 +369,18 @@ class Analysis():
 
         # pull in the annotated data (if present) and update the cell type in the main dataframe
         self.df["annotated"] = False  # clear annotations
-        if self.annotationFilename is not None:
+        if self.cell_annotationFilename is not None:
             CP.cprint(
-                "yellow", f"Reading annotation file: {str(self.annotationFilename):s}"
+                "yellow", f"Reading annotation file: {str(self.cell_annotationFilename):s}"
             )
-            ext = self.annotationFilename.suffix
+            ext = self.cell_annotationFilename.suffix
             if ext in [".p", ".pkl", ".pkl3"]:
-                self.annotated_dataframe = pd.read_pickle(self.annotationFilename)
+                self.annotated_dataframe = pd.read_pickle(self.cell_annotationFilename)
             elif ext in [".xls", ".xlsx"]:
-                self.annotated_dataframe = pd.read_excel(self.annotationFilename)
+                self.annotated_dataframe = pd.read_excel(self.cell_annotationFilename)
             else:
                 raise ValueError(
-                    f"Do not know how to read annotation file: {str(self.annotationFilename):s}, Valid extensions are for pickle and excel"
+                    f"Do not know how to read annotation file: {str(self.cell_annotationFilename):s}, Valid extensions are for pickle and excel"
                 )
         self.update_annotations()
 
@@ -393,7 +394,7 @@ class Analysis():
             "analyzed data": self.analyzeddatapath,
             "input": self.inputFilename,
             "pdf": self.pdfFilename,
-            "annotation (excel)": self.annotationFilename,
+            "annotation (excel)": self.cell_annotationFilename,
             "map_annotation (excel)": self.map_annotationFilename,
             "extra_subdirectories": self.extra_subdirectories,
             "artifact": self.artifactFilename,
@@ -503,14 +504,15 @@ class Analysis():
                         f"   {str(self.make_cellstr(self.df, icell)):>56s}  type: {self.df.iloc[icell]['cell_type']:<20s}, annotated (T,F): {str(self.df.iloc[icell]['annotated'])!s:>5} Index: {icell:d}"
                     )
 
-        # pull in map annotations. Thesea are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
+        # pull in map annotations. These are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
         if self.map_annotationFilename is not None:
             CP.cprint("c", f"Reading map annotation file:  {str(self.map_annotationFilename):s}")
             self.map_annotations = pd.read_excel(
                 Path(self.map_annotationFilename).with_suffix(".xlsx"),
                 sheet_name="Sheet1",
             )
-
+            CP.cprint('c', f"   ... Loaded map annotation file: {str(self.map_annotationFilename):s}")
+    
     def make_cellstr(self, df: pd.DataFrame, icell: int, shortpath: bool = False):
         """
         Make a day string including slice and cell from the icell index in the pandas dataframe df
@@ -715,6 +717,7 @@ class Analysis():
         prox = sorted(
             list(set(protocols))
         )  # adjust for duplicates (must be a better way in pandas)
+        print("protocols: ", prox)
         for i, x in enumerate(prox):  # construct filenames and sort by analysis types
             if len(x) == 0:
                 continue
@@ -722,7 +725,7 @@ class Analysis():
             xp = Path(x).parts
             if xp[0] == "/" and len(xp) > 1:
                 x = xp[-1]  # just get the protocol directory
-            if len(self.protocol) > 1 and self.protocol != x:
+            if (self.protocol is not None) and (len(self.protocol) > 1) and (self.protocol != x):
                 continue
             # c = os.path.join(day, prots.iloc[i]['slice_slice'], prots.iloc[i]['cell_cell'], x)
             if day is None:
@@ -823,6 +826,7 @@ class Analysis():
             otherwise False
         """
         original_celltype = self.df.at[icell, "cell_type"]
+        print("original cell type: ", original_celltype)
         datestr, slicestr, cellstr = self.make_cell(icell)
         if self.annotated_dataframe is None:
             return original_celltype, None
@@ -912,7 +916,7 @@ class Analysis():
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = self.check_celltype(celltype)
-        self.df.at[self.df.index[icell], "cell_type"] = celltype  # updates cell type 
+        # .at[self.df.index[icell], "cell_type"] = celltype  # updates cell type 
 
         fullfile = Path(
             self.rawdatapath, self.df.iloc[icell].cell_id)
@@ -1052,8 +1056,8 @@ class Analysis():
             self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
             # analyze_maps stores events in an events subdirectory by cell
             # It also merges the PDFs for that cell in the celltype directory
-            # CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
-            # self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
+            CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
+            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
 
             gc.collect()
 

@@ -58,6 +58,7 @@ class MiniAnalyses:
         self.event_post_time = 0.020
         self.analysis_window = [None, None]  # specify window or entire data set
         self.datatype = None
+        self.onsets = []  # list of event onsets
         self.events_ok = []
         self.individual_events = False
         self.do_individual_fits = False
@@ -438,7 +439,7 @@ class MiniAnalyses:
         difftime = time.time() - self.starttime
         print(f"Elapsed time (s): {difftime:.3f}")
 
-    def clip_window(self, data: np.ndarray, timebase: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def clip_window(self, data: np.ndarray, timebase: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple]:
         # print(data.shape, timebase.shape)
         jmin: int = 0
         if self.analysis_window[0] is not None:
@@ -446,7 +447,7 @@ class MiniAnalyses:
         jmax: int = timebase.shape[0]
         if self.analysis_window[1] is not None:
             jmax = int(np.argmin(np.fabs(timebase - self.analysis_window[1])))
-        return data[:, jmin:jmax], timebase[jmin:jmax]
+        return data[:, jmin:jmax], timebase[jmin:jmax], (jmin, jmax)
 
     def prepare_data(self, data: np.ndarray, pars:MEDC.AnalysisPars):
         """
@@ -506,7 +507,7 @@ class MiniAnalyses:
         #
 
         self._start_timing("Clipping window")
-        data, self.timebase = self.clip_window(data, timebase)
+        data, self.timebase, (jmin, jmax) = self.clip_window(data, timebase)
         # print(data.shape, self.timebase.shape)
         # exit()
         self._report_elapsed_time()
@@ -753,7 +754,7 @@ class MiniAnalyses:
                 ok_onsets[i] = [summary.onsets[i][n] for n in npk]
         return ok_onsets
 
-    def summarize(self, data, order: int = 11, verbose: bool = False) -> None:
+    def summarize(self, data, order: int = 11, verbose: bool = False) -> MEDC.Mini_Event_Summary:
         """
         Compute peaks, smoothed peaks, and ampitudes for all found events in a
         trace or a group of traces.
@@ -781,7 +782,7 @@ class MiniAnalyses:
         avgwin = 5  # 5 point moving average window for peak detection
         mwin = int(0.0050 / self.dt_seconds)
         if self.sign > 0:
-            nparg = np.greater
+            nparg: np.ufunc = np.greater
         else:
             nparg = np.less
         self.intervals = []
@@ -977,24 +978,24 @@ class MiniAnalyses:
             The smallest size event that will be considered acceptable.
         """
 
-        pkt = []
-        if len(method.onsets) == 0 or not method.Summary.average.averaged:
+        pkt: list = []
+        if len(method.onsets) == 0 or not method.summary.average.averaged:
             return pkt
         tb = method.timebase  # full time base
-        smpks = np.array(method.Summary.smpkindex[itrace])
+        smpks = np.array(method.summary.smpkindex[itrace])
         # events[trial]['aveventtb']
         rate = np.mean(np.diff(tb))
-        tb_event = method.Summary.average.avgeventtb  # event time base
+        tb_event = method.summary.average.avgeventtb  # event time base
         tpre = 0.002  # 0.1*np.max(tb0)
         tpost = np.max(tb_event) - tpre
-        ipre = int(tpre / self.rate)
-        ipost = int(tpost / self.rate)
-        pt_fivems = int(0.0005 / self.rate)
-        pk_width = int(0.0005 / self.rate / 2.0)
+        ipre = int(tpre / self.dt_seconds)
+        ipost = int(tpost / self.dt_seconds)
+        pt_fivems = int(0.0005 / self.dt_seconds)
+        pk_width = int(0.0005 / self.dt_seconds / 2.0)
 
-        for npk, jevent in enumerate(np.array(method.Summary.onsets[itrace])[npks]):
+        for npk, jevent in enumerate(np.array(method.summary.onsets[itrace])[npks]):
             jstart = jevent - ipre
-            jpeak = method.Summary.smpkindex[itrace][npk]
+            jpeak = method.summary.smpkindex[itrace][npk]
             jend = jevent + ipost + 1
             evdata = data[jstart:jend].copy()
             l_expect = jend - jstart
