@@ -732,7 +732,7 @@ class MiniAnalyses:
         for i in range(ntraces):
             # CP.cprint("r", f"analyzing trace: {i:d}")
             npk0 = self.select_events(
-                pkt=summary.onsets[i],
+                event_indices=summary.onsets[i],
                 tstarts=art_starts,
                 tdurs=art_durs,
                 rate=self.dt_seconds,
@@ -877,10 +877,9 @@ class MiniAnalyses:
 
     def select_events(
         self,
-        pkt: Union[list, np.ndarray],
-        tstarts: list,  # window starts
-        tdurs: list,  # window durations
-        rate: float,
+        event_indices: Union[list, np.ndarray],
+        twin: list,
+        tb: np.ndarray,
         mode: str = "reject",
         thr: float = 5e-12,
         data: Union[np.ndarray, None] = None,
@@ -904,36 +903,53 @@ class MiniAnalyses:
         npk = []
         rejectlist = []
 
-        if first_stim_only:  # only analyze for the first start time
-            tstarts_local = [tstarts[0]]
-            tdurs_local = [tdurs[0]]
-        else:
-            tstarts_local = tstarts
-            tdurs_local = tdurs
-        for k, pk in enumerate(pkt):  # check each event
+        tri:np.array = np.ndarray(0).astype(int)
+        for (
+            t_ev
+        ) in twin:  # find events in all response windows
+            in_stim_indices = np.where(
+                            (tb[event_indices] >= t_ev[0]) & (tb[event_indices] < t_ev[1])
+                        )[0].astype(int)
+            if len(in_stim_indices) > 0:
+                tri = np.concatenate(
+                    (
+                        tri.copy(),
+                        [event_indices[x] for x in 
+                            in_stim_indices
+                        ],
+                    ),
+                    axis=0,
+                ).astype(int)
+        return tri
+        # ts2i = list(
+        #     set(smpki)
+        #     - set(tri.astype(int)).union(set(tsi))
+        # )  # remainder of events (not spont, not possibly evoked)
+
+        for k, event in enumerate(event_indices):  # check each event
             for itw, tw in enumerate(tstarts_local):  # and for each time window
                 first_event_in_stim = False  # reset for each stimulus
                 ts = int(tw / rate)
                 te = ts + int(tdurs_local[itw] / rate)
-                pk_in_win = (pk >= ts) and (pk < te)  # determine whether event falls in our current window
-                if pk_in_win and mode == "accept":
+                event_in_win = (event >= ts) and (event < te)  # determine whether event falls in our current window
+                if event_in_win and mode == "accept":
                     if first_event_in_stim_only and not first_event_in_stim:
                         first_event_in_stim = True
                         npk.append(k)
                     elif not first_event_in_stim_only:
                         npk.append(k)
                         # if debug:
-                        CP.cprint("c", f"accepted:  k: {k:d}, stim#: {itw:d} ts: {ts:d} -- ev: {pk:d} --te: {te:d}")
+                        CP.cprint("c", f"accepted:  k: {k:d}, stim#: {itw:d} ts: {ts:d} -- ev: {event:d} --te: {te:d}")
 
                 if mode == "reject":
-                    if not pk_in_win:
+                    if not event_in_win:
                         rejectlist.append(k)
-                        CP.cprint("m", f"Rejecting:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
-                if pk_in_win and (mode == "threshold_reject") and (data is not None):
-                    if pk_in_win and (np.fabs(data[k]) <= thr):
+                        CP.cprint("m", f"Rejecting:  k: {k:d}, ts: {ts:d},  ev: {event:d}, te: {te:d}")
+                if event_in_win and (mode == "threshold_reject") and (data is not None):
+                    if event_in_win and (np.fabs(data[k]) <= thr):
                         # print("np.fabs: ", np.fabs(data[k]), thr)
                         rejectlist.append(k)
-                        CP.cprint("y", f"Below Threshold rejection:  k: {k:d}, ts: {ts:d},  ev: {pk:d}, te: {te:d}")
+                        CP.cprint("y", f"Below Threshold rejection:  k: {k:d}, ts: {ts:d},  ev: {event:d}, te: {te:d}")
 
         if debug:
             print("npk: ", npk)
@@ -1376,6 +1392,9 @@ class MiniAnalyses:
         avgnpts = int((self.template_pre_time + self.template_tmax) / self.dt_seconds)  # points for the average
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in minisummary.onsets])
+        # print(n_events, len(minisummary.onsets), len(eventlist))
+        if len(eventlist) > n_events:
+            n_events = len(eventlist)
         allevents = np.zeros((n_events, avgnpts))
         k = 0
         pkt = 0
@@ -1384,6 +1403,7 @@ class MiniAnalyses:
             ix = event_onset + pkt 
             # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
             if (ix + npost) < data.shape[0] and (ix - npre) >= 0:
+                # print(k, allevents.shape, data.shape, ix-npre, ix+npost)
                 allevents[k, :] = data[(ix - npre) : (ix + npost)]
                 k = k + 1
         return np.mean(allevents, axis=0), avgeventtb, allevents
@@ -1486,17 +1506,22 @@ class MiniAnalyses:
         self.Qtotal = np.nan
 
         # print("init delay: ", initdelay)
-        res = self.event_fitter_lm(
-            tb,
-            avgevent,
-            time_past_peak=time_past_peak,
-            tau1=self.tau1,
-            tau2=self.tau2,
-            tau3=self.tau3,
-            fixed_delay=initdelay,
-            debug=debug,
-            label=label,
-        )
+        try:
+            res = self.event_fitter_lm(
+                tb,
+                avgevent,
+                time_past_peak=time_past_peak,
+                tau1=self.tau1,
+                tau2=self.tau2,
+                tau3=self.tau3,
+                fixed_delay=initdelay,
+                debug=debug,
+                label=label,
+            )
+        except:
+            print("Error in fit_average_event fitting")
+            return
+        
         if res is None:
             CP.cprint(
                 "r",
