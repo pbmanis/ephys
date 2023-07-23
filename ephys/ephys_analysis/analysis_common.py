@@ -435,7 +435,7 @@ class Analysis():
             if "_" not in day:
                 day = day + "_000"
             cells_in_day = self.df.loc[self.df.day == day]
-            print("cells in day: ", cells_in_day)
+            # print("cells in day: ", cells_in_day)
             if len(cells_in_day) == 0:
                 CP.cprint("r", f"date not found: here are the valid dates:")
                 for dx in self.df.date.values:
@@ -826,16 +826,46 @@ class Analysis():
             otherwise False
         """
         original_celltype = self.df.at[icell, "cell_type"]
-        print("original cell type: ", original_celltype)
         datestr, slicestr, cellstr = self.make_cell(icell)
-        if self.annotated_dataframe is None:
-            return original_celltype, None
-        cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None)
-        if cell_df.empty:  # cell was not in annotated dataframe
-            # CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation entry (that is ok)")
-            return original_celltype, False
+        CP.cprint("c", f"Original cell type: {original_celltype:s}")
+        annotated_celltype = None
+        map_annotated_celltype = None
+        if self.annotated_dataframe is not None: # get annotation file cell type
+            cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None)
+            if cell_df.empty:  # cell was not in annotated dataframe
+                CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation cell type specification (that is ok)")
+            annotated_celltype = cell_df["cell_type"].values[0].strip()
 
-        celltype = cell_df["cell_type"].values[0].strip()
+        if self.map_annotations is not None:  # get map annotation cell type
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, protocolstr=None)
+            if cell_df.empty:
+                CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an map_annotation celltype specification")
+            map_annotated_celltype = cell_df["cell_type"].values[0].strip()
+        
+        # now we have several possibilities: only original (prefered), annotated_celltype from
+        # the old annotation table, or map_annotated_celltype from the map annotation table.
+        # compare these to the original cell type and see if we need to change it.
+        # 
+        if pd.isnull(map_annotated_celltype) and pd.isnull(annotated_celltype):
+            return original_celltype, False
+        elif pd.isnull(annotated_celltype): # check map annotated type and use instead if different from original
+            if not pd.isnull(map_annotated_celltype) and isinstance(map_annotated_celltype, str):
+                if map_annotated_celltype != original_celltype:
+                    CP.cprint(
+                        "red",
+                        f"   Cell type was re-annotated in map_annotation file from: {original_celltype:s} to: {map_annotated_celltype:s})",
+                    )
+                    return map_annotated_celltype, True
+                else:
+                    CP.cprint("c", f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}")
+                    return original_celltype, False
+            else:
+                CP.cprint("c", f"    Map annotation celltype was empty, so using original: {original_celltype:s}")
+                return original_celltype, False
+
+
+
+
         # if not pd.isnull(celltype) and not isinstance(celltype, str):
         #     CP.print("c",
         #             f"    Annotated dataFrame: new celltype = {cell_df['cell_type']:s} vs. {original_celltype:s}"
@@ -843,16 +873,26 @@ class Analysis():
         #     CP.cprint("c", f"    Annotation did not change celltype: {celltype:s}")
         #     return original_celltype, False
 
-        if not pd.isnull(celltype) and isinstance(celltype, str):
-            if celltype != original_celltype:
-                CP.cprint(
-                    "red",
-                    f"   Cell type was re-annotated from: {original_celltype:s} to: {celltype:s})",
-                )
-                return celltype, True
+        elif pd.isnull(map_annotated_celltype): # no map annotation, use the annotated celltype if it is different from original
+            if not pd.isnull(annotated_celltype) and isinstance(annotated_celltype, str):
+                if annotated_celltype != original_celltype:
+                    CP.cprint(
+                        "red",
+                        f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})",
+                    )
+                    return annotated_celltype, True
+                else:
+                    CP.cprint("c", f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}")
+                    return original_celltype, False
             else:
-                CP.cprint("c", f"    Annotation and original cell types were identical, not changed from: {celltype:s}")
+                CP.cprint("c", f"    Annotated celltype was not specified, so using original: {original_celltype:s}")
                 return original_celltype, False
+        else:
+            if (map_annotated_celltype != original_celltype
+                or map_annotated_celltype != annotated_celltype
+                or annotated_celltype != original_celltype):
+                Logger.critical(f"Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables")
+                raise ValueError("Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables")
 
     def compare_slice_cell(self, icell:int, datestr:str, slicestr:str, cellstr:str) -> [bool, str]:
         """compare_slice_cell - compare the slice and cell strings in the dataframe
