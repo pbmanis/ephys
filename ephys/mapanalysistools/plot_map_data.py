@@ -753,8 +753,7 @@ class PlotMapData:
                             f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
                         )
                     continue
-
-                for j, jevent in enumerate(evs[0]): 
+                for j, jevent in enumerate(evs): 
                     # evs is 2 element array: [0] are onsets and [1] is peak; here we align the traces to onsets
                     event_id = (itrace, j)
                     if event_id not in allevents.keys():

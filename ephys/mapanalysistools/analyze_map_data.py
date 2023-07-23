@@ -277,7 +277,7 @@ class AnalyzeMap(object):
                 self.Pars.twin_resp.append(
                     [
                         self.Pars.stimtimes["starts"][j]
-                        + self.Pars.direct_window
+                        # + self.Pars.direct_window
                         - self.Pars.time_zero,
                         self.Pars.stimtimes["starts"][j]
                         + self.Pars.response_window
@@ -816,19 +816,19 @@ class AnalyzeMap(object):
             # also, only use isolated events for this calculation
 
             npk_sp = method.select_events(
-                pkt=[minisummary.onsets[itrace][x] for x in evtr],
-                tstarts=[0.0],
-                tdurs=[self.Pars.stimtimes["starts"][0] - (0.010)],
-                rate=minisummary.dt_seconds,
+                event_indices=[minisummary.onsets[itrace][x] for x in evtr],
+                twin = [[0., self.Pars.twin_resp[0][0]-0.010]], #tstarts=[0.0],
+                tb = self.MA.timebase,
                 mode="accept",
                 first_event_in_stim_only=False,
                 first_stim_only=False,
             )
+            # print("spont event list: ", npk_sp)
             if len(npk_sp) > 0:
-                sp_onsets = [minisummary.onsets[itrace][x] for x in npk_sp]
-                minisummary.spontaneous_event_trace_list.append(
-                    [sp_onsets, [minisummary.smpkindex[itrace][x] for x in npk_sp]]
-                )
+                sp_onsets = npk_sp # [minisummary.onsets[itrace][x] for x in npk_sp]
+                minisummary.spontaneous_event_trace_list.append(sp_onsets)
+                #     [sp_onsets, [minisummary.smpkindex[itrace][x] for x in npk_sp]]
+                # )
                 avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(
                     data[itrace], eventlist=sp_onsets, minisummary=minisummary
                 )
@@ -838,20 +838,25 @@ class AnalyzeMap(object):
             # print(ok_events*rate)
 
             # Now get the events in the evoked event window across all traces
+            # print("twin: ", self.Pars.twin_resp)
+            nwin = self.Pars.twin_resp
+            for i in range(len(nwin)):
+                nwin[i][0] -= 0.01
+                nwin[i][1] += 0.0
             npk_ev = method.select_events(
-                pkt=[minisummary.onsets[itrace][x] for x in evtr],
-                tstarts=self.Pars.stimtimes["starts"],
-                tdurs=[self.Pars.response_window]*len(self.Pars.stimtimes["starts"]),
-                rate=minisummary.dt_seconds,
+                event_indices = [minisummary.onsets[itrace][x] for x in evtr],
+                twin = nwin, # self.Pars.twin_resp,
+                tb = self.MA.timebase,
                 mode="accept",
                 first_stim_only=False,
                 first_event_in_stim_only=False,
             )
+            # print("evoked event list: ", npk_ev)
             if len(npk_ev) > 0:
-                ev_onsets = [minisummary.onsets[itrace][x] for x in npk_ev]
-                minisummary.evoked_event_trace_list.append(
-                    [ev_onsets, [minisummary.smpkindex[itrace][x] for x in npk_ev]]
-                )
+                ev_onsets = npk_ev # [minisummary.onsets[itrace][x] for x in npk_ev]
+                minisummary.evoked_event_trace_list.append(ev_onsets)
+                #     [ev_onsets, [minisummary.smpkindex[itrace][x] for x in npk_ev]]
+                # )
                 (
                     avg_evoked_one,
                     avg_sponttb,
@@ -862,7 +867,7 @@ class AnalyzeMap(object):
                 minisummary.average_evoked.avgevent.append(avg_evoked_one)
             else:
                 minisummary.evoked_event_trace_list.append([[], []])
-            ok_events = np.array(minisummary.smpkindex[itrace])[npk_ev]
+            # ok_events = np.array(minisummary.smpkindex[itrace])[npk_ev]
             
         sa = np.array(minisummary.average_spont.avgevent)
         ea = np.array(minisummary.average_evoked.avgevent)
