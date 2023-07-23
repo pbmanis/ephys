@@ -224,7 +224,7 @@ class PlotTraces():
             deadtime = ri["stimDelay"]
         else:
             deadtime = ri.stimDelay
-        trstep = 25.0 / ntr
+        trstep = 10 / ntr
         inpstep = 2.0 / ntr
         sz = 50.0 / ntr
         noutspikes = 0
