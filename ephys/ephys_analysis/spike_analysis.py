@@ -617,12 +617,12 @@ class SpikeAnalysis():
             return
         if jthr == j150 and self.verbose:
             #print '\n%s:' % self.filename
-            print('Threshold current T and 1.5T the same: using next up value for j150')
-            print('jthr, j150, len(spikeShape): ', jthr, j150, len(self.spikeShapes))
-            print('1 ', self.spikeShapes[jthr][0].current*1e12)
-            print('2 ', self.spikeShapes[j150+1][0].current*1e12)
-            print(' >> Threshold current: %8.3f   1.5T current: %8.3f, next up: %8.3f' % (self.spikeShapes[jthr][0].current*1e12,
-                        self.spikeShapes[j150][0].current*1e12, self.spikeShapes[j150+1][0].current*1e12))
+            # print('Threshold current T and 1.5T the same: using next up value for j150')
+            # print('jthr, j150, len(spikeShape): ', jthr, j150, len(self.spikeShapes))
+            # print('1 ', self.spikeShapes[jthr][0].current*1e12)
+            # print('2 ', self.spikeShapes[j150+1][0].current*1e12)
+            # print(' >> Threshold current: %8.3f   1.5T current: %8.3f, next up: %8.3f' % (self.spikeShapes[jthr][0].current*1e12,
+            #             self.spikeShapes[j150][0].current*1e12, self.spikeShapes[j150+1][0].current*1e12))
             j150 = jthr + 1
 
         spikesfound = False
