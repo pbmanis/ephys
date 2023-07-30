@@ -99,8 +99,7 @@ class AnalyzeMap(object):
         else:
             self.filters = filters
         self.reset_filters()
-        print("Filter set in AMD: \n", self.filters)
-
+    
     def reset_filters(self):
         """
         Reset the filtering flags so we know which have been done.
