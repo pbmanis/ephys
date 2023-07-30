@@ -374,14 +374,12 @@ class MiniAnalyses:
             or self.filters.Notch_frequencies is None
             or len(self.filters.Notch_frequencies) == 0
         ):
-            print("no notch filtering")
-            exit()
             return data
         CP.cprint(
             "y",
             f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}",
         )
-        exit()
+
         if (
             self.filters.Notch_frequencies is None
             or len(self.filters.Notch_frequencies) == 0
