@@ -809,10 +809,14 @@ class MAP_Analysis(Analysis):
                     self.AM.Pars.scale_factor,
                     self.AM.methodname,
                 )
+                datestr, slicestr, cellstr = self.make_cell(icell)
+                cell_df = self.find_cell(
+                    self.map_annotations, datestr, slicestr, cellstr, Path(mapdir)
+                )
                 preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}".format(
                     self.AM.filters.HPF_frequency,
                     self.AM.filters.LPF_frequency,
-                    str(self.AM.filters.Notch_frequencies),
+                    str(cell_df['Notch'].values[0]),  # get compact form
                     str(self.AM.filters.Detrend_method),
                 )   
                 fix_mapdir = str(mapdir)  # .replace("_", "\_")
