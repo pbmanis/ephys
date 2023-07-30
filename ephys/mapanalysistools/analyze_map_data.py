@@ -6,6 +6,7 @@ analyze ChR2 or uncaging map data
 """
 import argparse
 import datetime
+from copy import deepcopy
 import logging
 import math
 import os.path
@@ -112,10 +113,11 @@ class AnalyzeMap(object):
         self.filters.Notch_applied = False
 
     def set_notch(self, enable:bool=True, freqs:Union[list, np.ndarray]=[60.], Q:float=90.0):
+
         self.filters.Notch_applied = False
         self.filters.Notch_frequencies = freqs
         self.filters.Notch_Q = Q
-
+ 
     def set_LPF(self, LPF):
         self.filters.LPF_frequency = LPF
         self.filters.LPF_applied = False
@@ -125,6 +127,12 @@ class AnalyzeMap(object):
         self.filters.HPF_frequency = HPF
         self.filters.HPF_applied = False
         self.filters.HPF_type = "ba"
+    
+    def set_detrend(self, enable:bool=True, method:str='meegkit', order:int=5):
+        self.filters.Detrend_applied = False
+        self.filters.Detrend_enable = enable    
+        self.filters.Detrend_method = method
+        self.filters.Detrend_order = order
 
     def reset_filtering(self):
         self.filters.LPF_applied = False
@@ -817,7 +825,7 @@ class AnalyzeMap(object):
 
             npk_sp = method.select_events(
                 event_indices=[minisummary.onsets[itrace][x] for x in evtr],
-                twin = [[0., self.Pars.twin_resp[0][0]-0.010]], #tstarts=[0.0],
+                twin = [[0., self.Pars.twin_resp[0][0]-0.00]], #tstarts=[0.0],
                 tb = self.MA.timebase,
                 mode="accept",
                 first_event_in_stim_only=False,
@@ -838,10 +846,10 @@ class AnalyzeMap(object):
             # print(ok_events*rate)
 
             # Now get the events in the evoked event window across all traces
-            # print("twin: ", self.Pars.twin_resp)
-            nwin = self.Pars.twin_resp
+            # deepcopy here is essential, or else  twin_resp gets modified, causing trouble later
+            nwin = deepcopy(self.Pars.twin_resp)
             for i in range(len(nwin)):
-                nwin[i][0] -= 0.01
+                nwin[i][0] -= 0.002
                 nwin[i][1] += 0.0
             npk_ev = method.select_events(
                 event_indices = [minisummary.onsets[itrace][x] for x in evtr],

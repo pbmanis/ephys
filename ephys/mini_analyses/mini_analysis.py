@@ -522,7 +522,7 @@ class MiniAnalysis:
             filters.HPF_type = "ba"
             filters.Notch_frequencies=mousedata["notch"]
             filters.Notch_Q = mousedata["notch_Q"]
-            filters.Detrend_type = None
+            filters.Detrend_method = None
             print("Calling setup for Andrade-Jonas (2012)")
             print("threshold: ", float(mousedata["thr"]))
             aj.setup(

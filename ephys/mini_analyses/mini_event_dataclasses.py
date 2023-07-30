@@ -27,11 +27,12 @@ class Filtering:
     HPF_type: str = "ba"
     
     Notch_applied: bool = False
-    Notch_frequencies: Union[float, list, None] = None
+    Notch_frequencies: Union[float, list, str, None] = None
     Notch_Q: float=30.
     
+    Detrend_enable: bool=True
     Detrend_applied: bool = False
-    Detrend_type: str = "meegkit"  # or "scipy" or None
+    Detrend_method: Union[str, None] = "meegkit"  # or "scipy" or None
     Detrend_order: int = 5
 
 

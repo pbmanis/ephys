@@ -126,6 +126,8 @@ class cmdargs:
     LPF: float = 0.0
     HPF: float = 0.0
     notchQ: float = 90.0
+    detrend_method: Union[str, None] = None
+    detrend_order: int=5
     detector: str = "cb"
     
 class Analysis():
@@ -209,10 +211,15 @@ class Analysis():
         self.whichstim = args.whichstim
         self.trsel = args.trsel
         self.notchfilter = args.notchfilter
-        self.notchfreqs = eval(args.notchfreqs)
+        if args.notchfreqs is not None:
+            self.notchfreqs = eval(args.notchfreqs)
+        else:
+            self.notchfreqs = None
         self.LPF = args.LPF
         self.HPF = args.HPF
         self.notch_Q = args.notchQ
+        self.detrend_method = args.detrend_method
+        self.detrend_order = args.detrend_order
         self.detector = args.detector
 
         self.cell_tempdir = None

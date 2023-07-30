@@ -729,7 +729,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 elif path[1] == "Enable Filtering":
                     self.filters.enabled = data
                 elif path[1] == "Detrend Method":
-                    self.filters.Detrend_type = data
+                    self.filters.Detrend_method = data
                 elif path[1] == "LPF":
                     self.filters.LPF_frequency = data
                 elif path[1] == "HPF":

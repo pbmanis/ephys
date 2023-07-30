@@ -289,7 +289,7 @@ def run_ClementsBekkers(
     filters = MEDC.Filtering()
     filters.LPF_frequency = 5000.0
     filters.Notch_frequencies = None
-    filters.Detrend_type = None
+    filters.Detrend_method = None
     cb = MM.ClementsBekkers()
     pars.baseclass = cb
     crit = [None] * pars.ntraces
@@ -363,7 +363,7 @@ def run_ClementsBekkers_multiscale(
     filters = MEDC.Filtering()
     filters.LPF_frequency = 5000.0
     filters.Notch_frequencies = None
-    filters.Detrend_type = None
+    filters.Detrend_method = None
  
     for i, pars in enumerate(pars_list):
         pars.threshold = pars_list[i].threshold
@@ -446,7 +446,7 @@ def run_AndradeJonas(
     filters.LPF_frequency = 5000.0
     filters.LPF_type = "ba"
     filters.Notch_frequencies = None
-    filters.Detrend_type = None
+    filters.Detrend_method = None
  
     aj.setup(
         ntraces=pars.ntraces,

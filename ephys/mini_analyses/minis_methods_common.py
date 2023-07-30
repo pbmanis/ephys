@@ -374,12 +374,14 @@ class MiniAnalyses:
             or self.filters.Notch_frequencies is None
             or len(self.filters.Notch_frequencies) == 0
         ):
+            print("no notch filtering")
+            exit()
             return data
         CP.cprint(
             "y",
             f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}",
         )
-
+        exit()
         if (
             self.filters.Notch_frequencies is None
             or len(self.filters.Notch_frequencies) == 0
@@ -481,7 +483,7 @@ class MiniAnalyses:
         print(f"    Preparing data: LPF = {str(self.filters.LPF_frequency):s}")
         print(f"    Preparing data: HPF = {str(self.filters.HPF_frequency):s}")
         print(f"    Preparing data: Notch = {str(self.filters.Notch_frequencies):s}")
-        print(f"    Preparing data: detrend: {str(self.filters.Detrend_type):s}")
+        print(f"    Preparing data: detrend: {str(self.filters.Detrend_method):s}")
         timebase:np.ndarray = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
         # print(
         #     "original data : ",
@@ -539,10 +541,10 @@ class MiniAnalyses:
                 CP.cprint("r", f"    minis_methods_common, no HPF applied")
         filters_applied:str = ""
         #
-        # 2. detrend. Method depends on self.filters.Detrend_type
+        # 2. detrend. Method depends on self.filters.Detrend_method
         #
 
-        if self.filters.Detrend_type == "meegkit":
+        if self.filters.Detrend_method == "meegkit" and self.filters.Detrend_enable:
             self._start_timing("Detrend meegkit")
             for itrace in range(data.shape[0]):
                 data[itrace], _, _ = MEK.detrend.detrend(
@@ -552,7 +554,7 @@ class MiniAnalyses:
             filters_applied += "Detrend: meegkit  "
             self._report_elapsed_time()
             
-        elif self.filters.Detrend_type == "scipy":
+        elif self.filters.Detrend_method == "scipy" and self.filters.Detrend_enable:
             self._start_timing("Detrend scipy")
             for itrace in range(data.shape[0]):
                 data[itrace] = FUNCS.adaptiveDetrend(
@@ -561,11 +563,11 @@ class MiniAnalyses:
             self.filters.Detrend_applied = True
             filters_applied += "Detrend: scipy adaptive  "
             self._report_elapsed_time()
-        elif self.filters.Detrend_type == "None" or self.filters.Detrend_type == None:
+        elif self.filters.Detrend_method == "None" or self.filters.Detrend_method == None or not self.filters.Detrend_enable:
             pass
         else:
             raise ValueError(
-                f"minis_methods_common: detrending filter type not known: got {self.filters.Detrend_type:s}"
+                f"minis_methods_common: detrending filter type not known: got {self.filters.Detrend_method:s}"
             )
 
         #
@@ -585,6 +587,7 @@ class MiniAnalyses:
         if (
             (self.filters.HPF_frequency is not None)
             and isinstance(self.filters.HPF_frequency, float)
+            and (self.filters.HPF_frequency > 0.0)
             and self.filters.enabled
         ):
             self._start_timing("HPF")
@@ -595,6 +598,7 @@ class MiniAnalyses:
         #
         # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
         #
+
         if (
             (self.filters.Notch_frequencies is not None)
             and (

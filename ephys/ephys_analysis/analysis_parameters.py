@@ -330,6 +330,23 @@ def build_parser(experiments):
         help="Set notch Q (sharpness of notch; default=90)",
     )
 
+    parser.add_argument(
+        "--detrend_method",
+        type=str,
+        default="meegkit",
+        choices=["meegkit", "scipy", "None"],
+        dest="detrend_method",
+        help="Set method for detrending data. Choices: ['meegkit', 'scipy', 'None']",
+    )
+    
+    parser.add_argument(
+        "--detrend_order",
+        type=int,
+        default=5,
+        dest="detrend_order",
+        help="Set detrend order for meegkit (default=5)",
+    )
+
     args = parser.parse_args()
     # args = vars(parser.parse_args())
     return args

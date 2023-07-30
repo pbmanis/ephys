@@ -273,6 +273,86 @@ class MAP_Analysis(Analysis):
                 print(msg)
                 Logger.warning(msg)
 
+    def set_LPF_freq(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        if self.map_annotations is not None:
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            sh = cell_df["LPF"].shape
+            if cell_df is not None and sh != (0,):
+                self.AM.set_LPF(cell_df["LPF"].values[0])
+                print(f"    Setting LPF to {self.AM.filters.LPF_frequency:.1f} from map table", end=" ")
+            else:
+                print("    Using default LPF", end=" ")
+        else:
+            msg = "No map annotation file has been read; using default values"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+        print(f"      LPF: {self.AM.filters.LPF_frequency:6.1f}")
+
+    def set_HPF_freq(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        if self.map_annotations is not None:
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            sh = cell_df["HPF"].shape
+            if cell_df is not None and sh != (0,):
+                self.AM.set_HPF(cell_df["HPF"].values[0])
+                print(f"    Setting HPF to {self.AM.filters.HPF_frequency:.1f} from map table", end=" ")
+            else:
+                print("    Using default HPF", end=" ")
+        else:
+            msg = "No map annotation file has been read; using default values"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+        print(f"      LPF: {self.AM.filters.HPF_frequency:6.1f}")
+
+    def set_Notch_frequencies(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        if self.map_annotations is not None:
+            # print("set notch, using map_annotations")
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            sh = cell_df["Notch"].shape
+            # print("Sh: ", sh)
+            if cell_df is not None and sh != (0,):
+                # print("    Setting Notch to ", cell_df["Notch"].values[0])
+                self.AM.set_notch(enable=True, freqs=str(list(eval(cell_df["Notch"].values[0]))))
+                print(f"    Setting Notch to {str(cell_df['Notch'].values[0]):s} from map table", end=" ")
+            else:
+                self.AM.set_notch(enable=False, freqs=[])
+                print("    No Notch filtering set", end=" ")
+        else:
+            msg = "No map annotation file has been read; using default values"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+        print(f"      Notch: {str(cell_df['Notch'].values[0]):s}")
+
+
+
+    def set_detrend(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        if self.map_annotations is not None:
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            sh = cell_df["Detrend"].shape
+            if cell_df is not None and sh != (0,) and cell_df["Detrend"].values[0] in ['meegkit', 'scipy']:
+                print(cell_df["Detrend"].values[0])
+                self.AM.set_detrend(enable=True, method=cell_df["Detrend"].values[0])
+                print(f"    Setting detrend to {str(self.AM.filters.Detrend_method):s} from map table", end=" ")
+            else:
+                self.AM.set_detrend(enable=False, method=None)
+                print("    No Detrending set", end=" ")
+        else:
+            msg = "No map annotation file has been read; using default values"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+        print(f"      Detrend: {str(self.AM.filters.Detrend_enable):s}  {str(self.AM.filters.Detrend_method):s}")
+
     def set_stimdur(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
         if self.map_annotationFilename is not None:
@@ -323,6 +403,11 @@ class MAP_Analysis(Analysis):
         # read the mapdir protocol
         protodir = Path(self.rawdatapath, path_to_map)
         print("protodir: ", protodir)
+        # set preprocessing (filtering, detrending) 
+        self.set_HPF_freq(icell, path_to_map)
+        self.set_LPF_freq(icell, path_to_map)
+        self.set_detrend(icell, path_to_map)
+        self.set_Notch_frequencies(icell, path_to_map)
         try:
             assert protodir.is_dir()
             protocol = self.AM.AR.readDirIndex(str(protodir))
@@ -350,10 +435,11 @@ class MAP_Analysis(Analysis):
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
+            
 
         elif (
             "_VC_" in str_path_to_map or record_mode == "VC"
-        ) and self.rawdatapath.match(
+        ) and str_path_to_map.match(
             "*VGAT_*"
         ):  # inhibitory PSC
             print(f"Inhibitory PSC, VC, VGAT")
@@ -385,7 +471,7 @@ class MAP_Analysis(Analysis):
 
         elif (
             "_IC_" in str_path_to_map and record_mode in ["IC", "I=0"]
-             and not ("VGAT_" in self.rawdatapath)
+             and not ("VGAT_" in str_path_to_map)
         ):  # excitatory PSP
             print(f"Excitatory PSP, IC or I=0, not VGAT")
             self.AM.Pars.sign = 1  # positive going
@@ -396,7 +482,7 @@ class MAP_Analysis(Analysis):
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
 
-        elif ("_IC_" in str_path_to_map and "VGAT_" in self.rawdatapath
+        elif ("_IC_" in str_path_to_map and "VGAT_" in str_path_to_map
         ):  # inhibitory PSP
             print(f"Inhibitory PSP, IC, VGAT")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
@@ -445,7 +531,7 @@ class MAP_Analysis(Analysis):
 
         elif (
             "Vc_LED" in str_path_to_map and record_mode == "VC"
-        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSC
+        ) and not "VGAT_" in str_path_to_map:  # excitatory PSC
             print(f"Excitatory PSC, VC, LED, not VGAT")
             self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1
@@ -455,9 +541,10 @@ class MAP_Analysis(Analysis):
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
 
+
         elif (
             "Vc_LED_stim" in str_path_to_map and record_mode == "I=0"
-        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSC, but recorded with the WRONG PROTOCOL?
+        ) and not "VGAT_" in str_path_to_map:  # excitatory PSC, but recorded with the WRONG PROTOCOL?
             CP.cprint("r", f"Excitatory PSC, VC, LED, I = 0 (wrong mode!),  not VGAT")
             self.AM.Pars.datatype = "I"
             self.AM.Pars.sign = 1
@@ -469,7 +556,7 @@ class MAP_Analysis(Analysis):
 
         elif (
             ("Ic_LED" in str_path_to_map) and (record_mode in ["IC", "I=0"])
-        ) and not "VGAT_" in self.rawdatapath:  # excitatory PSP
+        ) and not "VGAT_" in str_path_to_map:  # excitatory PSP
             CP.cprint("g", f"Excitatory PSP, IC or I=0, LED, not VGAT")
             self.AM.Pars.sign = 1  # positive going
             self.AM.Pars.scale_factor = 1e3
@@ -483,7 +570,7 @@ class MAP_Analysis(Analysis):
             print("Undetermined map factors - add to the function!")
             print("    path to map: ", path_to_map)
             print("    record_mode: ", record_mode)
-            print("    self.rawdatapath: ", self.rawdatapath)
+            print("    self.rawdatapath: ", str(self.rawdatapath))
             raise ValueError()
 
         if self.verbose:
@@ -589,16 +676,16 @@ class MAP_Analysis(Analysis):
 
             result = results[str(mapkey)]  # get individual map result
 
-        self.set_map_factors(icell, mapdir)
         self.AM.reset_filtering()  # for every protocol!
-        if self.LPF > 0:
-            self.AM.set_LPF(self.LPF)
-        if self.HPF > 0:
-            self.AM.set_HPF(self.HPF)
-        if self.notchfilter:
-            self.AM.set_notch(enable=True, freqs=self.notchfreqs, Q=self.notch_Q)
-        else:
-            self.AM.set_notch(False)
+        self.set_map_factors(icell, mapdir)
+        # if self.LPF > 0:
+        #     self.AM.set_LPF(self.LPF)
+        # if self.HPF > 0:
+        #     self.AM.set_HPF(self.HPF)
+        # if self.notchfilter:
+        #     self.AM.set_notch(enable=True, freqs=self.notchfreqs, Q=self.notch_Q)
+        # else:
+        #     self.AM.set_notch(False, freqs=None)
         self.AM.set_methodname(self.detector)
         if self.signflip:
             self.AM.Pars.sign = -1 * self.AM.Pars.sign  # flip analysis sign
@@ -722,9 +809,15 @@ class MAP_Analysis(Analysis):
                     self.AM.Pars.scale_factor,
                     self.AM.methodname,
                 )
+                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}".format(
+                    self.AM.filters.HPF_frequency,
+                    self.AM.filters.LPF_frequency,
+                    str(self.AM.filters.Notch_frequencies),
+                    str(self.AM.filters.Detrend_method),
+                )   
                 fix_mapdir = str(mapdir)  # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(
-                    f"{fix_mapdir:s}\n{infostr:s} {params:s}",
+                    f"{fix_mapdir:s}\n{infostr:s} {params:s}\n{preprocessing:s}",
                     fontsize=8,
                 )
                 t_path = Path(
