@@ -563,9 +563,9 @@ class PlotMapData:
                         spont_ev_count += ms.shape[0]
                         cr = matplotlib.colors.to_rgba(
                             "r", alpha=0.6
-                        )  # just set up color for markers
-                        ck = matplotlib.colors.to_rgba("k", alpha=1.0)
-                        cg = matplotlib.colors.to_rgba("gray", alpha=1.0)
+                        )  # red is for evoked responses
+                        ck = matplotlib.colors.to_rgba("k", alpha=1.0) # black is for spont
+                        cg = matplotlib.colors.to_rgba("gray", alpha=1.0) # gray is for spont between stimuli
 
                         ax.plot(
                             tb[tsi], # -self.Pars.time_zero,
@@ -823,8 +823,10 @@ class PlotMapData:
             initdelay= tpre,
         )
         CP.cprint("c", "        Event fitting completed")
- 
-        Amplitude = self.MA.fitresult.values["amp"]
+
+
+        Amplitude = np.max(self.MA.sign*avedat)
+        Amplitude1 = self.MA.fitresult.values["amp"]
         Amplitude2 = self.MA.fitresult.values["amp2"]
         tau1 = self.MA.fitresult.values["tau_1"]
         tau2 = self.MA.fitresult.values["tau_2"]
@@ -833,10 +835,10 @@ class PlotMapData:
         bfdelay = self.MA.fitresult.values["fixed_delay"]
         bfit = self.MA.avg_best_fit
 
-        if self.Pars.sign == -1:
-            amp = np.min(bfit)
-        else:
-            amp = np.max(bfit)
+        # if self.Pars.sign == -1:
+        #     amp = np.min(bfit)
+        # else:
+        #     amp = np.max(bfit)
         txt = f"Amp: {scale*Amplitude:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d} del={bfdelay:.4f})"
         txt2 = f"Amp2: {scale*Amplitude2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
 
@@ -849,14 +851,17 @@ class PlotMapData:
             txt = txt + "SR: No events"
         ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
         ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
-        ax.plot(
-            tb * 1e3,
-            scale * bfit,
-            "c",
-            linestyle="-",
-            linewidth=0.35,
-            rasterized=self.rasterized,
-        )
+        if bfit is not None:
+            ax.plot(
+                tb * 1e3,
+                scale * bfit,
+                "c",
+                linestyle="-",
+                linewidth=0.35,
+                rasterized=self.rasterized,
+            )
+        else:
+            ax.text(0.05, 0.0, "fit to average failed", fontsize=6, transform=ax.transAxes)
         ax.plot(
             tb * 1e3,
             scale * avedat,
