@@ -984,7 +984,7 @@ class PlotMapData:
         angle=0,
         spotsize=42e-6,
         cellmarker=False,
-        cell_position:Union[list, str] = None,
+        cell_position:list=None,
         whichstim=-1,
         average=False,
         pars=None,
@@ -1060,8 +1060,10 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
-        # print("xlim: ", xlim)
-        # print("ylim: ", ylim)
+        if cell_position is not None:
+            msize = 20e-6
+            xlim = [np.min([xlim[0], cell_position[0]-msize]), np.max([xlim[1], cell_position[0]+msize])]
+            ylim = [np.min([ylim[0], cell_position[1]-msize]), np.max([ylim[1], cell_position[1]+msize])]
         sign = measure["sign"]
         # print(measuretype)
         upscale = 1.0
@@ -1284,10 +1286,11 @@ class PlotMapData:
             axp.plot(
                 [0.0, 0.0], [-cmrk, cmrk], "-", color="r"
             )  # cell centered coorinates
-        # if cell_position is not None:
-        #     axp.plot([cell_position[0], cell_position[0]],
-        #               [cell_position[1], cell_position[1]],
-        #               marker = 'X', color='y', markersize=6)
+        CP.cprint('r', f"Cell position:  {str(cell_position):s}")
+        if cell_position is not None:
+            axp.plot([cell_position[0], cell_position[0]],
+                      [cell_position[1], cell_position[1]],
+                      marker = 'X', color='y', markersize=6)
         tickspace = scaler.tickSpacing
         try:
             ntick = 1 + int(vmax / tickspace)
@@ -1330,6 +1333,7 @@ class PlotMapData:
         dataset_name: Union[Path, str],
         result: dict,
         pars: object = None,
+        cell_position:list = None
     ) -> bool:
 
         measures = ["ZScore", "Qr-Qb", "A", "Q"]
@@ -1401,6 +1405,7 @@ class PlotMapData:
                 measure=result,
                 measuretype=measuredict[measure],
                 pars=pars,
+                cell_position = cell_position,
             )
         return True
 

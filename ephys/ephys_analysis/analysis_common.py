@@ -7,6 +7,7 @@ laser scanning photstimulation and glutamate uncaging maps.
 """
 import argparse
 import gc
+import json
 import logging
 import sys
 from collections.abc import Iterable
@@ -941,6 +942,43 @@ class Analysis():
         else:
             return True, slicecell
 
+    def get_markers(self, fullfile: Path, verbose:bool=True) -> [list, list, float]:
+        soma_xy = []
+        surface_xy = []
+        dist = np.nan
+        mosaic_file = list(fullfile.glob("*.mosaic"))
+        if len(mosaic_file) > 0:
+            if verbose:
+                CP.cprint('c', f"    Have mosaic_file: {mosaic_file[0].name:s}")
+            state = json.load(open(mosaic_file[0], 'r'))
+            for item in state['items']:
+                if item['type'] == "MarkersCanvasItem":
+                    markers = item['markers']
+                    for markitem in markers:
+                        if verbose:
+                            CP.cprint("c", f"    {markitem[0]:>12s} x={markitem[1][0]*1e3:7.2f} y={markitem[1][1]*1e3:7.2f} z={markitem[1][2]*1e3:7.2f} mm ")
+                    if len(markers) >= 2:  # try to collect soma and surface markers
+
+                        for j in range(len(markers)):
+                            if markers[j][0] == 'soma':
+                                soma_xy = [markers[j][1][0], markers[j][1][1]]
+                            elif markers[j][0] == 'surface':
+                                surface_xy = [markers[j][1][0], markers[j][1][1]]
+                        if len(soma_xy) == 2 and len(surface_xy) == 2:
+                            dist = np.sqrt((soma_xy[0]-surface_xy[0])**2 + (soma_xy[1]-surface_xy[1])**2)
+                            if verbose:
+                                CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
+                    else:
+                        if verbose:
+                            CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
+            if soma_xy == [] or surface_xy == []:
+                if verbose:
+                    CP.cprint("r", "    No soma or surface markers found")
+        else:
+            if verbose:
+                CP.cprint("r", "No mosaic file found")
+        return soma_xy, surface_xy, dist
+
     def do_cell(self, icell: int, pdf=None):
         """
         Do analysis on one cell
@@ -963,11 +1001,12 @@ class Analysis():
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = self.check_celltype(celltype)
-        # .at[self.df.index[icell], "cell_type"] = celltype  # updates cell type 
 
         fullfile = Path(
             self.rawdatapath, self.df.iloc[icell].cell_id)
-
+    
+        self.get_markers(fullfile, verbose=True)
+        
         if self.skip_subdirectories is not None:
             # skip matching subdirectories
             for skip in self.skip_subdirectories:
