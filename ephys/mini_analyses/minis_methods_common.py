@@ -1406,7 +1406,12 @@ class MiniAnalyses:
             # print('itrace, ix, npre, npost: ', itrace, ix, npre, npost)
             if (ix + npost) < data.shape[0] and (ix - npre) >= 0:
                 # print(k, allevents.shape, data.shape, ix-npre, ix+npost)
-                allevents[k, :] = data[(ix - npre) : (ix + npost)]
+                d = data[(ix - npre) : (ix + npost)]
+                if len(d) > avgnpts:
+                    d = d[:avgnpts]
+                elif len(d) < avgnpts:
+                    d = np.pad(d, (0, avgnpts - len(d)), "constant", constant_values=d[-1])
+                allevents[k, :] = d
                 k = k + 1
         return np.mean(allevents, axis=0), avgeventtb, allevents
 
@@ -1468,14 +1473,13 @@ class MiniAnalyses:
         debug: bool = False,
         label: str = "",
         inittaus: List = [0.001, 0.005, 0.005, 0.030],
-        initdelay: float = 0.0,
+        initdelay: float = 0.001,
     ) -> None:
         """
         Fit the averaged event to a double exponential epsc-like function
         Operates on the AverageEvent data structure
         """
         CP.cprint("c", f"        Fitting average event, fixed_delay={initdelay:f}")
-
         self.risetenninety = np.nan
         self.t10 = np.nan
         self.t90 = np.nan
@@ -1507,22 +1511,22 @@ class MiniAnalyses:
         self.avg_best_fit = None
         self.Qtotal = np.nan
 
-        # print("init delay: ", initdelay)
-        try:
-            res = self.event_fitter_lm(
-                tb,
-                avgevent,
-                time_past_peak=time_past_peak,
-                tau1=self.tau1,
-                tau2=self.tau2,
-                tau3=self.tau3,
-                fixed_delay=initdelay,
-                debug=debug,
-                label=label,
-            )
-        except:
-            print("Error in fit_average_event fitting")
-            return
+
+        #try:
+        res = self.event_fitter_lm(
+            tb,
+            avgevent,
+            time_past_peak=time_past_peak,
+            tau1=self.tau1,
+            tau2=self.tau2,
+            tau3=self.tau3,
+            fixed_delay=initdelay,
+            debug=debug,
+            label=label,
+        )
+        # except:
+        #     print("Error in fit_average_event fitting")
+        #     return
         
         if res is None:
             CP.cprint(
@@ -1750,7 +1754,7 @@ class MiniAnalyses:
         from the "time constants"
         """
         # fixed_delay = p[3]  # allow to adjust; ignore input value
-        ix = np.argmin(np.fabs(time - fixed_delay))
+        ix = int(np.argmin(np.fabs(time - fixed_delay)))
         tm = np.zeros_like(time)
         tx = time[ix:] - fixed_delay
         exp_arg1 = tx / tau_1
@@ -1791,7 +1795,7 @@ class MiniAnalyses:
         from the "time constants"
         """
         # fixed_delay = p[3]  # allow to adjust; ignore input value
-        ix = np.argmin(np.fabs(time - fixed_delay))
+        ix = int(np.argmin(np.fabs(time - fixed_delay)))
         tm = np.zeros_like(time)
         tx = time[ix:] - fixed_delay
         exp_arg1 = tx / tau_1
@@ -1821,7 +1825,7 @@ class MiniAnalyses:
         tau3: float = None,
         tau4: float = None,
         init_amp: float = None,
-        fixed_delay: float = 0.0,
+        fixed_delay: float = 0.001,
         debug: bool = False,
         label: str = "",
         j: int = 0,
@@ -1831,6 +1835,7 @@ class MiniAnalyses:
         Using lmfit is a bit more disciplined approach than just using scipy.optimize
 
         """
+        print("fixed delay in fitting: ", fixed_delay)
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
         if peak_pos == len(event):
             peak_pos = len(event) - 10
@@ -1852,23 +1857,26 @@ class MiniAnalyses:
                 itau2 = np.nonzero(decay_data < self.sign * 0.37 * event[peak_pos])[-1]
                 if len(itau2) == 0:
                     itau2 = [
-                        int(0.005 - fixed_delay) / self.dt_seconds
-                    ]  # print("itau2: ", itau2)
-            tau2 = (itau2[0] - fixed_delay) * self.dt_seconds
-            if tau2 <= 1.5 * tau1:
-                tau2 = 5 * tau1  # move it further out
+                        int((0.005-fixed_delay) / self.dt_seconds)
+                    ]
+            tau2 = (itau2[0]-fixed_delay) * self.dt_seconds
+        if tau2 <= self.dt_seconds:  # check limits
+            tau2 = 2.0 * self.dt_seconds
+        if tau2 <= 1.5 * tau1:
+            tau2 = 5 * tau1  # move it further out
 
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
 
         if self.datatype in ["V", "VC"]:
             tau1min = tau1 / 4.0
-            tau2min = tau2 / 2.0
             tau1max = tau1 * 2.0
-            tau2max = tau2 * 2.0
+            if tau1min < self.dt_seconds:
+                tau1min = self.dt_seconds
 
-            if tau1min < 2e-5:
-                tau1min = 2e-5
+            tau2min = tau2 / 2.0
+            tau2max = tau2 * 5.0
+
             params["amp"] = lmfit.Parameter(
                 name="amp",
                 value=25.0e-12,
@@ -1883,7 +1891,7 @@ class MiniAnalyses:
                 max=50e-9,
                 vary=True,
             )
-            tau2min = 0.2e-3
+
             tau3min = 5.0e-3
         elif self.datatype in ["I", "IC"]:
             tau1min = tau1 / 10.0
@@ -1926,11 +1934,12 @@ class MiniAnalyses:
         #     name="tau_2",
         #     expr = "tau_1*tau_ratio",
         # )
+        # print("2: tau2min/max: ", tau2min, tau2max)
         params["tau_2"] = lmfit.Parameter(
             name="tau_2",
             value=tau2,
             min=tau2min,
-            max=tau2max,  # tau1 * tau1_maxfac,
+            max=tau2max,
             vary=True,
         )
         params["tau_3"] = lmfit.Parameter(
@@ -1947,12 +1956,13 @@ class MiniAnalyses:
             max=50e-3,  # tau1 * tau1_maxfac,
             vary=True,
         )
+        print("fixed delay: ", fixed_delay)
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,
-            vary=False,
+            vary=True,
             min=fixed_delay,
-            max=fixed_delay + 1e-3,
+            max=fixed_delay*3,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
@@ -1960,7 +1970,7 @@ class MiniAnalyses:
         self.fitresult = dexpmodel.fit(
             evfit,
             params,
-            nan_policy="raise",
+            nan_policy="omit",
             time=timebase,
             max_nfev=3000,
             method="nelder",
