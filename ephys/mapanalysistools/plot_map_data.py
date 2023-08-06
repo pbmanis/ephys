@@ -984,7 +984,7 @@ class PlotMapData:
         angle=0,
         spotsize=42e-6,
         cellmarker=False,
-        cell_position:list=None,
+        markers:dict=None,
         whichstim=-1,
         average=False,
         pars=None,
@@ -1060,12 +1060,18 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
-        if cell_position is not None:
-            msize = 20e-6
-            xlim = [np.min([xlim[0], cell_position[0]-msize]), np.max([xlim[1], cell_position[0]+msize])]
-            ylim = [np.min([ylim[0], cell_position[1]-msize]), np.max([ylim[1], cell_position[1]+msize])]
+        # make sure the key markers are on the plot
+        for marker in markers:
+            if marker not in ['soma', 'surface', 'medialborder', 'lateralborder', 'AN', 'rostralborder', 'caudalborder',
+                              'ventralborder', 'dorsalborder']:
+                continue
+            if markers[marker] is not None and len(markers[marker]) >= 2:
+                position = markers[marker]
+                msize = 20e-6
+                xlim = [np.min([xlim[0], position[0]-msize]), np.max([xlim[1], position[0]+msize])]
+                ylim = [np.min([ylim[0], position[1]-msize]), np.max([ylim[1], position[1]+msize])]
         sign = measure["sign"]
-        # print(measuretype)
+
         upscale = 1.0
         vmin = 0
         vmax = 1
@@ -1286,11 +1292,22 @@ class PlotMapData:
             axp.plot(
                 [0.0, 0.0], [-cmrk, cmrk], "-", color="r"
             )  # cell centered coorinates
-        CP.cprint('r', f"Cell position:  {str(cell_position):s}")
-        if cell_position is not None:
-            axp.plot([cell_position[0], cell_position[0]],
-                      [cell_position[1], cell_position[1]],
-                      marker = 'X', color='y', markersize=6)
+        mark_colors = {'soma': 'y', 'surface': 'c', 'medialborder': 'r', 'lateralborder': 'm', 'AN': 'g', 
+                       'rostralborder': 'r', 'caudalborder': 'm', 'ventralborder': 'b', 'dorsalborder': 'g'}
+        mark_symbols = {'soma': '*', 'surface': 'v', 'medialborder': '^', 'lateralborder': 's', 'AN': 'D',
+                        'rostralborder': '>', 'caudalborder': '<', 'ventralborder': '2', 'dorsalborder': '1'}
+        if markers is not None:
+            for marktype in markers.keys():
+                print("marktype: ", marktype)
+                if marktype not in mark_colors.keys():
+                    continue
+                position = markers[marktype]
+                CP.cprint('r', f"Marker <{marktype:s}> position:  {str(position):s}")
+                if position is not None and len(position) >= 2:
+                    axp.plot([position[0], position[0]],
+                            [position[1], position[1]],
+                            marker = mark_symbols[marktype], color=mark_colors[marktype], 
+                            markersize=8, alpha=0.8)
         tickspace = scaler.tickSpacing
         try:
             ntick = 1 + int(vmax / tickspace)
@@ -1333,7 +1350,7 @@ class PlotMapData:
         dataset_name: Union[Path, str],
         result: dict,
         pars: object = None,
-        cell_position:list = None
+        markers:dict=None,
     ) -> bool:
 
         measures = ["ZScore", "Qr-Qb", "A", "Q"]
@@ -1405,7 +1422,7 @@ class PlotMapData:
                 measure=result,
                 measuretype=measuredict[measure],
                 pars=pars,
-                cell_position = cell_position,
+                markers=markers,
             )
         return True
 
@@ -1425,7 +1442,7 @@ class PlotMapData:
         plotmode:str="document",
         datatype=None,
         imagedata = None,
-        cell_position: Union[list, None] = None,
+        markers: Union[dict, None] = None,
         plot_minmax: Union[list, None] = None,
         cal_height: Union[float, None] = None,
 
@@ -1566,7 +1583,7 @@ class PlotMapData:
             spotsize=spotsize,
             whichstim=whichstim,
             average=average,
-            cell_position = cell_position,
+            markers=markers,
         )
 
         if plotmode == "document":  # always show all responses/events, regardless of amplitude

@@ -65,7 +65,8 @@ class MAP_Analysis(Analysis):
         )
 
         print(f"    Celltype: {celltype:s}  with {len(allprots['maps']):4d} protocols")
-        self.soma_xy, self.surface_xy, self.depth = self.get_markers(fullfile=file, verbose=False)
+        self.markers=  self.get_markers(fullfile=file, verbose=False)
+
         
         for i, p in enumerate(allprots["maps"]):
             cell_df = self.find_cell(
@@ -752,8 +753,7 @@ class MAP_Analysis(Analysis):
                     results=results,
                     imagefile=None,
                     rotation=0.0,
-                    cell_position = self.soma_xy,
-                   # surface_location = self.surface_xy,
+                    markers = self.markers,
                     measuretype=measuretype,
                     plotevents=plotevents,
                     whichstim=self.whichstim,
