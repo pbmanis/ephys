@@ -943,9 +943,12 @@ class Analysis():
             return True, slicecell
 
     def get_markers(self, fullfile: Path, verbose:bool=True) -> [list, list, float]:
-        soma_xy = []
-        surface_xy = []
+        # dict of known markers and one calculation of distance from soma to surface
         dist = np.nan
+        marker_dict = {'soma': [], 'surface': [], 'medialborder': [], 'lateralborder': [], 
+                'rostralborder': [], 'caudalborder':[], 'ventralborder': [], 'dorsalborder': [],
+                'AN': [], 'dist': dist}
+
         mosaic_file = list(fullfile.glob("*.mosaic"))
         if len(mosaic_file) > 0:
             if verbose:
@@ -957,27 +960,27 @@ class Analysis():
                     for markitem in markers:
                         if verbose:
                             CP.cprint("c", f"    {markitem[0]:>12s} x={markitem[1][0]*1e3:7.2f} y={markitem[1][1]*1e3:7.2f} z={markitem[1][2]*1e3:7.2f} mm ")
-                    if len(markers) >= 2:  # try to collect soma and surface markers
 
                         for j in range(len(markers)):
-                            if markers[j][0] == 'soma':
-                                soma_xy = [markers[j][1][0], markers[j][1][1]]
-                            elif markers[j][0] == 'surface':
-                                surface_xy = [markers[j][1][0], markers[j][1][1]]
-                        if len(soma_xy) == 2 and len(surface_xy) == 2:
-                            dist = np.sqrt((soma_xy[0]-surface_xy[0])**2 + (soma_xy[1]-surface_xy[1])**2)
-                            if verbose:
-                                CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
-                    else:
-                        if verbose:
-                            CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
+                            markname = markers[j][0]
+                            if markname in marker_dict:
+                                marker_dict[markname] = [markers[j][1][0], markers[j][1][1]]
+            if len(marker_dict['soma']) == 2 and len(marker_dict['surface']) == 2:
+                soma_xy = marker_dict['soma']
+                surface_xy = marker_dict['surface']
+                dist = np.sqrt((soma_xy[0]-surface_xy[0])**2 + (soma_xy[1]-surface_xy[1])**2)
+                if verbose:
+                    CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
+            else:
+                if verbose:
+                    CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
             if soma_xy == [] or surface_xy == []:
                 if verbose:
                     CP.cprint("r", "    No soma or surface markers found")
         else:
             if verbose:
                 CP.cprint("r", "No mosaic file found")
-        return soma_xy, surface_xy, dist
+        return marker_dict
 
     def do_cell(self, icell: int, pdf=None):
         """
