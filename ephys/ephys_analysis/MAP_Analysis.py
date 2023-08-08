@@ -14,7 +14,6 @@ import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
-from pylibrary.tools import cprint as CP
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 
 import ephys.mapanalysistools as mapanalysistools
@@ -23,7 +22,7 @@ from ephys.ephys_analysis.analysis_common import Analysis
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
 logging.getLogger('fontTools.subset').disabled = True
-Logger = logging.getLogger(__name__)
+Logger = logging.getLogger("AnalysisLogger")
 level = logging.DEBUG
 Logger.setLevel(level)
 # create file handler which logs even debug messages
@@ -34,7 +33,9 @@ logging_ch.setLevel(level)
 Logger.addHandler(logging_fh)
 Logger.addHandler(logging_ch)
 # setFileConfig(filename="map_analysis.log", encoding='utf=8')
-log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")
+# log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")
+log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s ")
+
 logging_fh.setFormatter(log_formatter)
 logging_ch.setFormatter(log_formatter)
 Logger.info("Starting map_analysis")
@@ -45,6 +46,8 @@ class MAP_Analysis(Analysis):
         # print(self._testing_counter)
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
+        Logger.info("Starting map_analysis")
+
         if len(allprots["maps"]) == 0:
             datestr, slicestr, cellstr = self.make_cell(icell)
             msg = f"No maps to analyze for entry #{icell:d}: {datestr:s}/{slicestr:s}/{cellstr:s}"

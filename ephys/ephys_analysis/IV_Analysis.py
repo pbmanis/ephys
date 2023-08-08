@@ -5,32 +5,76 @@ Compute IV Information
 """
 import datetime
 import gc
+import logging
 from collections import OrderedDict
 from pathlib import Path
 from typing import List, Literal, Union
 
+import matplotlib
+matplotlib.use("QtAgg")
+import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import numpy as np
+import pandas as pd
+import pyqtgraph.multiprocess as MP
 import pylibrary.plotting.plothelpers as PH
-from pylibrary.tools import cprint
-import ephys.tools.build_info_string as BIS
+import pylibrary.tools.cprint as CP
 
-from ..datareaders import acq4_reader
-from . import rm_tau_analysis, spike_analysis
+import ephys.tools.build_info_string as BIS
+from ephys.ephys_analysis.analysis_common import Analysis
+import ephys.datareaders.acq4_reader as acq4_reader
+import ephys.ephys_analysis.spike_analysis as spike_analysis
+import ephys.ephys_analysis.rm_tau_analysis as rm_tau_analysis
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
 
-CP = cprint.cprint
+class CustomFormatter(logging.Formatter):
+    grey = "\x1b[38;21m"
+    yellow = "\x1b[33;21m"
+    red = "\x1b[31;21m"
+    bold_red = "\x1b[31;1m"
+    white = "\x1b[37m"
+    reset = "\x1b[0m"
+    lineformat = "%(asctime)s - %(levelname)s - (%(filename)s:%(lineno)d) %(message)s "
+
+    FORMATS = {
+        logging.DEBUG: grey + lineformat + reset,
+        logging.INFO: white + lineformat + reset,
+        logging.WARNING: yellow + lineformat + reset,
+        logging.ERROR: red + lineformat + reset,
+        logging.CRITICAL: bold_red + lineformat + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+logging.getLogger("fontTools.subset").disabled = True
+Logger = logging.getLogger("AnalysisLogger")
+level = logging.DEBUG
+Logger.setLevel(level)
+# create file handler which logs even debug messages
+logging_fh = logging.FileHandler(filename="iv_analysis.log")
+logging_fh.setLevel(level)
+logging_sh = logging.StreamHandler()
+logging_sh.setLevel(level)
+log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s ")
+logging_fh.setFormatter(log_formatter)
+logging_sh.setFormatter(CustomFormatter()) # log_formatter)
+Logger.addHandler(logging_fh)
+# Logger.addHandler(logging_sh)
+# setFileConfig(filename="iv_analysis.log", encoding='utf=8')
 
 
-class IVAnalysis:
-    def __init__(self):
-
+class IVAnalysis(Analysis):
+    def __init__(self, args):
+        super().__init__(args)
         self.IVFigure = None
         self.mode = "acq4"
-        self.AR = None
-        self.SP = None
-        self.RM = None
+        self.AR: acq4_reader = acq4_reader.acq4_reader()
+        self.RM: rm_tau_analysis = rm_tau_analysis.RmTauAnalysis()
+        self.SP: spike_analysis = spike_analysis.SpikeAnalysis()
 
     def __enter__(self):
         return self
@@ -55,7 +99,6 @@ class IVAnalysis:
         plot: bool = True,
         pdf_pages: Union[object, None] = None,
     ):
-
         self.pdf_pages = pdf_pages
 
         if datapath is not None:
@@ -122,8 +165,408 @@ class IVAnalysis:
             return False
         else:
             return True
-    
+
+    def analyze_ivs(
+        self,
+        icell,
+        allprots: dict,
+        celltype: str,
+        pdf=None,
+    ):
+        """
+        Overall analysis of IV protocols for one cell in the day
+
+        Parameters
+        ----------
+        icell : int
+            index into Pandas database for the selected cell
+
+        allprots : dict
+            dictionary of protocols for the day/slice/cell
+
+        pdf : None
+            if not none, then is the pdffile to write the data to
+
+        Returns
+        -------
+        Nothing - generates pdfs and updates the pickled database file.
+        """
+        Logger.info("Starting iv_analysis")
+        msg = f"    Analyzing ivs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}  cell: ({str(self.df.iloc[icell].cell_id):s} )",
+        CP.cprint(
+            "c", msg
+        )
+        Logger.info(msg)
+        cell_directory = Path(
+            self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id
+        )
+        CP.cprint("m", f"file: {str(cell_directory):s}")
+        CP.cprint("m", f"Cell id: {str(self.df.iloc[icell].cell_id):s} ")
+        if "IV" not in self.df.columns.values:
+            self.df = self.df.assign(IV=None)
+        if "Spikes" not in self.df.columns.values:
+            self.df = self.df.assign(Spikes=None)
+        msg = f"      Cell: {str(cell_directory):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
+        # CP.cprint(
+        #     "c", msg,
+        # )
+        Logger.info(msg)
+
+        # clean up data in IV and SPikes : remove Posix
+        def _cleanup_ivdata(results: dict):
+            import numpy
+
+            if isinstance(results, dict) and len(results) == 0:
+                results = None
+            if results is not None:
+                for r in list(results.keys()):
+                    u = results[r]
+                    for k in u.keys():
+                        if isinstance(u[k], dict):
+                            for uk in u[k].keys():
+                                if isinstance(u[k][uk], bool) or isinstance(
+                                    u[k][uk], int
+                                ):
+                                    u[k][uk] = int(u[k][uk])
+                        if k in ["taupars", "RMPs", "Irmp"]:
+                            # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, nfloat)):
+                            # print("type for ", k, type(u[k]))
+                            if isinstance(u[k], numpy.ndarray):
+                                u[k] = u[k].tolist()
+                            elif isinstance(u[k], list) and len(u[k]) > 0:
+                                if isinstance(u[k][0], numpy.ndarray):
+                                    u[k] = u[k][0].tolist()
+                            elif isinstance(u[k], float):
+                                u[k] = float(u[k])
+                            elif isinstance(u[k], list):
+                                pass
+                            else:
+                                print(type(u[k]))
+                                raise ValueError
+                        # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str)):
+                        #     u[k] = u[k].tolist()
+                        elif isinstance(u[k], float):
+                            u[k] = float(u[k])
+                    results[str(r)] = results.pop(r)
+            return results
+
+        def _cleanup_spikedata(results: dict):
+            if isinstance(results, dict) and len(results) == 0:
+                results = None
+
+            if results is not None:
+                for r in list(results.keys()):
+                    results[str(r)] = results.pop(r)
+            return results
+
+        def cleanIVs(row):
+            if not isinstance(row.IV, dict):
+                return row.IV
+            newrow = {}
+            for k, v in row.IV.items():
+                newrow[str(k)] = row.IV[k]
+            _cleanup_ivdata(newrow)
+            return newrow
+
+        def cleanSpikes(row):
+            if not isinstance(row.Spikes, dict):
+                return row.Spikes
+            newrow = {}
+            for k, v in row.Spikes.items():
+                newrow[str(k)] = row.Spikes[k]
+            _cleanup_ivdata(newrow)
+            return newrow
+
+        self.df["IV"] = self.df.apply(cleanIVs, axis=1)
+        self.df["Spikes"] = self.df.apply(cleanSpikes, axis=1)
+
+        nfiles = 0
+        allivs = []
+        for ptype in allprots.keys():  # check all the protocols
+            if ptype in ["stdIVs", "CCIV_long"]:  # just CCIV types
+                for prot in allprots[ptype]:
+                    allivs.append(prot)  # combine into a new list
+        validivs = []
+        if self.exclusions is not None:
+            for p in allivs:  # first remove excluded protocols
+                if p not in self.exclusions:
+                    validivs.append(
+                        p
+                    )  # note we do not just remove as this messes up the iterator of the maps
+        else:
+            validivs = allivs
+        nworkers = 16  # number of cores/threads to use
+        tasks = range(len(validivs))  # number of tasks that will be needed
+        results: dict = dict(
+            [("IV", {}), ("Spikes", {})]
+        )  # storage for results; predefine the dicts.
+        if self.noparallel:  # just serial...
+            for i, x in enumerate(tasks):
+                r, nfiles = self.analyze_iv(
+                    icell=icell,
+                    i=i,
+                    x=x,
+                    cell_directory=cell_directory,
+                    allivs=validivs,
+                    nfiles=nfiles,
+                    pdf=pdf,
+                )
+                if self.dry_run:
+                    continue
+                if r is None:
+                    continue
+                results["IV"][validivs[i]] = r["IV"]
+                results["Spikes"][validivs[i]] = r["Spikes"]
+            results["IV"] = _cleanup_ivdata(results["IV"])
+            results["Spikes"] = _cleanup_ivdata(results["Spikes"])
+            if not self.dry_run:
+                self.df.at[icell, "IV"] = results[
+                    "IV"
+                ]  # everything in the RM analysis_summary structure
+                self.df.at[icell, "Spikes"] = results[
+                    "Spikes"
+                ]  # everything in the SP analysus_summary structure
+        #            print(self.df.at[icell, 'IV'])
+        else:
+            result = [None] * len(tasks)  # likewise
+            with MP.Parallelize(
+                enumerate(tasks), results=results, workers=nworkers
+            ) as tasker:
+                for i, x in tasker:
+                    result, nfiles = self.analyze_iv(
+                        icell, i, x, cell_directory, validivs, nfiles, pdf=pdf
+                    )
+                    tasker.results[validivs[i]] = result
+            # reform the results for our database
+            if self.dry_run:
+                return
+            riv = {}
+            rsp = {}
+            for f in list(results.keys()):
+                if "IV" in results[f]:
+                    riv[f] = _cleanup_ivdata(results[f]["IV"])
+                if "Spikes" in results[f]:
+                    rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
+            #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+            #            print('riv: ', riv)
+
+            self.df.at[
+                icell, "IV"
+            ] = riv  # everything in the RM analysis_summary structure
+            self.df.at[
+                icell, "Spikes"
+            ] = rsp  # everything in the SP analysus_summary structure
+
+        self.df["annotated"] = self.df["annotated"].astype(int)
+        self.df["expUnit"] = self.df["expUnit"].astype(int)
+
+        if (
+            len(allivs) > 0
+            and self.iv_analysisFilename is not None
+            and Path(self.iv_analysisFilename).suffix == ".h5"
+        ):
+            msg = f"Writing IV analysis results to HDF5 file: {str(self.iv_analysisFilename):s}"
+            CP.cprint(
+                "m",
+                msg,
+            )
+            Logger.info(msg)
+            # with hdf5:
+            # Note, reading this will be slow - it seems to be rather a large file.
+            day, slice, cell = self.make_cell(icell=icell)
+            keystring = str(
+                Path(Path(day).name, slice, cell)
+            )  # the keystring is the cell.
+            # pytables does not like the keystring starting with a number, or '.' in the string
+            # so put "d_" at start, and then replace '.' with '_'
+            # what a pain.
+            keystring = "d_" + keystring.replace(".", "_")
+            if self.n_analyzed == 0:
+                self.df.iloc[icell].to_hdf(
+                    self.iv_analysisFilename, key=keystring, mode="w"
+                )
+            else:
+                self.df.iloc[icell].to_hdf(
+                    self.iv_analysisFilename, key=keystring, mode="a"
+                )
+            # self.df.at[icell, "IV"] = None
+            # self.df.at[icell, "Spikes"] = None
+            self.n_analyzed += 1
+            gc.collect()
+
+        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".pkl":
+            # with pickle and compression (must open with gzip, then read_pickle)
+            # CP.cprint("c", f"Writing IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
+            # with open(self.iv_analysisFilename, 'wb') as fh:
+            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+            pass
+
+        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".feather":
+            # with feather (experimental)
+            msg = f"Writing IV analysis results to FEATHER file: {str(self.iv_analysisFilename):s}"
+            CP.cprint(
+                "b",
+                msg,
+            )
+            Logger.info(msg)
+            with open(self.iv_analysisFilename, "wb") as fh:
+                self.df.to_feather(fh)
+
+    def analyze_iv(
+        self,
+        icell: int,
+        i: int,
+        x: int,
+        cell_directory: Union[Path, str],
+        allivs: list,
+        nfiles: int,
+        pdf: None,
+    ):
+        """
+        Compute various measures (input resistance, spike shape, etc) for one IV
+        protocol in the day. Designed to be used in parallel or serial mode
+
+        Parameters
+        ----------
+        icell : int
+            index into Pandas database for the day
+        i : int
+            index into the list of protocols
+        x : task
+            task number
+        file: full filename and path to the IV protocol data
+        allivs :
+            list of protocols
+        nfiles : int
+            number for file...
+
+        pdf: matplotlib pdfpages instance or None
+            if None, no plots are accumulated
+            if a pdfpages instance, all of the pages plotted by IVSummary are concatenated
+            into the output file (self.pdfFilename)
+        """
+        # import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
+
+        protocol = Path(allivs[i]).name
+        result = {}
+        iv_result = {}
+        sp_result = {}
+
+        protocol_directory = Path(cell_directory, protocol)
+
+        if not protocol_directory.is_dir():
+            msg = f"Protocol directory not found: {str(protocol_directory):s}"
+            CP.cprint(
+                "r",
+                msg,   )
+            Logger.error(msg)
+            exit()
+
+        self.configure(
+            protocol_directory,
+            plot=not self.plotsoff,
+            reader=self.AR,
+            spikeanalyzer=self.SP,
+            rmtauanalyzer=self.RM,
+        )
+        if self.iv_select["duration"] > 0.0:
+            check = self.iv_check(duration=self.iv_select["duration"])
+            if check is False:
+                gc.collect()
+                return (None, 0)  # skip analysis
+        if not self.dry_run:
+            msg = f"      IV analysis for: {str(protocol_directory):s}"
+            print(msg)
+            Logger.info(msg)
+            br_offset = 0.0
+            if (
+                not pd.isnull(self.df.at[icell, "IV"])
+                and protocol in self.df.at[icell, "IV"]
+                and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
+            ):
+                msg = "Bridge: {0:.2f} Mohm".format(
+                        self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
+                    )
+                print(msg)
+                Logger.info(msg)
+
+            ctype = self.df.at[icell, "cell_type"].lower()
+            tgap = 0.0015
+            tinit = True
+            if ctype in [
+                "bushy",
+                "d-stellate",
+                "octopus",
+            ]:
+                tgap = 0.0005  # shorten gap for measures for fast cell types
+                tinit = False
+            self.plot_mode(mode=self.IV_pubmode)
+            plot_handle = self.compute_iv(
+                threshold=self.spike_threshold,
+                refractory=self.refractory,
+                bridge_offset=br_offset,
+                tgap=tgap,
+                plotiv=True,
+                full_spike_analysis=True,
+            )
+            iv_result = self.RM.analysis_summary
+            sp_result = self.SP.analysis_summary
+            result["IV"] = iv_result
+            result["Spikes"] = sp_result
+            ctype = self.df.at[icell, "cell_type"]
+            annot = self.df.at[icell, "annotated"]
+            if annot:
+                ctwhen = "[revisited]"
+            else:
+                ctwhen = "[original]"
+            # print("Checking for figure, plothandle is: ", plot_handle)
+            if plot_handle is not None:
+                shortpath = protocol_directory.parts
+                shortpath2 = str(Path(*shortpath[4:]))
+                plot_handle.suptitle(
+                    f"{str(shortpath2):s}\n{BIS.build_info_string(self.AR, protocol_directory):s}",
+                    fontsize=8,
+                )
+                t_path = Path(self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
+                # print("PDF: ", pdf)
+                # if pdf is not None:
+                #     pdf.savefig(plot_handle)
+                # else:
+                mpl.savefig(
+                    t_path, dpi=300
+                )  # use the map filename, as we will sort by this later
+                mpl.close(plot_handle)
+                msg = f"saved to: {str(t_path):s}"
+                CP.cprint("g", msg)
+                Logger.info(msg)
+                nfiles += 1
+            del iv_result
+            del sp_result
+            gc.collect()
+            return result, nfiles
+
+        else:
+            print(f"Dry Run: would analyze {str(protocol_directory):s}")
+            br_offset = 0
+
+            if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):
+                print("   current database has no IV data set for this file")
+            elif protocol not in list(self.df.at[icell, "IV"].keys()):
+                print(
+                    "Protocol {0:s} not found in day: {1:s}".format(
+                        str(protocol), self.df.at[icell, "date"]
+                    )
+                )
+            elif "BridgeAdjust" in self.df.at[icell, "IV"][protocol].keys():
+                br_offset = self.df.at[icell, "IV"][protocol]["BridgeAdjust"]
+                print("   with Bridge: {0:.2f}".format(br_offset / 1e6))
+            else:
+                print("... has no bridge, will use 0")
+            gc.collect()
+            return None, 0
+
     import matplotlib.figure
+
     def compute_iv(
         self,
         threshold: float = -0.010,
@@ -184,10 +627,9 @@ class IVAnalysis:
                     )
                 return fh
         else:
-            print(
-                "IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  >  ",
-                self.datapath,
-            )
+            msg = f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
+            print(msg)
+            Logger.error(msg)
             return None
 
     def plot_iv(self, pubmode=False) -> Union[None, object]:
@@ -385,7 +827,6 @@ class IVAnalysis:
             s=16,
         )
         if not pubmode:
-
             if isinstance(self.RM.analysis_summary["CCComp"], float):
                 enable = "Off"
                 cccomp = 0.0
@@ -550,9 +991,9 @@ class IVAnalysis:
         P.resize(sizer)  # perform positioning magic
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
         P.figure_handle.suptitle(
-                    f"{str(self.datapath):s}\n{infostr:s}",
-                    fontsize=8,
-                )
+            f"{str(self.datapath):s}\n{infostr:s}",
+            fontsize=8,
+        )
         dv = 0.0
         jsp = 0
         for i in range(self.AR.traces.shape[0]):

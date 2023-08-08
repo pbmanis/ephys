@@ -19,7 +19,7 @@ import datetime
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Tuple
 
 import dateutil
 import dateutil.parser as DUP
@@ -49,28 +49,31 @@ PMD = mapanalysistools.plot_map_data.PlotMapData()
 # do not silently pass some common numpy errors
 np.seterr(divide="raise", invalid="raise")
 
-Logger = logging.getLogger(__name__)
+Logger = logging.getLogger("AnalysisLogger")
+
 
 def def_empty_list():
-    return [] 
+    return []
+
 
 @dataclass
 class cmdargs:
-    """ This data class holds the "command arguments" that control
+    """This data class holds the "command arguments" that control
     data anlaysis. These arguments are defined in 3 blocks:
         1. Experiment specification and file names
         2. Analysis flags and experiment selection
         3. Graphics controls
         4. Specific analysis parameters
-    
+
     These may be set either by IV_Analysis_params from the commandline,
     or by specifying them programatically.
 
     """
+
     # Files and filenames:
     experiment: Union[str, List, None] = None
     rawdatapath: Union[str, Path, None] = None
-    directory:  Union[str, Path, None] = None
+    directory: Union[str, Path, None] = None
     analyzeddatapath: Union[str, Path, None] = None
     databasepath: Union[str, Path, None] = None
     inputFilename: Union[str, Path, None] = None
@@ -78,17 +81,17 @@ class cmdargs:
     cell_annotationFilename: Union[str, Path, None] = None
     artifactFilename: Union[str, Path, None] = None
     map_annotationFilename: Union[str, Path, None] = None
-    map_pdfs: bool=False
+    map_pdfs: bool = False
     iv_analysisFilename: Union[str, Path, None] = None
     extra_subdirectories: List = field(default_factory=def_empty_list)
 
     # analysis flags and experiment selection
-    update_results:bool = False
+    update_results: bool = False
     day: str = "all"
     after: str = "1970.1.1"
     before: str = "2266.1.1"
     slicecell: Union[str, None] = None
-    protocol: Union[str, None]= None
+    protocol: Union[str, None] = None
     configfile: Union[str, None] = None
     iv_flag: bool = False
     vc_flag: bool = False
@@ -112,14 +115,15 @@ class cmdargs:
     # analysis parameters
     ivduration: float = 0.0
     threshold: float = 2.5  # cb event detection threshold (x baseline std)
-    refractory: float = 0.0007 # absolute refractory period
+    refractory: float = 0.0007  # absolute refractory period
     signflip: bool = False
     alternate_fit1: bool = False
     alternate_fit2: bool = False  # second alternate
     measuretype: str = "ZScore"  # display measure for spot plot in maps
     spike_threshold: float = -0.035
     artifact_suppression: bool = False
-    artifiact_derivative: bool = False
+    artifact_derivative: bool = False
+    post_analysis_artifact_rejection: bool = False
     whichstim: int = -1
     trsel: Union[int, None] = None
     notchfilter: bool = False
@@ -128,21 +132,22 @@ class cmdargs:
     HPF: float = 0.0
     notchQ: float = 90.0
     detrend_method: Union[str, None] = None
-    detrend_order: int=5
+    detrend_order: int = 5
     detector: str = "cb"
-    
-class Analysis():
+
+
+class Analysis:
     """Provides handling of data analysis for IVs and MAPs
     This involves:
         1. setting various paths to the data files, output directories and
         some excel sheets that may be needed to set fitting parameters or manual annotations
-        2. Selecting from the data_summary file (index of all datasets in an experiment with 
+        2. Selecting from the data_summary file (index of all datasets in an experiment with
         some metadata) by date and/or slice/cell (or you can just run analysis on every entry... )
         3. Generate PDF files for output, including merging pdfs into a single large book. Seemed
-        like a good idea, but the PDFs get large (approaching 1 GB). 
+        like a good idea, but the PDFs get large (approaching 1 GB).
     """
-    def __init__(self, args: argparse.Namespace):
 
+    def __init__(self, args: argparse.Namespace):
         # args = vars(in_args)  # convert to dict
 
         self._testing_counter = 0  # useful to run small tests
@@ -158,8 +163,10 @@ class Analysis():
         self.skip_subdirectories = None
         self.artifactFilename = None
         self.pdfFilename = None
-        self.exclusions:Dict = {}
-        self.map_annotations = None  # this will be the map_annotationsFilename DATA (pandas from excel)
+        self.exclusions: Dict = {}
+        self.map_annotations = (
+            None  # this will be the map_annotationsFilename DATA (pandas from excel)
+        )
         self.experiment = args.experiment
 
         # selection of data for analysis
@@ -225,18 +232,20 @@ class Analysis():
 
         self.cell_tempdir = None
         self.annotated_dataframe: Union[pd.DataFrame, None] = None
-        self.allprots:List = []
+        self.allprots: List = []
 
-    
         # load up the analysis modules (don't allow multiple instances to exist)
         self.SP = EP.spike_analysis.SpikeAnalysis()
         self.RM = EP.rm_tau_analysis.RmTauAnalysis()
-        self.EPIV = EP.iv_analysis.IVAnalysis()
         self.AR = DR.acq4_reader.acq4_reader()
         self.MA = MINIS.minis_methods.MiniAnalyses()
         self.AM = mapanalysistools.analyze_map_data.AnalyzeMap(rasterize=self.rasterize)
-        self.AM.configure(reader=self.AR, spikeanalyzer=self.SP, rmtauanalyzer=self.RM,
-                            minianalyzer=self.MA)
+        self.AM.configure(
+            reader=self.AR,
+            spikeanalyzer=self.SP,
+            rmtauanalyzer=self.RM,
+            minianalyzer=self.MA,
+        )
         if self.detector == "cb":
             self.AM.set_methodname("cb_cython")
         elif self.detector == "aj":
@@ -267,9 +276,13 @@ class Analysis():
                 self.databasepath = Path(self.experiment["databasepath"])
             else:
                 self.rawdatapath = Path(self.rawdatapath, self.experiment["directory"])
-                self.analyzeddatapath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
-                self.databasepath = Path(self.experiment["databasepath"], self.experiment["directory"])
-     
+                self.analyzeddatapath = Path(
+                    self.experiment["analyzeddatapath"], self.experiment["directory"]
+                )
+                self.databasepath = Path(
+                    self.experiment["databasepath"], self.experiment["directory"]
+                )
+
             self.inputFilename = Path(
                 self.databasepath, self.experiment["datasummaryFilename"]
             ).with_suffix(".pkl")
@@ -290,7 +303,6 @@ class Analysis():
             else:
                 self.cell_annotationFilename = None
 
-            
             if (
                 "map_annotationFilename" in list(self.experiment.keys())
                 and self.experiment["map_annotationFilename"] is not None
@@ -299,12 +311,13 @@ class Analysis():
                     self.analyzeddatapath, self.experiment["map_annotationFilename"]
                 )
                 if not self.map_annotationFilename.is_file():
-                    raise FileNotFoundError(f" missing file: {str(self.map_annotationFilename):s}")
+                    raise FileNotFoundError(
+                        f" missing file: {str(self.map_annotationFilename):s}"
+                    )
             else:
                 self.map_annotationFilename = None
-   
 
-             # always specify the temporary directory for intermediate plot results
+            # always specify the temporary directory for intermediate plot results
             self.cell_tempdir = Path(self.analyzeddatapath, "temppdfs")
 
             # handle directories to include or skip
@@ -330,20 +343,24 @@ class Analysis():
                     self.analyzeddatapath, self.experiment["iv_analysisFilename"]
                 )
                 if len(Path(self.iv_analysisFilename).suffix) == 0:
-                    raise ValueError(f"Analysis output file specified, but required extension (.h5, .pkl, or .feather) is missing: {str(Path(self.iv_analysisFilename).suffix):s}")
+                    raise ValueError(
+                        f"Analysis output file specified, but required extension (.h5, .pkl, or .feather) is missing: {str(Path(self.iv_analysisFilename).suffix):s}"
+                    )
             else:
                 self.iv_analysisFilename = None
 
-            if ("artifactFilename" in list(self.experiment.keys()) 
-                and self.experiment["artifactFilename"] is not None):
+            if (
+                "artifactFilename" in list(self.experiment.keys())
+                and self.experiment["artifactFilename"] is not None
+            ):
                 self.artifactFilename = self.experiment["artifactFilename"]
             else:
                 self.artifactFilename = None
-        
+
         else:
             raise ValueError('Experiment was not specified"')
 
-        if self.artifactFilename is not None and len(self.artifactFilename) > 0 :
+        if self.artifactFilename is not None and len(self.artifactFilename) > 0:
             self.artifactFilename = Path(self.analyzeddatapath, self.artifactFilename)
             if not self.cell_annotationFilename.is_file():
                 raise FileNotFoundError
@@ -379,7 +396,8 @@ class Analysis():
         self.df["annotated"] = False  # clear annotations
         if self.cell_annotationFilename is not None:
             CP.cprint(
-                "yellow", f"Reading annotation file: {str(self.cell_annotationFilename):s}"
+                "yellow",
+                f"Reading annotation file: {str(self.cell_annotationFilename):s}",
             )
             ext = self.cell_annotationFilename.suffix
             if ext in [".p", ".pkl", ".pkl3"]:
@@ -414,8 +432,6 @@ class Analysis():
         for p in allpaths:
             print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
-
-
     def run(self):
         """Perform analysis on one day, a range of days, one cell, or everything.
 
@@ -423,6 +439,7 @@ class Analysis():
             nothing
         """
         self.n_analyzed = 0
+
         def _add_day(row):
             row.day = str(Path(row.date).name)
             daystr = Path(
@@ -431,10 +448,10 @@ class Analysis():
                 row.cell_cell,
             )
             return row
-        
+
         self.df = self.df.assign(day="")
-        self.df = self.df.apply(_add_day, axis=1) # add a day (short name)
-        
+        self.df = self.df.apply(_add_day, axis=1)  # add a day (short name)
+
         if self.day != "all":  # specified day
             day = str(self.day)
             print(
@@ -450,7 +467,11 @@ class Analysis():
                     CP.cprint("r", f"    day: {dx:s}")
                 return None
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
-            for icell in cells_in_day.index:  # for all the cells in the day (but will check for slice_cell too)
+            for (
+                icell
+            ) in (
+                cells_in_day.index
+            ):  # for all the cells in the day (but will check for slice_cell too)
                 # print(f"<{self.slicecell:s}>")
                 # if self.slicecell is None or len(self.slicecell) == 0:
                 #     print("is none")
@@ -468,11 +489,15 @@ class Analysis():
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
                         self.do_cell(icell, pdf=pdf)
-            CP.cprint("c", f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
-            with open(self.iv_analysisFilename, 'wb') as fh:
-               self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
-        
-        
+            CP.cprint(
+                "c",
+                f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}",
+            )
+            with open(self.iv_analysisFilename, "wb") as fh:
+                self.df.to_pickle(
+                    fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+                )
+
         if self.update:
             n = datetime.datetime.now()  # get current time
             dateandtime = n.strftime(
@@ -514,13 +539,19 @@ class Analysis():
 
         # pull in map annotations. These are ALWAYS in an excel file, which should be created initially by make_xlsmap.py
         if self.map_annotationFilename is not None:
-            CP.cprint("c", f"Reading map annotation file:  {str(self.map_annotationFilename):s}")
+            CP.cprint(
+                "c",
+                f"Reading map annotation file:  {str(self.map_annotationFilename):s}",
+            )
             self.map_annotations = pd.read_excel(
                 Path(self.map_annotationFilename).with_suffix(".xlsx"),
                 sheet_name="Sheet1",
             )
-            CP.cprint('c', f"   ... Loaded map annotation file: {str(self.map_annotationFilename):s}")
-    
+            CP.cprint(
+                "c",
+                f"   ... Loaded map annotation file: {str(self.map_annotationFilename):s}",
+            )
+
     def make_cellstr(self, df: pd.DataFrame, icell: int, shortpath: bool = False):
         """
         Make a day string including slice and cell from the icell index in the pandas dataframe df
@@ -578,17 +609,17 @@ class Analysis():
         )  # list filenames in the tempdir and sort by name
         for fn in fns:  # delete the files in the tempdir
             Path(fn).unlink(missing_ok=True)
-    
-    def check_celltype(self, celltype: Union[str, None]=None):
+
+    def check_celltype(self, celltype: Union[str, None] = None):
         if isinstance(celltype, str):
             celltype = celltype.strip()
         if celltype in [None, "", "?", " ", "  ", "\t"]:
             celltype = "unknown"
         return celltype
 
-    def make_cell_filename(self, celltype:str, slicecell:str):
+    def make_cell_filename(self, celltype: str, slicecell: str):
         celltype = self.check_celltype(celltype)
-       
+
         file_dir = str(Path(self.analyzeddatapath, celltype))
         file_name = self.thisday.replace(".", "_")
         file_name += f"_{slicecell:s}"
@@ -610,8 +641,19 @@ class Analysis():
             file_name += "_VC"
 
         return Path(file_name)
-    
-    def merge_pdfs(self, celltype: str, slicecell: str=None, pdf=None, overwrite:bool=True):
+
+    def make_pdf_filename(self, dpath:Union[Path, str], celltype: str, slicecell: str):
+        pdfname = self.make_cell_filename(celltype, slicecell)
+        pdfname = Path(pdfname)
+        # check to see if we have a sorted directory with this cell type
+        pdfdir = Path(dpath, celltype)
+        if not pdfdir.is_dir():
+            pdfdir.mkdir()
+        return Path(pdfdir, pdfname.stem).with_suffix(".pdf")
+
+    def merge_pdfs(
+        self, celltype: str, slicecell: str = None, pdf=None, overwrite: bool = True
+    ):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
@@ -620,7 +662,9 @@ class Analysis():
         """
         celltype = self.check_celltype(celltype)
         if slicecell is None:
-            raise ValueError("iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set")
+            raise ValueError(
+                "iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set"
+            )
 
         if self.dry_run or not self.autoout:
             print("Dry run or not automatic output")
@@ -628,7 +672,7 @@ class Analysis():
         if not self.merge_flag:
             print("Merge flag is False")
             return
-        CP.cprint('c', "********* MERGEING PDFS ************\n")
+        CP.cprint("c", "********* MERGEING PDFS ************\n")
         # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
         #     return
 
@@ -638,13 +682,8 @@ class Analysis():
         # )
         if self.autoout:
             # print("  in auto mode")
-            pdfname = self.make_cell_filename(celltype, slicecell)
-            pdfname = Path(pdfname)
-            # check to see if we have a sorted directory with this cell type
-            pdfdir = Path(self.analyzeddatapath, celltype)
-            if not pdfdir.is_dir():
-                pdfdir.mkdir()
-            self.cell_pdfFilename = Path(pdfdir, pdfname.stem).with_suffix(".pdf")
+            self.cell_pdfFilename = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell)
+
         fns = sorted(
             list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
@@ -653,7 +692,7 @@ class Analysis():
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
-      
+
         # cell file merged
         mergeFile = PdfMerger()
         if overwrite:  # remove existing file
@@ -668,16 +707,17 @@ class Analysis():
                     continue
         with open(self.cell_pdfFilename, "wb") as fout:
             mergeFile.write(fout)
-        CP.cprint("g", f"Wrote output pdf to : {str(self.cell_pdfFilename):s}")
+        msg = f"Wrote output pdf to : {str(self.cell_pdfFilename):s}"
+        CP.cprint("g", msg)
+        Logger.info(msg)
         fns.pop(0)
         # remove temporary files
         for fn in fns:
             fn.unlink(missing_ok=True)
-        
 
         # big file merge
         # removing this as it really slows down the analysis
-        # and generates a big file that we can't read = better to 
+        # and generates a big file that we can't read = better to
         # do this with a separate routine AFTER the analysis is complete
         # if self.pdfFilename is not None:
         #     mergeFile = PdfMerger()
@@ -688,15 +728,15 @@ class Analysis():
         #             mergeFile.append(PdfReader(open(fn, "rb")))
         #     with open(self.pdfFilename, "wb") as fout:
         #         mergeFile.write(fout)
-        print("="*80)
+        print("=" * 80)
         print()
 
     def gather_protocols(
         self,
         protocols: list,
         prots: dict,
-        allprots: dict=None,
-        day: str=None,
+        allprots: dict = None,
+        day: str = None,
     ):
         """
         Gather all the protocols and sort by functions/types
@@ -725,7 +765,6 @@ class Analysis():
         prox = sorted(
             list(set(protocols))
         )  # adjust for duplicates (must be a better way in pandas)
-        print("protocols: ", prox)
         for i, x in enumerate(prox):  # construct filenames and sort by analysis types
             if len(x) == 0:
                 continue
@@ -733,7 +772,11 @@ class Analysis():
             xp = Path(x).parts
             if xp[0] == "/" and len(xp) > 1:
                 x = xp[-1]  # just get the protocol directory
-            if (self.protocol is not None) and (len(self.protocol) > 1) and (self.protocol != x):
+            if (
+                (self.protocol is not None)
+                and (len(self.protocol) > 1)
+                and (self.protocol != x)
+            ):
                 continue
             # c = os.path.join(day, prots.iloc[i]['slice_slice'], prots.iloc[i]['cell_cell'], x)
             if day is None:
@@ -748,7 +791,9 @@ class Analysis():
                 allprots["maps"].append(c_str)
             if x.startswith("VGAT_"):
                 allprots["maps"].append(c_str)
-            if x.startswith("Vc_LED"):  # these are treated as maps, even though they are just repeated... 
+            if x.startswith(
+                "Vc_LED"
+            ):  # these are treated as maps, even though they are just repeated...
                 allprots["maps"].append(c_str)
             # Standard IVs (100 msec, devined as above)
             for piv in self.stdIVs:
@@ -803,7 +848,7 @@ class Analysis():
         qstring = f"date == '{dstr:s}'"
         cf = pd.DataFrame()
         colnames = df.columns
-        
+
         mapcolumn = "map"  # old version
         if "mapname" in colnames:
             mapcolumn = "mapname"  # newer versions
@@ -838,41 +883,68 @@ class Analysis():
         CP.cprint("c", f"Original cell type: {original_celltype:s}")
         annotated_celltype = None
         map_annotated_celltype = None
-        if self.annotated_dataframe is not None: # get annotation file cell type
-            cell_df = self.find_cell(self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None)
+        if self.annotated_dataframe is not None:  # get annotation file cell type
+            cell_df = self.find_cell(
+                self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None
+            )
             if cell_df.empty:  # cell was not in annotated dataframe
-                CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation cell type specification (that is ok)")
+                msg = f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation cell type specification (that is ok)"
+                CP.cprint(
+                    "c",
+                    msg,
+                )
+                Logger.warning(msg)
             annotated_celltype = cell_df["cell_type"].values[0].strip()
 
         if self.map_annotations is not None:  # get map annotation cell type
-            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, protocolstr=None)
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, protocolstr=None
+            )
             if cell_df.empty:
-                CP.cprint("c", f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an map_annotation celltype specification")
+                msg = f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an map_annotation celltype specification (field was empty)"
+                CP.cprint(
+                    "c",
+                    msg,
+                )
+                Logger.warning(msg)
             map_annotated_celltype = cell_df["cell_type"].values[0].strip()
-        
+
         # now we have several possibilities: only original (prefered), annotated_celltype from
         # the old annotation table, or map_annotated_celltype from the map annotation table.
         # compare these to the original cell type and see if we need to change it.
-        # 
+        #
         if pd.isnull(map_annotated_celltype) and pd.isnull(annotated_celltype):
             return original_celltype, False
-        elif pd.isnull(annotated_celltype): # check map annotated type and use instead if different from original
-            if not pd.isnull(map_annotated_celltype) and isinstance(map_annotated_celltype, str):
+        elif pd.isnull(
+            annotated_celltype
+        ):  # check map annotated type and use instead if different from original
+            if not pd.isnull(map_annotated_celltype) and isinstance(
+                map_annotated_celltype, str
+            ):
                 if map_annotated_celltype != original_celltype:
+                    msg = f"   Cell type was re-annotated in map_annotation file from: {original_celltype:s} to: {map_annotated_celltype:s})"
                     CP.cprint(
                         "red",
-                        f"   Cell type was re-annotated in map_annotation file from: {original_celltype:s} to: {map_annotated_celltype:s})",
+                        msg,
                     )
+                    Logger.info(msg)
                     return map_annotated_celltype, True
                 else:
-                    CP.cprint("c", f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}")
+                    msg = f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}"
+                    CP.cprint(
+                        "c",
+                        msg,
+                    )
+                    Logger.info(msg)
                     return original_celltype, False
             else:
-                CP.cprint("c", f"    Map annotation celltype was empty, so using original: {original_celltype:s}")
+                msg = f"    Map annotation celltype was empty, so using original: {original_celltype:s}"
+                CP.cprint(
+                    "c",
+                    msg,
+                )
+                Logger.info(msg)
                 return original_celltype, False
-
-
-
 
         # if not pd.isnull(celltype) and not isinstance(celltype, str):
         #     CP.print("c",
@@ -881,30 +953,52 @@ class Analysis():
         #     CP.cprint("c", f"    Annotation did not change celltype: {celltype:s}")
         #     return original_celltype, False
 
-        elif pd.isnull(map_annotated_celltype): # no map annotation, use the annotated celltype if it is different from original
-            if not pd.isnull(annotated_celltype) and isinstance(annotated_celltype, str):
+        elif pd.isnull(
+            map_annotated_celltype
+        ):  # no map annotation, use the annotated celltype if it is different from original
+            if not pd.isnull(annotated_celltype) and isinstance(
+                annotated_celltype, str
+            ):
                 if annotated_celltype != original_celltype:
+                    msg = f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})"
                     CP.cprint(
-                        "red",
-                        f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})",
-                    )
+                        "red", msg)
+                    Logger.info(msg)
                     return annotated_celltype, True
                 else:
-                    CP.cprint("c", f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}")
+                    msg = f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}"
+                    CP.cprint(
+                        "c",
+                        msg,
+                    )
+                    Logger.info(msg)
                     return original_celltype, False
             else:
-                CP.cprint("c", f"    Annotated celltype was not specified, so using original: {original_celltype:s}")
+                msg = f"    Annotated celltype was not specified, so using original: {original_celltype:s}"
+                CP.cprint(
+                    "c",
+                    msg,
+                )
+                Logger.info(msg)
                 return original_celltype, False
         else:
-            if (map_annotated_celltype != original_celltype
+            if (
+                map_annotated_celltype != original_celltype
                 or map_annotated_celltype != annotated_celltype
-                or annotated_celltype != original_celltype):
-                Logger.critical(f"Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables")
-                raise ValueError("Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables")
+                or annotated_celltype != original_celltype
+            ):
+                Logger.critical(
+                    f"Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
+                )
+                raise ValueError(
+                    "Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
+                )
 
-    def compare_slice_cell(self, icell:int, datestr:str, slicestr:str, cellstr:str) -> [bool, str]:
+    def compare_slice_cell(
+        self, icell: int, datestr: str, slicestr: str, cellstr: str
+    ) -> Tuple[bool, str, str, str]:
         """compare_slice_cell - compare the slice and cell strings in the dataframe
-        with the specified self.slicecell value. 
+        with the specified self.slicecell value.
 
         Parameters
         ----------
@@ -915,10 +1009,10 @@ class Analysis():
         -------
         bool
             True if the slice and cell match, False otherwise
-        
+
         """
 
-        slicecell = f"S{int(slicestr[-3:]):03d}C{int(cellstr[-3:]):03d}"  # recognize that slices and cells may be more than 10 (# 9)
+ 
         dsday, nx = Path(datestr).name.split("_")
         self.thisday = dsday
         # check dates
@@ -928,52 +1022,80 @@ class Analysis():
                 "y",
                 f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
             )
-            return False,""
+            return False, "", "", ""
         # check slice/cell:
+        slicecell = f"S{int(slicestr[-3:]):03d}C{int(cellstr[-3:]):03d}"  # recognize that slices and cells may be more than 10 (# 9)
+        slicecell2 = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
+        slicecell1 = f"S{int(slicestr[-3:]):1d}C{int(cellstr[-3:]):1d}"  # recognize that slices and cells may be more than 10 (# 9)
         compareslice = ""
-        if len(self.slicecell) == 2: # 01
-            compareslice = f"S{int(self.slicecell[0]):03d}C{int(self.slicecell[1]):03d}"
-        elif len(self.slicecell) == 4: # S0C1
-            compareslice = f"S{int(self.slicecell[1]):03d}C{int(self.slicecell[3]):03d}"
-        elif len(self.slicecell) == 6: # S00C01
-            compareslice = f"S{int(self.slicecell[1:3]):03d}C{int(self.slicecell[1:3]):03d}"
-        if compareslice != slicecell:
-            return False, ""
+        if self.slicecell is not None:  # limiting to a particular cell?
+            if len(self.slicecell) == 2:  # 01
+                compareslice = f"S{int(self.slicecell[0]):03d}C{int(self.slicecell[1]):03d}"
+            elif len(self.slicecell) == 4:  # S0C1
+                compareslice = f"S{int(self.slicecell[1]):03d}C{int(self.slicecell[3]):03d}"
+            elif len(self.slicecell) == 6:  # S00C01
+                compareslice = (
+                    f"S{int(self.slicecell[1:3]):03d}C{int(self.slicecell[1:3]):03d}"
+                )
+            if compareslice != slicecell:
+                return False, "", "", ""
         else:
-            return True, slicecell
+            return True, slicecell, slicecell2, slicecell1
 
-    def get_markers(self, fullfile: Path, verbose:bool=True) -> [list, list, float]:
+    def get_markers(self, fullfile: Path, verbose: bool = True) -> dict:
         # dict of known markers and one calculation of distance from soma to surface
         dist = np.nan
-        marker_dict = {'soma': [], 'surface': [], 'medialborder': [], 'lateralborder': [], 
-                'rostralborder': [], 'caudalborder':[], 'ventralborder': [], 'dorsalborder': [],
-                'AN': [], 'dist': dist}
+        marker_dict:dict = {
+            "soma": [],
+            "surface": [],
+            "medialborder": [],
+            "lateralborder": [],
+            "rostralborder": [],
+            "caudalborder": [],
+            "ventralborder": [],
+            "dorsalborder": [],
+            "AN": [],
+            "dist": dist,
+        }
 
         mosaic_file = list(fullfile.glob("*.mosaic"))
         if len(mosaic_file) > 0:
             if verbose:
-                CP.cprint('c', f"    Have mosaic_file: {mosaic_file[0].name:s}")
-            state = json.load(open(mosaic_file[0], 'r'))
-            for item in state['items']:
-                if item['type'] == "MarkersCanvasItem":
-                    markers = item['markers']
+                CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
+            state = json.load(open(mosaic_file[0], "r"))
+            for item in state["items"]:
+                if item["type"] == "MarkersCanvasItem":
+                    markers = item["markers"]
                     for markitem in markers:
                         if verbose:
-                            CP.cprint("c", f"    {markitem[0]:>12s} x={markitem[1][0]*1e3:7.2f} y={markitem[1][1]*1e3:7.2f} z={markitem[1][2]*1e3:7.2f} mm ")
+                            CP.cprint(
+                                "c",
+                                f"    {markitem[0]:>12s} x={markitem[1][0]*1e3:7.2f} y={markitem[1][1]*1e3:7.2f} z={markitem[1][2]*1e3:7.2f} mm ",
+                            )
 
                         for j in range(len(markers)):
                             markname = markers[j][0]
                             if markname in marker_dict:
-                                marker_dict[markname] = [markers[j][1][0], markers[j][1][1]]
-            if len(marker_dict['soma']) == 2 and len(marker_dict['surface']) == 2:
-                soma_xy = marker_dict['soma']
-                surface_xy = marker_dict['surface']
-                dist = np.sqrt((soma_xy[0]-surface_xy[0])**2 + (soma_xy[1]-surface_xy[1])**2)
+                                marker_dict[markname] = [
+                                    markers[j][1][0],
+                                    markers[j][1][1],
+                                ]
+            soma_xy:list = []
+            surface_xy:list = []
+            if len(marker_dict["soma"]) == 2 and len(marker_dict["surface"]) == 2:
+                soma_xy = marker_dict["soma"]
+                surface_xy = marker_dict["surface"]
+                dist = np.sqrt(
+                    (soma_xy[0] - surface_xy[0]) ** 2
+                    + (soma_xy[1] - surface_xy[1]) ** 2
+                )
                 if verbose:
                     CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
             else:
                 if verbose:
-                    CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
+                    CP.cprint(
+                        "r", "    Not enough markers to calculate soma-surface distance"
+                    )
             if soma_xy == [] or surface_xy == []:
                 if verbose:
                     CP.cprint("r", "    No soma or surface markers found")
@@ -982,13 +1104,22 @@ class Analysis():
                 CP.cprint("r", "No mosaic file found")
         return marker_dict
 
+    def make_pickle_filename(self, dpath: Union[str, Path], celltype: str, slicecell: str):
+        pklname = self.make_cell_filename(celltype, slicecell)
+        pklname = Path(pklname)
+        # check to see if we have a sorted directory with this cell type
+        pkldir = Path(dpath, celltype)
+        if not pkldir.is_dir():
+            pkldir.mkdir()
+        return Path(pkldir, pklname.stem).with_suffix(".pkl")
+    
     def do_cell(self, icell: int, pdf=None):
         """
         Do analysis on one cell
-        Runs all protocols for the cell 
+        Runs all protocols for the cell
 
         Includes a dispatcher for different kinds of protocols: IVs, Maps, VCs
-        
+
         Parameters
         ----------
         icell : int
@@ -998,25 +1129,26 @@ class Analysis():
 
         """
         datestr, slicestr, cellstr = self.make_cell(icell)
-        matchcell, slicecell = self.compare_slice_cell(icell, datestr=datestr, slicestr=slicestr, cellstr=cellstr)
+        matchcell, slicecell3, slicecell2, slicecell1 = self.compare_slice_cell(
+            icell, datestr=datestr, slicestr=slicestr, cellstr=cellstr
+        )
         if not matchcell:
             return
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = self.check_celltype(celltype)
 
-        fullfile = Path(
-            self.rawdatapath, self.df.iloc[icell].cell_id)
-    
+        fullfile = Path(self.rawdatapath, self.df.iloc[icell].cell_id)
+
         self.get_markers(fullfile, verbose=True)
-        
+
         if self.skip_subdirectories is not None:
             # skip matching subdirectories
             for skip in self.skip_subdirectories:
                 # print(f"Checking skip = {skip:s} with {str(fullfile):s}")
                 if str(fullfile).find(skip) >= 0:
                     ffparts = fullfile.parts
-                    fftail = str(Path(*ffparts[len(self.rawdatapath.parts)-1:]))
+                    fftail = str(Path(*ffparts[len(self.rawdatapath.parts) - 1 :]))
                     CP.cprint(
                         "r",
                         f"SKIPPING data/date: {fftail:s}  containing: {skip:s}",
@@ -1024,7 +1156,10 @@ class Analysis():
                     return  # skip this data set
 
         if not fullfile.is_dir():
-            fullfile = Path(self.df.iloc[icell]["data_directory"],  self.make_cellstr(self.df, icell, shortpath=True))
+            fullfile = Path(
+                self.df.iloc[icell]["data_directory"],
+                self.make_cellstr(self.df, icell, shortpath=True),
+            )
 
         if self.extra_subdirectories is not None and not fullfile.is_dir():
             # try extra sub directories
@@ -1035,7 +1170,9 @@ class Analysis():
                     day = Path(*pathparts[i:])
                     break
             if day is None:
-                CP.cprint("r", f"do_cell: Day <None> found in fileparts: {str(pathparts):s}")
+                CP.cprint(
+                    "r", f"do_cell: Day <None> found in fileparts: {str(pathparts):s}"
+                )
                 exit()
             for subdir in self.extra_subdirectories:
                 fullfile = Path(self.rawdatapath, subdir, day)
@@ -1050,36 +1187,41 @@ class Analysis():
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
 
         if self.dry_run:
-            print(
-                f"\nIV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
-            )
-            print(f"        with fullpath {str(fullfile):s}")
+            msg = f"\nIV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
+            msg += f"\n        with fullpath {str(fullfile):s}"
+            print(msg)
+            Logger.info(msg)
 
         if not fullfile.is_dir():
-            CP.cprint("r", "   But that cell was not found.")
+            msg = "   But that cell was not found.\n"
+            msg += f"{str(self.df.iloc[icell]):s}\n\n"
+            CP.cprint("r", msg)
             print("*" * 40)
-            print(self.df.iloc[icell])
-            print("*" * 40)
-            print()
+            Logger.warning(msg)
             self.merge_pdfs(celltype, pdf=pdf)
             return
 
         elif fullfile.is_dir() and len(allprots) == 0:
-            CP.cprint("m", "   Cell found, but no protocols were found")
+            msg = "Cell found, but no protocols were found"
+            CP.cprint("m", "Cell found, but no protocols were found")
+            Logger.warning(msg)
             return
         elif fullfile.is_dir() and len(allprots) > 0:
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
                     ffile = Path(self.df.iloc[icell].data_directory, prot)
                     if not ffile.is_dir():
-                        CP.cprint("r", f"file/protocol day={icell:d} not found: {str(ffile):s}")
-                        print(prottype,  prot)
+                        msg = f"file/protocol day={icell:d} not found: {str(ffile):s}\n"
+                        msg += f"    {str(prottype):s}  {str(prot):s}\n"
+                        CP.cprint("r",msg)
+                        Logger.error(msg)
                         exit()
         else:
             msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(allprots['maps']):4d} map protocols"
             msg += f"  Electrode: {self.df.iloc[icell]['internal']:s}"
             CP.cprint("g", msg)
+            Logger.info(msg)
             if self.map_flag:
                 for i, p in enumerate(sorted(prots)):
                     if p in allprots["maps"]:
@@ -1099,411 +1241,75 @@ class Analysis():
 
         # self.merge_pdfs(celltype, pdf=pdf)
         # CP.cprint("r", f"iv flag: {str(self.iv_flag):s}")
-        
+
         # DISPATCH according to requested analysis:
         if self.iv_flag:
-            if self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
+            if (
+                self.iv_analysisFilename is not None
+                and Path(self.iv_analysisFilename).suffix == ".h5"
+            ):
                 self.df["IV"] = None
                 self.df["Spikes"] = None
             if self.cell_tempdir is not None:
                 self.make_tempdir()  # clean up temporary directory
-            self.analyze_ivs(
-                icell=icell, allprots=allprots, celltype=celltype, pdf=pdf
-            )
-            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)  
+            self.analyze_ivs(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+
+            self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
 
             # store pandas db analysis of this cell in a pickled file:
-            pklname = self.make_cell_filename(celltype, slicecell)
-            pklname = Path(pklname)
-            # check to see if we have a sorted directory with this cell type
-            pkldir = Path(self.analyzeddatapath, celltype)
-            if not pkldir.is_dir():
-                pkldir.mkdir()
-            self.cell_pklFilename = Path(pkldir, pklname.stem).with_suffix(".pkl")
-            CP.cprint("c", f"Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}")
-            if self.df.iloc[icell]['Spikes'] is None:
-                CP.cprint("r", f"   @@@ Spikes array is empty @@@")
+            self.cell_pklFilename = self.make_pickle_filename(self.analyzeddatapath, celltype, slicecell2)
+
+
+            msg = f"Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}"
+            CP.cprint("c", msg)
+            Logger.info(msg)
+            if self.df.iloc[icell]["Spikes"] is None:
+                msg = f"   @@@ Spikes array is empty @@@"
+                CP.cprint("r", msg)
+                Logger.warning(msg)
             else:
-                CP.cprint('g', f"*** Have Spikes keys: {str(self.df.iloc[icell]['Spikes'].keys()):s}")
-            with open(self.cell_pklFilename, 'wb') as fh:
-               self.df.iloc[icell].to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+                msg = f"*** Have Spikes keys: {str(self.df.iloc[icell]['Spikes'].keys()):s}"
+                CP.cprint("g", msg)
+                Logger.info(msg)
+            with open(self.cell_pklFilename, "wb") as fh:
+                self.df.iloc[icell].to_pickle(
+                    fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+                )
+            # if they exist, remove the slicecell1 and slicecell3 files to avoid confusion
+            pk1 = self.make_pickle_filename(self.analyzeddatapath, celltype, slicecell1)
+            pk1.unlink(missing_ok=True)
+            pk3 = self.make_pickle_filename(self.analyzeddatapath, celltype, slicecell3)
+            pk3.unlink(missing_ok=True)
 
             # print(self.df.iloc[icell].keys())
             # exit()
             # self.df["IV"] = None
             # self.df["Spikes"] = None
             gc.collect()
-            
 
-        if self.vc_flag:
+        elif self.vc_flag:
             self.analyze_vcs(icell, allprots)
             gc.collect()
 
-        if self.map_flag:
+        elif self.map_flag:
             if self.cell_tempdir is not None:
                 self.make_tempdir()
-            self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+            self.analyze_maps(
+                icell=icell, allprots=allprots, celltype=celltype, pdf=pdf
+            )
             # analyze_maps stores events in an events subdirectory by cell
             # It also merges the PDFs for that cell in the celltype directory
-            CP.cprint("r", f"Merging pdfs, with: {str(pdf):s}")
-            self.merge_pdfs(celltype, slicecell=slicecell, pdf=pdf)
+            msg = f"Merging pdfs, with: {str(pdf):s}"
+            CP.cprint("r", msg)
+            Logger.info(msg)
+            self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
+            # also remove slicecell3 and slicecell1 filenames if they exist
+            pdf1 = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell1)
+            pdf1.unlink(missing_ok=True)
+            pdf3 = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell3)
+            pdf3.unlink(missing_ok=True)
 
             gc.collect()
-
-    
-
-    def analyze_ivs(
-        self, icell, allprots: dict, celltype: str, pdf=None,
-    ):
-        """
-        Overall analysis of IV protocols for one cell in the day
-
-        Parameters
-        ----------
-        icell : int
-            index into Pandas database for the selected cell
-
-        allprots : dict
-            dictionary of protocols for the day/slice/cell
-
-        pdf : None
-            if not none, then is the pdffile to write the data to
-
-        Returns
-        -------
-        Nothing - generates pdfs and updates the pickled database file.
-        """
-        CP.cprint(
-            "c",
-            f"analyze ivs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}  cell: ({str(self.df.iloc[icell].cell_id):s} )",
-        )
-        cell_directory = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id )
-        CP.cprint("m", f"file: {str(cell_directory):s}")
-        CP.cprint("m", f"Cell id: {str(self.df.iloc[icell].cell_id):s} ")
-        if "IV" not in self.df.columns.values:
-            self.df = self.df.assign(IV=None)
-        if "Spikes" not in self.df.columns.values:
-            self.df = self.df.assign(Spikes=None)
-
-        CP.cprint(
-            "c",
-            f"      Cell: {str(cell_directory):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
-        )
-
-        # clean up data in IV and SPikes : remove Posix
-        def _cleanup_ivdata(results: dict):
-            import numpy
-            if isinstance(results, dict) and len(results) == 0:
-                results = None
-            if results is not None:
-                for r in list(results.keys()):
-                    u = results[r]
-                    for k in u.keys():
-                        if isinstance(u[k], dict):
-                            for uk in u[k].keys():
-                                if isinstance(u[k][uk], bool) or isinstance(
-                                    u[k][uk], int
-                                ):
-                                    u[k][uk] = int(u[k][uk])
-                        if k in ["taupars", "RMPs", "Irmp"]:
-                            # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, nfloat)):
-                            # print("type for ", k, type(u[k]))
-                            if isinstance(u[k], numpy.ndarray):
-                                u[k] = u[k].tolist()
-                            elif isinstance(u[k], list) and len(u[k]) > 0:
-                                if isinstance(u[k][0], numpy.ndarray):
-                                    u[k] = u[k][0].tolist()
-                            elif isinstance(u[k], float):
-                                u[k] = float(u[k])
-                            elif isinstance(u[k], list):
-                                pass
-                            else:
-                                print(type(u[k]))
-                                raise ValueError
-                        # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str)):
-                        #     u[k] = u[k].tolist()
-                        elif isinstance(u[k], float):
-                            u[k] = float(u[k])
-                    results[str(r)] = results.pop(r)
-            return results
-
-        def _cleanup_spikedata(results: dict):
-            if isinstance(results, dict) and len(results) == 0:
-                results = None
-
-            if results is not None:
-                for r in list(results.keys()):
-                    results[str(r)] = results.pop(r)
-            return results
-
-        def cleanIVs(row):
-            if not isinstance(row.IV, dict):
-                return row.IV
-            newrow = {}
-            for k, v in row.IV.items():
-                newrow[str(k)] = row.IV[k]
-            _cleanup_ivdata(newrow)
-            return newrow
-
-        def cleanSpikes(row):
-            if not isinstance(row.Spikes, dict):
-                return row.Spikes
-            newrow = {}
-            for k, v in row.Spikes.items():
-                newrow[str(k)] = row.Spikes[k]
-            _cleanup_ivdata(newrow)
-            return newrow
-
-        self.df["IV"] = self.df.apply(cleanIVs, axis=1)
-        self.df["Spikes"] = self.df.apply(cleanSpikes, axis=1)
-
-        nfiles = 0
-        allivs = []
-        for ptype in allprots.keys():  # check all the protocols
-            if ptype in ["stdIVs", "CCIV_long"]:  # just CCIV types
-                for prot in allprots[ptype]:
-                    allivs.append(prot)  # combine into a new list
-        validivs = []
-        if self.exclusions is not None:
-            for p in allivs:  # first remove excluded protocols
-                if p not in self.exclusions:
-                    validivs.append(
-                        p
-                    )  # note we do not just remove as this messes up the iterator of the maps
-        else:
-            validivs = allivs
-        nworkers = 16  # number of cores/threads to use
-        tasks = range(len(validivs))  # number of tasks that will be needed
-        results:Dict = dict(
-            [("IV", {}), ("Spikes", {})]
-        )  # storage for results; predefine the dicts.
-        if self.noparallel:  # just serial...
-            for i, x in enumerate(tasks):
-                r, nfiles = self.analyze_iv(icell=icell, i=i, x=x, cell_directory=cell_directory, allivs=validivs, nfiles=nfiles, pdf=pdf)
-                if self.dry_run:
-                    continue
-                if r is None:
-                    continue
-                results["IV"][validivs[i]] = r["IV"]
-                results["Spikes"][validivs[i]] = r["Spikes"]
-            results["IV"] = _cleanup_ivdata(results["IV"])
-            results["Spikes"] = _cleanup_ivdata(results["Spikes"])
-            if not self.dry_run:
-                self.df.at[icell, "IV"] = results[
-                    "IV"
-                ]  # everything in the RM analysis_summary structure
-                self.df.at[icell, "Spikes"] = results[
-                    "Spikes"
-                ]  # everything in the SP analysus_summary structure
-        #            print(self.df.at[icell, 'IV'])
-        else:
-            result = [None] * len(tasks)  # likewise
-            with mp.Parallelize(
-                enumerate(tasks), results=results, workers=nworkers
-            ) as tasker:
-                for i, x in tasker:
-                    result, nfiles = self.analyze_iv(
-                        icell, i, x, cell_directory, validivs, nfiles, pdf=pdf
-                    )
-                    tasker.results[validivs[i]] = result
-            # reform the results for our database
-            if self.dry_run:
-                return
-            riv = {}
-            rsp = {}
-            for f in list(results.keys()):
-                if "IV" in results[f]:
-                    riv[f] = _cleanup_ivdata(results[f]["IV"])
-                if "Spikes" in results[f]:
-                    rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
-            #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-            #            print('riv: ', riv)
-
-            self.df.at[
-                icell, "IV"
-            ] = riv  # everything in the RM analysis_summary structure
-            self.df.at[
-                icell, "Spikes"
-            ] = rsp  # everything in the SP analysus_summary structure
-
-        self.df["annotated"] = self.df["annotated"].astype(int)
-        self.df["expUnit"] = self.df["expUnit"].astype(int)
-
-        if len(allivs) > 0 and self.iv_analysisFilename is not None and Path(self.iv_analysisFilename).suffix == ".h5":
-            CP.cprint("m", f"Writing IV analysis results to HDF5 file: {str(self.iv_analysisFilename):s}")
-            # with hdf5:
-            # Note, reading this will be slow - it seems to be rather a large file.
-            day, slice, cell = self.make_cell(icell=icell)
-            keystring = str(
-                Path(Path(day).name, slice, cell)
-            )  # the keystring is the cell.
-            # pytables does not like the keystring starting with a number, or '.' in the string
-            # so put "d_" at start, and then replace '.' with '_'
-            # what a pain.
-            keystring = 'd_'+keystring.replace('.', '_')
-            if self.n_analyzed == 0:
-                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
-            else:
-                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
-            # self.df.at[icell, "IV"] = None
-            # self.df.at[icell, "Spikes"] = None
-            self.n_analyzed += 1
-            gc.collect()
-
-        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".pkl":
-            # with pickle and compression (must open with gzip, then read_pickle)
-            # CP.cprint("c", f"Writing IV analysis results to PKL file: {str(self.iv_analysisFilename):s}")
-            # with open(self.iv_analysisFilename, 'wb') as fh:
-            #    self.df.to_pickle(fh, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
-            pass
-
-        elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".feather":
-            # with feather (experimental)
-            CP.cprint("b", f"Writing IV analysis results to FEATHER file: {str(self.iv_analysisFilename):s}")
-            with open(self.iv_analysisFilename, 'wb') as fh:
-               self.df.to_feather(fh)
-
-    def analyze_iv(
-        self,
-        icell: int,
-        i: int,
-        x: int,
-        cell_directory: Union[Path, str],
-        allivs: list,
-        nfiles: int,
-        pdf: None,
-    ):
-        """
-        Compute various measures (input resistance, spike shape, etc) for one IV
-        protocol in the day. Designed to be used in parallel or serial mode
-
-        Parameters
-        ----------
-        icell : int
-            index into Pandas database for the day
-        i : int
-            index into the list of protocols
-        x : task
-            task number
-        file: full filename and path to the IV protocol data
-        allivs :
-            list of protocols
-        nfiles : int
-            number for file...
-
-        pdf: matplotlib pdfpages instance or None
-            if None, no plots are accumulated
-            if a pdfpages instance, all of the pages plotted by IVSummary are concatenated
-            into the output file (self.pdfFilename)
-        """
-        # import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
-
-        protocol = Path(allivs[i]).name
-        result = {}
-        iv_result = {}
-        sp_result = {}
-
-        protocol_directory = Path(cell_directory, protocol)
-
-        if not protocol_directory.is_dir():
-            print("cell directory: ", cell_directory)
-            print("protocol: ", protocol)
-            CP.cprint("r", f"protocol directory not found (analyze_iv)!! {str(protocol_directory):s}")
-            exit()
-        self.EPIV.configure(protocol_directory, plot=not self.plotsoff,
-                          reader = self.AR,
-                          spikeanalyzer=self.SP,
-                          rmtauanalyzer=self.RM)
-        if self.iv_select["duration"] > 0.0:
-            check = self.EPIV.iv_check(duration=self.iv_select["duration"])
-            if check is False:
-                gc.collect()
-                return (None, 0)  # skip analysis
-        if not self.dry_run:
-            print(f"      IV analysis for {str(protocol_directory):s}")
-            br_offset = 0.0
-            if (
-                not pd.isnull(self.df.at[icell, "IV"])
-                and protocol in self.df.at[icell, "IV"]
-                and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
-            ):
-                print(
-                    "Bridge: {0:.2f} Mohm".format(
-                        self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
-                    )
-                )
-            ctype = self.df.at[icell, "cell_type"].lower()
-            tgap = 0.0015
-            tinit = True
-            if ctype in [
-                "bushy",
-                "d-stellate",
-                "octopus",
-            ]:
-                tgap = 0.0005  # shorten gap for measures for fast cell types
-                tinit = False
-            self.EPIV.plot_mode(mode=self.IV_pubmode)
-            plot_handle = self.EPIV.compute_iv(
-                threshold=self.spike_threshold,
-                refractory=self.refractory,
-                bridge_offset=br_offset,
-                tgap=tgap,
-                plotiv=True,
-                full_spike_analysis=True,
-            )
-            iv_result = self.EPIV.RM.analysis_summary
-            sp_result = self.EPIV.SP.analysis_summary
-            result["IV"] = iv_result
-            result["Spikes"] = sp_result
-            ctype = self.df.at[icell, "cell_type"]
-            annot = self.df.at[icell, "annotated"]
-            if annot:
-                ctwhen = "[revisited]"
-            else:
-                ctwhen = "[original]"
-            print("Checking for figure, plothandle is: ", plot_handle)
-            if plot_handle is not None:
-                shortpath = protocol_directory.parts
-                shortpath2 = str(Path(*shortpath[4:]))
-                plot_handle.suptitle(
-                    f"{str(shortpath2):s}\n{BIS.build_info_string(self.EPIV.AR, protocol_directory):s}",
-                    fontsize=8,
-                )
-                t_path = Path(self.cell_tempdir, "temppdf_{0:04d}.pdf".format(nfiles))
-                # print("PDF: ", pdf)
-                # if pdf is not None:
-                #     pdf.savefig(plot_handle)
-                # else:
-                mpl.savefig(
-                    t_path, dpi=300
-                )  # use the map filename, as we will sort by this later
-                mpl.close(plot_handle)
-                CP.cprint("g", f"saved to: {str(t_path):s}")
-                nfiles += 1
-            del iv_result
-            del sp_result
-            gc.collect()
-            return result, nfiles
-
-        else:
-            print(f"Dry Run: would analyze {str(protocol_directory):s}")
-            br_offset = 0
-
-            if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):
-                print("   current database has no IV data set for this file")
-            elif protocol not in list(self.df.at[icell, "IV"].keys()):
-                print(
-                    "Protocol {0:s} not found in day: {1:s}".format(
-                        str(protocol), self.df.at[icell, "date"]
-                    )
-                )
-            elif "BridgeAdjust" in self.df.at[icell, "IV"][protocol].keys():
-                br_offset = self.df.at[icell, "IV"][protocol]["BridgeAdjust"]
-                print("   with Bridge: {0:.2f}".format(br_offset / 1e6))
-            else:
-                print("... has no bridge, will use 0")
-            gc.collect()
-            return None, 0
 
     def analyze_vcs(self, icell: int, allprots: dict, pdf=None):
         """
@@ -1523,6 +1329,7 @@ class Analysis():
         Nothing - generates pdfs and updates the pickled database file.
         """
         import matplotlib.pyplot as mpl
+
         celltype = self.check_celltype(self.df.iloc[icell].cell_type)
         self.df.iloc[icell].cell_type = celltype
 
@@ -1595,7 +1402,6 @@ class Analysis():
 #     IV = IV_Analysis(args)
 #     IV.setup(args, exclusions)
 #     IV.run()
-
 
 
 #     # allp = sorted(list(set(NF.allprots)))
