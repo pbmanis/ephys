@@ -88,7 +88,7 @@ def grand_mean_std(timebase: np.ndarray, data: np.ndarray, window: list = [0, 0.
             "grand_mean_std: Input data must be a 2D array: ntraces x trace"
         )
     trindex = np.where((timebase >= window[0]) & (timebase < window[1]))[0]
-    print(trindex[0], trindex[-1])
+
     grandmean = np.nanmean(data[:, trindex[0]:trindex[-1]])
     grandstd = np.nanstd(data[:, trindex[0]:trindex[-1]])
     return grandmean, grandstd
