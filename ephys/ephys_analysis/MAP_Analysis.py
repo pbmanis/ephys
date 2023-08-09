@@ -208,7 +208,6 @@ class MAP_Analysis(Analysis):
                     msg,
                 )
                 Logger.warning(msg)
-                # exit()
         CP.cprint(
             "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
         )
@@ -833,7 +832,8 @@ class MAP_Analysis(Analysis):
                 )
                 if not self.cell_tempdir.is_dir():
                     print("The cell's tempdir was not found: ", self.cell_tempdir)
-                    exit()
+                    Logger.critical("The cell's tempdir was not found: ", self.cell_tempdir)
+                    return
 
                 if t_path.is_file():
                     t_path.unlink()

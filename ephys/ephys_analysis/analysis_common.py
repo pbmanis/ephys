@@ -472,11 +472,7 @@ class Analysis:
             ) in (
                 cells_in_day.index
             ):  # for all the cells in the day (but will check for slice_cell too)
-                # print(f"<{self.slicecell:s}>")
-                # if self.slicecell is None or len(self.slicecell) == 0:
-                #     print("is none")
-                # exit()
-                self.do_cell(icell, pdf=self.pdfFilename)
+                cellok = self.do_cell(icell, pdf=self.pdfFilename)
 
         # get the complete protocols:
         # Only returns a dataframe if there is more than one entry
@@ -484,11 +480,11 @@ class Analysis:
         else:
             if self.pdfFilename is None:
                 for n, icell in enumerate(range(len(self.df.index))):
-                    self.do_cell(icell, pdf=None)
+                    cell_ok = self.do_cell(icell, pdf=None)
             else:
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
-                        self.do_cell(icell, pdf=pdf)
+                        cell_ok = self.do_cell(icell, pdf=pdf)
             CP.cprint(
                 "c",
                 f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}",
@@ -672,7 +668,7 @@ class Analysis:
         if not self.merge_flag:
             print("Merge flag is False")
             return
-        CP.cprint("c", "********* MERGEING PDFS ************\n")
+        CP.cprint("c", "********* MERGE PDFS ************\n")
         # if self.pdfFilename is None and not self.autoout:  # no output file, do nothing
         #     return
 
@@ -688,7 +684,7 @@ class Analysis:
             list(self.cell_tempdir.glob("*.pdf"))
         )  # list filenames in the tempdir and sort by name
         if len(fns) == 0:
-            CP.cprint("m", f"No pdfs to merge for {str(self.cell_pdfFilename):s}")
+            # CP.cprint("m", f"No pdfs to merge for {str(self.cell_pdfFilename):s}")
             return  # nothing to do
         CP.cprint("c", f"Merging pdf files: {str(fns):s}")
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
@@ -1022,25 +1018,38 @@ class Analysis:
                 "y",
                 f"Day {datestr:s} is not in range {self.after_str:s} to {self.before_str:s}",
             )
-            return False, "", "", ""
+            return (False, "", "", "")
         # check slice/cell:
-        slicecell = f"S{int(slicestr[-3:]):03d}C{int(cellstr[-3:]):03d}"  # recognize that slices and cells may be more than 10 (# 9)
-        slicecell2 = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
-        slicecell1 = f"S{int(slicestr[-3:]):1d}C{int(cellstr[-3:]):1d}"  # recognize that slices and cells may be more than 10 (# 9)
+        slicecell3 = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
+        slicecell2 = f"S{int(slicestr[-3:]):01d}C{int(cellstr[-3:]):01d}"  # recognize that slices and cells may be more than 10 (# 9)
+        slicecell1 = f"{int(slicestr[-3:]):1d}{int(cellstr[-3:]):1d}"  # only for 0-9
         compareslice = ""
         if self.slicecell is not None:  # limiting to a particular cell?
+            match = False
             if len(self.slicecell) == 2:  # 01
-                compareslice = f"S{int(self.slicecell[0]):03d}C{int(self.slicecell[1]):03d}"
+                compareslice = f"{int(self.slicecell[0]):1d}{int(self.slicecell[1]):1d}"
+                if compareslice == slicecell1:
+                    match = True
             elif len(self.slicecell) == 4:  # S0C1
-                compareslice = f"S{int(self.slicecell[1]):03d}C{int(self.slicecell[3]):03d}"
+                compareslice = f"S{int(self.slicecell[1]):1d}C{int(self.slicecell[3]):1d}"
+                if compareslice == slicecell2:
+                    match = True
             elif len(self.slicecell) == 6:  # S00C01
                 compareslice = (
-                    f"S{int(self.slicecell[1:3]):03d}C{int(self.slicecell[1:3]):03d}"
+                    f"S{int(self.slicecell[1:3]):02d}C{int(self.slicecell[4:]):02d}"
                 )
-            if compareslice != slicecell:
-                return False, "", "", ""
+                if compareslice == slicecell3:
+                    match = True
+
+            if match:
+                return (True, slicecell3, slicecell2, slicecell1)
+            else:
+                # raise ValueError()
+                # Logger.error(f"Failed to find cell: {self.slicecell:s} in {slicestr:s} and {cellstr:s}")
+                # Logger.error(f"Options were: {slicecell3:s}, {slicecell2:s}, {slicecell1:s}")
+                return (False, "", "", "")  # fail silently... but tell caller.
         else:
-            return True, slicecell, slicecell2, slicecell1
+            return(True, slicecell3, slicecell2, slicecell1)
 
     def get_markers(self, fullfile: Path, verbose: bool = True) -> dict:
         # dict of known markers and one calculation of distance from soma to surface
@@ -1063,6 +1072,7 @@ class Analysis:
             if verbose:
                 CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
             state = json.load(open(mosaic_file[0], "r"))
+            cellmark = None
             for item in state["items"]:
                 if item["type"] == "MarkersCanvasItem":
                     markers = item["markers"]
@@ -1080,10 +1090,18 @@ class Analysis:
                                     markers[j][1][0],
                                     markers[j][1][1],
                                 ]
+                if item["type"] == "CellCanvasItem":  # get Cell marker position also
+                    cellmark = item['userTransform']
             soma_xy:list = []
+            if "soma" in marker_dict.keys() and cellmark is None:
+                somapos = marker_dict["soma"]
+            if cellmark is not None:  # override soma position with cell marker position
+                somapos = cellmark['pos']
+                marker_dict['soma'] = somapos
+
             surface_xy:list = []
-            if len(marker_dict["soma"]) == 2 and len(marker_dict["surface"]) == 2:
-                soma_xy = marker_dict["soma"]
+            if len(somapos) == 2 and len(marker_dict["surface"]) == 2:
+                soma_xy = somapos
                 surface_xy = marker_dict["surface"]
                 dist = np.sqrt(
                     (soma_xy[0] - surface_xy[0]) ** 2
@@ -1113,7 +1131,7 @@ class Analysis:
             pkldir.mkdir()
         return Path(pkldir, pklname.stem).with_suffix(".pkl")
     
-    def do_cell(self, icell: int, pdf=None):
+    def do_cell(self, icell: int, pdf=None) -> bool:
         """
         Do analysis on one cell
         Runs all protocols for the cell
@@ -1127,13 +1145,17 @@ class Analysis:
 
         pdf : bool, default=False
 
+        Returns
+        -------
+        success: bool
+
         """
         datestr, slicestr, cellstr = self.make_cell(icell)
         matchcell, slicecell3, slicecell2, slicecell1 = self.compare_slice_cell(
             icell, datestr=datestr, slicestr=slicestr, cellstr=cellstr
         )
         if not matchcell:
-            return
+            return False
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = self.check_celltype(celltype)
@@ -1153,7 +1175,7 @@ class Analysis:
                         "r",
                         f"SKIPPING data/date: {fftail:s}  containing: {skip:s}",
                     )
-                    return  # skip this data set
+                    return  False# skip this data set
 
         if not fullfile.is_dir():
             fullfile = Path(
@@ -1181,7 +1203,7 @@ class Analysis:
 
             if not fullfile.is_dir():
                 CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
-                return
+                return False
 
         prots = self.df.iloc[icell]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
@@ -1199,13 +1221,13 @@ class Analysis:
             print("*" * 40)
             Logger.warning(msg)
             self.merge_pdfs(celltype, pdf=pdf)
-            return
+            return False
 
         elif fullfile.is_dir() and len(allprots) == 0:
             msg = "Cell found, but no protocols were found"
             CP.cprint("m", "Cell found, but no protocols were found")
             Logger.warning(msg)
-            return
+            return False
         elif fullfile.is_dir() and len(allprots) > 0:
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
@@ -1281,10 +1303,8 @@ class Analysis:
             pk3 = self.make_pickle_filename(self.analyzeddatapath, celltype, slicecell3)
             pk3.unlink(missing_ok=True)
 
-            # print(self.df.iloc[icell].keys())
-            # exit()
-            # self.df["IV"] = None
-            # self.df["Spikes"] = None
+            self.df["IV"] = None
+            self.df["Spikes"] = None
             gc.collect()
 
         elif self.vc_flag:
@@ -1310,6 +1330,7 @@ class Analysis:
             pdf3.unlink(missing_ok=True)
 
             gc.collect()
+        return True
 
     def analyze_vcs(self, icell: int, allprots: dict, pdf=None):
         """

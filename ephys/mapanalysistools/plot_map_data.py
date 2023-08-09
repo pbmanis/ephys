@@ -67,7 +67,7 @@ def setMapColors(colormapname: str, reverse: bool = False) -> object:
     #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('parula', colormaps.parula.cm_data)
     else:
         print(
-            '(analyzemapdata) Unrecongnized color map {0:s}; setting to "snshelix"'.format(
+            '(plot_map_data) Unrecongnized color map {0:s}; setting to "snshelix"'.format(
                 colormapname
             )
         )

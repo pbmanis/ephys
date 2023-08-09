@@ -491,7 +491,7 @@ class DataSummary:
 
         """
         if self.append:
-            print("reading for append: ", self.outFilename)
+            print("\nreading for append: ", self.outFilename)
             self.pddata = pd.read_pickle(self.outFilename)  # get the current file
         # print('alldays: ', allfiles)
         self.pstring = ""
@@ -1041,13 +1041,13 @@ class DataSummary:
                     f"Cannot append to non-existent file: {str(outfile):s}"
                 )
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
-            maindf = maindf.append(df)
+            maindf = pd.concat([maindf, df])
             maindf = maindf.reset_index(level=0, drop=True)
             # maindf = maindf.reset_index()  # redo the indices so all in sequence
             maindf.to_pickle(outfile)
             print(f"APPENDED pandas dataframe to pickled file: {str(outfile):s}")
 
-        self.make_excel(df, outfile=excelfile)
+        self.make_excel(maindf, outfile=excelfile)
         print(f"Wrote excel verion of dataframe to: {str(excelfile):s}")
 
 
@@ -1169,7 +1169,7 @@ class DataSummary:
         df = df[cols + [c for c in df.columns if c not in cols]]
         return df
 
-    def make_excel(self, df:object, outfile:Path):
+    def make_excel(self, df:pd, outfile:Path):
         """cleanup: reorganize columns in spreadsheet, set column widths
         set row colors by cell type
 
@@ -1190,7 +1190,7 @@ class DataSummary:
         fdot3 = workbook.add_format({'num_format': '####0.000'})
         df.to_excel(writer, sheet_name = "Sheet1")
 
-        resultno = []
+        resultno:list = []
         # resultno = ['holding', 'RMP', 'Rin', 'taum', 'dvdt_rising', 'dvdt_falling', 
         #     'AP_thr_V', 'AP_HW', "AP15Rate", "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
         # df[resultno] = df[resultno].apply(pd.to_numeric)    

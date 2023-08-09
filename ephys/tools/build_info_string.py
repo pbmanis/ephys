@@ -1,12 +1,19 @@
+import logging
 from pathlib import Path
+
+Logger = logging.getLogger("AnalysisLogger")
+
 def build_info_string(AR, path_to_cell):
     infostr = ""
     info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent.parent)["."]
     slice_info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent)["."]
     cell_info= AR.readDirIndex(currdir=Path(AR.protocol).parent)["."]
-    # print(info)
-    # print(cell_info)
     info_keys = list(info.keys())
+    # print("Info: ", info)
+    if "sex" not in info_keys or "age" not in info_keys or "temperature" not in info_keys or "internal" not in info_keys:
+        Logger.critical(f"Missing info in top-level .index file in {path_to_cell}")
+        return("Missing Critical information in .index file")
+
     slice_info_keys = list(slice_info.keys())
     cell_info_keys = list(cell_info.keys())
     if "animal identifier" in info_keys:
@@ -33,8 +40,18 @@ def build_info_string(AR, path_to_cell):
         infostr += info["internal"] + ", "
     if "temperature" in info_keys:
         temp = info["temperature"]
-    if temp == "room temperature":
-        temp = "RT"
+        if temp == "room temperature":
+            temp = "RT"
+    if "sex" not in info.keys() or "age" not in info.keys() or "temperature" not in info.keys() or "internal" not in info.keys():
+        Logger.critical(f"Missing info in top-level .index file in {path_to_cell}")
+        exit()
+    # better to fail than substitute a value
+    # else:
+    #     temp = "not specified"
+    # if "sex" not in info.keys():
+    #     info["sex"] = "ND"
+    # if "age" not in info.keys():
+    #     info["age"] = "ND"
     infostr += "{0:s}, ".format(temp)
     infostr += "{0:s}, ".format(info["sex"].upper())
     infostr += "{0:s}".format(str(info["age"]).upper())
