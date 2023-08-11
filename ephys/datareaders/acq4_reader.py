@@ -665,7 +665,7 @@ class acq4_reader:
         # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
-    def getData(self, pos: int = 1, check: bool = False, allow_partial=False):
+    def getData(self, pos: int = 1, check: bool = False, allow_partial=False, silent=False):
         """
         Get the data for the current protocol
         if check is True, we just check that the requested file exists and return
@@ -792,12 +792,12 @@ class acq4_reader:
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if check:
-                if not fn.is_file():
+                if not fn.is_file() and notsilent:
                     CP.cprint("r", f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}")
                     raise ValueError
                 return True  # just note we found the first file
 
-            if self.importantFlag and not important[i]:  # only return traces marked "important"
+            if self.importantFlag and not important[i] and not silent:  # only return traces marked "important"
                 CP.cprint("m", "acq4_reader: Skipping non-important data")
                 continue
             self.protoDirs.append(
@@ -808,13 +808,15 @@ class acq4_reader:
             except:
                 if allow_partial:  # just get what we can
                     continue
-                else:
+                elif not silent:
                     print(allow_partial)
                     CP.cprint("r", 
                         f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
                     #raise ValueError(f"file failed: {str(fn):s}")
                     print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                     continue
+                else:
+                    pass
 
 
             tr_info = tr[0].infoCopy()
@@ -840,7 +842,7 @@ class acq4_reader:
             sr = tr_info[1]["DAQ"]["primary"]["rate"]
             self.sample_rate.append(self.samp_rate)
             # print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
-        if tr is None and allow_partial is False:
+        if tr is None and allow_partial is False and not silent:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
         # CP.cprint("r", f"Mode: {self.mode:s}")
