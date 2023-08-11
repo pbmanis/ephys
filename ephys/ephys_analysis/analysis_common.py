@@ -462,9 +462,9 @@ class Analysis:
             cells_in_day = self.df.loc[self.df.day == day]
             # print("cells in day: ", cells_in_day)
             if len(cells_in_day) == 0:
-                CP.cprint("r", f"date not found: here are the valid dates:")
-                for dx in self.df.date.values:
-                    CP.cprint("r", f"    day: {dx:s}")
+                CP.cprint("r", f"Date not found: {day:s}")
+                # for dx in self.df.date.values:
+                #     CP.cprint("r", f"    day: {dx:s}")
                 return None
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
             for (

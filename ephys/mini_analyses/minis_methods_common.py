@@ -350,8 +350,10 @@ class MiniAnalyses:
         self.filters.HPF_applied = True
         return fdata
 
-    def NotchData(
+    def NotchFilterData(
         self,
+        notchfreqs: Union[list, np.ndarray],
+        notchQ: float,
         data: np.ndarray,
     ) -> np.ndarray:
         """
@@ -371,24 +373,25 @@ class MiniAnalyses:
         data : the filtered data (as a copy)
         """
         if (not self.filters.enabled
-            or self.filters.Notch_frequencies is None
-            or len(self.filters.Notch_frequencies) == 0
+            or notchfreqs is None
+            or len(notchfreqs) == 0
         ):
             return data
-        CP.cprint(
-            "y",
-            f"         minis_methods_common, Notch filter data:  {str(self.filters.Notch_frequencies):s}",
-        )
+        if self.verbose:
+            CP.cprint(
+                "y",
+                f"         minis_methods_common, Notch filter data:  {str(notchfreqs):s}, Q: {notchQ:f}",
+            )
 
         if (
             self.filters.Notch_frequencies is None
             or len(self.filters.Notch_frequencies) == 0
         ):
-            return data
+            return data 
         fdata = dfilt.NotchFilterZP(
             data,
-            notchf=self.filters.Notch_frequencies,
-            Q=self.filters.Notch_Q,
+            notchf=notchfreqs,
+            Q=notchQ, # self.filters.Notch_Q,
             QScale=False,
             samplefreq=1.0 / self.dt_seconds,
         )
@@ -397,6 +400,8 @@ class MiniAnalyses:
 
     def NotchFilterComb(
         self,
+        notchfreqs: Union[list, np.ndarray],
+        notchQ: float,
         data: np.ndarray,
     ) -> np.ndarray:
         """
@@ -413,18 +418,18 @@ class MiniAnalyses:
         ------
         data : the filtered data (as a copy)
         """
-        if not self.filters.enabled or self.filters.Notch_frequencies is None:
+        if not self.filters.enabled or notchfreqs is None:
             return data
-        if self.verbose:
-            CP.cprint(
-                "y",
-                f"minis_methods_common, Notch comb filter data:  {self.filters.Notch_frequencies[0]:f}",
-            )
+        # if self.verbose:
+        #     CP.cprint(
+        #         "y",
+        #         f"minis_methods_common, Notch comb filter data:  {notchfreqs[0]:f}",
+        #     )
 
         fdata = dfilt.NotchFilterComb(
             data,
-            notchf=self.filters.Notch_frequencies,
-            Q=self.filters.Notch_Q,
+            notchf=notchfreqs,
+            Q=notchQ,
             QScale=False,
             samplefreq=1.0 / self.dt_seconds,
         )
@@ -449,6 +454,15 @@ class MiniAnalyses:
             jmax = int(np.argmin(np.fabs(timebase - self.analysis_window[1])))
         return data[:, jmin:jmax], timebase[jmin:jmax], (jmin, jmax)
 
+
+    def show_prepared_data(self, timebase: np.ndarray, data: np.ndarray,  timebasep: np.ndarray, datap: np.ndarray ):
+        f, ax = mpl.subplots(2,1)
+        for j in range(0, data.shape[0], int(data.shape[0]/10)):
+            ax[0].plot(timebase, data[j,:]-data[j,0]+j*5e-12, label="original", linewidth=0.5)
+            ax[1].plot(timebasep, datap[j,:]+j*5e-12, label="clipped", linewidth=0.5)
+        mpl.show()
+        exit()
+    
     def prepare_data(self, data: np.ndarray, pars:MEDC.AnalysisPars):
         """
         This function prepares the incoming data for the mini analyses.
@@ -507,6 +521,7 @@ class MiniAnalyses:
         #
 
         self._start_timing("Clipping window")
+        data1 = data.copy()
         data, self.timebase, (jmin, jmax) = self.clip_window(data, timebase)
         # print(data.shape, self.timebase.shape)
         # exit()
@@ -520,6 +535,7 @@ class MiniAnalyses:
         #     np.max(timebase),
         #     self.analysis_window,
         # )
+
 
         if self.verbose:
             if self.filters.LPF_frequency is not None:
@@ -549,7 +565,7 @@ class MiniAnalyses:
                     data[itrace], order=self.filters.Detrend_order
                 )
                 self.filters.Detrend_applied = True
-            filters_applied += "Detrend: meegkit  "
+            filters_applied += "\n   Detrend: meegkit  "
             self._report_elapsed_time()
             
         elif self.filters.Detrend_method == "scipy" and self.filters.Detrend_enable:
@@ -559,7 +575,7 @@ class MiniAnalyses:
                     data[itrace], x=self.timebase[jmin:jmax], threshold=3.0
                 )
             self.filters.Detrend_applied = True
-            filters_applied += "Detrend: scipy adaptive  "
+            filters_applied += "\n   Detrend: scipy adaptive  "
             self._report_elapsed_time()
         elif self.filters.Detrend_method == "None" or self.filters.Detrend_method == None or not self.filters.Detrend_enable:
             pass
@@ -579,7 +595,7 @@ class MiniAnalyses:
             self._start_timing("LPF")
             for itrace in range(data.shape[0]):
                 data[itrace] = self.LPFData(data[itrace])
-            filters_applied += f"LPF={self.filters.LPF_frequency:.1f} "
+            filters_applied += f"\n   LPF={self.filters.LPF_frequency:.1f} "
             self._report_elapsed_time()
 
         if (
@@ -591,26 +607,40 @@ class MiniAnalyses:
             self._start_timing("HPF")
             for itrace in range(data.shape[0]):
                 data[itrace] = self.HPFData(data[itrace])
-            filters_applied += f"HPF={self.filters.HPF_frequency:.1f} "
+            filters_applied += f"\n   HPF={self.filters.HPF_frequency:.1f} "
             self._report_elapsed_time()
         #
         # 3. Apply notch filtering to remove periodic noise (60 Hz + harmonics, and some other junk in the system)
         #
 
+        # print("Notch: ")
+        # print("  applied: ", self.filters.Notch_applied)
+        # print("  filts enabled: ", self.filters_enabled)
+        # print("  notch freqs: ", self.filters.Notch_frequencies, type(self.filters.Notch_frequencies))
+        if isinstance(self.filters.Notch_frequencies, str):
+            notchf = eval(self.filters.Notch_frequencies)
+        else:
+            notchf = self.filters.Notch_frequencies
+        # print(notchf)
+        # print(type(notchf))
         if (
-            (self.filters.Notch_frequencies is not None)
+            (notchf is not None)
             and (
-                isinstance(self.filters.Notch_frequencies, list) and len(self.filters.Notch_frequencies) > 0
-                or isinstance(self.filters.Notch_frequencies, np.ndarray) and self.filters.Notch_frequencies.size > 0
+                isinstance(notchf, list) and len(notchf) > 0
+                or isinstance(notchf, np.ndarray) and notchf.size > 0
             )
             and self.filters_enabled
         ):
-            if self.verbose:
-                CP.cprint("r", "Comb filter notch")
+            CP.cprint("r", "Comb filter notch")
             self._start_timing("Notch filtering")
-            for itrace in range(data.shape[0]):
-                data[itrace] = self.NotchFilterComb(data[itrace])
-            filters_applied += f"Comb Notch={str(self.filters.Notch_frequencies):s} "
+            if len(notchf) == 1:
+                for itrace in range(data.shape[0]):
+                    data[itrace] = self.NotchFilterComb(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data[itrace])
+                filters_applied += f"\n   Comb Notch={str(notchf):s} "
+            else:
+                for itrace in range(data.shape[0]):
+                    data[itrace] = self.NotchFilterData(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data[itrace])
+                filters_applied += f"\n   Specific Notch={str(notchf):s} "
             self._report_elapsed_time()
         self.data = data.copy()
 
@@ -619,7 +649,9 @@ class MiniAnalyses:
         #     mpl.plot(self.timebase, self.data[i], linewidth = 0.35)
         # mpl.show()
         self.data_prepared = True
-        CP.cprint("g", f"Filters applied = {filters_applied:s}")
+        CP.cprint("g", f"Filters applied = \n{filters_applied:s}")
+        # self.show_prepared_data(timebase, data1, self.timebase, self.data)
+
 
 
     def moving_average(self, a, n: int = 3) -> Tuple[np.ndarray, int]:
@@ -1867,7 +1899,6 @@ class MiniAnalyses:
 
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
-
         if self.datatype in ["V", "VC"]:
             tau1min = tau1 / 4.0
             tau1max = tau1 * 2.0
@@ -1895,6 +1926,7 @@ class MiniAnalyses:
             tau3min = 5.0e-3
         elif self.datatype in ["I", "IC"]:
             tau1min = tau1 / 10.0
+            tau1max = tau1*5.0
             if tau1min < 1e-4:
                 tau1min = 1e-4
             # params["amp"] = lmfit.Parameter(

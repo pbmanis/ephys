@@ -322,7 +322,9 @@ class MAP_Analysis(Analysis):
             # print("Sh: ", sh)
             if cell_df is not None and sh != (0,):
                 # print("    Setting Notch to ", cell_df["Notch"].values[0])
-                self.AM.set_notch(enable=True, freqs=str(list(eval(cell_df["Notch"].values[0]))))
+                self.AM.set_notch(enable=True, 
+                                  freqs=str(list(eval(cell_df["Notch"].values[0]))),
+                                  Q=cell_df["NotchQ"].values[0])
                 print(f"    Setting Notch to {str(cell_df['Notch'].values[0]):s} from map table", end=" ")
             else:
                 self.AM.set_notch(enable=False, freqs=[])

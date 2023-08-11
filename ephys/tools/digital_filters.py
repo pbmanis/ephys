@@ -222,7 +222,7 @@ def SignalFilter_Bandpass(signal, HPF, LPF, samplefreq):
     signal = signal + msig
     return(w)
     
-def NotchFilter(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
+def NotchFilterZP(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
     assert samplefreq is not None
     w0 = np.array(notchf)/(float(samplefreq)/2.0)  # all W0 for the notch frequency
     if QScale:
