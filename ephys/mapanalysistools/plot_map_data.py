@@ -16,6 +16,7 @@ import pylibrary.tools.cprint as CP
 import scipy.ndimage
 import scipy.signal
 import seaborn
+import MetaArray
 # import montager as MT
 from matplotlib import colors as mcolors
 from matplotlib.collections import PatchCollection
@@ -971,16 +972,124 @@ class PlotMapData:
         ax.set_ylabel("P (mW)", fontsize=10)
         ax.set_xlabel("Time (s)", fontsize=10)
 
+    def get_laser_spots(self, pos, mapdir:Union[Path, str]):
+        """
+        This function is not needed if the spots have been loaded in the mosiac editor...
+        et_laser_spots from the selected map directory camera images,
+        and compare to the spot locations in the scanner file
+        Generates a maximal image projection of the camera images
+        taken during the mapping experiment, and retuns that image
+        """
+        imagecount = 0
+        mappoints = list(Path(mapdir).glob("*"))
+        mappoints = [mp for mp in mappoints if mp.is_dir()]
+        useframe = 1
+        for imagecount, mp in enumerate(mappoints):
+            cameraframe = Path(mp, 'Camera', 'frames.ma')
+            frame = MetaArray.MetaArray(file=str(cameraframe),  # read the camera frame
+                                        readAll=True,  # read all data into memory
+                                        verbose=False)
+            frame_data = frame.view(np.ndarray)
+            if imagecount == 0:
+                frame_data_max = frame_data[useframe,:,:]
+                frame_bkgd = np.zeros_like(frame_data[useframe,:,:])
+            else:
+                if useframe == 0:
+                    frame_data_max += frame_data[useframe,:,:]
+                    frame_bkgd = np.zeros_like(frame_data[useframe,:,:])
+                else:
+                    frame_data_max = np.maximum(frame_data_max, frame_data[useframe,:,:])
+                    frame_bkgd += frame_data[0,:,:]
+
+        frame_bkgd = frame_bkgd/int(imagecount)
+        if useframe == 0:
+            frames = frame_data_max/int(imagecount)
+        else:
+            frames = frame_data_max - frame_bkgd
+        # print(np.max(frames), np.min(frames))
+        # frames = frames  > np.min(frames)*1.5
+        info = frame.infoCopy()
+        spotimage = MetaArray.MetaArray(frames, info=info[1:])  # remove the time axis.
+        # fout = Path(str(mapdir)+'_spotimage.ma')
+        # print('info: ', info)
+        # spotimage.write(str(fout))
+        # exit()
+        return spotimage
+
+    def reorder(self, a: float, b: float):
+        """
+        make sure that b > a
+        if not, swap and return
+        """
+        if a > b:
+            t = b
+            b = a
+            a = t
+        return (a, b)
+
+    def add_image(self, axp, imageInfo, imageData, angle:float=0., alpha:float=1.0, cmap:str="gray"):
+        """
+        Add an image to the plot (laser spots or camera image)"""
+
+        # compute the extent for the image, offsetting it to the map center position
+        ext_left = imageInfo["deviceTransform"]["pos"][0]  # - pz[0]
+        ext_right = (
+            ext_left
+            + imageInfo["region"][2]
+            * imageInfo["deviceTransform"]["scale"][0]
+        )
+        ext_bottom = imageInfo["deviceTransform"]["pos"][1]  # - pz[1]
+        ext_top = (
+            ext_bottom
+            + imageInfo["region"][3]
+            * imageInfo["deviceTransform"]["scale"][1]
+        )
+        ext_left, ext_right = self.reorder(ext_left, ext_right)
+        ext_bottom, ext_top = self.reorder(ext_bottom, ext_top)
+        # extents are manually adjusted - something about the rotation should be computed in them first...
+        # but fix it manually... worry about details later.
+        # extents = [ext_bottom, ext_top, ext_left, ext_right]  #
+        extents = [ext_left, ext_right, ext_bottom, ext_top]
+        if (
+            angle != 0.0
+        ):  # note that angle arrives in radians - must convert to degrees for this one.
+            print("rotation angle: ", angle)
+            img = scipy.ndimage.interpolation.rotate(
+                imageData,
+                angle,  #* 180.0 / np.pi + 90.0,
+                axes=(1, 0),
+                reshape=True,
+                output=None,
+                order=3,
+                mode="constant",
+                cval=0.0,
+                prefilter=True,
+            )
+        else:
+            img = imageData
+
+        axp.imshow(
+            img,
+            aspect="equal",
+            extent=extents,
+            origin="lower",
+            cmap=setMapColors(cmap),
+            alpha=alpha,
+        )
+        return extents
+    
+
     def plot_map(
         self,
         axp,
         axcbar,
         pos,
         measure,
-        measuretype="I_max",
+        measuretype: Union[None, str]=None,
         vmaxin=None,
         imageHandle=None,  # could be a montager instance
         imagefile=None,
+        mapdir: Union[str, Path, None] = None,
         angle=0,
         spotsize=42e-6,
         cellmarker=False,
@@ -989,7 +1098,6 @@ class PlotMapData:
         average=False,
         pars=None,
     ):
-
         sf = 1.0  # everything is scaled in meters
         cmrk = 50e-6 * sf  # size, microns
         linewidth = 0.2
@@ -997,66 +1105,30 @@ class PlotMapData:
   
         npos += 1  # need to count up one more to get all of the points in the data
         pos = pos[:npos, :]  # clip unused positions
-
         if imageHandle is not None and imagefile is not None:
-            imageInfo = imageHandle.imagemetadata[0]
-            # compute the extent for the image, offsetting it to the map center position
-            ext_left = imageInfo["deviceTransform"]["pos"][0]  # - pz[0]
-            ext_right = (
-                ext_left
-                + imageInfo["region"][2]
-                * imageInfo["deviceTransform"]["scale"][0]
-                * 1e3
-            )
-            ext_bottom = imageInfo["deviceTransform"]["pos"][1]  # - pz[1]
-            ext_top = (
-                ext_bottom
-                + imageInfo["region"][3]
-                * imageInfo["deviceTransform"]["scale"][1]
-                * 1e3
-            )
-            ext_left, ext_right = self.reorder(ext_left, ext_right)
-            ext_bottom, ext_top = self.reorder(ext_bottom, ext_top)
-            # extents are manually adjusted - something about the rotation should be computed in them first...
-            # but fix it manually... worry about details later.
-            # yellow cross is aligned on the sample cell for this data now
-            extents = [ext_bottom, ext_top, ext_left, ext_right]  #
-            extents = [ext_left, ext_right, ext_bottom, ext_top]
+            imagedata = imageHandle.imagemetadata[0]
             img = imageHandle.imagedata[0]
-            if (
-                angle != 0.0
-            ):  # note that angle arrives in radians - must convert to degrees for this one.
-                img = scipy.ndimage.interpolation.rotate(
-                    img,
-                    angle * 180.0 / np.pi + 90.0,
-                    axes=(1, 0),
-                    reshape=True,
-                    output=None,
-                    order=3,
-                    mode="constant",
-                    cval=0.0,
-                    prefilter=True,
-                )
-            axp.imshow(
-                img,
-                aspect="equal",
-                extent=extents,
-                origin="lower",
-                cmap=setMapColors("gray"),
-            )
+            # extents = self.add_image(axp,imageInfo=imageHandle.imagemetadata[0], 
+            #                imageData=imageHandle.imagedata,  angle=angle, alpha=0.5)
 
-        # spotsize = spotsize
-        # print(measure.keys())
-        # print(measuretype)
+        if mapdir is not None:
+            spotsdata = self.get_laser_spots(pos, mapdir) # get the laser spots from the map directory
+            # if spotsdata is not None:
+            #     extents = self.add_image(axp, imageInfo=spotsdata._info[2], imageData=spotsdata.view(np.ndarray), angle=90)# =angle-np.pi )
+
+
         if measuretype in ("A", "Q"):
             mtype = "I_max"
         else:
             mtype = measuretype
 
-        if whichstim < 0:
-            spotsizes = spotsize * np.linspace(1.0, 0.2, len(measure[mtype]))
-        else:
-            spotsizes = spotsize * np.ones(len(measure[measuretype]))
+        if measuretype is None:
+            spotsizes = spotsize * np.ones(len(pos))
+        else: 
+            if whichstim < 0:
+                spotsizes = spotsize * np.linspace(1.0, 0.2, len(measure[mtype]))
+            else:
+                spotsizes = spotsize * np.ones(len(measure[measuretype]))
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
@@ -1125,10 +1197,8 @@ class PlotMapData:
             nev_spots = 0
             # print("event measures: ", events[0][0]["measures"])
             for trial in range(measure["ntrials"]):
-                print("trial: ", trial)
                 skips = False
                 for spot in range(nspots):  # for each spot
-                    print("spot: ", spot)
                     for ipulse in range(npulses):
                         if measuretype == "Q":
                             # try:  # repeated trials not implemented here.
@@ -1217,7 +1287,7 @@ class PlotMapData:
             whichmeasures = range(len(data))
         norm = matplotlib.colors.Normalize(vmin=0, vmax=vmax)
         cmx = matplotlib.cm.ScalarMappable(norm=norm, cmap=cm_sns)
-        axp.set_facecolor([0.75, 0.75, 0.75])
+        # axp.set_facecolor([0.75, 0.75, 0.75])
         for (
             im
         ) in (
@@ -1298,11 +1368,9 @@ class PlotMapData:
                         'rostralborder': '>', 'caudalborder': '<', 'ventralborder': '2', 'dorsalborder': '1'}
         if markers is not None:
             for marktype in markers.keys():
-                print("marktype: ", marktype)
                 if marktype not in mark_colors.keys():
                     continue
                 position = markers[marktype]
-                CP.cprint('r', f"Marker <{marktype:s}> position:  {str(position):s}")
                 if position is not None and len(position) >= 2:
                     axp.plot([position[0], position[0]],
                             [position[1], position[1]],
@@ -1330,8 +1398,11 @@ class PlotMapData:
             # )
         # axp.scatter(pos[:,0], pos[:,1], s=2, marker='.', color='k', zorder=4)
         axp.set_facecolor([0.0, 0.0, 0.0])
-        axp.set_xlim(xlim)
-        axp.set_ylim(ylim)
+        PH.noaxes(axp)
+        axp.plot([xlim[0]+10e-6, xlim[0]+110e-6], [ylim[0]+20e-6, ylim[0]+20e-6], 'w-', lw=2)
+        axp.text(x=xlim[0]+60e-6, y=ylim[0]+30e-6, s="100 um", color='w', fontsize=8, ha='center', va='bottom')
+        # axp.set_xlim(xlim)
+        # axp.set_ylim(ylim)
         if imageHandle is not None and imagefile is not None:
             axp.set_aspect("equal")
         axp.set_aspect("equal")
@@ -1420,15 +1491,16 @@ class PlotMapData:
                 cbar,
                 result["positions"],
                 measure=result,
-                measuretype=measuredict[measure],
+                measuretype=None, # measuredict[measure],
                 pars=pars,
                 markers=markers,
+                mapdir=dataset_name,
             )
         return True
 
     def display_one_map(
         self,
-        dataset:str,
+        dataset:str,  # typically is the map directory
         results:dict,
         imagefile=None,
         rotation:float=0.0,
@@ -1570,6 +1642,7 @@ class PlotMapData:
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.0:
             self.newvmax = self.Pars.overlay_scale
+
         self.newvmax = self.plot_map(
             self.P.axdict[map_panel],
             cbar,
@@ -1577,6 +1650,7 @@ class PlotMapData:
             measure=results,
             measuretype=measuretype,
             vmaxin=self.newvmax,
+            mapdir = dataset,
             imageHandle=None,  # self.MT,
             imagefile=imagefile,
             angle=rotation,
@@ -1585,6 +1659,9 @@ class PlotMapData:
             average=average,
             markers=markers,
         )
+        # print("plot map done)")
+        # mpl.show()
+        # exit()
 
         if plotmode == "document":  # always show all responses/events, regardless of amplitude
             self.plot_stacked_traces(
