@@ -25,7 +25,7 @@ jinja2==3.0.1
 pyabf  # for reading axon binary files
 meegkit # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
 lmfit==1.2.1
-obspy==1.2.2  # for resampling and filtering
+obspy==1.4.0  # for resampling and filtering
 
 matplotlib>=3.5.0
 matplotlib-scalebar>=0.5.1
