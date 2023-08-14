@@ -274,7 +274,11 @@ class AnalysisPars:
     
     post_analysis_artifact_rejection: bool = False  # clean up AFTER analysis
     artifact_file: Union[Path, None] = None  # file with artifact "traces" to subtract
-    artifact_file_path: Union[Path, None] = None
+    artifact_path: Union[Path, None] = None  # path to the artifact files
+    LaserBlueTimes: Union[dict, None] = None
+    artifactData: Union[dict, None] = None
+    artifact_scale: Union[float, None] = None
+    artifact_epoch: Union[int, None] = None   # which artifact file to use (divided by time epochs )
     
     ar_tstart: float = 0.10  # starting time for VC or IC stimulus pulse
     ar_tend: float = 0.015  # end time for VC or IC stimulus pulse
