@@ -66,7 +66,7 @@ class AnalyzeMap(object):
         self.lbr_command = False  # laser blue raw waveform (command)
 
         # set some defaults - these will be overwrittein with readProtocol
-        self.template_file = None
+        # self.template_file = None
 
         self.methodname = "aj"  # default event detector
         self.set_methodname(self.methodname)
@@ -138,9 +138,7 @@ class AnalyzeMap(object):
         self.filters.HPF_applied = False
         self.filters.Notch_applied = False
 
-    def set_artifactfile_path(self, artpath):
-        self.Pars.artifact_file_path = artpath
-
+   
     def set_baseline(self, bl):
         self.Pars.baseline_flag = bl
 
@@ -177,6 +175,18 @@ class AnalyzeMap(object):
         self.Pars.taus[0:2] = sorted(taus[0:2])
         self.Pars.taus[2:4] = sorted(taus[2:4])
 
+
+    # def set_artifactfile_path(self, artpath):
+    #         self.Pars.artifact_file_path = artpath
+    #         with open(artpath, "rb") as fh:
+    #             self.Pars.artifactData = pickle.load(fh)
+    
+    def set_artifact_scale(self, scale:float):
+        self.Pars.artifact_scale = scale
+    
+    def set_artifact_epoch(self, epoch:int):
+        self.Pars.artifact_epoch = epoch
+
     def set_template_parameters(self, tmax=0.010, pre_time=0.0):
         self.Pars.template_tmax = tmax
         self.Pars.template_pre_time = pre_time
@@ -212,8 +222,11 @@ class AnalyzeMap(object):
             )
         self.Pars.artifact_derivative = enable
 
+    def set_artifact_path(self, filepath):
+        self.Pars.artifact_path = filepath
+
     def set_artifact_file(self, filename):
-        self.template_file = filename
+        self.Pars.artifact_file = filename
 
     def readProtocol(
         self, protocolFilename, records=None, sparsity=None, getPhotodiode=False
@@ -240,8 +253,13 @@ class AnalyzeMap(object):
 
         # get the laser pulse times
         self.AR.getLaserBlueTimes()
+        self.Pars.LaserBlueTimes = self.AR.LaserBlueTimes
         self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
         self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
+
+        if self.Pars.artifact_file is not None:
+            with open(Path(self.Pars.artifact_path, self.Pars.artifact_file).with_suffix(".pkl"), "rb") as fh:
+                self.Pars.artifactData = pickle.load(fh)
 
         self.Pars.ar_tstart = self.AR.tstart
         self.Pars.ar_tend = self.AR.tend
@@ -344,7 +362,7 @@ class AnalyzeMap(object):
             :, :, self.Pars.time_zero_index : self.Pars.time_end_index
         ]  # clip the data to the analysis window
         endtime = timeit.default_timer()
-        print("data shape: ", data.shape)
+        # print("data shape: ", data.shape)
         CP.cprint(
             "g",
             "    Reading protocol {0:s} took {1:6.1f} s".format(

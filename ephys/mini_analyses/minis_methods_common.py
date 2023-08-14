@@ -36,6 +36,7 @@ from scipy.optimize import curve_fit
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 import ephys.tools.digital_filters as dfilt
 import ephys.tools.functions as FUNCS
+import obspy.signal.interpolation as OSI
 
 
 class MiniAnalyses:
@@ -455,14 +456,36 @@ class MiniAnalyses:
         return data[:, jmin:jmax], timebase[jmin:jmax], (jmin, jmax)
 
 
-    def show_prepared_data(self, timebase: np.ndarray, data: np.ndarray,  timebasep: np.ndarray, datap: np.ndarray ):
+    def show_prepared_data(self, timebase: np.ndarray, data: np.ndarray,  
+                           timebasep: Union[np.ndarray, None]=None, datap: Union[np.ndarray, None]=None ):
         f, ax = mpl.subplots(2,1)
         for j in range(0, data.shape[0], int(data.shape[0]/10)):
             ax[0].plot(timebase, data[j,:]-data[j,0]+j*5e-12, label="original", linewidth=0.5)
-            ax[1].plot(timebasep, datap[j,:]+j*5e-12, label="clipped", linewidth=0.5)
+            if timebasep is not None:
+                ax[1].plot(timebasep, datap, label="clipped", linewidth=0.5)
         mpl.show()
         exit()
     
+    from numpy.typing import NDArray
+
+    def sinc_interpolation(self, x: NDArray, s: NDArray, u: NDArray) -> NDArray:
+                """Whittaker–Shannon or sinc or bandlimited interpolation.
+                Args:
+                    x (NDArray): signal to be interpolated, can be 1D or 2D
+                    s (NDArray): time points of x (*s* for *samples*) 
+                    u (NDArray): time points of y (*u* for *upsampled*)
+                Returns:
+                    NDArray: interpolated signal at time points *u*
+                Reference:
+                    This code is based on https://gist.github.com/endolith/1297227
+                    and the comments therein.
+                TODO:
+                    * implement FFT based interpolation for speed up
+                """
+                sinc_ = np.sinc((u - s[:, None])/(s[1]-s[0]))
+
+                return np.dot(x, sinc_)
+
     def prepare_data(self, data: np.ndarray, pars:MEDC.AnalysisPars):
         """
         This function prepares the incoming data for the mini analyses.
@@ -497,6 +520,7 @@ class MiniAnalyses:
         print(f"    Preparing data: Notch = {str(self.filters.Notch_frequencies):s}")
         print(f"    Preparing data: detrend: {str(self.filters.Detrend_method):s}")
         timebase:np.ndarray = np.arange(0.0, data.shape[1] * self.dt_seconds, self.dt_seconds)
+        
         # print(
         #     "original data : ",
         #     data.shape,
@@ -510,12 +534,83 @@ class MiniAnalyses:
         #    And we don't want to have to recalculate their times after cliping the analysis window
         #
         if pars.artifact_suppression:
+            print("artifact scale: ", pars.artifact_scale)
+
             self._start_timing("Artifact Suppression")
-            # CP.cprint("r", f"    Preparing Data: Fixed artifact removal = {str(pars.artifact_suppression):s}")
-            data = self.remove_artifacts(data, pars)
+            CP.cprint("r", f"    Preparing Data: Fixed artifact removal = {str(pars.artifact_suppression):s} with template: {str(pars.artifact_file):s}")
+
+            lbt = str(pars.LaserBlueTimes)
+            if pars.artifactData is not None and lbt in pars.artifactData.keys():
+
+                # print(pars.artifact_file)
+                # print("laser blue times: ", lbt)
+                # print("avaliable artifact keys: ", pars.artifactData.keys())
+                # print("is there a match? : ", lbt in pars.artifactData.keys())
+                # print("here's the data: ", pars.artifactData['sumdata'][lbt])
+                artdata = pars.artifactData[lbt]['sumdata']
+                artend = int(0.599*20000.)
+                # artata = artdata[0:artend]
+                artlen = len(artdata)
+                if artlen < data.shape[1]:
+                    artdata = np.pad(artdata, (0, data.shape[1]-artlen), 'constant', constant_values=artdata[-1])
+                up = 10.0
+
+                tb_high = np.arange(0.0, up*data.shape[1] * self.dt_seconds/up, self.dt_seconds/up)
+                newpts = int(len(artdata)*up)-20
+                art = OSI.lanczos_interpolation(artdata-artdata[0], 0., self.dt_seconds, 0., self.dt_seconds/up,
+                         new_npts= newpts,
+                          a=20, window="lanczos")
+                newptsd = int(len(data[0,:])*up)-20
+                for i in range(data.shape[0]):
+                    data[i,:] = data[i,:] - data[i,0]
+
+                dx = np.zeros((data.shape[0], int(data.shape[1]*up)-20))
+                for i in range(data.shape[0]):
+                    dx[i,:] = OSI.lanczos_interpolation(data[i,:], 0., self.dt_seconds, 0., self.dt_seconds/up,
+                         new_npts= newptsd,
+                        a=20, window="lanczos") # , *args, **kwargs):
+                # self.show_prepared_data(timebase, data, tb_high[:-20], np.mean(dx, axis=0))
+
+                dx[:,0] = 0
+                art[0] = 0
+                ascale = np.ones_like(art) *(pars.artifact_scale)
+                """
+                This is an attempt to align the baseline befor each stimulus and scale
+                with the displacement seen in the average artifact. It's not working"""
+                # k50 = int(0.05*self.dt_seconds/up)
+                # e_lbt = eval(lbt)
+                # print(lbt)
+                # kfirst = int(e_lbt['start'][0]/(self.dt_seconds/up))
+                # print("k50, kfirst upsampled: ", k50, kfirst)
+                # ratio1 = np.mean(np.std(np.mean(dx[:,k50:kfirst], axis=0))/np.std(art[k50:kfirst]))
+            
+                # print("Ratio1: ", ratio1)
+                # kstim2 = kfirst + int(0.00075/(self.dt_seconds/up))
+                # pt1 = int(0.0001/(self.dt_seconds/up))
+                # pt2 = int(0.00025/(self.dt_seconds/up))
+                # kbl =  int(0.00075/(self.dt_seconds/up))
+                # for j in range(len(e_lbt['start'])):
+                #     kfirst = int(e_lbt['start'][j]/(self.dt_seconds/up))
+                #     kstim2 = kfirst + int(e_lbt['duration'][j]/(self.dt_seconds/up))
+
+                #     ratio2 = np.mean((np.mean(dx[:,kfirst+pt2:kfirst+kbl], axis=0))/np.mean(art[kfirst+pt2:kfirst+kbl]))
+                #     ascale[kfirst-pt1:kstim2+pt2] = ratio2
+                # print("Ratio2: ", ratio2)
+                # ascale[k50:kfirst] = ratio1
+                diff = dx - art*ascale
+                diff = self.LPFData(diff) 
+                diff = scipy.signal.decimate(diff, int(up), axis=1)
+                diff = np.pad(diff, ((0, 0), (0, len(timebase)-diff.shape[1])), 'constant', constant_values=0.)
+                data = diff
+
+            data = self.remove_artifacts(data, pars)  # remove other artifacts too
             self._report_elapsed_time()
+            # self.show_prepared_data(timebase, data, timebase, np.mean(data, axis=0))
         else:
+
             CP.cprint("r", "    Preparing Data: No fixed artifact removal")
+            # print(pars.artifact_file)
+
         #
         # 1. Clip the timespan of the data to the values in analysis_window
         #

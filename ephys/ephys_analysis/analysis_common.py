@@ -9,6 +9,7 @@ import argparse
 import gc
 import json
 import logging
+import pickle
 import sys
 from collections.abc import Iterable
 from multiprocessing import set_start_method
@@ -213,6 +214,8 @@ class Analysis:
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
         self.spike_threshold = args.spike_threshold
+        self.artifact_filename = args.artifact_filename
+        self.artifactData = None
         self.artifact_suppression = args.artifact_suppression
         self.artifact_derivative = args.artifact_derivative
         self.post_analysis_artifact_rejection = args.post_analysis_artifact_rejection
@@ -354,18 +357,19 @@ class Analysis:
                 and self.experiment["artifactFilename"] is not None
             ):
                 self.artifactFilename = self.experiment["artifactFilename"]
+
+                # with open(self.artifactFilename, "rb") as fh:
+                #     self.artifactData = pickle.load(fh)
             else:
                 self.artifactFilename = None
 
         else:
             raise ValueError('Experiment was not specified"')
 
-        if self.artifactFilename is not None and len(self.artifactFilename) > 0:
-            self.artifactFilename = Path(self.analyzeddatapath, self.artifactFilename)
-            if not self.cell_annotationFilename.is_file():
-                raise FileNotFoundError
-        else:
-            self.artifactFilename = None
+        # if self.artifactFilename is not None and len(self.artifactFilename) > 0:
+        #     self.artifactFilename = Path(self.analyzeddatapath, self.artifactFilename)
+        # else:
+        #     self.artifactFilename = None
 
         # get the input file (from dataSummary)
         self.df = pd.read_pickle(str(self.inputFilename))
@@ -853,7 +857,7 @@ class Analysis:
                 f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}"'
             )
         else:
-            dprot = str(protocolstr.name)
+            dprot = str(Path(protocolstr).name)
             cf = df.query(
                 f'date == "{dstr:s}" & slice_slice == "{slicestr:s}" & cell_cell == "{cellstr:s}" & {mapcolumn:s} == "{dprot:s}"'
             )

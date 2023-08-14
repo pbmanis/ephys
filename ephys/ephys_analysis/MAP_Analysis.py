@@ -11,6 +11,7 @@ import numpy as np
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
+import pandas as pd
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
@@ -335,7 +336,52 @@ class MAP_Analysis(Analysis):
             Logger.warning(msg)
         print(f"      Notch: {str(cell_df['Notch'].values[0]):s}")
 
+    def set_artifact_path(self, icell, artpath: Union[Path, str]): # this is set globally
+        self.AM.set_artifact_path(artpath)
+    
+    def set_artifact_file(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        self.AM.set_artifact_file(None)
+        if self.map_annotations is not None:
+            # print("set artifact epoch, using map_annotations")
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            # there may be multiple entries in cell_df. Pick the first non-null one
+            # that is also usable.
+            if cell_df is not None and len(cell_df["use_artifact_file"]) > 0:
+                for i, fn in enumerate(cell_df['use_artifact_file'].values):
+                    if not pd.isnull(fn) and cell_df['Usable'].values[i] == 'y':
+                        self.AM.set_artifact_file(fn)
+                        print("set artifact filefrom map annotation: ", cell_df["use_artifact_file"].values[i])
+                        break
 
+        else:
+            msg = "No map annotation file has been read; using default value of None for artifact epoch"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+
+
+    def set_artifact_scale(self, icell: int, path: Union[Path, str]):
+        datestr, slicestr, cellstr = self.make_cell(icell)
+        self.AM.set_artifact_scale(1.0)
+        if self.map_annotations is not None:
+            # print("set artifact scaling, using map_annotations")
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, path
+            )
+            if cell_df is not None:
+                sh = cell_df["artScale"].shape
+                data = cell_df["artScale"].values
+                for i in range(data.shape[0]):
+                    if not pd.isnull(data[i]):
+                        self.AM.set_artifact_scale(data[i])
+                        break
+        else:
+            msg = "No map annotation file has been read; using default value of 1.0 for artifact scaling if enabled"
+            CP.cprint("r", msg)
+            Logger.warning(msg)
+        print(f"    Setting artifact scale to ", self.AM.Pars.artifact_scale)
 
     def set_detrend(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -408,6 +454,20 @@ class MAP_Analysis(Analysis):
         protodir = Path(self.rawdatapath, path_to_map)
         print("protodir: ", protodir)
         # set preprocessing (filtering, detrending) 
+
+        self.set_artifact_scale(icell, path_to_map)
+        self.set_artifact_path(icell, self.AM.Pars.artifact_path)
+        self.set_artifact_file(icell, self.AM.Pars.artifact_file)
+
+        
+        if self.AM.Pars.artifact_file is not None: # check for file
+            artfile = Path(self.AM.Pars.artifact_path, f"{self.AM.Pars.artifact_file:s}.pkl")
+            if not artfile.is_file():
+                print(f"Artifact fie not found: {str(artfile):s}")
+                exit()
+            else:
+                print("artifact file found: ", self.AM.Pars.artifact_file)
+
         self.set_HPF_freq(icell, path_to_map)
         self.set_LPF_freq(icell, path_to_map)
         self.set_detrend(icell, path_to_map)
@@ -704,13 +764,6 @@ class MAP_Analysis(Analysis):
         )
         self.AM.set_artifact_suppression(self.artifact_suppression)
         self.AM.set_artifact_derivative(self.artifact_derivative)
-        if self.artifactFilename is not None:
-            self.AM.set_artifact_file(
-                Path(
-                    self.analyzeddatapath,
-                    self.artifactFilename,
-                )
-            )
         self.AM.set_taus(self.AM.Pars.taus)  # [1, 3.5]
 
         if self.recalculate_events:
@@ -818,11 +871,12 @@ class MAP_Analysis(Analysis):
                 cell_df = self.find_cell(
                     self.map_annotations, datestr, slicestr, cellstr, Path(mapdir)
                 )
-                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}".format(
+                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts:{4:s}".format(
                     self.AM.filters.HPF_frequency,
                     self.AM.filters.LPF_frequency,
                     str(cell_df['Notch'].values[0]),  # get compact form
                     str(self.AM.filters.Detrend_method),
+                    str(self.AM.Pars.artifact_file)
                 )   
                 fix_mapdir = str(mapdir)  # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(

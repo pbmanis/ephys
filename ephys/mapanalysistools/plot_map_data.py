@@ -984,15 +984,20 @@ class PlotMapData:
         mappoints = list(Path(mapdir).glob("*"))
         mappoints = [mp for mp in mappoints if mp.is_dir()]
         useframe = 1
+        frame_data_max = 0.0
+
         for imagecount, mp in enumerate(mappoints):
             cameraframe = Path(mp, 'Camera', 'frames.ma')
             frame = MetaArray.MetaArray(file=str(cameraframe),  # read the camera frame
                                         readAll=True,  # read all data into memory
                                         verbose=False)
             frame_data = frame.view(np.ndarray)
+            print(imagecount)
+            print(frame_data.shape)
             if imagecount == 0:
-                frame_data_max = frame_data[useframe,:,:]
-                frame_bkgd = np.zeros_like(frame_data[useframe,:,:])
+                if useframe < frame_data.shape[0]:
+                    frame_data_max = frame_data[useframe,:,:]
+                    frame_bkgd = np.zeros_like(frame_data[useframe,:,:])
             else:
                 if useframe == 0:
                     frame_data_max += frame_data[useframe,:,:]
@@ -1111,8 +1116,8 @@ class PlotMapData:
             # extents = self.add_image(axp,imageInfo=imageHandle.imagemetadata[0], 
             #                imageData=imageHandle.imagedata,  angle=angle, alpha=0.5)
 
-        if mapdir is not None:
-            spotsdata = self.get_laser_spots(pos, mapdir) # get the laser spots from the map directory
+        # if mapdir is not None:
+        #     spotsdata = self.get_laser_spots(pos, mapdir) # get the laser spots from the map directory
             # if spotsdata is not None:
             #     extents = self.add_image(axp, imageInfo=spotsdata._info[2], imageData=spotsdata.view(np.ndarray), angle=90)# =angle-np.pi )
 
@@ -1679,9 +1684,10 @@ class PlotMapData:
                 if avedata.ndim > 1:
                     avedata = np.mean(avedata, axis=0)
                 dt = np.mean(np.diff(self.Data.timebase))
-                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', alpha=0.5, linewidth=0.4)
                 self.P.axdict[self.panels["average_panel"]].plot(self.Data.raw_timebase, self.Data.raw_data_averaged,
-                                                                'r-', linewidth=0.3, alpha=0.5)
+                                                                'r-', linewidth=0.2, alpha=0.3)
+                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', alpha=1, linewidth=0.2)
+
                 self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
 
                 # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
