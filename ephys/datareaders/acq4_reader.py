@@ -665,7 +665,7 @@ class acq4_reader:
         # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
-    def getData(self, pos: int = 1, check: bool = False, allow_partial=False, silent=False):
+    def getData(self, pos: int = 1, check: bool = False, allow_partial=False, silent=True):
         """
         Get the data for the current protocol
         if check is True, we just check that the requested file exists and return
