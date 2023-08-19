@@ -63,7 +63,7 @@ class ReadAcq4:
             for i in range(self.idata.shape[1]):
                 self.MA.reset_filtering()
                 self.idata[:,i] = self.MA.LPFData(self.idata[:,i], 4000.)
-                self.idata[:,i] = self.MA.NotchData(self.idata[:,i], notch=[60., 120., 180., 240., 4000.], notch_Q=30. )
+                self.idata[:,i] = self.MA.NotchFilterData(self.idata[:,i], notch=[60., 120., 180., 240., 4000.], notch_Q=30. )
 
         self.command = self.AR.cmd_wave.view(np.ndarray).T
         self.timebase = self.AR.time_base.T

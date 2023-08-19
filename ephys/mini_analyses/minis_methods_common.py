@@ -17,6 +17,7 @@ multiple passes with scipy.optimize with various algorithms.
 """
 
 import itertools
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Union
@@ -38,6 +39,7 @@ import ephys.tools.digital_filters as dfilt
 import ephys.tools.functions as FUNCS
 import obspy.signal.interpolation as OSI
 
+Logger = logging.getLogger("AnalysisLogger")
 
 class MiniAnalyses:
     def __init__(self):
@@ -533,16 +535,21 @@ class MiniAnalyses:
         #    We do this first so that we don't filter the artifacts (which could make them wider)
         #    And we don't want to have to recalculate their times after cliping the analysis window
         #
+        filters_applied:str = ""
         if pars.artifact_suppression:
             print("artifact scale: ", pars.artifact_scale)
-
             self._start_timing("Artifact Suppression")
-            CP.cprint("r", f"    Preparing Data: Fixed artifact removal = {str(pars.artifact_suppression):s} with template: {str(pars.artifact_file):s}")
+            CP.cprint("r", f"    Preparing Data: Fixed artifact removal = {str(pars.artifact_suppression):s} with template: {str(pars.artifact_filename):s}")
 
             lbt = str(pars.LaserBlueTimes)
-            if pars.artifactData is not None and lbt in pars.artifactData.keys():
+            # print(pars.artifactData is not None)
+            # print(lbt)
+            # print(list(pars.artifactData.keys()))
+            # print(lbt in list(pars.artifactData.keys()))
+            # exit()
+            if pars.artifactData is not None and lbt in list(pars.artifactData.keys()):
 
-                # print(pars.artifact_file)
+                # print(pars.artifact_filename)
                 # print("laser blue times: ", lbt)
                 # print("avaliable artifact keys: ", pars.artifactData.keys())
                 # print("is there a match? : ", lbt in pars.artifactData.keys())
@@ -554,10 +561,10 @@ class MiniAnalyses:
                 if artlen < data.shape[1]:
                     artdata = np.pad(artdata, (0, data.shape[1]-artlen), 'constant', constant_values=artdata[-1])
                 up = 10.0
-
-                tb_high = np.arange(0.0, up*data.shape[1] * self.dt_seconds/up, self.dt_seconds/up)
+                dt_upscale = self.dt_seconds/up
+                tb_high = np.arange(0.0, up*data.shape[1] * dt_upscale, dt_upscale)
                 newpts = int(len(artdata)*up)-20
-                art = OSI.lanczos_interpolation(artdata-artdata[0], 0., self.dt_seconds, 0., self.dt_seconds/up,
+                art = OSI.lanczos_interpolation(artdata-artdata[0], 0., self.dt_seconds, 0., dt_upscale,
                          new_npts= newpts,
                           a=20, window="lanczos")
                 newptsd = int(len(data[0,:])*up)-20
@@ -566,50 +573,76 @@ class MiniAnalyses:
 
                 dx = np.zeros((data.shape[0], int(data.shape[1]*up)-20))
                 for i in range(data.shape[0]):
-                    dx[i,:] = OSI.lanczos_interpolation(data[i,:], 0., self.dt_seconds, 0., self.dt_seconds/up,
+                    dx[i,:] = OSI.lanczos_interpolation(data[i,:], 0., self.dt_seconds, 0., dt_upscale,
                          new_npts= newptsd,
                         a=20, window="lanczos") # , *args, **kwargs):
                 # self.show_prepared_data(timebase, data, tb_high[:-20], np.mean(dx, axis=0))
 
                 dx[:,0] = 0
                 art[0] = 0
-                ascale = np.ones_like(art) *(pars.artifact_scale)
-                """
-                This is an attempt to align the baseline befor each stimulus and scale
-                with the displacement seen in the average artifact. It's not working"""
-                # k50 = int(0.05*self.dt_seconds/up)
-                # e_lbt = eval(lbt)
-                # print(lbt)
-                # kfirst = int(e_lbt['start'][0]/(self.dt_seconds/up))
-                # print("k50, kfirst upsampled: ", k50, kfirst)
-                # ratio1 = np.mean(np.std(np.mean(dx[:,k50:kfirst], axis=0))/np.std(art[k50:kfirst]))
-            
-                # print("Ratio1: ", ratio1)
-                # kstim2 = kfirst + int(0.00075/(self.dt_seconds/up))
-                # pt1 = int(0.0001/(self.dt_seconds/up))
-                # pt2 = int(0.00025/(self.dt_seconds/up))
-                # kbl =  int(0.00075/(self.dt_seconds/up))
-                # for j in range(len(e_lbt['start'])):
-                #     kfirst = int(e_lbt['start'][j]/(self.dt_seconds/up))
-                #     kstim2 = kfirst + int(e_lbt['duration'][j]/(self.dt_seconds/up))
+                ascale_HF = np.ones_like(art) *(pars.artifact_scale)  # for pre-stimuli HF noise - applied to whole trace
+                ascale_SA = np.zeros_like(art) *(pars.artifact_scale)  # for stimulus artifacts - applied AFTER HF
+                # print("artifact_scale: ", pars.artifact_scale, type(pars.artifact_scale))
+                if pars.artifact_autoscale or pars.artifact_scale == 0.0:
+                # This is an attempt to align the baseline befor each stimulus and scale
+                # with the displacement seen in the average artifact.
+                # basic algorithm is:
+                # 1. try to minimize the noise just prior to the first stimulus based on the variance.
+                #    This is then applied to the entire trace (subtracting the scaled averaged artifact from the trace)
+                # 2. Next, we try to scale the stimulus-associated artifacts by comparing the first 750 usec against
+                #   the average artifact. This is then applied to the stimulus-associated artifacts only (e.g., the duration
+                #  of the stimulus pulse, plus a few points either side to take care of transients)
 
-                #     ratio2 = np.mean((np.mean(dx[:,kfirst+pt2:kfirst+kbl], axis=0))/np.mean(art[kfirst+pt2:kfirst+kbl]))
-                #     ascale[kfirst-pt1:kstim2+pt2] = ratio2
-                # print("Ratio2: ", ratio2)
-                # ascale[k50:kfirst] = ratio1
-                diff = dx - art*ascale
-                diff = self.LPFData(diff) 
-                diff = scipy.signal.decimate(diff, int(up), axis=1)
+                    CP.cprint("y", "    Preparing Data: Auto-scaling artifacts")
+                    
+                    # baseline part:
+                    k50 = int(0.05*dt_upscale)
+                    e_lbt = eval(lbt)
+                    # print(lbt)
+                    kfirst = int(e_lbt['start'][0]/(dt_upscale))
+                    # print("k50, kfirst upsampled: ", k50, kfirst)
+                    ratio1 = np.mean(np.std(np.mean(dx[:,k50:kfirst], axis=0))/np.std(art[k50:kfirst]))
+                    CP.cprint("y", f"    Ratio1: {ratio1:8.2f}")
+                    ascale_HF = ratio1*np.ones_like(art)
+                    dx = dx - art*ascale_HF  # apply HF scaling to entire artifact trace.
+                    
+                    # now for the stimulus artifacts
+                    kstim2 = kfirst + int(0.00075/(dt_upscale))
+                    pt1 = int(0.0001/(dt_upscale)) # first 100 usec
+                    pt2 = int(0.00025/(dt_upscale)) # end of pulse plus a bit for transient to decay
+                    kbl =  int(0.00075/(dt_upscale)) # allow 750 usec for baseline
+                    ascales = np.ones(len(e_lbt['start']))
+                    for j in range(len(e_lbt['start'])):
+                        kfirst = int(e_lbt['start'][j]/(dt_upscale))
+                        kstim2 = kfirst + int(e_lbt['duration'][j]/(dt_upscale))
+                         # across all traces compare the ratio of the baseline to the artifact
+                        ascales[j] = (
+                            np.mean(
+                                (np.mean(dx[:,kfirst+pt2:kfirst+kbl] - np.mean(dx[:,kfirst-10:kfirst]), axis=0))
+                                / (np.mean(art[kfirst+pt2:kfirst+kbl])-np.mean(art[kfirst-10:kfirst]))
+                                )
+                            )  # across all traces
+                    ratio2 = np.mean(ascales)
+                    CP.cprint("y", f"    Ratio2: {ratio2:8.2f}")
+                    for j in range(len(e_lbt['start'])):
+                        kfirst = int(e_lbt['start'][j]/(dt_upscale))
+                        kstim2 = kfirst + int(e_lbt['duration'][j]/(dt_upscale))
+                        ascale_SA[kfirst-pt1:kstim2+pt2] = ratio2  # scale region around stimulus pulse, starting just before, and ending a bit after
+
+                diff = dx - art*ascale_SA  # apply to entire artifact trace
+                # diff = self.LPFData(diff) # filter the data
+                diff = scipy.signal.decimate(diff, int(up), axis=1)  # downscale back to original sampling rate
                 diff = np.pad(diff, ((0, 0), (0, len(timebase)-diff.shape[1])), 'constant', constant_values=0.)
                 data = diff
 
             data = self.remove_artifacts(data, pars)  # remove other artifacts too
+            filters_applied += "Template-based artifact removal, "
             self._report_elapsed_time()
             # self.show_prepared_data(timebase, data, timebase, np.mean(data, axis=0))
         else:
 
             CP.cprint("r", "    Preparing Data: No fixed artifact removal")
-            # print(pars.artifact_file)
+            # print(pars.artifact_filename)
 
         #
         # 1. Clip the timespan of the data to the values in analysis_window
@@ -648,7 +681,7 @@ class MiniAnalyses:
                 )
             else:
                 CP.cprint("r", f"    minis_methods_common, no HPF applied")
-        filters_applied:str = ""
+
         #
         # 2. detrend. Method depends on self.filters.Detrend_method
         #
@@ -1311,17 +1344,19 @@ class MiniAnalyses:
                     baseline =  np.nanmean(allevents[thisev][0:event_onset-event_start])
                 else:
                     baseline = 0.0
-                td = allevents[thisev][event_onset + int(0.8 * float(nevent_post_time)) : event_onset+nevent_post_time]
+                td = allevents[thisev][int(0.5 * float(nevent_post_time)) : nevent_post_time]
+                # CP.cprint("y", f"testing event {str(thisev):s}  eventlen: {len(allevents[thisev]):d} td = {len(td):d}, {event_onset:d} {int(0.8*float(nevent_post_time)):d} {event_onset+nevent_post_time:d}")
                 if len(td) > 0 and (
-                    self.sign
-                    * np.mean(
-                        td
-                        # - baseline
+                    np.mean(
+                        self.sign*(td - baseline)
                     )
-                    < -5e-12
+                    < 0e-12
                 ):
                     # CP.cprint("y", f"        trace: {itrace:d}, event: {j:d} has wrong charge")
                     wrong_charge_sign_event_list.append(thisev)
+                    # print(f"   {1e12*np.mean(self.sign*(td - baseline)):f} {1e12*np.mean(td):f} {1e12*np.mean(baseline):f} {1e12*np.mean(td-baseline):f}")
+                # else:
+                #     CP.cprint("g", f"        trace: {str(thisev):s} has correct charge, {1e12*np.mean(self.sign*(td - baseline)):f}")
 
                 # test for overlap with next event
                 if (
@@ -1363,18 +1398,26 @@ class MiniAnalyses:
         clean_event_onsets = np.array([allevents_onsets[ev] for ev in isolated_event_list])
         wrong_event_traces = np.array([allevents[ev] for ev in wrong_event_list])
         overlapping_event_traces = np.array([allevents[ev] for ev in overlapping_event_list if ev in allevents.keys()])
-        
+
         if self.verbose:
-            f, ax = mpl.subplots(2, 1)
+            f, ax = mpl.subplots(3, 1)
             tx = np.array(range(clean_event_traces.shape[1]))*summary.dt_seconds
             for i, ev in enumerate(isolated_event_list):
                 ax[0].plot(tx+(clean_event_onsets[i]-npre)*summary.dt_seconds, clean_event_traces[i], linewidth=0.35, color='m')
                 ax[0].plot(event_onset_times[ev], data[ev[0]][summary.onsets[ev[0]][ev[1]]], 'ro', markersize=3)
             for i, ev in enumerate(overlapping_event_list):
-                ax[0].plot(tx+(allevents_onsets[ev]-npre)*summary.dt_seconds, overlapping_event_traces[i], linewidth=0.35, color='c')
-                ax[0].plot(event_onset_times[ev], data[ev[0]][summary.onsets[ev[0]][ev[1]]], 'ko', markersize=3)
-
+                ax[1].plot(tx+(allevents_onsets[ev]-npre)*summary.dt_seconds, overlapping_event_traces[i], linewidth=0.35, color='c')
+                ax[1].plot(event_onset_times[ev], data[ev[0]][summary.onsets[ev[0]][ev[1]]], 'ko', markersize=3)
+            for i, ev in enumerate(wrong_charge_sign_event_list):
+                ax[2].plot(tx+(allevents_onsets[ev]-npre)*summary.dt_seconds, wrong_event_traces[i], linewidth=0.35, color='k')
+                ax[2].plot(event_onset_times[ev], data[ev[0]][summary.onsets[ev[0]][ev[1]]], 'co', markersize=3)
+            ax[0].set_title("Clean events")
+            ax[1].set_title("Overlapping events")
+            ax[2].set_title("Wrong charge events")
+            for a in ax:
+                a.set_xlim([0, 0.6])
             mpl.show()
+            exit()
         
         print("    # Clean event array: ", clean_event_traces.shape[0], " events found")
 
@@ -1451,7 +1494,7 @@ class MiniAnalyses:
             summary.average.avgevent25 = []
             summary.average.avgevent75 = []
 
-        if summary.average.averaged:
+        if summary.average.averaged and summary.average.Nevents > 5:
             CP.cprint("m", "    Fitting averaged event")
             self.fit_average_event(
                 tb=summary.average.avgeventtb,
@@ -1459,7 +1502,7 @@ class MiniAnalyses:
                 initdelay=self.template_pre_time,
                 debug=False,
             )
-            # print("fit: ", self.fitted_tau1, self.fitted_tau2, self.amplitude, self.amplitude2, self.avg_fiterr)
+            print("fit: ", self.fitted_tau1, self.fitted_tau2, self.amplitude, self.amplitude2, self.avg_fiterr)
             summary.average.fitted_tau1 = self.fitted_tau1
             summary.average.fitted_tau2 = self.fitted_tau2
             summary.average.fitted_tau3 = self.fitted_tau3
@@ -1474,9 +1517,10 @@ class MiniAnalyses:
             summary.average.t90 = self.t90
             summary.average.risepower = self.risepower
             summary.average.decaythirtyseven = self.decaythirtyseven
+
         else:
             CP.cprint(
-                "r", "    average_events: **** No events found that meet criteria ****"
+                "r", "    average_events: **** insufficient events found that meet criteria ****"
             )
             return
         # for testing, plot out the clean events
@@ -1500,6 +1544,7 @@ class MiniAnalyses:
         # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
         # mpl.show()
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
+        CP.cprint("r", f"Summary: \n{str(summary.average):s}")
         return summary
 
     def average_events_subset(
@@ -1661,8 +1706,8 @@ class MiniAnalyses:
                 f"**** Average event fit result is None [data source = {str(self.datasource):s}]",
             )
             self.fitted = False
-            np.seterr(**self.numpyerror)  # reset error detection
-            scipy.special.seterr(**self.scipyerror)
+            # np.seterr(**self.numpyerror)  # reset error detection
+            # scipy.special.seterr(**self.scipyerror)
             return
 
         amp = np.max(res.best_fit)
@@ -1971,9 +2016,9 @@ class MiniAnalyses:
         params = lmfit.Parameters()
         # get some logical initial parameters
         init_amp = maxev
-        if tau1 is None:
+        if tau1 is None or np.isnan(tau1):
             tau1 = 0.67 * peak_pos * self.dt_seconds
-        if tau2 is None:
+        if tau2 is None or np.isnan(tau2):
             # first smooth the decay a bit
             decay_data = SPS.savgol_filter(
                 self.sign * event[peak_pos:], 11, 3, mode="nearest"
@@ -2069,6 +2114,8 @@ class MiniAnalyses:
             max=tau2max,
             vary=True,
         )
+        if tau3 is None or np.isnan(tau3):
+            tau3 = tau1*2
         params["tau_3"] = lmfit.Parameter(
             name="tau_3",
             value=tau3,
@@ -2076,24 +2123,31 @@ class MiniAnalyses:
             max=50e-3,  # tau1 * tau1_maxfac,
             vary=True,
         )
+        if tau4 is None or np.isnan(tau4):
+            tau4 = 2*tau2min
         params["tau_4"] = lmfit.Parameter(
             name="tau_4",
-            value=tau3,
-            min=tau3min,
+            value=tau4,
+            min=tau2min,
             max=50e-3,  # tau1 * tau1_maxfac,
             vary=True,
         )
         print("fixed delay: ", fixed_delay)
+        if fixed_delay == 0.:
+            fixed_end = 2.0
+        else:
+            fixed_end = fixed_delay*3
         params["fixed_delay"] = lmfit.Parameter(
             name="fixed_delay",
             value=fixed_delay,
             vary=True,
             min=fixed_delay,
-            max=fixed_delay*3,
+            max=fixed_end,
         )
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
+
         self.fitresult = dexpmodel.fit(
             evfit,
             params,
@@ -2107,14 +2161,24 @@ class MiniAnalyses:
         params["tau_1"].value = self.fitresult.best_values["tau_1"]
         params["tau_2"].value = self.fitresult.best_values["tau_2"]
         params["amp"].value = self.fitresult.best_values["amp"]
-        self.fitresult = dexpmodel.fit(
+        try:
+            self.fitresult = dexpmodel.fit(
             evfit,
             params,
             nan_policy="raise",
             time=timebase,
             max_nfev=3000,
             method="nelder",
-        )
+            )
+        except:
+            Logger.error(f"Double exponential fit failed with tau1 = {tau1:.3e}, tau2 ={tau2:.3e}")
+            if tau3 is not None and tau4 is not None:
+                Logger.error(f"   and with tau3= {tau3:.3e} and tau4 = {tau4:.3e}    ")
+            else:
+                Logger.error(f"     tau3 or tau4 is None")
+
+            self.fitresult = None
+            return
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
@@ -2207,6 +2271,7 @@ class MiniAnalyses:
             CP.cprint("y", f"\n    {failed_charge:d} events failed charge screening")
 
         self.events_notok = list(set(self.fitted_events).difference(self.events_ok))
+
         if verbose:
             print("Events ok: ", self.events_ok)
             print("Events not ok: ", self.events_notok)

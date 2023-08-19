@@ -65,8 +65,7 @@ class AnalyzeMap(object):
         self.last_results = None
         self.lbr_command = False  # laser blue raw waveform (command)
 
-        # set some defaults - these will be overwrittein with readProtocol
-        # self.template_file = None
+        # set some defaults - these will be overwritten with readProtocol
 
         self.methodname = "aj"  # default event detector
         self.set_methodname(self.methodname)
@@ -182,7 +181,12 @@ class AnalyzeMap(object):
     #             self.Pars.artifactData = pickle.load(fh)
     
     def set_artifact_scale(self, scale:float):
-        self.Pars.artifact_scale = scale
+        if isinstance(scale, str):
+            try:
+                scale = float(scale)
+            except:
+                return
+        self.Pars.artifact_scale =float(scale)
     
     def set_artifact_epoch(self, epoch:int):
         self.Pars.artifact_epoch = epoch
@@ -225,8 +229,8 @@ class AnalyzeMap(object):
     def set_artifact_path(self, filepath):
         self.Pars.artifact_path = filepath
 
-    def set_artifact_file(self, filename):
-        self.Pars.artifact_file = filename
+    def set_artifact_filename(self, filename):
+        self.Pars.artifact_filename = filename
 
     def readProtocol(
         self, protocolFilename, records=None, sparsity=None, getPhotodiode=False
@@ -257,8 +261,8 @@ class AnalyzeMap(object):
         self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
         self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
 
-        if self.Pars.artifact_file is not None:
-            with open(Path(self.Pars.artifact_path, self.Pars.artifact_file).with_suffix(".pkl"), "rb") as fh:
+        if self.Pars.artifact_filename is not None:
+            with open(Path(self.Pars.artifact_path, self.Pars.artifact_filename).with_suffix(".pkl"), "rb") as fh:
                 self.Pars.artifactData = pickle.load(fh)
 
         self.Pars.ar_tstart = self.AR.tstart
@@ -698,7 +702,7 @@ class AnalyzeMap(object):
 
         if self.verbose:
             print("    Trial analyzed")
-
+        CP.cprint("r", f"analyze one event summary average:\n{str(summary):s}")
         return summary
 
     def analyze_traces_in_trial(
@@ -936,9 +940,9 @@ class AnalyzeMap(object):
         protocol = self.protocol.name
         ptype = None
 
-        if self.template_file is None:  # use generic templates for subtraction
+        if self.Pars.artifact_filename is None:  # use generic templates for subtraction
             if protocol.find("_VC_10Hz") > 0:
-                template_file = "template_data_map_10Hz.pkl"
+                self.Pars.artifact_filename = "template_data_map_10Hz.pkl"
                 ptype = "10Hz"
             elif (
                 protocol.find("_single") > 0
@@ -946,10 +950,9 @@ class AnalyzeMap(object):
                 or (protocol.find("_weird") > 0)
                 or (protocol.find("_WCChR2")) > 0
             ):
-                template_file = "template_data_map_Singles.pkl"
+                self.Pars.artifact_filename = "template_data_map_Singles.pkl"
                 ptype = "single"
         else:
-            template_file = self.template_file
             if protocol.find("_VC_10Hz") > 0:
                 ptype = "10Hz"
             elif (
@@ -964,9 +967,9 @@ class AnalyzeMap(object):
         else:
             crosstalk = None
             if self.Pars.artifact_file_path is not None:
-                template_file = Path(self.Pars.artifact_file_path, template_file)
-                CP.cprint("w", f"   Artifact template: {str(template_file):s}")
-                with open(template_file, "rb") as fh:
+                template_filename = Path(self.Pars.artifact_file_path, self.Pars.artifact_filename)
+                CP.cprint("w", f"   Artifact template: {str(template_filename):s}")
+                with open(template_filename, "rb") as fh:
                     d = pickle.load(fh)
                 ct_SR = np.mean(np.diff(d["t"]))
                 # or if from photodiode:

@@ -443,7 +443,7 @@ class Analysis:
             nothing
         """
         self.n_analyzed = 0
-
+        self.prots_done = [] # keep track of all protocols run, so we can print a summary at the end and also check for duplicates
         def _add_day(row):
             row.day = str(Path(row.date).name)
             daystr = Path(
@@ -471,14 +471,14 @@ class Analysis:
                 #     CP.cprint("r", f"    day: {dx:s}")
                 return None
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
+            cellprots = []
             for (
                 icell
             ) in (
                 cells_in_day.index
             ):  # for all the cells in the day (but will check for slice_cell too)
                 cellok = self.do_cell(icell, pdf=self.pdfFilename)
-
-        # get the complete protocols:
+            return None        # get the complete protocols:
         # Only returns a dataframe if there is more than one entry
         # Otherwise, it is like a series or dict
         else:
@@ -819,7 +819,7 @@ class Analysis:
         datestr: str,
         slicestr: str,
         cellstr: str,
-        protocolstr: Path,
+        protocolstr: Union[Path, str],
     ):
         """Find the dataframe element for the specified date, slice, cell and
         protocol in the input dataframe
@@ -907,7 +907,10 @@ class Analysis:
                     msg,
                 )
                 Logger.warning(msg)
-            map_annotated_celltype = cell_df["cell_type"].values[0].strip()
+            if len(cell_df['cell_type'].values) > 0:
+                map_annotated_celltype = cell_df["cell_type"].values[0].strip()
+            else:
+                map_annotated_celltype = "unknown"
 
         # now we have several possibilities: only original (prefered), annotated_celltype from
         # the old annotation table, or map_annotated_celltype from the map annotation table.
@@ -1219,6 +1222,7 @@ class Analysis:
             Logger.info(msg)
 
         if not fullfile.is_dir():
+            # check for the cell directoyr
             msg = "   But that cell was not found.\n"
             msg += f"{str(self.df.iloc[icell]):s}\n\n"
             CP.cprint("r", msg)
@@ -1228,11 +1232,13 @@ class Analysis:
             return False
 
         elif fullfile.is_dir() and len(allprots) == 0:
+            # check whether the cell has any protocols
             msg = "Cell found, but no protocols were found"
             CP.cprint("m", "Cell found, but no protocols were found")
             Logger.warning(msg)
             return False
         elif fullfile.is_dir() and len(allprots) > 0:
+            # check for the protocol paths
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
                     ffile = Path(self.df.iloc[icell].data_directory, prot)
@@ -1242,6 +1248,10 @@ class Analysis:
                         CP.cprint("r",msg)
                         Logger.error(msg)
                         exit()
+                    if ffile in self.prots_done:
+                        return False
+                    else:
+                        self.prots_done.append(ffile)  # avoid duplicats.
         else:
             msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(allprots['maps']):4d} map protocols"

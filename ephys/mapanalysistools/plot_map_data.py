@@ -661,6 +661,19 @@ class PlotMapData:
                 return sc[i + 1]
         return sc[-1]
 
+
+    def marginal_hist(self, ax, ax_histy:mpl.axes, ydata: Union[list, np.ndarray], binwidth:float,
+                      color:str="k", alpha:float=0.5, linewidth:float=1.0, linestyle:str="-"):
+        range = ax.get_ylim()
+        # lim = (int((range[1]-range[0])/binwidth) + 1) * binwidth
+        bins = np.arange(range[0], range[1] + binwidth, binwidth)
+        ax_histy.hist(ydata, bins=bins, orientation='horizontal', color=color)
+        PH.nice_plot(ax_histy, direction= "outward", ticklength=2)
+        # no labels
+        ax_histy.tick_params(axis="y", labelleft=False, labelsize=4)
+        ax_histy.tick_params(axis="x", labelsize=6)
+
+
     def plot_event_traces(
         self,
         evtype: str,
@@ -671,7 +684,7 @@ class PlotMapData:
         tpre: float=0.0,
         zscore_threshold: Union[float, None] = None,
         plot_minmax:Union[list, None] = None,  # put bounds on amplitude of events that are plotted
-        ax: Union[object, None] = None,
+        ax: Union[mpl.axes, None] = None,
         scale: float = 1.0,
         label: str = "pA",
         rasterized: bool = False,
@@ -722,7 +735,9 @@ class PlotMapData:
         minev = 0.0
         maxev = 0.0
         npev = 0
-        print("plot minmax:", plot_minmax, " zscore_threshold: ", zscore_threshold)
+        datahist = None
+        data_for_hist = []
+        print("plot parameters: minmax:", plot_minmax, " zscore_threshold: ", zscore_threshold)
         # plot events from each trial
         for trial in range(mdata.shape[0]):
             CP.cprint("b", f"plotting events for trial: {trial:d}")
@@ -736,6 +751,7 @@ class PlotMapData:
             tb = np.arange(0, tpost + rate, rate)
             ptfivems = int(0.0005 / rate)
             allevents = events[trial].allevents
+
 
             for itrace in range(mdata.shape[1]):  # traces in the evtype list
                 if events is None or trial not in list(events.keys()):
@@ -759,6 +775,7 @@ class PlotMapData:
                     event_id = (itrace, j)
                     if event_id not in allevents.keys():
                         continue
+
                     evdata = allevents[event_id]
                     # print("ipre: ", ipre, "ptfivems: ", ptfivems)
                     bl = np.mean(evdata[0 : ptfivems]) # ipre - ptfivems])
@@ -768,6 +785,9 @@ class PlotMapData:
                         if plot_minmax is not None:  # only plot events that fall in an ampltidue window
                             if (np.min(evdata) < plot_minmax[0]) or (np.max(evdata) > plot_minmax[1]):
                                 continue # 
+                        # print(events[trial].isolated_event_trace_list)
+                        if event_id not in events[trial].isolated_event_trace_list: # exclude non-isolated events
+                            continue
                         if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
                             append = True
                         # elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
@@ -778,7 +798,11 @@ class PlotMapData:
                             ave.append(evdata)
                             npev += 1
                         # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
-
+                            if datahist is None:
+                                datahist = np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
+                            else:
+                                datahist += np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
+                            data_for_hist.append(np.min(evdata))
                             ax.plot(
                                 tb[: len(evdata)] * 1e3,
                                 scale * evdata,
@@ -827,15 +851,20 @@ class PlotMapData:
 
 
         Amplitude = np.max(self.MA.sign*avedat)
-        Amplitude1 = self.MA.fitresult.values["amp"]
-        Amplitude2 = self.MA.fitresult.values["amp2"]
-        tau1 = self.MA.fitresult.values["tau_1"]
-        tau2 = self.MA.fitresult.values["tau_2"]
-        tau3 = self.MA.fitresult.values["tau_3"]
-        tau4 = self.MA.fitresult.values["tau_4"]
-        bfdelay = self.MA.fitresult.values["fixed_delay"]
-        bfit = self.MA.avg_best_fit
-
+        if self.MA.fitresult is not None:
+            Amplitude1 = self.MA.fitresult.values["amp"]
+            Amplitude2 = self.MA.fitresult.values["amp2"]
+            tau1 = self.MA.fitresult.values["tau_1"]
+            tau2 = self.MA.fitresult.values["tau_2"]
+            tau3 = self.MA.fitresult.values["tau_3"]
+            tau4 = self.MA.fitresult.values["tau_4"]
+            bfdelay = self.MA.fitresult.values["fixed_delay"]
+            bfit = self.MA.avg_best_fit
+        else:
+            tau1=tau2=tau3=tau4 = 0.0
+            Amplitude2 = 0.0
+            bfdelay = 0.0
+            bfit = None
         # if self.Pars.sign == -1:
         #     amp = np.min(bfit)
         # else:
@@ -871,10 +900,25 @@ class PlotMapData:
             rasterized=self.rasterized,
         )
 
+        # finally, set the axis limits, then add cal bars
+        
+        # add factor % to y axis top and bottom
         ylims = ax.get_ylim()
-        ylimsn = 1.4*ylims[0]
-        ylimsp = 1.4*ylims[1]
-        ax.set_ylim([ylimsn, ylimsp])
+        factor = 25.0
+        ymax = np.fabs(ylims).max()
+        ymax *= (1+factor/100)
+        ymax1 = ymax2 = ymax
+        if ylims[1] < 0.20*ymax:
+            ymax1 = 0.20*ymax
+        if ylims[0] > -0.20*ymax:
+            ymax2 = -0.20*ymax
+        ax.set_ylim(-ymax2, ymax1)
+
+        if len(data_for_hist) > 10:  # only add if we have some data to plot
+            marginal_ax = ax.inset_axes([1.0, 0, 0.05, 1], sharey=ax)
+            self.marginal_hist(ax, marginal_ax, np.array(data_for_hist)*scale, binwidth=5e-12*scale, color='k') # binwidth in pA if data in pA
+
+
         if evtype == "avgspont":
             PH.calbar(
                 ax,
@@ -907,6 +951,8 @@ class PlotMapData:
                 weight="normal",
                 font="Arial",
             )
+
+
 
     def plot_average_traces(
         self,

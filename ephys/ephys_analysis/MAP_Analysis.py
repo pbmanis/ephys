@@ -48,6 +48,7 @@ class MAP_Analysis(Analysis):
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         Logger.info("Starting map_analysis")
+        print("icell: ", icell)
 
         if len(allprots["maps"]) == 0:
             datestr, slicestr, cellstr = self.make_cell(icell)
@@ -71,26 +72,34 @@ class MAP_Analysis(Analysis):
         print(f"    Celltype: {celltype:s}  with {len(allprots['maps']):4d} protocols")
         self.markers=  self.get_markers(fullfile=file, verbose=False)
 
-        
-        for i, p in enumerate(allprots["maps"]):
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, Path(p)
-            )
-            if cell_df is None:
-                continue
-            print(f"        {i+1:4d}. {Path(p).name:24s}  {str(cell_df['Usable'].values[0]):3s} {str(cell_df['notes2'].values[0]):56s}")
+        # print(allprots["maps"])
+        # return
+        # for i, p in enumerate(allprots["maps"]):
+        #     cell_df = self.find_cell(
+        #         self.map_annotations, datestr, slicestr, cellstr, Path(p)
+        #     )
+        #     if cell_df is None:
+        #         continue
+
+        #     try:
+        #         print(f"        {i+1:4d}. {Path(p).name:24s}  usable: <{str(cell_df['Usable'].values[0]):3s}> notes2: <{str(cell_df['notes2'].values[0]):56s}>")
+        #     except:
+        #         print(cell_df)
+        #         print("datestr: ", datestr, "slice: ", slicestr, "cell: ", cellstr, "p: ", "path: ", p)
+        #         raise ValueError("Error in MAP_Analysis.analyze_maps: find_cell returned empty dataframe")
 
         validmaps = []
         for p in allprots["maps"]:  # first remove excluded protocols
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, Path(p)
             )
-            if cell_df is None:
+            if cell_df is None or len(cell_df) == 0 or len(cell_df['Usable'].values) == 0:  # nothing set
                 continue
             if self.map_annotations is not None:  # determine from the map annotation table
                 if (cell_df['Usable'].values[0] in ['Y', 'y']):
                     validmaps.append(p)
                 if cell_df['Usable'].values[0] not in ['Y', 'y', 'N', 'n']:
+                    print(f"Usable = <{str(cell_df['Usable'].values[0]):s}>")
                     raise ValueError("Please fill the map annotation table with Y or N for 'Usable'")
             else: # determine from the exclusions dictionary
                 if self.exclusions is None or (str(p) not in self.exclusions):
@@ -149,7 +158,7 @@ class MAP_Analysis(Analysis):
         # #                        print(x)
         #                         tasker.results[allprots['maps'][x]] = result
         if self.recalculate_events:  # save the recalculated events to the events file
-            CP.cprint("g", f"    Events written to :  {str(picklefilename):s}")
+            CP.cprint("g", f"    Recalculated Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
                 dill.dump(results, fh)
 
@@ -334,14 +343,14 @@ class MAP_Analysis(Analysis):
             msg = "No map annotation file has been read; using default values"
             CP.cprint("r", msg)
             Logger.warning(msg)
-        print(f"      Notch: {str(cell_df['Notch'].values[0]):s}")
+        # print(f"      Notch: {str(cell_df['Notch'].values[0]):s}")
 
     def set_artifact_path(self, icell, artpath: Union[Path, str]): # this is set globally
         self.AM.set_artifact_path(artpath)
     
-    def set_artifact_file(self, icell: int, path: Union[Path, str]):
+    def set_artifact_filename(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
-        self.AM.set_artifact_file(None)
+        self.AM.set_artifact_filename(None)
         if self.map_annotations is not None:
             # print("set artifact epoch, using map_annotations")
             cell_df = self.find_cell(
@@ -352,8 +361,8 @@ class MAP_Analysis(Analysis):
             if cell_df is not None and len(cell_df["use_artifact_file"]) > 0:
                 for i, fn in enumerate(cell_df['use_artifact_file'].values):
                     if not pd.isnull(fn) and cell_df['Usable'].values[i] == 'y':
-                        self.AM.set_artifact_file(fn)
-                        print("set artifact filefrom map annotation: ", cell_df["use_artifact_file"].values[i])
+                        self.AM.set_artifact_filename(fn)
+                        CP.cprint("c", f"    Setting artifact file from map annotation:  {str(cell_df['use_artifact_file'].values[i]):s}")
                         break
 
         else:
@@ -381,7 +390,7 @@ class MAP_Analysis(Analysis):
             msg = "No map annotation file has been read; using default value of 1.0 for artifact scaling if enabled"
             CP.cprint("r", msg)
             Logger.warning(msg)
-        print(f"    Setting artifact scale to ", self.AM.Pars.artifact_scale)
+        CP.cprint("c", f"    Setting artifact scale to  {self.AM.Pars.artifact_scale:5.2f}")
 
     def set_detrend(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -391,7 +400,7 @@ class MAP_Analysis(Analysis):
             )
             sh = cell_df["Detrend"].shape
             if cell_df is not None and sh != (0,) and cell_df["Detrend"].values[0] in ['meegkit', 'scipy']:
-                print(cell_df["Detrend"].values[0])
+                # print(cell_df["Detrend"].values[0])
                 self.AM.set_detrend(enable=True, method=cell_df["Detrend"].values[0])
                 print(f"    Setting detrend to {str(self.AM.filters.Detrend_method):s} from map table", end=" ")
             else:
@@ -457,16 +466,18 @@ class MAP_Analysis(Analysis):
 
         self.set_artifact_scale(icell, path_to_map)
         self.set_artifact_path(icell, self.AM.Pars.artifact_path)
-        self.set_artifact_file(icell, self.AM.Pars.artifact_file)
-
+        self.set_artifact_filename(icell, path_to_map)
         
-        if self.AM.Pars.artifact_file is not None: # check for file
-            artfile = Path(self.AM.Pars.artifact_path, f"{self.AM.Pars.artifact_file:s}.pkl")
+        if self.AM.Pars.artifact_filename is not None: # check for file
+            artfile = Path(self.AM.Pars.artifact_path, f"{self.AM.Pars.artifact_filename:s}.pkl")
             if not artfile.is_file():
                 print(f"Artifact fie not found: {str(artfile):s}")
                 exit()
             else:
-                print("artifact file found: ", self.AM.Pars.artifact_file)
+                print("artifact file found: ", self.AM.Pars.artifact_filename)
+        else:
+            print("No artifact file specified")
+        # print(self.AM.Pars)
 
         self.set_HPF_freq(icell, path_to_map)
         self.set_LPF_freq(icell, path_to_map)
@@ -764,6 +775,8 @@ class MAP_Analysis(Analysis):
         )
         self.AM.set_artifact_suppression(self.artifact_suppression)
         self.AM.set_artifact_derivative(self.artifact_derivative)
+        self.AM.set_artifact_filename(self.AM.Pars.artifact_filename)
+        self.AM.set_artifact_scale(self.AM.Pars.artifact_scale)
         self.AM.set_taus(self.AM.Pars.taus)  # [1, 3.5]
 
         if self.recalculate_events:
@@ -871,12 +884,13 @@ class MAP_Analysis(Analysis):
                 cell_df = self.find_cell(
                     self.map_annotations, datestr, slicestr, cellstr, Path(mapdir)
                 )
-                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts:{4:s}".format(
+                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts: {4:s} scale:{5:5.2f}".format(
                     self.AM.filters.HPF_frequency,
                     self.AM.filters.LPF_frequency,
                     str(cell_df['Notch'].values[0]),  # get compact form
                     str(self.AM.filters.Detrend_method),
-                    str(self.AM.Pars.artifact_file)
+                    str(self.AM.Pars.artifact_filename),
+                    self.AM.Pars.artifact_scale,
                 )   
                 fix_mapdir = str(mapdir)  # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(
@@ -907,5 +921,8 @@ class MAP_Analysis(Analysis):
                 except:
                     Logger.error("map_analysis savefig failed")
                     return
-
+        # print("result: ", result.keys())
+        # print(dir(result['events'][0].average.fitted_tau1))
+        # print(result['events'][0].average.fitted_tau1, result['events'][0].average.fitted_tau2, result['events'][0].average.amplitude)
+        # exit()
         return result
