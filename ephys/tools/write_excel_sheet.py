@@ -186,5 +186,5 @@ class ColorExcel():
 if __name__ == "__main__":
     celltype =  "layer vi lts"
     ce = ColorExcel()
-    ct = ce._find_celltype_in_field(celltype, list(colors.keys()))
+    ct = ce._find_celltype_in_field(celltype, list(ce.colors.keys()))
     print(ct)
