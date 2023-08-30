@@ -293,7 +293,7 @@ class MAP_Analysis(Analysis):
             )
             sh = cell_df["LPF"].shape
             if cell_df is not None and sh != (0,):
-                self.AM.set_LPF(cell_df["LPF"].values[0])
+                self.AM.set_LPF(float(cell_df["LPF"].values[0]))
                 print(f"    Setting LPF to {self.AM.filters.LPF_frequency:.1f} from map table", end=" ")
             else:
                 print("    Using default LPF", end=" ")
@@ -311,7 +311,7 @@ class MAP_Analysis(Analysis):
             )
             sh = cell_df["HPF"].shape
             if cell_df is not None and sh != (0,):
-                self.AM.set_HPF(cell_df["HPF"].values[0])
+                self.AM.set_HPF(float(cell_df["HPF"].values[0]))
                 print(f"    Setting HPF to {self.AM.filters.HPF_frequency:.1f} from map table", end=" ")
             else:
                 print("    Using default HPF", end=" ")
