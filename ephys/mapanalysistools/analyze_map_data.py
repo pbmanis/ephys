@@ -117,12 +117,12 @@ class AnalyzeMap(object):
         self.filters.Notch_Q = Q
  
     def set_LPF(self, LPF):
-        self.filters.LPF_frequency = LPF
+        self.filters.LPF_frequency = float(LPF)
         self.filters.LPF_applied = False
         self.filters.LPF_type = "ba"
 
     def set_HPF(self, HPF):
-        self.filters.HPF_frequency = HPF
+        self.filters.HPF_frequency = float(HPF)
         self.filters.HPF_applied = False
         self.filters.HPF_type = "ba"
     
@@ -702,7 +702,7 @@ class AnalyzeMap(object):
 
         if self.verbose:
             print("    Trial analyzed")
-        CP.cprint("r", f"analyze one event summary average:\n{str(summary):s}")
+        # CP.cprint("r", f"analyze one event summary average:\n{str(summary):s}")
         return summary
 
     def analyze_traces_in_trial(
