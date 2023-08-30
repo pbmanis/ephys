@@ -117,6 +117,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.minis_risetau = self.tau1  # will be value returned from analysis
         self.minis_falltau = self.tau2
         self.risepower=2
+        self.event_post_time = 0.015
         self.method = None
         self.Order = 7
 
@@ -257,6 +258,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 dt_seconds = self.AR.sample_interval,
                 template_tmax= 0.05, # sec
                 template_pre_time= 0.001, # sec
+                event_post_time=self.event_post_time,
                 sign = self.sign,
                 risepower = self.risepower,
                 threshold = self.thresh_reSD,
