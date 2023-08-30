@@ -663,7 +663,7 @@ class PlotMapData:
 
 
     def marginal_hist(self, ax, ax_histy:mpl.axes, ydata: Union[list, np.ndarray], binwidth:float,
-                      color:str="k", alpha:float=0.5, linewidth:float=1.0, linestyle:str="-"):
+                      color:str="k", alpha:float=1.0, linewidth:float=1.0, linestyle:str="-"):
         range = ax.get_ylim()
         # lim = (int((range[1]-range[0])/binwidth) + 1) * binwidth
         bins = np.arange(range[0], range[1] + binwidth, binwidth)
@@ -904,15 +904,15 @@ class PlotMapData:
         
         # add factor % to y axis top and bottom
         ylims = ax.get_ylim()
-        factor = 25.0
-        ymax = np.fabs(ylims).max()
-        ymax *= (1+factor/100)
-        ymax1 = ymax2 = ymax
-        if ylims[1] < 0.20*ymax:
-            ymax1 = 0.20*ymax
-        if ylims[0] > -0.20*ymax:
-            ymax2 = -0.20*ymax
-        ax.set_ylim(-ymax2, ymax1)
+        # factor = 15.0
+        # ymax = np.fabs(ylims).max()
+        # ymax *= (1+factor/100)
+        # ymax1 = ymax2 = ymax
+        # if ylims[1] < 0.10*ymax:
+        #     ymax1 = 0.10*ymax
+        # if ylims[0] > -0.10*ymax:
+        #     ymax2 = -0.10*ymax
+        # ax.set_ylim(-ymax2, ymax1)
 
         if len(data_for_hist) > 10:  # only add if we have some data to plot
             marginal_ax = ax.inset_axes([1.0, 0, 0.05, 1], sharey=ax)
