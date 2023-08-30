@@ -85,7 +85,7 @@ class MiniAnalyses:
         tau4: float=30e-3,
         template_tmax: float = 0.05,
         template_pre_time: float = 0.0,
-        event_post_time: float=0.010,
+        event_post_time: float=0.012,
         delay: float = 0.0,  # into start of each trace for analysis, seconds
         sign: int = 1,
         eventstartthr: Union[float, None] = None,
@@ -459,12 +459,16 @@ class MiniAnalyses:
 
 
     def show_prepared_data(self, timebase: np.ndarray, data: np.ndarray,  
-                           timebasep: Union[np.ndarray, None]=None, datap: Union[np.ndarray, None]=None ):
-        f, ax = mpl.subplots(2,1)
+                        timebasep: Union[np.ndarray, None]=None, datap: Union[np.ndarray, None]=None,
+                        spectrum:bool=False ):
+        f, ax = mpl.subplots(3,1, figsize=(8, 10))
         for j in range(0, data.shape[0], int(data.shape[0]/10)):
             ax[0].plot(timebase, data[j,:]-data[j,0]+j*5e-12, label="original", linewidth=0.5)
             if timebasep is not None:
-                ax[1].plot(timebasep, datap, label="clipped", linewidth=0.5)
+                ax[1].plot(timebasep, datap, label="clipped", linewidth=0.5, color='c')
+        # ax[2].plot(timebasep, avedata, label="average", linewidth=0.5)
+        if spectrum:
+            ax[2].magnitude_spectrum(datap-np.mean(datap), Fs=1./np.mean(np.diff(timebasep)), scale='dB', color='b', linewidth=0.5)
         mpl.show()
         exit()
     
@@ -536,24 +540,13 @@ class MiniAnalyses:
         #    And we don't want to have to recalculate their times after cliping the analysis window
         #
         filters_applied:str = ""
-        if pars.artifact_suppression:
+        if pars.artifact_suppression and pars.artifact_filename is not None:
             print("artifact scale: ", pars.artifact_scale)
             self._start_timing("Artifact Suppression")
             CP.cprint("r", f"    Preparing Data: Fixed artifact removal = {str(pars.artifact_suppression):s} with template: {str(pars.artifact_filename):s}")
 
             lbt = str(pars.LaserBlueTimes)
-            # print(pars.artifactData is not None)
-            # print(lbt)
-            # print(list(pars.artifactData.keys()))
-            # print(lbt in list(pars.artifactData.keys()))
-            # exit()
             if pars.artifactData is not None and lbt in list(pars.artifactData.keys()):
-
-                # print(pars.artifact_filename)
-                # print("laser blue times: ", lbt)
-                # print("avaliable artifact keys: ", pars.artifactData.keys())
-                # print("is there a match? : ", lbt in pars.artifactData.keys())
-                # print("here's the data: ", pars.artifactData['sumdata'][lbt])
                 artdata = pars.artifactData[lbt]['sumdata']
                 artend = int(0.599*20000.)
                 # artata = artdata[0:artend]
@@ -598,9 +591,7 @@ class MiniAnalyses:
                     # baseline part:
                     k50 = int(0.05*dt_upscale)
                     e_lbt = eval(lbt)
-                    # print(lbt)
                     kfirst = int(e_lbt['start'][0]/(dt_upscale))
-                    # print("k50, kfirst upsampled: ", k50, kfirst)
                     ratio1 = np.mean(np.std(np.mean(dx[:,k50:kfirst], axis=0))/np.std(art[k50:kfirst]))
                     CP.cprint("y", f"    Ratio1: {ratio1:8.2f}")
                     ascale_HF = ratio1*np.ones_like(art)
@@ -635,24 +626,26 @@ class MiniAnalyses:
                 diff = np.pad(diff, ((0, 0), (0, len(timebase)-diff.shape[1])), 'constant', constant_values=0.)
                 data = diff
 
-            data = self.remove_artifacts(data, pars)  # remove other artifacts too
             filters_applied += "Template-based artifact removal, "
             self._report_elapsed_time()
-            # self.show_prepared_data(timebase, data, timebase, np.mean(data, axis=0))
+            # self.show_prepared_data(timebase=timebase, data=data, 
+            #                         timebasep=timebase, datap=np.mean(data, axis=0), 
+            #                         spectrum=True)
         else:
 
-            CP.cprint("r", "    Preparing Data: No fixed artifact removal")
+            CP.cprint("r", "    Preparing Data: No template-based artifact removal")
             # print(pars.artifact_filename)
+        
+        data_art_removed = self.remove_artifacts(data, pars)  # remove other artifacts, such as shutter and stim artifacts too
+        # mpl.plot(data_art_removed.mean(axis=0))
+        # mpl.show()
 
         #
         # 1. Clip the timespan of the data to the values in analysis_window
         #
 
         self._start_timing("Clipping window")
-        data1 = data.copy()
-        data, self.timebase, (jmin, jmax) = self.clip_window(data, timebase)
-        # print(data.shape, self.timebase.shape)
-        # exit()
+        data_tofilter, self.timebase, (jmin, jmax) = self.clip_window(data_art_removed, timebase)
         self._report_elapsed_time()
         # print(
         #     "    Preparing data: Window clipped: ",
@@ -667,7 +660,6 @@ class MiniAnalyses:
 
         if self.verbose:
             if self.filters.LPF_frequency is not None:
-
                 CP.cprint(
                     "y",
                     f"minis_methods_common, prepare_data: LPF: {str(self.filters.LPF_frequency):s} Hz",
@@ -688,9 +680,9 @@ class MiniAnalyses:
 
         if self.filters.Detrend_method == "meegkit" and self.filters.Detrend_enable:
             self._start_timing("Detrend meegkit")
-            for itrace in range(data.shape[0]):
-                data[itrace], _, _ = MEK.detrend.detrend(
-                    data[itrace], order=self.filters.Detrend_order
+            for itrace in range(data_tofilter.shape[0]):
+                data_tofilter[itrace], _, _ = MEK.detrend.detrend(
+                    data_tofilter[itrace], order=self.filters.Detrend_order
                 )
                 self.filters.Detrend_applied = True
             filters_applied += "\n   Detrend: meegkit  "
@@ -698,9 +690,9 @@ class MiniAnalyses:
             
         elif self.filters.Detrend_method == "scipy" and self.filters.Detrend_enable:
             self._start_timing("Detrend scipy")
-            for itrace in range(data.shape[0]):
-                data[itrace] = FUNCS.adaptiveDetrend(
-                    data[itrace], x=self.timebase[jmin:jmax], threshold=3.0
+            for itrace in range(data_tofilter.shape[0]):
+                data_tofilter[itrace] = FUNCS.adaptiveDetrend(
+                    data_tofilter[itrace], x=self.timebase[jmin:jmax], threshold=3.0
                 )
             self.filters.Detrend_applied = True
             filters_applied += "\n   Detrend: scipy adaptive  "
@@ -721,8 +713,8 @@ class MiniAnalyses:
             and self.filters.enabled
         ):
             self._start_timing("LPF")
-            for itrace in range(data.shape[0]):
-                data[itrace] = self.LPFData(data[itrace])
+            for itrace in range(data_tofilter.shape[0]):
+                data_tofilter[itrace] = self.LPFData(data_tofilter[itrace])
             filters_applied += f"\n   LPF={self.filters.LPF_frequency:.1f} "
             self._report_elapsed_time()
 
@@ -733,8 +725,8 @@ class MiniAnalyses:
             and self.filters.enabled
         ):
             self._start_timing("HPF")
-            for itrace in range(data.shape[0]):
-                data[itrace] = self.HPFData(data[itrace])
+            for itrace in range(data_tofilter.shape[0]):
+                data_tofilter[itrace] = self.HPFData(data_tofilter[itrace])
             filters_applied += f"\n   HPF={self.filters.HPF_frequency:.1f} "
             self._report_elapsed_time()
         #
@@ -761,16 +753,19 @@ class MiniAnalyses:
         ):
             CP.cprint("r", "Comb filter notch")
             self._start_timing("Notch filtering")
+            data_filtered = np.zeros_like(data_tofilter)
             if len(notchf) == 1:
-                for itrace in range(data.shape[0]):
-                    data[itrace] = self.NotchFilterComb(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data[itrace])
+                for itrace in range(data_tofilter.shape[0]):
+                    data_filtered[itrace] = self.NotchFilterComb(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data_tofilter[itrace])
                 filters_applied += f"\n   Comb Notch={str(notchf):s} "
             else:
                 for itrace in range(data.shape[0]):
-                    data[itrace] = self.NotchFilterData(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data[itrace])
+                    data_filtered[itrace] = self.NotchFilterData(notchfreqs=notchf, notchQ=self.filters.Notch_Q, data=data_tofilter[itrace])
                 filters_applied += f"\n   Specific Notch={str(notchf):s} "
             self._report_elapsed_time()
-        self.data = data.copy()
+            self.data = data_filtered.copy()
+        else:
+            self.data = data_tofilter.copy()
 
         # f, ax = mpl.subplots(1,1)
         # for i in range(self.data.shape[0]):
@@ -778,8 +773,11 @@ class MiniAnalyses:
         # mpl.show()
         self.data_prepared = True
         CP.cprint("g", f"Filters applied = \n{filters_applied:s}")
-        # self.show_prepared_data(timebase, data1, self.timebase, self.data)
-
+        # win = [0.01, 0.1]
+        # iwin = [int(win[0]/self.dt_seconds), int(win[1]/self.dt_seconds)]
+        # self.show_prepared_data(timebase=timebase, data=data_art_removed, 
+        #                         timebasep=self.timebase, datap=np.mean(self.data, axis=0), 
+        #                         spectrum=True)
 
 
     def moving_average(self, a, n: int = 3) -> Tuple[np.ndarray, int]:
@@ -810,18 +808,25 @@ class MiniAnalyses:
         """
         assert data.ndim == 2
         if not pars.artifact_suppression:
+            CP.cprint("y", "    No fixed artifact removal (S/H)")
             return data
         pars = self.get_artifact_times(pars)  # retrieve shutter and stimulus timing
-
+        CP.cprint("c", "    S/H artifact removal")
+        CP.cprint("c", f"        {str(pars.shutter_artifacts):s}")
+        fixed_data = data.copy()
+        # print(fixed_data.shape)
         for art in [pars.shutter_artifacts]:
-            for itrace in range(data.shape[0]):
-                for i, start in enumerate(art["starts"]):
-                    jstart = int(start / self.dt_seconds)
-                    jend = jstart + int(art["durations"][i] / self.dt_seconds)
-                    if jstart >= data.shape[1] or jend >= data.shape[1]:
-                        continue  # could be outside our data range
-                    data[itrace, jstart:jend] = data[itrace, jstart-1]
-        return data
+            for i, start in enumerate(art["starts"]):
+                jstart = int(art["starts"][i] / self.dt_seconds)
+                jend = jstart + int(art["durations"][i] / self.dt_seconds)
+                if jstart >= data.shape[1] or jend >= data.shape[1]:
+                    continue  # could be outside our data range
+                for itrace in range(data.shape[0]):
+                    art_sh = np.mean(fixed_data[itrace, (jstart-11):(jstart-1)])
+                    fixed_data[itrace, jstart:jend] = art_sh # np.put(fixed_data[itrace,:], range(jstart, jend), 0.)
+        # mpl.plot(np.mean(fixed_data, axis=0))
+        # mpl.show()
+        return fixed_data
 
     def get_artifact_times(self, pars: MEDC.AnalysisPars):
         """Compute the artifact times and store them in the AnalysisPars structure
@@ -854,6 +859,7 @@ class MiniAnalyses:
         This list is used to filter the trace data later.
         """
         # build array of artifact times first
+        return data
         assert data.ndim == 2
         if not pars.post_analysis_artifact_rejection:
             CP.cprint("r", "No post-analysis artifact rejection")
@@ -1544,7 +1550,7 @@ class MiniAnalyses:
         # # mpl.plot(avgeventtb, self.summary.average.avgevent, 'k-', lw=3)
         # mpl.show()
         # CP.cprint("r", f"Isolated event tr list: {str(summary.isolated_event_trace_list):s}")
-        CP.cprint("r", f"Summary: \n{str(summary.average):s}")
+        # CP.cprint("r", f"Summary: \n{str(summary.average):s}")
         return summary
 
     def average_events_subset(
@@ -1607,6 +1613,11 @@ class MiniAnalyses:
             i10 = i10[-1]  # get the last point where this condition was met
             ix10 = np.interp(p10, move_avg[i10 : i10 + 2], [0, self.dt_seconds])
             i90 = np.where(move_avg[:ipk] <= p90)[0][-1]
+            # print("i90: ", i90, "p90: ", p90, "len mov_avg: ", len(move_avg), self.dt_seconds)
+            # print(move_avg*1e12)
+            # f, ax = mpl.subplots(1,1)
+            # ax.plot(np.arange(0, self.dt_seconds*len(move_avg), self.dt_seconds), move_avg)
+            # mpl.show()
             ix90 = np.interp(p90, move_avg[i90 - 1 : i90 + 1], [0, self.dt_seconds])
             t10 = ix10 + i10 * self.dt_seconds
             t90 = ix90 + (i90 - 1) * self.dt_seconds
@@ -1662,8 +1673,10 @@ class MiniAnalyses:
 
         tsel = 0  # use whole averaged trace
         self.tsel = tsel
-        self.tau1 = (self.t90 - self.t10) / 2.0  # inittaus[0]
+        self.tau1 = inittaus[0] #  (self.t90 - self.t10) / 2.0  # inittaus[0]
         self.tau2 = self.decaythirtyseven  # inittaus[1]
+        if self.tau2 < self.tau1:
+            self.tau2 = inittaus[1]
         self.tau3 = self.tau1 * 3.0
         self.tau4 = self.tau2 * 5
         self.tau_ratio = self.tau2 / self.tau1
@@ -1692,6 +1705,7 @@ class MiniAnalyses:
             tau1=self.tau1,
             tau2=self.tau2,
             tau3=self.tau3,
+            tau4=self.tau4,
             fixed_delay=initdelay,
             debug=debug,
             label=label,
@@ -2008,6 +2022,7 @@ class MiniAnalyses:
 
         """
         print("fixed delay in fitting: ", fixed_delay)
+        # print("fit starts with tau1, tau2, tau3, tau4: ", tau1, tau2, tau3, tau4)
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
         if peak_pos == len(event):
             peak_pos = len(event) - 10
@@ -2018,6 +2033,8 @@ class MiniAnalyses:
         init_amp = maxev
         if tau1 is None or np.isnan(tau1):
             tau1 = 0.67 * peak_pos * self.dt_seconds
+            if tau1 < 0:
+                tau1 = 5e-4
         if tau2 is None or np.isnan(tau2):
             # first smooth the decay a bit
             decay_data = SPS.savgol_filter(
@@ -2032,6 +2049,8 @@ class MiniAnalyses:
                         int((0.005-fixed_delay) / self.dt_seconds)
                     ]
             tau2 = (itau2[0]-fixed_delay) * self.dt_seconds
+            if tau2 < 0:
+                tau2 = 4e-3
         if tau2 <= self.dt_seconds:  # check limits
             tau2 = 2.0 * self.dt_seconds
         if tau2 <= 1.5 * tau1:
@@ -2147,7 +2166,7 @@ class MiniAnalyses:
         params["risepower"] = lmfit.Parameter(
             name="risepower", value=self.risepower, vary=False
         )
-
+        # print("params: ", params)
         self.fitresult = dexpmodel.fit(
             evfit,
             params,
