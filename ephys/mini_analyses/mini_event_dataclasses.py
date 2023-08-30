@@ -236,11 +236,11 @@ def def_taus():
 
 def def_shutter_artifacts():
     # delays to shutter artifacts, durations of shutter artifacts
-    return  {"starts": [0.055], "durations": [0.001]}
+    return  {"starts": [0.055], "durations": [0.005]}
 
 def def_stim_artifacts():
-    # delays to shutter artifacts, durations of shutter artifacts
-    return  {"starts": [0.1, 0.3, 0.5, 0.7, 0.9], "durations": [0.003, 0.003, 0.0005, 0.0005, 0.0005]}
+    # delays to stim artifacts, durations of stim artifacts
+    return  {"starts": [0.1, 0.3, 0.5, 0.7, 0.9], "durations": [0.0005, 0.0005, 0.0005, 0.0005, 0.0005]}
 
 def def_analysis_window():
     return [0.0, 0.999]
