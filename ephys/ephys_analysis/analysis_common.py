@@ -80,7 +80,7 @@ class cmdargs:
     inputFilename: Union[str, Path, None] = None
     pdfFilename: Union[str, Path, None] = None
     cell_annotationFilename: Union[str, Path, None] = None
-    artifactFilename: Union[str, Path, None] = None
+    artifact_filename: Union[str, Path, None] = None
     map_annotationFilename: Union[str, Path, None] = None
     map_pdfs: bool = False
     iv_analysisFilename: Union[str, Path, None] = None
@@ -214,7 +214,7 @@ class Analysis:
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
         self.spike_threshold = args.spike_threshold
-        self.artifact_filename = args.artifact_filename
+        self.artifactFilename = args.artifact_filename
         self.artifactData = None
         self.artifact_suppression = args.artifact_suppression
         self.artifact_derivative = args.artifact_derivative
@@ -274,11 +274,13 @@ class Analysis:
     def setup(self):
         if self.experiment not in ["None", None]:
             self.rawdatapath = Path(self.experiment["rawdatapath"])
+            # print("1 : raw data path: ", self.rawdatapath)
             if self.experiment["directory"] is None:
                 self.analyzeddatapath = Path(self.experiment["analyzeddatapath"])
                 self.databasepath = Path(self.experiment["databasepath"])
             else:
-                self.rawdatapath = Path(self.rawdatapath, self.experiment["directory"])
+                # self.rawdatapath = Path(self.rawdatapath, self.experiment["directory"])
+                # print("2 : raw data path: ", self.rawdatapath)
                 self.analyzeddatapath = Path(
                     self.experiment["analyzeddatapath"], self.experiment["directory"]
                 )
@@ -1205,6 +1207,8 @@ class Analysis:
                 exit()
             for subdir in self.extra_subdirectories:
                 fullfile = Path(self.rawdatapath, subdir, day)
+                print("checking for fullfile: ", str(fullfile))
+                print(self.rawdatapath, subdir, day)
                 if fullfile.is_dir():
                     break
 
