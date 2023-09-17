@@ -204,6 +204,9 @@ class AnalyzeMap(object):
                 "analyzeMapData: artifact suppresion must be True or False"
             )
         self.Pars.artifact_suppression = enable
+    
+    def set_zscore_threshold(self, threshold:float):
+        self.Pars.zscore_threshold = threshold
 
     def set_post_analysis_artifact_rejection(self, enable=False):
         if not isinstance(enable, bool):
@@ -606,6 +609,8 @@ class AnalyzeMap(object):
             events[jtrial] = res
             # print("Trial results: ", res)
 
+        # capture the average events (spont, evoked) across all trials
+
         if self.verbose:
             print("  ALL trials in protocol analyzed")
         return {
@@ -625,6 +630,7 @@ class AnalyzeMap(object):
             # "avgevents": res.average,
             "rate": rate,
             "ntrials": data.shape[0],
+            "average": avgevents,
         }
 
     def analyze_one_trial(
@@ -827,7 +833,8 @@ class AnalyzeMap(object):
 
 
         CP.cprint("c", "\nanalyze_map_data: Average Trial Events")
-
+        minisummary.spontaneous_event_trace_list = [[]]*data.shape[0]
+        minisummary.evoked_event_trace_list = [[]]*data.shape[0]
         for itrace in range(data.shape[0]):
             evtr = list(
                 [x[1] for x in minisummary.all_event_indices if x[0] == itrace]
@@ -836,15 +843,15 @@ class AnalyzeMap(object):
             # Definitions:
             # Spontaneous events are those that are:
             #   a: not in evoked window, and,
-            #   b: no sooner than 10 msec before a stimulus,
+            #   b: start o sooner than 10 msec before a stimulus,
             # Also, events must be at least 4*tau[0] after start of trace, and 5*tau[1] before end of trace
-            # Evoked events are those that occur after the stimulus with in a window (usually ~ 5-15 msec)
+            # Evoked events are those that occur after the stimulus with in a window (usually ~ 0.1 to 10 ms, but could be different)
             # All data for events are aligned on the peak of the event, and go 4*tau[0] to 5*tau[1]
             #
             # process spontaneous events first
             # also, only use isolated events for this calculation
 
-            npk_sp = method.select_events(
+            spont_onsets, spont_indices = method.select_events(
                 event_indices=[minisummary.onsets[itrace][x] for x in evtr],
                 twin = [[0., self.Pars.twin_resp[0][0]-0.00]], #tstarts=[0.0],
                 tb = self.MA.timebase,
@@ -853,51 +860,51 @@ class AnalyzeMap(object):
                 first_stim_only=False,
             )
             # print("spont event list: ", npk_sp)
-            if len(npk_sp) > 0:
-                sp_onsets = npk_sp # [minisummary.onsets[itrace][x] for x in npk_sp]
-                minisummary.spontaneous_event_trace_list.append(sp_onsets)
+            if len(spont_onsets) > 0:
+                # sp_onsets = npk_sp # [minisummary.onsets[itrace][x] for x in npk_sp]
+                minisummary.spontaneous_event_trace_list[itrace] = spont_indices
                 #     [sp_onsets, [minisummary.smpkindex[itrace][x] for x in npk_sp]]
                 # )
                 avg_spont_one, avg_sponttb, allev_spont = method.average_events_subset(
-                    data[itrace], eventlist=sp_onsets, minisummary=minisummary
+                    data[itrace], eventlist=spont_onsets, minisummary=minisummary
                 )
                 minisummary.average_spont.avgevent.append(avg_spont_one)
             else:
-                minisummary.spontaneous_event_trace_list.append([[], []])
+                minisummary.spontaneous_event_trace_list[itrace] = []
             # print(ok_events*rate)
 
             # Now get the events in the evoked event window across all traces
-            # deepcopy here is essential, or else  twin_resp gets modified, causing trouble later
+            # deepcopy here is essential, or else twin_resp gets modified, causing trouble later
             nwin = deepcopy(self.Pars.twin_resp)
             for i in range(len(nwin)):
-                nwin[i][0] -= 0.002
+                nwin[i][0] -= 0.0  # use to extend or shorten the window
                 nwin[i][1] += 0.0
-            npk_ev = method.select_events(
+            evoked_onsets, evoked_indices = method.select_events(
                 event_indices = [minisummary.onsets[itrace][x] for x in evtr],
                 twin = nwin, # self.Pars.twin_resp,
                 tb = self.MA.timebase,
                 mode="accept",
                 first_stim_only=False,
                 first_event_in_stim_only=False,
-            )
-            # print("evoked event list: ", npk_ev)
-            if len(npk_ev) > 0:
-                ev_onsets = npk_ev # [minisummary.onsets[itrace][x] for x in npk_ev]
-                minisummary.evoked_event_trace_list.append(ev_onsets)
+            ) # these are the events IN the evoked window
+            # print("evoked event list: ", ev_onsets)
+            # print("mini onsets: ", minisummary.onsets[itrace])
+            if len(evoked_onsets) > 0:
+                minisummary.evoked_event_trace_list[itrace] = evoked_indices
                 #     [ev_onsets, [minisummary.smpkindex[itrace][x] for x in npk_ev]]
-                # )
                 (
                     avg_evoked_one,
                     avg_sponttb,
                     allev_evoked,
                 ) = method.average_events_subset(
-                    data[itrace], eventlist=ev_onsets, minisummary=minisummary
+                    data[itrace], eventlist= evoked_onsets, minisummary=minisummary
                 )
                 minisummary.average_evoked.avgevent.append(avg_evoked_one)
             else:
-                minisummary.evoked_event_trace_list.append([[], []])
+                minisummary.evoked_event_trace_list[itrace] = []
             # ok_events = np.array(minisummary.smpkindex[itrace])[npk_ev]
-            
+        # print(minisummary.evoked_event_trace_list)
+        # exit()
         sa = np.array(minisummary.average_spont.avgevent)
         ea = np.array(minisummary.average_evoked.avgevent)
 
