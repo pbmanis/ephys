@@ -94,13 +94,13 @@ class FixObjective(pg.QtWidgets.QWidget):
         print("   This scale may be specific to your camera!!!!!")
         print("read_index write flag is: ", write)
         print("Objective: ")
-        print(f"    Change Type: {objective.change_type:s}")
-        print(f"    File: {objective.filename:s}")
+        print(f"    Change Type: {objective.change_type!s}")
+        print(f"    File: {objective.filename!s}")
         print(
-            f"    From: {objective.from_objective:3s}X to {objective.to_objective:3s}X"
+            f"    From: {objective.from_objective!s}X to {objective.to_objective!s}X"
         )
-        print(f"    For images: {str(objective.images):s}")
-        print(f"    For videos: {str(objective.videos):s}")
+        print(f"    For images: {str(objective.images)!s}")
+        print(f"    For videos: {str(objective.videos)!s}")
         print("=" * 40)
         self.index_file = Path(objective.filename, ".index")
         self.index = configfile.readConfigFile(self.index_file)

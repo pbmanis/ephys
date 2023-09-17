@@ -1047,6 +1047,7 @@ def main():
     cellchoices = [     'bushy',
                         'tstellate', 
                         'dstellate',
+                        'octopus',
                         'tuberculoventral', 
                         'pyramidal', 
                         'giant', 

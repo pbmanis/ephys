@@ -1018,7 +1018,8 @@ class DataSummary:
                 outfile = outfile.with_suffix('.pkl')
             df.to_pickle(outfile)
             print(f"Wrote NEW pandas dataframe to pickled file: {str(outfile):s}")
- 
+            maindf = df
+            
         elif self.outputMode == "pandas" and self.append:
             print("\nAPPENDING to EXISTING PANDAS DATAFRAME")
             # first save the original with a date-time string appended
