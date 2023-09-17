@@ -88,6 +88,7 @@ class cmdargs:
 
     # analysis flags and experiment selection
     update_results: bool = False
+    celltype: str = "all"
     day: str = "all"
     after: str = "1970.1.1"
     before: str = "2266.1.1"
@@ -122,6 +123,7 @@ class cmdargs:
     alternate_fit2: bool = False  # second alternate
     measuretype: str = "ZScore"  # display measure for spot plot in maps
     spike_threshold: float = -0.035
+    zscore_threshold: float = 1.96
     artifact_suppression: bool = False
     artifact_derivative: bool = False
     post_analysis_artifact_rejection: bool = False
@@ -179,6 +181,7 @@ class Analysis:
         self.after_str = args.after
         self.slicecell = args.slicecell
         self.protocol = args.protocol
+        self.celltype = args.celltype
 
         # modes for analysis
         self.iv_flag = args.iv_flag
@@ -214,6 +217,7 @@ class Analysis:
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
         self.spike_threshold = args.spike_threshold
+        self.zscore_threshold = args.zscore_threshold
         self.artifactFilename = args.artifact_filename
         self.artifactData = None
         self.artifact_suppression = args.artifact_suppression
@@ -490,15 +494,25 @@ class Analysis:
             else:
                 with PdfPages(self.pdfFilename) as pdf:
                     for n, icell in enumerate(range(len(self.df.index))):
-                        cell_ok = self.do_cell(icell, pdf=pdf)
-            CP.cprint(
+                        CP.cprint("g", f"Cell type(s): {self.celltype!s}")
+                        if self.celltype == "all":
+                            cell_ok = self.do_cell(icell, pdf=pdf)
+                        else:  # only do a select cell type
+                            if self.celltype == self.df.iloc[icell]["cell_type"]:
+                                cell_ok = self.do_cell(icell, pdf=pdf)
+            if self.iv_analysisFilename is None:
+                msg = f"No IV analysis to write : {self.iv_analysisFilename} is None"
+                # CP.cprint("y", msg)
+                Logger.warning(msg)
+            else:
+                CP.cprint(
                 "c",
                 f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}",
-            )
-            with open(self.iv_analysisFilename, "wb") as fh:
-                self.df.to_pickle(
-                    fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
                 )
+                with open(self.iv_analysisFilename, "wb") as fh:
+                    self.df.to_pickle(
+                        fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+                    )
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -882,7 +896,9 @@ class Analysis:
         """
         original_celltype = self.df.at[icell, "cell_type"]
         datestr, slicestr, cellstr = self.make_cell(icell)
-        CP.cprint("c", f"Original cell type: {original_celltype:s}")
+        msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, {'/'.join([datestr, slicestr, cellstr])!s}"
+        CP.cprint("c", msg)
+        Logger.info(msg)
         annotated_celltype = None
         map_annotated_celltype = None
         if self.annotated_dataframe is not None:  # get annotation file cell type
@@ -890,7 +906,7 @@ class Analysis:
                 self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None
             )
             if cell_df.empty:  # cell was not in annotated dataframe
-                msg = f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an annotation cell type specification (that is ok)"
+                msg = f"    {datestr:s} {cellstr:s} {slicestr:s} does not have an annotation cell type specification (that is ok)"
                 CP.cprint(
                     "c",
                     msg,
@@ -903,7 +919,7 @@ class Analysis:
                 self.map_annotations, datestr, slicestr, cellstr, protocolstr=None
             )
             if cell_df.empty:
-                msg = f"    {datestr:s} {cellstr:s}{slicestr:s} does not have an map_annotation celltype specification (field was empty)"
+                msg = f"    {datestr:s} {cellstr:s} {slicestr:s} does not have an map_annotation celltype specification (field was empty)"
                 CP.cprint(
                     "c",
                     msg,
@@ -927,7 +943,7 @@ class Analysis:
                 map_annotated_celltype, str
             ):
                 if map_annotated_celltype != original_celltype:
-                    msg = f"   Cell type was re-annotated in map_annotation file from: {original_celltype:s} to: {map_annotated_celltype:s})"
+                    msg = f"   Cell type was re-annotated in map_annotation file from: <{original_celltype:s}> to: {map_annotated_celltype:s})"
                     CP.cprint(
                         "red",
                         msg,
@@ -971,12 +987,12 @@ class Analysis:
                     Logger.info(msg)
                     return annotated_celltype, True
                 else:
-                    msg = f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}"
-                    CP.cprint(
-                        "c",
-                        msg,
-                    )
-                    Logger.info(msg)
+                    # msg = f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}"
+                    # CP.cprint(
+                    #     "c",
+                    #     msg,
+                    # )
+                    # Logger.info(msg)
                     return original_celltype, False
             else:
                 msg = f"    Annotated celltype was not specified, so using original: {original_celltype:s}"
@@ -1063,18 +1079,22 @@ class Analysis:
     def get_markers(self, fullfile: Path, verbose: bool = True) -> dict:
         # dict of known markers and one calculation of distance from soma to surface
         dist = np.nan
-        marker_dict:dict = {
-            "soma": [],
-            "surface": [],
-            "medialborder": [],
-            "lateralborder": [],
-            "rostralborder": [],
-            "caudalborder": [],
-            "ventralborder": [],
-            "dorsalborder": [],
-            "AN": [],
-            "dist": dist,
-        }
+        # this may be too restrictive.... 
+        marker_dict = {}
+        # :dict = {
+        #     "soma": [],
+        #     "surface": [],
+        #     "medialborder": [],
+        #     "lateralborder": [],
+        #     "rostralborder": [],
+        #     "caudalborder": [],
+        #     "ventralborder": [],
+        #     "dorsalborder": [],
+        #     "rostralsurface": [],
+        #     "caudalsurface": [],
+        #     "AN": [],
+        #     "dist": dist,
+        # }
 
         mosaic_file = list(fullfile.glob("*.mosaic"))
         if len(mosaic_file) > 0:
@@ -1089,9 +1109,13 @@ class Analysis:
                         if verbose:
                             CP.cprint(
                                 "c",
-                                f"    {markitem[0]:>12s} x={markitem[1][0]*1e3:7.2f} y={markitem[1][1]*1e3:7.2f} z={markitem[1][2]*1e3:7.2f} mm ",
+                                f"    {markitem[0]:>20s} x={markitem[1][0]*1e3:8.3f} y={markitem[1][1]*1e3:8.3f} z={markitem[1][2]*1e3:8.3f} mm ",
                             )
-
+                        marker_dict[markitem[0]] = [
+                            markitem[1][0],
+                            markitem[1][1],
+                            markitem[1][2],
+                        ]
                         for j in range(len(markers)):
                             markname = markers[j][0]
                             if markname in marker_dict:
@@ -1099,36 +1123,45 @@ class Analysis:
                                     markers[j][1][0],
                                     markers[j][1][1],
                                 ]
-                if item["type"] == "CellCanvasItem":  # get Cell marker position also
+                elif item["type"] == "CellCanvasItem":  # get Cell marker position also
                     cellmark = item['userTransform']
+                else:
+                    pass
+                # print("didnt parse item type: ", item["type"])
             soma_xy:list = []
-            if "soma" in marker_dict.keys() and cellmark is None:
-                somapos = marker_dict["soma"]
-            if cellmark is not None:  # override soma position with cell marker position
+            somapos = []
+            if cellmark is None:
+                if "soma" in marker_dict.keys():
+                    somapos = marker_dict["soma"]
+            else:  # override soma position with cell marker position
                 somapos = cellmark['pos']
                 marker_dict['soma'] = somapos
 
             surface_xy:list = []
-            if len(somapos) == 2 and len(marker_dict["surface"]) == 2:
-                soma_xy = somapos
-                surface_xy = marker_dict["surface"]
-                dist = np.sqrt(
-                    (soma_xy[0] - surface_xy[0]) ** 2
-                    + (soma_xy[1] - surface_xy[1]) ** 2
-                )
-                if verbose:
-                    CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
-            else:
-                if verbose:
-                    CP.cprint(
-                        "r", "    Not enough markers to calculate soma-surface distance"
+
+            if "surface" in marker_dict.keys():
+                if len(somapos) >= 2 and len(marker_dict["surface"]) >= 2:
+                    soma_xy = somapos
+                    surface_xy = marker_dict["surface"]
+                    dist = np.sqrt(
+                        (soma_xy[0] - surface_xy[0]) ** 2
+                        + (soma_xy[1] - surface_xy[1]) ** 2
                     )
+                    if verbose:
+                        CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
+                else:
+                    if verbose:
+                        CP.cprint(
+                            "r", "    Not enough markers to calculate soma-surface distance"
+                        )
             if soma_xy == [] or surface_xy == []:
                 if verbose:
                     CP.cprint("r", "    No soma or surface markers found")
         else:
             if verbose:
-                CP.cprint("r", "No mosaic file found")
+                pass
+                #CP.cprint("r", "No mosaic file found")
+
         return marker_dict
 
     def make_pickle_filename(self, dpath: Union[str, Path], celltype: str, slicecell: str):
@@ -1206,9 +1239,8 @@ class Analysis:
                 )
                 exit()
             for subdir in self.extra_subdirectories:
-                fullfile = Path(self.rawdatapath, subdir, day)
+                fullfile = Path(self.experiment['rawdatapath'], self.experiment["directory"], subdir, day)
                 print("checking for fullfile: ", str(fullfile))
-                print(self.rawdatapath, subdir, day)
                 if fullfile.is_dir():
                     break
 
@@ -1337,10 +1369,11 @@ class Analysis:
             )
             # analyze_maps stores events in an events subdirectory by cell
             # It also merges the PDFs for that cell in the celltype directory
-            msg = f"Merging pdfs, with: {str(pdf):s}"
-            CP.cprint("r", msg)
-            Logger.info(msg)
-            self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
+            if pdf is not None:
+                msg = f"Merging pdfs, with: {str(pdf):s}"
+                CP.cprint("r", msg)
+                Logger.info(msg)
+                self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
             # also remove slicecell3 and slicecell1 filenames if they exist
             pdf1 = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell1)
             pdf1.unlink(missing_ok=True)
