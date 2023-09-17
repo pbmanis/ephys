@@ -33,6 +33,9 @@ def build_parser(experiments):
         dest="inputFilename",
         help="Specify input dataSummray file name (including full path)",
     )
+
+    parser.add_argument("--celltype", type=str, default="all", help="limit celltype for analysis")
+   
     parser.add_argument("-d", "--day", type=str, default="all", help="day for analysis")
 
     parser.add_argument(

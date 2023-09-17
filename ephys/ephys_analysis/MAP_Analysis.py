@@ -47,8 +47,22 @@ class MAP_Analysis(Analysis):
         # print(self._testing_counter)
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
-        Logger.info("Starting map_analysis")
-        print("icell: ", icell)
+        # print("icell: ", icell)
+
+
+        if self.celltype != "all":
+            if self.celltype == "DCN" and celltype in ['pyramidal', 'cartwheel', 'tuberculoventral', 'giant']:
+                oktype = True
+            elif self.celltype == "VCN" and celltype in ['bushy', 't-stellate', 'd-stellate', 'octopus']:
+                oktype = True
+            elif isinstance(self.celltype, str) and self.celltype == celltype:
+                oktype = True
+            else:
+                oktype = False
+        else:
+            oktype = True # All cell types are ok
+        if not oktype:
+            return
 
         if len(allprots["maps"]) == 0:
             datestr, slicestr, cellstr = self.make_cell(icell)
@@ -56,9 +70,11 @@ class MAP_Analysis(Analysis):
             CP.cprint('r', msg)
             Logger.warning(msg)
             return
+        
+        msg = f"Starting map analyze for cell at index: {icell: d} ({str(self.df.at[icell, 'date']):s} incoming celltype: {celltype:s})",
+        Logger.info(msg)
         CP.cprint(
-            "c",
-            f"Analyze MAPS for index: {icell: d} ({str(self.df.at[icell, 'date']):s} incoming celltype: {celltype:s})",
+            "c", msg
         )
         file = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id)
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -319,7 +335,8 @@ class MAP_Analysis(Analysis):
             msg = "No map annotation file has been read; using default values"
             CP.cprint("r", msg)
             Logger.warning(msg)
-        print(f"      LPF: {self.AM.filters.HPF_frequency:6.1f}")
+        print(f"      HPF: {self.AM.filters.HPF_frequency:6.1f}")
+
 
     def set_Notch_frequencies(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = self.make_cell(icell)
@@ -778,6 +795,7 @@ class MAP_Analysis(Analysis):
         self.AM.set_artifact_filename(self.AM.Pars.artifact_filename)
         self.AM.set_artifact_scale(self.AM.Pars.artifact_scale)
         self.AM.set_taus(self.AM.Pars.taus)  # [1, 3.5]
+        self.AM.set_zscore_threshold(self.AM.Pars.zscore_threshold)
 
         if self.recalculate_events:
             CP.cprint(
@@ -825,6 +843,7 @@ class MAP_Analysis(Analysis):
                     rotation=0.0,
                     markers = self.markers,
                     measuretype=measuretype,
+                    zscore_threshold=self.AM.Pars.zscore_threshold,
                     plotevents=plotevents,
                     whichstim=self.whichstim,
                     trsel=self.trsel,
@@ -833,11 +852,13 @@ class MAP_Analysis(Analysis):
                     rasterized=False,
                     datatype=self.AM.Pars.datatype,
                 )  # self.AM.rasterized, firstonly=True, average=False)
+
             msg = f"Map analysis done: {str(self.map_name):s}"
             print(msg)
             Logger.info(msg)
 
             if mapok:
+                results['FittingResults'] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
                 infostr = ""
                 colnames = self.df.columns
                 if "animal identifier" in colnames:
