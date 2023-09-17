@@ -259,7 +259,7 @@ class AnalysisPars:
     baseline_flag: bool = False
     baseline_subtracted: bool = False
     filters: object = field(default_factory=Filtering)
-
+    zscore_threshold: float = 1.96  # threshold for zscore
     # artifact suppression: Shutter and stim are artifacts at fixed times
     artifact_suppression: bool = False  # flag enabling suppression of artifacts
     shutter_artifacts: dict = field(
