@@ -1,22 +1,30 @@
 import argparse
+import copy
 import datetime
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Union
 
+import descartes
 import matplotlib
 import matplotlib.cm
 import matplotlib.collections as collections
 import matplotlib.colors
 import matplotlib.pyplot as mpl
+import MetaArray
 import numpy as np
+import pint
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
+import scipy.interpolate
 import scipy.ndimage
 import scipy.signal
 import seaborn
-import MetaArray
+import shapely
+
+UR = pint.UnitRegistry()
+
 # import montager as MT
 from matplotlib import colors as mcolors
 from matplotlib.collections import PatchCollection
@@ -24,6 +32,117 @@ from matplotlib.patches import Wedge
 
 color_sequence = ["k", "r", "b"]
 colormapname = "parula"
+
+###
+### definedMarkers comes from acq4/analysis/modules/MosaicEditor/definedMarkers.py
+### If that file is changed, then this file must be changed as well.
+###
+definedMarkers = {
+    "DCN Transstrial":
+        {
+            "surface": (100e-6, 0),
+            "rostralsurface": (75e-6, 175e-6),
+            "rostralborder": (-150e-6, 250e-6),
+            "medialborder": (-150e-6, 0),
+            "caudalborder": (-150e-6, -200e-6),
+            "caudalsurface": (75e-6, -175e-6),
+            "AN": (-80e-6, 50e-6),
+        },
+    "DCN Parasagittal": {
+            "caudalsurface": (300e-6, -200e-6),
+            "dorsalsurface": (0e-6, 300e-6),
+            "rostralsurface": (-300e-6, 100e-6),
+            "rostralborder": (-350e-6, 0),
+            "medialborder": (-150e-6, -100e-6),
+            "caudalborder": (150e-6, -250e-6),
+            "AN": (0e-6, -150e-6),
+    },
+    "DCN Coronal": {
+            "dorsal": (-100e-6, 500e-6),
+            "medial": (1-100e-6, 0e-6),
+            "ventral": (-100e-6, -500e-6),
+            "lateral1": (-50e-6, -400e-6),
+            "lateral2": (250e-6, -200e-6),
+            "lateral3": (350e-6, 50e-6),
+            "lateral4": (250e-6, 350e-6),
+            },
+
+    "VCN Horizontal": {
+            "surface": (0, 100e-6, 0),
+            "rostralsurface": (75e-6, 175e-6),
+            "caudalsurface": (75e-6, -175e-6),
+            "medialborder": (-150e-6, 0),
+            "caudalborder": (-150e-6, -200e-6),
+            "rostralborder": (5-150e-6, 250e-6),
+    },
+    "VCN Parasagittal": {
+            "rostralsurface": (-300e-6, 0e-6),
+            "dorsalborder": (-100e-6, 300e-6),
+            "medialborder": (0e-6, 0e-6),
+            "caudalborder": (150e-6, -200e-6),
+            "caudalAN": (0e-6, -300e-6),
+            "rostralAN": (-350e-6, 0),
+            "AN": (0e-6, -150e-6),
+            "VN": (-100e-6, -200e-6), 
+    },
+    "VCN Coronal": {
+            "dorsomedial": (-100e-6, 500e-6),
+            "medial": (-100e-6, 0e-6),
+            "ventromedial": (-100e-6, -500e-6),
+            "lateral1": (-50e-6, -400e-6),
+            "lateral2": (250e-6, -200e-6),
+            "lateral3": (350e-6, 50e-6),
+            "lateral4": (6, 250e-6, 350e-6),
+    },
+    "Cortex Horizontal": {
+            "surface": (1000e-6, 0),
+            "medialrostral": (-150e-6, 0),
+            "lateralrostral": (150e-6, 0),
+            "medialcaudal": (-150e-6, -200e-6),
+            "lateralcaudal": (-150e-6, 200e-6),
+            "injectionsite": (0, 200e-6),
+            "hpcanteriorpole": (0, -200e-6),
+    },
+    "Cortex Coronal": {
+            "surface": (1000e-6, 0),
+            "medialdorsal": (-150e-6, 0),
+            "lateraldorsal": (150e-6, 0),
+            "injectionsite": (-150e-6, -200e-6),
+            "medialventral": (-150e-6, 200e-6),
+            "lateralventral": (0, 200e-6),
+    },
+}
+
+all_markernames:list = []
+for k in definedMarkers.keys():
+    all_markernames.extend([tkey for tkey in definedMarkers[k].keys()])
+
+
+mark_colors = {}
+mark_symbols = {}
+for k in all_markernames:
+    if k.startswith(('surface')):
+        mark_colors[k] = 'c'
+        mark_symbols[k] = 'o'
+    elif k.startswith(('medial', 'lateral', 'dorsal','ventral', 'rostral', 'caudal')):
+        mark_colors[k] = 'g'
+        mark_symbols[k] = 'o'
+    elif k.startswith(('AN', 'VN', 'injection', 'hpc')):
+        mark_colors[k] = 'g'
+        mark_symbols[k] = 'D'
+    elif k.startswith(('soma', 'cell')):
+        mark_colors[k] = 'y'
+        mark_symbols[k] = '*'
+    else:
+        mark_colors[k] = 'w'
+        mark_symbols[k] = 'o'   
+for c in ['soma', 'cell']: # may not be in the list above
+    if c not in mark_colors.keys():
+        mark_colors[c] = 'y'
+        mark_symbols[c] = '*'
+
+
+
 
 
 def setMapColors(colormapname: str, reverse: bool = False) -> object:
@@ -331,13 +450,13 @@ class PlotMapData:
             newpos = np.dot(rmat, newpos.T).T
         return newpos
 
-    def plot_timemarker(self, ax: object) -> None:
+    def plot_timemarker(self, ax: object, zerotime:float = 0.) -> None:
         """
         Plot a vertical time line marker for the stimuli
         """
         yl = ax.get_ylim()
         for j in range(len(self.Pars.stimtimes["starts"])):
-            t = self.Pars.stimtimes["starts"][j]-self.Pars.time_zero
+            t = self.Pars.stimtimes["starts"][j]-self.Pars.time_zero-zerotime
             if isinstance(t, float) and np.diff(yl) > 0:  # check that plot is ok to try
                 ax.plot(
                     [t, t],
@@ -440,7 +559,7 @@ class PlotMapData:
             trsel (Union[int, None], optional): _description_. Defaults to None.
         """
         # assert not self.plotted_em['stack']
-        CP.cprint("c", f"    Starting stack plot: {str(title):s}")
+        CP.cprint("c", f"    Starting stack plot: {str(title):s}, trace selection: {trsel!s}")
         now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
         if ax is None:
             f, ax = mpl.subplots(1, 1)
@@ -468,6 +587,8 @@ class PlotMapData:
         if trsel is not None:
             # only plot the selected traces
             for jtrial in range(mdata.shape[0]):
+                print("trsel: ", trsel)
+                exit()
                 if tb.shape[0] > 0 and mdata[jtrial, trsel, :].shape[0] > 0:
                     ax.plot(
                         tb, #  - self.Pars.time_zero,
@@ -502,12 +623,13 @@ class PlotMapData:
 
         iplot_tr = 0
         # decorate traces with dots for spont, evoked and "other"
+
         for itrial in range(mdata.shape[0]):  # across trials (repeats)
             if events[itrial] is None:
                 continue
             for itrace in range(mdata.shape[1]):  # across all traces
-                if zscore_threshold is not None and zs[itrace] < zscore_threshold:
-                    continue
+                # if zscore_threshold is not None and zs[itrace] < zscore_threshold:
+                #     continue
                 smpki_original = events[itrial].smpkindex[itrace]  # indices to peaks in ths trial/trace
                 smpki = smpki_original
                 # for k, smpk in enumerate(smpki_original):
@@ -603,8 +725,10 @@ class PlotMapData:
         iplot_tr = 0  # index to compute stack position
         for itrial in range(mdata.shape[0]):
             for itrace in range(mdata.shape[1]):
-                if zscore_threshold is not None and zs[itrace] < zscore_threshold:
-                    continue
+                # if zscore_threshold is not None and zs[itrace] < zscore_threshold:
+                #     lw = 0.3
+                # else:
+                #     lw = 1
                 if tb.shape[0] > 0 and mdata[itrial, itrace, :].shape[0] > 0:
                     if crflag[itrial]:
                         alpha = 1.0
@@ -688,7 +812,7 @@ class PlotMapData:
         scale: float = 1.0,
         label: str = "pA",
         rasterized: bool = False,
-    ) -> None:
+    ) -> tuple:
         # ensure we don't plot more than once...
         # modified so that events that are "positive" (meaning the detection picked uip
         # an event that was on a + baseline...) are removed from the plot. 
@@ -730,175 +854,240 @@ class PlotMapData:
         ax.tick_params(axis="x", colors=line[evtype][0], labelsize=7)
         ev_min = 5e-12
         sp_min = 5e-12
+        
 
-        ave = []
-        minev = 0.0
-        maxev = 0.0
-        npev = 0
         datahist = None
-        data_for_hist = []
+
         print("plot parameters: minmax:", plot_minmax, " zscore_threshold: ", zscore_threshold)
-        # plot events from each trial
-        for trial in range(mdata.shape[0]):
-            CP.cprint("b", f"plotting events for trial: {trial:d}")
-            if events[trial] is None or len(events[trial].average.avgeventtb)  == 0:
-                CP.cprint("r", "**** plot_event_traces: no events....")
-                continue
 
-            tb0 = events[trial].average.avgeventtb  # get from the averaged trace
-            rate = events[trial].dt_seconds
-            tpost = np.max(tb0)
-            tb = np.arange(0, tpost + rate, rate)
-            ptfivems = int(0.0005 / rate)
-            allevents = events[trial].allevents
+        def compute_event_fits(evtype:str, mdata:np.ndarray, events:Union[list, dict], zscore_threshold:float,
+                                results: dict, datahist:bool, Pars:object, MA:object):
+            if evtype not in ["avgevoked", "avgspont"]:
+                raise ValueError("Event type must be either avgevoked or avgspont")
 
-
-            for itrace in range(mdata.shape[1]):  # traces in the evtype list
-                if events is None or trial not in list(events.keys()):
+            data_for_hist = []
+            ave = []
+            minev = 0.0
+            maxev = 0.0
+            npev = 0
+            Res = { 'avedat':  None,
+                    'aved' :  None,
+                    'Amplitude' : None,
+                    'Amplitude2' : None,
+                    'tau1' : None,
+                    'tau2' : None, 
+                    'tau3' : None,
+                    'tau4' : None,
+                    'bfdelay' : None,
+                    'bestfit' : None,
+                    'tb' : None,
+                    'data_for_hist' : None,
+                    'minev' : 0.,
+                    'maxev' : 0.,
+            }
+            if events is None:
+                self.Res = Res
+                return
+                
+        
+            for trial in range(mdata.shape[0]):
+                CP.cprint("b", f"plotting events for trial: {trial:d}")
+                if events[trial] is None or len(events[trial].average.avgeventtb) == 0:
+                    CP.cprint("r", "**** plot_event_traces: no events....")
+                    continue
+                if trial not in list(events.keys()):
                     if self.verbose:
-                        print(f"     NO EVENTS in trace: {itrace:4d}")
+                        print(f"    Trial missing from data: {trial:4d}")
                     continue
-                if evtype == "avgevoked":
-                    evs = events[trial].evoked_event_trace_list[itrace]
-                elif evtype == "avgspont":
-                    evs = events[trial].spontaneous_event_trace_list[itrace]
-                else:
-                    continue
-                if evs is None or evs == [[],[]]:  # skip if there are NO event to plot from this trace
-                    if self.verbose:
-                        print(
-                            f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
-                        )
-                    continue
-                for j, jevent in enumerate(evs): 
-                    # evs is 2 element array: [0] are onsets and [1] is peak; here we align the traces to onsets
-                    event_id = (itrace, j)
-                    if event_id not in allevents.keys():
-                        continue
 
-                    evdata = allevents[event_id]
-                    # print("ipre: ", ipre, "ptfivems: ", ptfivems)
-                    bl = np.mean(evdata[0 : ptfivems]) # ipre - ptfivems])
-                    evdata -= bl
-                    if len(evdata) > 0:
-                        append = False
-                        if plot_minmax is not None:  # only plot events that fall in an ampltidue window
-                            if (np.min(evdata) < plot_minmax[0]) or (np.max(evdata) > plot_minmax[1]):
-                                continue # 
-                        # print(events[trial].isolated_event_trace_list)
-                        if event_id not in events[trial].isolated_event_trace_list: # exclude non-isolated events
-                            continue
-                        if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
-                            append = True
-                        # elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
-                        #     append=False
-                        else: # zscore_threshold == None:  # accept all comers.
-                            append = True
-                        if append:
-                            ave.append(evdata)
-                            npev += 1
-                        # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
-                            if datahist is None:
-                                datahist = np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
-                            else:
-                                datahist += np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
-                            data_for_hist.append(np.min(evdata))
-                            ax.plot(
-                                tb[: len(evdata)] * 1e3,
-                                scale * evdata,
-                                line[evtype],
-                                linewidth=0.15,
-                                alpha=0.25,
-                                rasterized=False,
+                tb0 = events[trial].average.avgeventtb  # get from the averaged trace
+                rate = events[trial].dt_seconds
+                tpost = np.max(tb0)
+                Res['tb'] = np.arange(0, tpost + rate, rate)
+                ptfivems = int(0.0005 / rate)
+                allevents = events[trial].allevents # dict with keys (trial, event) and values (event data)
+                event_indices = events[trial].all_event_indices
+                # check evoked and spontaneous event lists for overlap - there should be NONE
+                # print(events[trial].evoked_event_trace_list)
+                # for itrace in range(mdata.shape[1]):
+                #     eve = events[trial].evoked_event_trace_list[itrace]
+                #     evs = events[trial].spontaneous_event_trace_list[itrace]
+ 
+                #     print("\ntrace: ", itrace)
+                #     print("E:\n", eve)
+                #     print("S:\n", evs)
+                #     if len(np.where(np.array(evs) > 2000)[0]) > 0:
+                #         print("***********S***********")
+                #     if len(np.where(np.array(eve) < 2000)[0]) > 0:
+                #         print("***********E***********")
+
+                # exit()
+
+
+                for itrace in range(mdata.shape[1]):  # traces in this trial
+
+                    evevoked = events[trial].evoked_event_trace_list[itrace]
+                    eve_ids = [(itrace, j) for j in evevoked] # construct key for allevents
+                    evspont = events[trial].spontaneous_event_trace_list[itrace]
+                    # print("\nitr, sponts: ", itrace, evspont)
+                    # print("     evoked:  ", evevoked)
+                    # if itrace > 5:
+                    #     exit()
+                    evs_ids = [(itrace, j) for j in evspont] 
+                    evs = evevoked if evtype == "avgevoked" else evspont
+                    if evs is None or evs == [[]]:  # skip if there are NO event to plot from this trace
+                        if self.verbose:
+                            print(
+                                f"     NO EVENTS of type {evtype:10s} in trace: {itrace:4d}"
                             )
-                            minev = np.min([minev, np.min(scale * evdata)])
-                            maxev = np.max([maxev, np.max(scale * evdata)])
+                        continue
+                    used_ids = []
+                    # print(evtype)
 
-        nev = len(ave)
-        aved = np.asarray(ave)
-        if 0 in (len(aved), aved.shape[0],  nev):
-            if evtype == 'avgevoked':
-                evname = "evoked"
-            elif evtype == 'avgspont':
-                evname = "spontaneous"
+                    for j, jevent in enumerate(evs): 
+                        # evs is a list of lists of event onset indices in the current trace
+
+                        event_id = (itrace, evs[j])  # construct key for allevents
+                        if event_id in used_ids:
+                            continue  # just skip this event - it's already been plotted
+                            #raise ValueError(f"Event ID {event_id!s} has already been used")
+                        used_ids.append(event_id)
+                        # print("     event id: ", event_id)
+                        if event_id not in allevents.keys():
+                            print("   missing event onset id in allevents: ", event_id)
+                            continue
+
+                        evdata = allevents[event_id]
+                        # print("ipre: ", ipre, "ptfivems: ", ptfivems)
+                        bl = np.mean(evdata[0 : ptfivems]) # ipre - ptfivems])
+                        evdata -= bl
+                        if len(evdata) > 0:
+                            append = False
+                            if plot_minmax is not None:  # only plot events that fall in an ampltidue window
+                                if (np.min(evdata) < plot_minmax[0]) or (np.max(evdata) > plot_minmax[1]):
+                                    continue # 
+                            # print(events[trial].isolated_event_trace_list)
+                            if event_id not in events[trial].isolated_event_trace_list: # exclude non-isolated events
+                                continue
+                            if zscore_threshold is not None and np.max(results['ZScore'], axis=0)[itrace] > zscore_threshold and evtype == "avgspont":
+                                append = True
+                            # elif np.max(evdata[:int(len(evdata)/2)]) > 50e-12:
+                            #     append=False
+                            else: # zscore_threshold == None:  # accept all comers.
+                                append = True
+                            if append:
+                                ave.append(evdata)
+                                npev += 1
+                            # and only plot when there is data, otherwise matplotlib complains with "negative dimension are not allowed" error
+                                if datahist is None:
+                                    datahist = np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
+                                else:
+                                    datahist += np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
+                                data_for_hist.append(np.min(evdata))
+                                ax.plot(
+                                    Res['tb'][: len(evdata)] * 1e3,
+                                    scale * evdata,
+                                    line[evtype],
+                                    linewidth=0.15,
+                                    alpha=0.25,
+                                    rasterized=False,
+                                )
+                                Res['minev'] = np.min([Res['minev'], np.min(scale * evdata)])
+                                Res['maxev'] = np.max([Res['minev'], np.max(scale * evdata)])
+
+            nev = len(ave)
+            Res['aved'] = np.asarray(ave)
+            if 0 in (len(Res['aved']), Res['aved'].shape[0],  nev):
+                if evtype == 'avgevoked':
+                    evname = "evoked"
+                elif evtype == 'avgspont':
+                    evname = "spontaneous"
+                else:
+                    raise ValueError("plotMapData:plotAvgEventTraces: evtype not recognized: ", evtype)
+                PH.noaxes(ax)
+                ax.text(0.5, 0.5, f"No {evname:s} events", fontsize=12, ha="center", va="center")
+                return Res
+            
+            tx = np.broadcast_to(Res['tb'], (Res['aved'].shape[0], Res['tb'].shape[0])).T
+            if Pars.sign < 0:
+                Res['maxev'] = -Res['minev']
+            MA.set_sign(Pars.sign)
+            MA.set_dt_seconds(rate)
+            MA.set_datatype(datatype)
+            Res['avedat'] = np.mean(Res['aved'], axis=0)
+            Res['tb'] = Res['tb'][: len(Res['avedat'])]
+            avebl = 0 # np.mean(avedat[:ptfivems])
+            Res['avedat'] = Res['avedat'] - avebl
+            MA.fit_average_event(
+                Res['tb'],
+                Res['avedat'],
+                debug=False,
+                label="Map average",
+                inittaus=self.Pars.taus,
+                initdelay= tpre,
+            )
+            CP.cprint("c", "        Event fitting completed")
+
+
+            Res['Amplitude'] = np.max(MA.sign*Res['avedat'])
+            if MA.fitresult is not None:
+                Res['Amplitude1'] = MA.fitresult.values["amp"]
+                Res['Amplitude2'] = MA.fitresult.values["amp2"]
+                Res['tau1'] = MA.fitresult.values["tau_1"]
+                Res['tau2'] = MA.fitresult.values["tau_2"]
+                Res['tau3'] = MA.fitresult.values["tau_3"]
+                Res['tau4'] = MA.fitresult.values["tau_4"]
+                Res['bfdelay'] = MA.fitresult.values["fixed_delay"]
+                Res['bestfit'] = MA.avg_best_fit
             else:
-                raise ValueError("plotMapData:plotAvgEventTraces: evtype not recognized: ", evtype)
-            PH.noaxes(ax)
-            ax.text(0.5, 0.5, f"No {evname:s} events", fontsize=12, ha="center", va="center")
-            return
-        if self.verbose:
-            CP.cprint("red", f"aved shape is {str(aved.shape):s}")
-            return
-        tx = np.broadcast_to(tb, (aved.shape[0], tb.shape[0])).T
-        if self.Pars.sign < 0:
-            maxev = -minev
-        self.MA.set_sign(self.Pars.sign)
-        self.MA.set_dt_seconds(rate)
-        self.MA.set_datatype(datatype)
-        avedat = np.mean(aved, axis=0)
-        tb = tb[: len(avedat)]
-        avebl = 0 # np.mean(avedat[:ptfivems])
-        avedat = avedat - avebl
-        self.MA.fit_average_event(
-            tb,
-            avedat,
-            debug=False,
-            label="Map average",
-            inittaus=self.Pars.taus,
-            initdelay= tpre,
-        )
-        CP.cprint("c", "        Event fitting completed")
+                tau1=tau2=tau3=tau4 = 0.0
+                Res['Amplitude2'] = 0.0
+                Res['bfdelay'] = 0.0
+                Res['bestfit'] = None
 
+            return Res
 
-        Amplitude = np.max(self.MA.sign*avedat)
-        if self.MA.fitresult is not None:
-            Amplitude1 = self.MA.fitresult.values["amp"]
-            Amplitude2 = self.MA.fitresult.values["amp2"]
-            tau1 = self.MA.fitresult.values["tau_1"]
-            tau2 = self.MA.fitresult.values["tau_2"]
-            tau3 = self.MA.fitresult.values["tau_3"]
-            tau4 = self.MA.fitresult.values["tau_4"]
-            bfdelay = self.MA.fitresult.values["fixed_delay"]
-            bfit = self.MA.avg_best_fit
-        else:
-            tau1=tau2=tau3=tau4 = 0.0
-            Amplitude2 = 0.0
-            bfdelay = 0.0
-            bfit = None
+        Res = compute_event_fits(
+                evtype=evtype, mdata=mdata, events=events, zscore_threshold=zscore_threshold,
+                                results=results, datahist=datahist, Pars=self.Pars, MA=self.MA, 
+                                )
+        self.Res = Res
+
         # if self.Pars.sign == -1:
         #     amp = np.min(bfit)
         # else:
         #     amp = np.max(bfit)
-        txt = f"Amp: {scale*Amplitude:.1f}pA tau1:{1e3*tau1:.2f}ms tau2: {1e3*tau2:.2f}ms (N={aved.shape[0]:d} del={bfdelay:.4f})"
-        txt2 = f"Amp2: {scale*Amplitude2:.1f}pA tau3:{1e3*tau3:.2f}ms tau4: {1e3*tau4:.2f}ms (N={aved.shape[0]:d})"
 
-        if evtype == "avgspont" and events[0] is not None:
-            srate = float(aved.shape[0]) / (
-                events[0].spont_dur[0] * mdata.shape[1]
-            )  # dur should be same for all trials
-            txt += f" SR: {srate:.2f} Hz"
-        if events[0] is None:
-            txt = txt + "SR: No events"
-        ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
-        ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
-        if bfit is not None:
+        if Res['bestfit'] is not None and Res['avedat'] is not None:
+            txt = f"Amp: {scale*Res['Amplitude']:.1f}pA tau1:{1e3*Res['tau1']:.2f}ms tau2: {1e3*Res['tau2']:.2f}ms (N={Res['aved'].shape[0]:d} del={Res['bfdelay']:.4f})"
+            txt2 = f"Amp2: {scale*Res['Amplitude2']:.1f}pA tau3:{1e3*Res['tau3']:.2f}ms tau4: {1e3*Res['tau4']:.2f}ms (N={Res['aved'].shape[0]:d})"
+            if evtype == "avgspont" and events[0] is not None:
+                srate = float(Res['aved'].shape[0]) / (
+                    events[0].spont_dur[0] * mdata.shape[1]
+                )  # dur should be same for all trials
+                txt += f" SR: {srate:.2f} Hz"
+            if events[0] is None:
+                txt = txt + "SR: No events"
+            ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
+            ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
             ax.plot(
-                tb * 1e3,
-                scale * bfit,
+                Res['tb'] * 1e3,
+                scale * Res['bestfit'],
                 "c",
                 linestyle="-",
                 linewidth=0.35,
                 rasterized=self.rasterized,
             )
+            ax.plot(
+                Res['tb'] * 1e3,
+                scale * Res['avedat'],
+                line[evtype],
+                linewidth=0.625,
+                rasterized=self.rasterized,
+            )
         else:
             ax.text(0.05, 0.0, "fit to average failed", fontsize=6, transform=ax.transAxes)
-        ax.plot(
-            tb * 1e3,
-            scale * avedat,
-            line[evtype],
-            linewidth=0.625,
-            rasterized=self.rasterized,
-        )
+
 
         # finally, set the axis limits, then add cal bars
         
@@ -914,16 +1103,16 @@ class PlotMapData:
         #     ymax2 = -0.10*ymax
         # ax.set_ylim(-ymax2, ymax1)
 
-        if len(data_for_hist) > 10:  # only add if we have some data to plot
+        if Res['data_for_hist'] is not None and len(Res['data_for_hist']) > 10:  # only add if we have some data to plot
             marginal_ax = ax.inset_axes([1.0, 0, 0.05, 1], sharey=ax)
-            self.marginal_hist(ax, marginal_ax, np.array(data_for_hist)*scale, binwidth=5e-12*scale, color='k') # binwidth in pA if data in pA
+            self.marginal_hist(ax, marginal_ax, np.array(Res['data_for_hist'])*scale, binwidth=5e-12*scale, color='k') # binwidth in pA if data in pA
 
 
-        if evtype == "avgspont":
+        if evtype == "avgspont" and Res['tb'] is not None and Res['avedat'] is not None:
             PH.calbar(
                 ax,
                 calbar=[
-                    np.max(tb*1e3) - 2.0,
+                    np.max(Res['tb']*1e3) - 2.0,
                     ylims[0],
                     2,
                     self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0),
@@ -935,14 +1124,14 @@ class PlotMapData:
                 weight="normal",
                 font="Arial",
             )
-        elif evtype == "avgevoked":
+        elif evtype == "avgevoked" and Res['tb'] is not None and Res['avedat'] is not None:
             PH.calbar(
                 ax,
                 calbar=[
-                    np.max(tb*1e3) - 2.0,
+                    np.max(Res['tb']*1e3) - 2.0,
                     ylims[0],
                     2,
-                    self.get_calbar_Yscale(maxev / 4.0),
+                    self.get_calbar_Yscale(Res['maxev'] / 4.0),
                 ],
                 axesoff=True,
                 orient="right",
@@ -980,7 +1169,7 @@ class PlotMapData:
         if mdata is None:
             return
         while mdata.ndim > 1:
-            mdata = mdata.mean(axis=0)
+            mdata = mdata.copy().mean(axis=0)
         print("plot_average_traces, pars: ", self.Pars)
         if len(tb) > 0 and len(mdata) > 0:
             ax.plot(
@@ -1183,16 +1372,16 @@ class PlotMapData:
         pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
-        # make sure the key markers are on the plot
-        for marker in markers:
-            if marker not in ['soma', 'surface', 'medialborder', 'lateralborder', 'AN', 'rostralborder', 'caudalborder',
-                              'ventralborder', 'dorsalborder']:
-                continue
-            if markers[marker] is not None and len(markers[marker]) >= 2:
-                position = markers[marker]
-                msize = 20e-6
-                xlim = [np.min([xlim[0], position[0]-msize]), np.max([xlim[1], position[0]+msize])]
-                ylim = [np.min([ylim[0], position[1]-msize]), np.max([ylim[1], position[1]+msize])]
+        # make sure the keys are on the plot
+        # for marker in markers:
+        #     if marker in all_markernames:
+        #         if markers[marker] is not None and len(markers[marker]) >= 2:
+        #             position = markers[marker]
+        #             msize = 20e-6
+        #             xlim = [np.min([xlim[0], position[0]-msize]), np.max([xlim[1], position[0]+msize])]
+        #             ylim = [np.min([ylim[0], position[1]-msize]), np.max([ylim[1], position[1]+msize])]
+
+
         sign = measure["sign"]
 
         upscale = 1.0
@@ -1204,8 +1393,8 @@ class PlotMapData:
 
             vmax = np.max(np.max(measure[measuretype]))
             vmin = np.min(np.min(measure[measuretype]))
-            if vmax < 6.0:
-                vmax = 6.0  # force a fixed minimum scale
+            if vmax < 8.0:
+                vmax = 8.0  # force a fixed minimum scale
             scaler = PH.NiceScale(0.0, vmax)
             vmax = scaler.niceMax
 
@@ -1405,28 +1594,66 @@ class PlotMapData:
                     if npos > 1:
                         ri += rs
 
-        if cellmarker:
-            CP.cprint("yellow", "Cell marker is plotted")
-            axp.plot(
-                [-cmrk, cmrk], [0.0, 0.0], "-", color="r"
-            )  # cell centered coorinates
-            axp.plot(
-                [0.0, 0.0], [-cmrk, cmrk], "-", color="r"
-            )  # cell centered coorinates
-        mark_colors = {'soma': 'y', 'surface': 'c', 'medialborder': 'r', 'lateralborder': 'm', 'AN': 'g', 
-                       'rostralborder': 'r', 'caudalborder': 'm', 'ventralborder': 'b', 'dorsalborder': 'g'}
-        mark_symbols = {'soma': '*', 'surface': 'v', 'medialborder': '^', 'lateralborder': 's', 'AN': 'D',
-                        'rostralborder': '>', 'caudalborder': '<', 'ventralborder': '2', 'dorsalborder': '1'}
-        if markers is not None:
+        # if cellmarker:
+        #     CP.cprint("yellow", "Cell marker is plotted")
+        #     axp.plot(
+        #         [-cmrk, cmrk], [0.0, 0.0], "-", color="r"
+        #     )  # cell centered coorinates
+        #     axp.plot(
+        #         [0.0, 0.0], [-cmrk, cmrk], "-", color="r"
+        #     )  # cell centered coorinates
+
+        markers_complete = True
+        if markers is not None and len(markers.keys()) > 0:
             for marktype in markers.keys():
                 if marktype not in mark_colors.keys():
+                    markers_complete = False
                     continue
                 position = markers[marktype]
+                if marktype in ['soma']:
+                    markersize=8
+                elif marktype.startswith(('dorsal', 'rostral', 'caudal', 'ventral', 'medial', 'lateral')):
+                    markersize=3
+                else:
+                    markersize = 4
                 if position is not None and len(position) >= 2:
                     axp.plot([position[0], position[0]],
                             [position[1], position[1]],
                             marker = mark_symbols[marktype], color=mark_colors[marktype], 
-                            markersize=8, alpha=0.8)
+                            markersize=markersize, alpha=0.7)
+            pcoors:list = []
+            for marker in ["rostralborder", "medialborder", "caudalborder", "caudalsurface", "surface", "rostralsurface"]:
+                if marker in markers.keys():
+                    pcoors.append(tuple(markers[marker]))
+                else:
+                    print("marker : ", marker, " not found in markers")
+                    markers_complete = False
+                    continue
+            if len(pcoors) > 0 and markers_complete:
+                self.marker_poly = shapely.geometry.Polygon(np.array(pcoors))
+                # patch = descartes.PolygonPatch(self.marker_poly, fc=None, ec='red', alpha=0.5, zorder=2)
+                pcoors.append(pcoors[0])
+                pcoors_x = [x[0] for x in pcoors]
+                pcoors_y = [x[1] for x in pcoors]
+
+                tck, _ = scipy.interpolate.splprep([pcoors_x, pcoors_y], s = 0, per = True)
+                xx, yy = scipy.interpolate.splev(np.linspace(0, 1, 100), tck, der = 0)
+                axp.plot(xx, yy, 'g-', lw=0.75, zorder=2)
+                smoothed_poly = [(xx[i], yy[i]) for i in range(len(xx))]
+                self.smoothed_poly = shapely.geometry.Polygon(smoothed_poly)
+                medialpt = shapely.geometry.Point(markers["medialborder"])
+                lateralpt = shapely.geometry.Point(markers["surface"])
+                self.medial_lateral_distance = medialpt.distance(lateralpt)*UR.m
+                area = self.smoothed_poly.area*UR.m*UR.m
+                rostralpt = shapely.geometry.Point(markers["rostralborder"])
+                caudalpt = shapely.geometry.Point(markers["caudalborder"])
+                self.rostral_caudal_distance = rostralpt.distance(caudalpt)*UR.m
+                UR.define("mm = 1e-3 * m")
+                UR.define("um = 1e-6 * m")
+                print(f"Smoothed Polygon Slice area: {area.to(UR.mm*UR.mm):L.4f}")
+                area_txt = f"Area={area.to(UR.mm*UR.mm):P5.3f} D={self.medial_lateral_distance.to(UR.um):P5.1f} RC={self.rostral_caudal_distance.to(UR.um):P5.1f}"
+                axp.text(s=area_txt, x=1.0, y=-0.05, transform=axp.transAxes, ha='right', va='bottom', fontsize=8, color='k')
+
         tickspace = scaler.tickSpacing
         try:
             ntick = 1 + int(vmax / tickspace)
@@ -1616,8 +1843,10 @@ class PlotMapData:
                     ("C1", {"pos": [0.07, 0.3, 0.31, 0.125]}),
                     ("C2", {"pos": [0.07, 0.3, 0.16, 0.125]}),
                     ("D", {"pos": [0.07, 0.3, 0.05, 0.075]}),
-                    ("E", {"pos": [0.47, 0.45, 0.2, 0.75]}),
-                    ("F", {'pos': [0.47, 0.45, 0.05, 0.18]}),
+                    ("E", {"pos": [0.47, 0.45, 0.40, 0.53]}),
+                    ("F", {'pos': [0.47, 0.45, 0.18, 0.22]}),
+                    ("G", {'pos': [0.47, 0.45, 0.05, 0.10]}),
+                    
                 ]
             )
             scale_bar = "A1"
@@ -1630,6 +1859,7 @@ class PlotMapData:
             slice_image_panel = None
             cell_image_panel = None
             average_panel = "F"
+            average_panel_2 = "G"
 
         elif plotmode == "publication":
             label_fsize = 16
@@ -1656,6 +1886,7 @@ class PlotMapData:
             slice_image_panel = 'A1'
             cell_image_panel = 'A2'
             average_panel = None
+            average_panel_2 = None
         # self.panelmap = panelmap
         self.panels = {'scale_bar': scale_bar,
                         'trace_panel': trace_panel,
@@ -1667,6 +1898,7 @@ class PlotMapData:
                         'slice_image_panel': slice_image_panel,
                         'cell_image_panel': cell_image_panel,
                         'average_panel': average_panel,
+                        'average_panel_2': average_panel_2,
                     }
         self.P = PH.Plotter(self.plotspecs, label=False, fontsize=10, figsize=(10.0, 8.0))
 
@@ -1726,46 +1958,121 @@ class PlotMapData:
             )  # stacked on right
             trpanel = "E"
             if self.panels["average_panel"] is not None:
-                avedata = np.squeeze(np.mean(self.Data.data_clean, axis=0))
-                if avedata.ndim > 1:
-                    avedata = np.mean(avedata, axis=0)
+                # select only traces with a response (by ZScore) for the average
+                # Which repsonse to use depends on the stimulus protocol
+                # for the "_increase_" protocols, the response to the last stimulus is the one to use
+                # otherwise we will use the first response.
+                protoname = Path(results['dataset']).name
+                if protoname.find("_increase_") > 0:
+                    nstim = len(results['stimtimes']['starts'])-1
+                else:
+                    nstim = 0
                 dt = np.mean(np.diff(self.Data.timebase))
-                self.P.axdict[self.panels["average_panel"]].plot(self.Data.raw_timebase, self.Data.raw_data_averaged,
+                ibl_max = int((results['stimtimes']['starts'][nstim]-self.Pars.time_zero)/dt)
+                first_stim_time = results['stimtimes']['starts'][nstim]-self.Pars.time_zero
+                bl_dur = 0.010
+                first_stim_onset = first_stim_time - bl_dur # 20 msec before stim
+                first_stim_dur = 0.05 # just 50 msec to show
+
+                timebase = np.arange(0.0, first_stim_dur+bl_dur, dt)
+                responding_points = np.where(results['ZScore'][nstim] > zscore_threshold)[0]  # which response depends on protocol
+                print("responding_points: ", responding_points)
+                if len(responding_points) > 0:
+                    avedata = np.squeeze(np.mean(self.Data.data_clean[0, responding_points], axis=0))
+                    if avedata.ndim > 1:
+                        avedata = np.mean(avedata, axis=0)
+                    pcolor = 'k'
+                else:  # plot a grand mean, but use different color when there is NO response
+                    avedata = np.squeeze(np.mean(self.Data.data_clean, axis=0))
+                    if avedata.ndim > 1:
+                        avedata = np.mean(avedata, axis=0)
+                    pcolor = 'b'
+
+                bl = np.mean(avedata[:ibl_max])
+                bli = bl*np.ones(ibl_max)
+                avedata -= bl
+                it_beg = int((first_stim_onset)/dt)
+                it_end = int((first_stim_onset+first_stim_dur)/dt)
+                t_end = timebase[it_end-it_beg]
+                # the full trace
+                if self.panels["average_panel_2"] is not None:
+                    PH.referenceline(self.P.axdict[self.panels["average_panel_2"]], 0.0)
+ 
+                    self.P.axdict[self.panels["average_panel_2"]].plot((self.Data.timebase-self.Pars.time_zero),
+                                                                 self.Data.raw_data_averaged,
                                                                 'r-', linewidth=0.2, alpha=0.3)
-                self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase-self.Pars.time_zero), avedata, 'k-', alpha=1, linewidth=0.2)
+                    self.P.axdict[self.panels["average_panel_2"]].plot((self.Data.timebase-self.Pars.time_zero), 
+                                                                 avedata, color='k', alpha=1, linewidth=0.5)
+                    self.P.axdict[self.panels["average_panel_2"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
+                    cal_height_2 = None# pA
+                    ylims_2 = self.P.axdict[self.panels["average_panel_2"]].get_ylim()
+                    if cal_height_2 is None:
+                        cal_height_2 = self.get_calbar_Yscale((np.fabs(ylims_2[1] - ylims_2[0]) / 4.0)*1e12)*1e-12
+                    else:
+                        cal_height_2 = 1e-12*cal_height_2
+                    PH.calbar(
+                        self.P.axdict[self.panels["average_panel_2"]],
+                        calbar=[
+                            (self.Data.timebase[-1]-self.Pars.time_zero),
+                            ylims_2[0]*0.9,
+                            0.050,
+                            cal_height_2,
+                        ],
+                        scale=[1e3, 1e12],
+                        axesoff=True,
+                        orient="right",
+                        unitNames={"x": "ms", "y": "pA"},
+                        fontsize=11,
+                        weight="normal",
+                        font="Arial",
+                    )
+                    tmm = results['stimtimes']['starts'][0]-self.Pars.time_zero
+                    self.plot_timemarker(self.P.axdict[self.panels["average_panel_2"]], zerotime=self.Pars.time_zero)
+            
+                # the average trace with responding EPSCs for the first stimulus (or last stimulus...)
+                for i in range(len(responding_points)):
+                    bln = np.mean(self.Data.data_clean[0, responding_points[i]][:ibl_max])
+                    self.P.axdict[self.panels["average_panel"]].plot(timebase[:(it_end-it_beg)], # self.Pars.time_zero), 
+                                                                 self.Data.data_clean[0, responding_points[i]][it_beg:it_end],
+                                                                 color='g', alpha=0.5, linewidth=0.2)
+                self.P.axdict[self.panels["average_panel"]].plot(timebase[:(it_end-it_beg)], # self.Pars.time_zero), 
+                                                                 avedata[it_beg:it_end], color=pcolor, alpha=1, linewidth=0.2)
+                # self.P.axdict[self.panels["average_panel"]].plot((self.Data.timebase[:ibl_max]-self.Pars.time_zero), 
+                #                                                  bli, color='m', alpha=0.5, linewidth=2)
 
-                self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, (self.Pars.time_end - self.Pars.time_zero-0.001))
+                self.P.axdict[self.panels["average_panel"]].set_xlim(0.0, t_end) # (self.Pars.time_end - self.Pars.time_zero-0.001))
 
-                # self.P.axdict[self.panels["average_panel"]].set_ylabel("Ave I (pA)")
-                # self.P.axdict[self.panels["average_panel"]].set_xlabel("T (msec)")
                 PH.noaxes(self.P.axdict[self.panels["average_panel"]])
-                ntraces = self.Data.data_clean.shape[0]
+                ntraces = self.Data.data_clean.shape[1]
                 cal_height = None# pA
                 ylims = self.P.axdict[self.panels["average_panel"]].get_ylim()
-    #            print(ylims, np.fabs(ylims[1] - ylims[0]))
-                if cal_height == None:
+                if cal_height is None:
                     cal_height = self.get_calbar_Yscale((np.fabs(ylims[1] - ylims[0]) / 4.0)*1e12)*1e-12
                 else:
                     cal_height = 1e-12*cal_height
-
+                txt = f"N > Zscore({zscore_threshold:6.2f}) : {len(responding_points):d} / {ntraces:d}"
+                self.P.axdict[self.panels["average_panel"]].text(0.0, 0.95, txt, 
+                                                                transform=self.P.axdict[self.panels["average_panel"]].transAxes,
+                                                                  fontsize=8)
                 PH.calbar(
                     self.P.axdict[self.panels["average_panel"]],
                     calbar=[
-                    self.Pars.time_end - 0.1,
+                    t_end-0.010,
                     ylims[0]*0.9,
-                    0.05,
-                    cal_height
+                    0.010,
+                    cal_height,
                     ],
                     scale=[1e3, 1e12],
                     axesoff=True,
-                    orient="left",
+                    orient="right",
                     unitNames={"x": "ms", "y": "pA"},
                     fontsize=11,
                     weight="normal",
                     font="Arial",
                 )
-                PH.referenceline(self.P.axdict[self.panels["average_panel"]], np.mean(avedata[:20]))
-                self.plot_timemarker(self.P.axdict[self.panels["average_panel"]])
+                PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.0)
+                self.plot_timemarker(self.P.axdict[self.panels["average_panel"]], zerotime=first_stim_onset)
+
         elif plotmode is "publication":
             # plot average of all the traces for which score is above threshold
             # and amplitude is in a specified range (to eliminate spikes)
@@ -1838,6 +2145,10 @@ class PlotMapData:
             label=label,
             rasterized=rasterized,
         )
+        # now grab the fit results and save them to the events file.
+        self.evoked_events = self.Res
+
+
         self.plot_event_traces(
             evtype="avgspont",
             mdata=self.Data.data_clean,
@@ -1852,6 +2163,7 @@ class PlotMapData:
             label=label,
             rasterized=rasterized,
         )
+        self.spont_events = self.Res
 
         if self.Data.photodiode is not None and not "LED" in str(dataset.name):
             if len(self.Data.photodiode_timebase) > 0:
@@ -1881,4 +2193,5 @@ class PlotMapData:
 
         
         # mpl.show()
+        # exit()
         return True  # indicated that we indeed plotted traces.
