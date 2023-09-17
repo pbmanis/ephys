@@ -166,9 +166,9 @@ def SignalFilterLPF_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce
 
 def SignalFilterHPF_SOS(signal, HPF:float, samplefreq:float, NPole:int=4):
     # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
-    flpf = float(LPF)
+    fhpf = float(HPF)
     sf = float(samplefreq)
-    wn = [flpf/(sf/2.0)]
+    wn = [fhpf/(sf/2.0)]
     nyqf = 0.5 * len(signal)/ sf
     if HPF < 1.0 / nyqf:  # duration of a trace
         raise ValueError(f"SignalFilterHPF_SOS: Nyquist violation")
@@ -232,7 +232,7 @@ def NotchFilterZP(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
         Qf = Q * np.ones(len(notchf))  # all Qf are the same (so bandwidth varies)
     for i, f0 in enumerate(notchf):
         b, a = spSignal.iirnotch(notchf[i], Qf[i], samplefreq)
-        signal = spSignal.filtfilt(b, a, signal) # , zi=None)
+        signal = spSignal.lfilter(b, a, signal) # , zi=None)
     return signal
 
 
