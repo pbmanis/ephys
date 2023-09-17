@@ -12,6 +12,7 @@ Description:
     we calculate the probability that the event times could have been generated
     by a poisson process. 
     
+    Here are some scenarios we need to consider:
     
     (1) Obvious, immediate rate change
     
@@ -86,6 +87,7 @@ def poissonProb(n: int, t: float, l: float, clip: bool = False) -> float:
     """
     For a poisson process, return the probability of seeing at least *n* events in *t* seconds given
     that the process has a mean rate *l*.
+    If the mean rate l == 0, then the probability is 1.0 if n==0 and 1e-25 otherwise.
     
     Parameters
     ----------
@@ -104,15 +106,21 @@ def poissonProb(n: int, t: float, l: float, clip: bool = False) -> float:
     if l == 0:
         if np.isscalar(n):
             if n == 0:
+                print("l=0, scalar n = 0")
                 return 1.0
             else:
+                print("l=0, scalar n > 0")
                 return 1e-25
         else:
+            print("not scalar, return array")
             return np.where(n == 0, 1.0, 1e-25)
-
     p = stats.poisson(l * t).sf(n)
     if clip:
         p = np.clip(p, 0, 1.0 - 1e-25)
+    # print("SCORE: ", p)
+    # ts = np.where(p < 0.01)[0]
+    # print(ts)
+    # print(t[ts])  # could use to mark where unexpected events occur
     return p
 
 
@@ -141,7 +149,7 @@ class PoissonScore:
     normalizationTable = None
 
     @classmethod
-    def score(cls, ev, rate:float, tMax:float=None, normalize:bool=True, **kwds):
+    def score(cls, ev, rate:Union[float, np.ndarray], tMax:float=None, normalize:bool=True, **kwds):
         """
         Compute poisson score for a set of events.
         ev must be a list of record arrays. Each array describes a set of events; only required field is 'time'
@@ -150,8 +158,7 @@ class PoissonScore:
         nSets = len(ev)
         events = np.concatenate(ev)
         pi0 = 1.0
-        if not np.isscalar(rate):  ### Is this valid???  I think so..
-            rate = np.mean(rate)
+        if isinstance(rate, np.ndarray):            rate = np.mean(rate)
 
         if len(events) == 0:
             score = 1.0
@@ -161,7 +168,7 @@ class PoissonScore:
             ev = events["time"]
 
             nVals = np.array(
-                [(ev <= t).sum() - 1 for t in ev]
+                [(ev <= t).sum() - 1.0 for t in ev]
             )  ## looks like arange, but consider what happens if two events occur at the same time.
             pi0 = poissonProb(
                 nVals, ev, rate * nSets
@@ -170,7 +177,7 @@ class PoissonScore:
             try:
                 pi = 1.0 / pi0
             except:
-                print("pi0: ", pi0)
+                print("poisson_score:score: pi0: ", pi0)
                 pi = 1
             ## apply extra score for uncommonly large amplitudes
             ## (note: by default this has no effect; see amplitudeScore)
@@ -239,6 +246,7 @@ class PoissonScore:
             else:
                 s = (x - x1) / float(x2 - x1)
             mapped1.append(y1 + s * (y2 - y1))
+        mapped1 = sorted(mapped1)
         mapped = mapped1[0] + (mapped1[1] - mapped1[0]) * (nind - n1) / float(n2 - n1)
 
         ## doesn't handle points outside of the original data.
@@ -248,6 +256,7 @@ class PoissonScore:
         # mapped = spline.ev(n, x)[0]
         # raise Exception()
         assert not (np.isinf(mapped) or np.isnan(mapped))
+        # print("mapped: ", mapped, mapped1)
         assert mapped > 0
         return mapped
 
@@ -447,7 +456,8 @@ class PoissonRepeatScore:
     @classmethod
     def score(cls, ev, rate, tMax=None, normalize=True, **kwds):
         """
-        Given a set of event lists, return probability that a poisson process would generate all sets of events.
+        Given a set of event lists and a background (spontaneous) rate,
+        return probability that a poisson process would generate all sets of events.
         ev = [
         [t1, t2, t3, ...],    ## trial 1
         [t1, t2, t3, ...],    ## trial 2
@@ -463,7 +473,8 @@ class PoissonRepeatScore:
 
         if np.isscalar(rate):
             rate = [rate] * nSets
-
+        if len(rate) != len(events):
+            raise ValueError("poisson_score:score:: rate must have same length as ev")
         ev2 = []
         for i in range(len(ev)):
             arr = np.zeros(len(ev[i]), dtype=[("trial", int), ("time", float)])
@@ -503,7 +514,7 @@ class PoissonRepeatScore:
             assert not np.isnan(ret)
         else:
             assert not any(np.isnan(ret))
-
+        print("ret: ", ret)
         return ret
 
     @classmethod
