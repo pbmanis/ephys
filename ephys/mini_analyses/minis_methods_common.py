@@ -170,18 +170,6 @@ class MiniAnalyses:
         else:
             raise ValueError("Risepower must be 0 < n <= 8")
 
-    # def set_notch(self, notches):
-    #     if isinstance(nothce, float):
-    #         notches = [notches]
-    #     elif isinstance(notches, None):
-    #         self.notch = None
-    #         self.Notch_applied = False
-    #         return
-    #     elif isinstance(notches, list):
-    #         self.notch = notches
-    #     else:
-    #         raise ValueError("set_notch: Notch must be list, float or None")
-
     def _make_template(self, timebase: np.ndarray):
         """Private function: make template when it is needed
 
@@ -539,6 +527,7 @@ class MiniAnalyses:
         #    We do this first so that we don't filter the artifacts (which could make them wider)
         #    And we don't want to have to recalculate their times after cliping the analysis window
         #
+        up_freq = 3.0
         filters_applied:str = ""
         if pars.artifact_suppression and pars.artifact_filename is not None:
             print("artifact scale: ", pars.artifact_scale)
@@ -553,18 +542,18 @@ class MiniAnalyses:
                 artlen = len(artdata)
                 if artlen < data.shape[1]:
                     artdata = np.pad(artdata, (0, data.shape[1]-artlen), 'constant', constant_values=artdata[-1])
-                up = 10.0
-                dt_upscale = self.dt_seconds/up
-                tb_high = np.arange(0.0, up*data.shape[1] * dt_upscale, dt_upscale)
-                newpts = int(len(artdata)*up)-20
+
+                dt_upscale = self.dt_seconds/up_freq
+                tb_high = np.arange(0.0, up_freq*data.shape[1] * dt_upscale, dt_upscale)
+                newpts = int(len(artdata)*up_freq)-20
                 art = OSI.lanczos_interpolation(artdata-artdata[0], 0., self.dt_seconds, 0., dt_upscale,
                          new_npts= newpts,
                           a=20, window="lanczos")
-                newptsd = int(len(data[0,:])*up)-20
+                newptsd = int(len(data[0,:])*up_freq)-20
                 for i in range(data.shape[0]):
                     data[i,:] = data[i,:] - data[i,0]
 
-                dx = np.zeros((data.shape[0], int(data.shape[1]*up)-20))
+                dx = np.zeros((data.shape[0], int(data.shape[1]*up_freq)-20))
                 for i in range(data.shape[0]):
                     dx[i,:] = OSI.lanczos_interpolation(data[i,:], 0., self.dt_seconds, 0., dt_upscale,
                          new_npts= newptsd,
@@ -622,7 +611,7 @@ class MiniAnalyses:
 
                 diff = dx - art*ascale_SA  # apply to entire artifact trace
                 # diff = self.LPFData(diff) # filter the data
-                diff = scipy.signal.decimate(diff, int(up), axis=1)  # downscale back to original sampling rate
+                diff = scipy.signal.decimate(diff, int(up_freq), axis=1)  # downscale back to original sampling rate
                 diff = np.pad(diff, ((0, 0), (0, len(timebase)-diff.shape[1])), 'constant', constant_values=0.)
                 data = diff
 
@@ -1054,7 +1043,7 @@ class MiniAnalyses:
         first_stim_only: bool = False,  # only select events from the first stim in a train
         first_event_in_stim_only: bool = False,  # only select the first event in response to each selected stimulus
         debug: bool = False,
-    ) -> list:
+    ) -> (list, list):
         """
         return indices where the input index is outside (or inside) a set of time windows.
         tstarts is a list of window starts
@@ -1071,24 +1060,33 @@ class MiniAnalyses:
         npk = []
         rejectlist = []
 
-        tri:np.array = np.ndarray(0).astype(int)
+        tri:np.array = np.ndarray(0).astype(int) # indices from the event indices list
+        tre:np.array = np.ndarray(0).astype(int) # indices into the event indices list
         for (
             t_ev
         ) in twin:  # find events in all response windows
-            in_stim_indices = np.where(
+            in_win_indices = np.where(
                             (tb[event_indices] >= t_ev[0]) & (tb[event_indices] < t_ev[1])
                         )[0].astype(int)
-            if len(in_stim_indices) > 0:
+            if len(in_win_indices) > 0:
                 tri = np.concatenate(
                     (
                         tri.copy(),
                         [event_indices[x] for x in 
-                            in_stim_indices
+                            in_win_indices
                         ],
                     ),
                     axis=0,
                 ).astype(int)
-        return tri
+                tre = np.concatenate(
+                    (
+                        tre.copy(),
+                        in_win_indices,
+                    ),
+                    axis=0,
+                ).astype(int)
+        return tri, tre
+    
         # ts2i = list(
         #     set(smpki)
         #     - set(tri.astype(int)).union(set(tsi))
@@ -1297,7 +1295,7 @@ class MiniAnalyses:
         avgnpts = npre + nevent_post_time  # points for the average
         avgeventtb = np.arange(avgnpts) * self.dt_seconds
         n_events = sum([len(events) for events in summary.onsets])
-        allevents:Dict = {}  # np.zeros((n_events, avgnpts))
+        allevents:Dict = {}  # keys are (itrace, ievent)
         allevents_onsets:Dict = {}
         allevents_baseline:Dict = {}
         event_onset_times:Dict = {}
@@ -1508,12 +1506,14 @@ class MiniAnalyses:
                 initdelay=self.template_pre_time,
                 debug=False,
             )
-            print("fit: ", self.fitted_tau1, self.fitted_tau2, self.amplitude, self.amplitude2, self.avg_fiterr)
+            print(f"Averaged event fit:\n")
+            print(f"   tau1: {self.fitted_tau1:.3e}, tau2: {self.fitted_tau2:.3e}, A: {self.amplitude*1e12:.2f} pA, A2:{self.amplitude2*1e12:.2f} pA, err: {self.avg_fiterr:.4g}")
             summary.average.fitted_tau1 = self.fitted_tau1
             summary.average.fitted_tau2 = self.fitted_tau2
             summary.average.fitted_tau3 = self.fitted_tau3
             summary.average.fitted_tau4 = self.fitted_tau4
             summary.average.fitted_tau_ratio = self.fitted_tau_ratio
+            summary.average.fitted = self.fitted
             summary.average.best_fit = self.avg_best_fit
             summary.average.amplitude = self.amplitude
             summary.average.amplitude2 = self.amplitude2
@@ -2059,10 +2059,10 @@ class MiniAnalyses:
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
         if self.datatype in ["V", "VC"]:
-            tau1min = tau1 / 4.0
-            tau1max = tau1 * 2.0
-            if tau1min < self.dt_seconds:
-                tau1min = self.dt_seconds
+            tau1min = self.dt_seconds
+            tau1max = tau1 * 3.0
+            if tau1min < self.dt_seconds/2.0:
+                tau1min = self.dt_seconds/2.0
 
             tau2min = tau2 / 2.0
             tau2max = tau2 * 5.0
