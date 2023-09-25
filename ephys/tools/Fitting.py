@@ -328,6 +328,16 @@ class Fitting:
                 None,
                 None,
             ),
+            "Hill": (
+                self.Hill,
+                [100., 0.5e-9, 2], # fmax, ic50, n
+                2000,
+                'k',
+                [0, 1e-10, 2.5], # [fmax, ic50, n]  # test values
+                ["Fmax", "IC50", "n"],
+                None,
+                None,
+            )
         }
         self.fitSum2Err = 0.0
 
@@ -555,6 +565,27 @@ class Fitting:
             else:
                 return y - yd
 
+    def Hill(self, p, x, y=None, C=None, sumsq=False, weights=None):
+        """
+        Hill function
+        p[0] is Fmax (maximal value)
+        p[1] is IC50 (point at half max)
+        p[2] is n (power/cooperativity)
+
+        """
+        # only for x > 0
+        xn = np.where(x > 0)[0]
+        yd = np.zeros_like(x)
+        yd[xn] = p[0] / (1.0 + (p[1]/x[xn])**p[2])
+        if y is None:
+            return yd
+        else:
+            if sumsq is True:
+                return np.sum((y - yd)**2.0)
+            else:
+                return y - yd
+            
+
     def lineeval(self, p, x, y=None, C=None, sumsq=False, weights=None):
         yd = p[0] * x + p[1]
         if y == None:
@@ -641,7 +672,7 @@ class Fitting:
         """
         Frequency versus current intensity (FI plot) fit
         Linear fit from 0 to breakpoint
-        exponential growth thereafter
+        (1-exponential) saturating growth thereafter
         weights is a function! :::
         Parameter p is a list containing: [Fzero, Ibreak, F1amp, F2amp, Irate]
         for I < break:
@@ -651,12 +682,13 @@ class Fitting:
         """
         Fzero, Ibreak, F1amp, F2amp, Irate = p
         if Ibreak == 0.0:
-            Ibreak = 0.001
+            Ibreak = np.mean(np.diff(x))
         yd = np.zeros(x.shape)
-        m1 = x < Ibreak
+        m1 = np.where((x < Ibreak) & (x > 0.))[0]
         m2 = x >= Ibreak
         yd[m1] = Fzero + x[m1] * F1amp / Ibreak
         maxyd = np.max(yd)
+        # print("ibreak, Irate, maxyd: ", Ibreak, Irate, maxyd, x[m2]*1e9)
         yd[m2] = F2amp * (1.0 - np.exp(-(x[m2] - Ibreak) * Irate)) + maxyd
         if y is None:
             return yd
@@ -709,11 +741,13 @@ class Fitting:
 
     def FIPower(self, p, x, y=None, C=None, sumsq=False, weights=None):
         # fit a sublinear power function to FI curve (just spiking part)
+        # y = c + s*x^d
         c, s, d = p  # unpack
         m = x < c / s
         n = x >= c / s
         yd = np.zeros(x.shape[0])
         b = s * x[n] - c
+        print("b,d: ", c, s, d, np.max(b), d)
         if all(b >= 0.1):
             yd[n] = np.power(b, d)
 
