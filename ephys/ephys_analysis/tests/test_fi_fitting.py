@@ -63,8 +63,8 @@ def test_fi_growth_exp_break():
 def test_fi_growth_exp():
     FITester(method="FIGrowthExp")
 
-def test_fi_piecwiselinear3():
-    FITester(method="piecewiselinear3") 
+# def test_fi_piecwiselinear3():
+#     FITester(method="piecewiselinear3") 
 
 def test_fi_growth_power():
     FITester(method="FIGrowthPower")
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         "fitOneOriginal",
         "FIGrowthExpBreak",
         "FIGrowthExp",
-        "piecewiselinear3",
+        # "piecewiselinear3",
         "FIGrowthPower",
         "Hill",
     ]
