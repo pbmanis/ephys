@@ -229,7 +229,7 @@ def make_iv_data():
     x1 = int(pars.tstart/dt)
     x2 = int(pars.tend/dt)
     x_vc = np.arange(-100, 41, 10)*1e-3
-    x_ic = np.arange(-2e-9, 2.01e-9, 5e-10)
+    x_ic = np.arange(-2e-9, 2.01e-9, 1e-10)
     if mode == 'ic':
         x = x_ic
         cmd = np.zeros((len(x), npts))
