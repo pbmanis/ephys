@@ -52,7 +52,7 @@ def printPars(pars):
 # these are the tests that will be run automagically
 
 def test_spikes_Kalluri():
-    SpikeTester(method="Kalluri")  # default method
+    SpikeTester(method="Kalluri", plot=True)  # default method
 
 def test_spikes_argrelmax():
     SpikeTester(method="argrelmax")
@@ -114,15 +114,15 @@ def run_spike_tester(method="Kalluri", plot:bool=False):
     return spksh
 
 class SpikeTester(UserTester):
-    def __init__(self, method="Kalluri", extra=None):
+    def __init__(self, method="Kalluri", extra=None, plot:bool=False):
         self.TM = None
         self.figure = None
         UserTester.__init__(self,  "%s_%s" % (method, "spikeshape"), method)
         # UserTester.__init__(self, "%s_%s" % (method, extra), method)
         # if you want to store different results by the "extra" parameter
 
-    def run_test(self, method):
-        test_result = run_spike_tester(method=method)
+    def run_test(self, method, plot:bool=False):
+        test_result = run_spike_tester(method=method, plot=plot)
 
         if "figure" in list(test_result.keys()):
             self.figure = test_result["figure"]

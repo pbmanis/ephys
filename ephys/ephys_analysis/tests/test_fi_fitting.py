@@ -55,22 +55,22 @@ def printPars(pars):
         # "FIGrowthPower",
 
 def test_FI_original():
-    FITester(method="fitOneOriginal")  # default method
+    FITester(method="fitOneOriginal", plot=True)  # default method
 
-def test_fi_growth_exp_break():
-    FITester(method="FIGrowthExpBreak")
+# def test_fi_growth_exp_break():
+#     FITester(method="FIGrowthExpBreak")
 
 def test_fi_growth_exp():
-    FITester(method="FIGrowthExp")
+    FITester(method="FIGrowthExp", plot=True)
 
 # def test_fi_piecwiselinear3():
 #     FITester(method="piecewiselinear3") 
 
-def test_fi_growth_power():
-    FITester(method="FIGrowthPower")
+# def test_fi_growth_power():
+#     FITester(method="FIGrowthPower")
 
 def test_fi_growth_Hill():
-    FITester(method="Hill")
+    FITester(method="Hill", plot=True)
 
 def get_testdata(
 ):
@@ -123,7 +123,6 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
         max_current = None,
     )
 
-
     tr_line = []
     if plot:
         fig, ax = mpl.subplots(1, 2, figsize=(8, 5))
@@ -152,7 +151,7 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
     return spksh
 
 class FITester(UserTester):
-    def __init__(self, method="FIGrowthExpBreak", extra=None):
+    def __init__(self, method="FIGrowthExpBreak", extra=None, plot:bool=False):
         self.TM = None
         self.figure = None
         UserTester.__init__(self,  "%s_%s" % (method, "FI"), method)
@@ -160,8 +159,8 @@ class FITester(UserTester):
         # UserTester.__init__(self, "%s_%s" % (method, extra), method)
         # if you want to store different results by the "extra" parameter
 
-    def run_test(self, method):
-        test_result = run_FI_tester(method=method)
+    def run_test(self, method, plot:bool=False):
+        test_result = run_FI_tester(method=method, plot=plot)
 
         if "figure" in list(test_result.keys()):
             self.figure = test_result["figure"]
@@ -178,16 +177,16 @@ if __name__ == "__main__":
     ntraces = 1
     methods = [
         "fitOneOriginal",
-        "FIGrowthExpBreak",
+        # "FIGrowthExpBreak", # same as original
         "FIGrowthExp",
         # "piecewiselinear3",
-        "FIGrowthPower",
+       # "FIGrowthPower",
         "Hill",
     ]
     testmethod = None
     print("Len sys.argv: ", len(sys.argv))
     if len(sys.argv) <= 1:
-        testmethod = "FIGrowthExpBreak"
+        testmethod = "fitOneOriginal"
 
     if len(sys.argv) > 1:
         testmethod = sys.argv[1]
