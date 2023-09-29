@@ -23,14 +23,17 @@ for Acq4 (and beyond)
 
 """
 
+import pprint
 from collections import OrderedDict
 from dataclasses import dataclass
-import numpy as np
-import pprint
 from typing import Union
 
-from ..tools import utilities  # pbm's utilities...
+import numpy as np
+import scipy.stats
+
 from ..tools import fitting  # pbm's fitting stuff...
+from ..tools import utilities  # pbm's utilities...
+import pylibrary.tools.cprint as CP
 
 this_source_file = "ephysanalysis.SpikeAnalysis"
 
@@ -788,10 +791,52 @@ class SpikeAnalysis:
                 0
             ].trough_V  # absolute
 
+    def getFISlope(
+        self,
+        i_inj=None,
+        spike_count=None,
+        pulse_duration=None,
+        min_current: float = 0.0e-12,  # A
+        max_current: float = 300e-12,  # A
+    ):
+        """getFISlope Fit a straight line to part of the FI curve,
+        and return the slope value (in spikes/second/nanoampere)
+
+        Parameters
+        ----------
+        i_inj : numpy array, optional
+            Current levels for the FI curve, in A, by default None
+            if None, then we use the most recent FI_Curve data from the spike analysis.
+        spike_count : numpy array, optional
+            Spike COUNTS, by default None
+            if None, then we use the most recent FI_Curve spike count
+        pulse_duration : float, required
+            duration of the current pulse over which spikes were counted, in seconds
+        min_current : float, optional
+            minimum current in range for fit, by default 0.0 (specify in A)
+        max_current : float, optional
+            maximum current in range for fit, by defaule 300 pA (specify in A)
+        """
+        if pulse_duration is None:
+            pulse_duration = 1.0 # assume already have spike count in RATE
+        if i_inj is None:  # use class data
+            i_inj = self.analysis_summary["FI_Curve"][0]
+            spike_count = self.analysis_summary["FI_Curve"][1]
+            if max_current is not None:
+                i_inj = i_inj[i_inj <= max_current]
+                spike_count = spike_count[i_inj <= max_current]
+        spike_rate = spike_count / pulse_duration  # convert to rate in spikes/second
+        window = np.where((i_inj >= min_current) & (i_inj <= max_current))[0]
+        if len(window) < 2:  # need at least 2 points for the fit
+            return None
+        result = scipy.stats.linregress(i_inj[window], spike_rate[window])
+        return result  # return the full result
+
     def fitOne(
         self,
         i_inj=None,
         spike_count=None,
+        pulse_duration=None,
         info="",
         function=None,
         fixNonMonotonic=True,
@@ -800,7 +845,8 @@ class SpikeAnalysis:
     ):
         """Fit the FI plot to one of several possible equations.
             1: 'FIGrowthExpBreak' - exponential growth with a breakpoint
-            2:
+            2: 'Hill'
+            3: 
         Parameters
         ----------
             i_inj : numpy array (no default)
@@ -808,8 +854,12 @@ class SpikeAnalysis:
 
             spike_count : numpy array (no default)
                 The y data to fit (typically an array of spike counts)
-            if i_inj and spike_count are none, then we extract them from the 
+            if i_inj and spike_count are none, then we extract them from the
                 'FI_Curve' for this cell.
+            
+            pulse_duration: float or none.
+                If float, this should be the duration of the pulse in seconds.
+                if None, then we will assume that the spike count is actually corrected spike rate
 
             info : string (default: '')
                 information to add to a fitted plot
@@ -831,6 +881,8 @@ class SpikeAnalysis:
         tuple of (fpar, xf, yf, names, error, f, func)
             These are the fit parameters
         """
+        if pulse_duration is None:
+            pulse_duration = 1.0 # no correction, assumes spike_count is already converted to rate
         if function is not None:
             self.FIGrowth = function
         if i_inj is None:  # use class data
@@ -839,27 +891,33 @@ class SpikeAnalysis:
             if max_current is not None:
                 i_inj = i_inj[i_inj <= max_current]
                 spike_count = spike_count[i_inj <= max_current]
-        spike_rate = (
-            spike_count / self.analysis_summary["pulseDuration"]
-        )  # convert to rate in spikes/second
+        spike_rate = spike_count / pulse_duration  # convert to rate in spikes/second
         spike_rate_max = np.max(spike_rate)
+        spike_rate_max_index = np.argmax(spike_rate)  # get where the peak rate is located
         if spike_rate_max <= 0.0:  # max firing rate is 0, no fit
+            # CP.cprint("r", "Spike analysis fitOne: Max spike rate is 0")
             return None
         nonmono = 0
-        dypos:list = [range(len(spike_rate))]
-        if fixNonMonotonic:  # clip at max firing rate
-            spike_rate_slope = np.gradient(spike_rate, i_inj)
-            xnm = np.where(spike_rate_slope < 0.0)[0]
+        dypos: list = [range(len(spike_rate))]
+        
+        # clip to max firing rate to remove non-monotonic rates at high current
+        if fixNonMonotonic:  # clip at max firing rate once rate is above the peak rate
+            spike_rate_slope:np.ndarray = np.gradient(spike_rate, i_inj)
+            xnm = np.where((spike_rate_slope[spike_rate_max_index:] < 0.0)  # find where slope is negative
+                            & (spike_rate[spike_rate_max_index:] < 0.8*spike_rate_max))[0] # and rate is less than 80% of max
             if len(xnm) > 0:
-                imax = xnm[0] + 1
+                imax = xnm[0] + spike_rate_max_index
             else:
                 imax = len(spike_rate)
             dypos = list(range(0, imax))
-            i_inj = i_inj[dypos] # clip to monotonic region
+            i_inj = i_inj[dypos]  # clip to monotonic region
             spike_rate = spike_rate[dypos]  # match rate
             spike_rate_max = np.max(spike_rate)
         if np.max(i_inj) < 0.0:  # no fit if max rate occurs at < 0 current
+            # CP.cprint("r", "Spike analysis fitOne: Max current inj is 0")
             return None
+        # CP.cprint("m", f"after fixnonmono: {len(i_inj):d} points")
+        # get max spike rate
         spike_rate_min = 5.0
         if spike_rate_max < spike_rate_min:
             spike_rate_min = 0.0
@@ -867,10 +925,13 @@ class SpikeAnalysis:
             spike_rate_max > spike_rate[-1] and excludeNonMonotonic
         ):  # no fit if max rate does not occur at the highest current and the flag is set
             nonmono += 1
+            CP.cprint("r", "Spike analysis fitOne: exclude non monotonic was triggered")
             return None
         fire_points = np.where((spike_rate[:-1] > 0) & (spike_rate[1:] > 0))[
             0
-        ]  # limit to positive current injections with successive spikes
+        ]
+        # CP.cprint("m", f"fire_points: {len(fire_points):d} points")
+  # limit to positive current injections with successive spikes
         if (
             len(fire_points) == 0
         ):  # no fit if there are no points in the curve where the cell fires
@@ -885,9 +946,7 @@ class SpikeAnalysis:
         xp = i_inj[fire_points]
         xp = xp - ibreak0 - dx
         yp = spike_rate[fire_points]  # save data with responses
-        testMethod = (
-            "simplex"  #  'SLSQP'  # L-BFGS-B simplex, SLSQP, 'TNC', 'COBYLA'
-        )
+        testMethod = "simplex"  #  'SLSQP'  # L-BFGS-B simplex, SLSQP, 'TNC', 'COBYLA'
         if firing_rate_break - 2 >= 0:
             x0 = firing_rate_break - 2
         else:
@@ -897,15 +956,12 @@ class SpikeAnalysis:
         else:
             x1 = len(i_inj) - 1
 
-
         if self.FIGrowth == "fitOneOriginal":
-
- 
             res = []
-            err = []
             fitter = (
                 fitting.Fitting()
             )  # make sure we always work with the same instance
+
             for i in range(
                 0, int(len(i_inj) / 2)
             ):  # allow breakpoint to move, but only in steps
@@ -920,8 +976,8 @@ class SpikeAnalysis:
                         (0.0, 0.0),
                         np.sort([i_inj[x0], i_inj[x1]]),
                         (0.0, yp[0]),
-                        (0.0, 4.0*spike_rate_max*self.analysis_summary["pulseDuration"]),
-                        (0.0, 5.0*spike_rate_max*self.analysis_summary["pulseDuration"] / np.max(i_inj)),
+                        (0.0, 4.0 * spike_rate_max * pulse_duration),
+                        (0.0, 5.0 * spike_rate_max * pulse_duration / np.max(i_inj)),
                     )
                     # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
                     # if i == -4 and j == 0:
@@ -930,11 +986,13 @@ class SpikeAnalysis:
                         0.0,
                         np.mean(bounds[1]),
                         yp[0],
-                        spike_rate_max*self.analysis_summary["pulseDuration"],
-                        spike_rate_max*self.analysis_summary["pulseDuration"] / np.max(i_inj),  # 100 spikes/sec/nA
+                        spike_rate_max * pulse_duration,
+                        spike_rate_max
+                        * pulse_duration
+                        / np.max(i_inj),  # 100 spikes/sec/nA
                     ]
-                    func = "FIGrowthExpBreak"
-                    f = fitter.fitfuncmap[func]
+                    function = "FIGrowthExpBreak"
+                    f = fitter.fitfuncmap[function]
 
                     (fpar, xf, yf, names) = fitter.FitRegion(
                         [1],
@@ -943,13 +1001,14 @@ class SpikeAnalysis:
                         spike_rate,
                         t0=fitbreak0,
                         t1=np.max(i_inj),
-                        fitFunc=func,
+                        fitFunc=function,
                         fitPars=initpars,
                         bounds=bounds,
                         fixedPars=None,
                         method=testMethod,
                     )
                     error = fitter.getFitErr()
+                    # keep track of different moves
                     res.append(
                         {
                             "fpar": fpar,
@@ -959,138 +1018,34 @@ class SpikeAnalysis:
                             "error": error,
                         }
                     )
-                    err.append(error)
-            minerr = np.argmin(err)
+            minerr = np.argmin([e['error'][0] for e in res])
 
+            # select the fit with the minimum error
             fpar = res[minerr]["fpar"]
             xf = res[minerr]["xf"]
             yf = res[minerr]["yf"]
             names = res[minerr]["names"]
             error = res[minerr]["error"]
-            self.analysis_summary["FI_Growth"].append(
-                {
-                    "FunctionName": self.FIGrowth,
-                    "function": func,
-                    "names": names,
-                    "error": error,
-                    "parameters": fpar,
-                    "fit": [np.array(xf), yf],
-                }
-            )
 
-        # else:  # estimate initial parameters and set region of IV curve to be used for fitting
-        #     nonmono = 0
-        #     spike_rate_max = np.max(spike_rate)/self.analysis_summary["pulseDuration"]  # maximum spike rate (not count; see above)
-        #     if spike_rate_max == 0:
-        #         return None
-        #     spike_rate_max_nonmonotonic = 0.8 * np.max(spike_rate)  # maximum spike rate (not count; see above)
-        #     dypos = list(range(len(i_inj)))
-        #     if (
-        #         fixNonMonotonic and spike_rate_max_nonmonotonic > spike_rate[-1]
-        #     ):  # fix non-monotinic firing - clip fitting to current that generates the max firing rate
-        #         imaxs = [
-        #             i for i, y in enumerate(spike_rate) if y >= spike_rate_max_nonmonotonic
-        #         ]  # handle duplicate firing rates
-        #         imax = max(imaxs)  # find highest index
-        #         dypos = list(range(0, imax + 1))
-        #         i_inj = i_inj[dypos]  # restrict current and response range to those currents
-        #         spike_rate = spike_rate[dypos]
-        #         spike_rate_max = np.max(spike_rate)
-        #     if np.max(i_inj) < 0.0:  # skip if max rate occurs at negative current level
-        #         return None
-
-        #     spike_rate_min = 5
-        #     if spike_rate_max < spike_rate_min:
-        #         spike_rate_min = 0.0
-        #     if spike_rate_max > spike_rate[-1] and excludeNonMonotonic:
-        #         nonmono += 1
-        #         return None
-
-        #     # Now find first point where cell fires and next step also has cell firing
-        #     fire_points = np.where((spike_rate[:-1] > 0) & (spike_rate[1:] > 0))[
-        #         0
-        #     ]  # limit to positive current injections with successive spikes
-        #     firing_rate_break = fire_points[0]
-        #     testMethod = "SLSQP"  #  'SLSQP'  # L-BFGS-B simplex, SLSQP, 'TNC', 'COBYLA'
-        #     if firing_rate_break - 1 >= 0:  # set start and end of linear fit
-        #         x0 = firing_rate_break - 1  # x0 is last point (in current) with no spikes
-        #     else:
-        #         x0 = 0
-        #     if firing_rate_break < len(i_inj):  # x1 is the next point, which has a spike
-        #         x1 = firing_rate_break
-        #     else:
-        #         x1 = len(i_inj) - 1
-        #     ibreak0 = i_inj[x0]  # use point before first spike as the initial break point
-
-        # if self.FIGrowth == "FIGrowthExpBreak":
-        #     # print('Exponential model fit')
-        #     ixb = firing_rate_break  # np.argwhere(spike_rate > 0)[0][0]
-        #     cons = (
-        #         {"type": "eq", "fun": lambda xc: xc[0]},  # lock F0 at >= 0
-        #         {
-        #             "type": "ineq",
-        #             "fun": lambda xc: xc[1] - i_inj[ixb - 1],
-        #         },  #  ibreak between last no spike and first spiking level
-        #         {
-        #             "type": "ineq",
-        #             "fun": lambda xc: i_inj[ixb] - xc[1],
-        #         },  #  ibreak between last no spike and first spiking level
-        #         {"type": "eq", "fun": lambda xc: xc[2]},  # F1amp >= 0
-        #         {
-        #             "type": "ineq",
-        #             "fun": lambda xc: xc[3] - xc[2],
-        #         },  # F2amp > F1amp (must be!)
-        #         {"type": "ineq", "fun": lambda xc: xc[4]},
-        #     )
-        #     bounds = (
-        #         (0.0, spike_rate[firing_rate_break - 1] + 5),
-        #         np.sort([i_inj[x0], i_inj[x1]]),
-        #         (0.0, 2 * spike_rate[firing_rate_break]),
-        #         (0.0, 4* spike_rate_max/np.max(i_inj)),
-        #         (0, 5*(spike_rate_max/self.analysis_summary["pulseDuration"])/np.max(i_inj)),
-        #     )
-        #     # # parameters for FIGrowth 1: ['Fzero', 'Ibreak', 'F1amp', 'F2amp', 'Irate']
-        #     initpars = [
-        #         0.0,
-        #         ibreak0,
-        #         spike_rate[firing_rate_break],
-        #         spike_rate_max * 2,
-        #         0.01 * np.max(np.diff(spike_rate) / np.diff(i_inj)),
-        #     ]
-        #     func = "FIGrowthExpBreak"
-        #     fitbreak0 = i_inj[firing_rate_break]
-        #     f = fitting.Fitting().fitfuncmap[func]
-        #     # now fit the full data set
-        #     (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
-        #         [1],
-        #         0,
-        #         i_inj,
-        #         spike_rate,
-        #         t0=fitbreak0,
-        #         t1=i_inj[dypos[-1]],
-        #         fitFunc=func,
-        #         fitPars=initpars,
-        #         bounds=bounds,
-        #         constraints=cons,
-        #         weights=None,  # np.sqrt,
-        #         fixedPars=None,
-        #         method=testMethod,
-        #     )
-        #     error = fitting.Fitting().getFitErr()
-        #     self.FIKeys = f[6]
-
+            fitter_func = fitting.Fitting().fitfuncmap[function]
+            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+           
         elif self.FIGrowth == "FIGrowthExp":  # FIGrowth is 2, Exponential from 0 rate
-            bounds = (  np.sort([i_inj[x0], i_inj[x1]]), 
-                        (0.0, 20.0*spike_rate_max*self.analysis_summary["pulseDuration"]), 
-                        (0.0, 10.0*spike_rate_max*self.analysis_summary["pulseDuration"]/np.max(i_inj)),
-                        )
+            bounds = (
+                np.sort([i_inj[x0], i_inj[x1]]),
+                (0.0, 20.0 * spike_rate_max * pulse_duration),
+                (0.0, 10.0 * spike_rate_max * pulse_duration / np.max(i_inj)),
+            )
             fitbreak0 = ibreak0
             if fitbreak0 > 0.0:
                 fitbreak0 = 0.0
-            initpars = [ibreak0, spike_rate_max*self.analysis_summary["pulseDuration"],
-                        spike_rate_max*self.analysis_summary["pulseDuration"]/np.max(i_inj)]
-            func = "FIGrowthExp"
-            f = fitting.Fitting().fitfuncmap[func]
+            initpars = [
+                ibreak0,
+                spike_rate_max * pulse_duration,
+                spike_rate_max * pulse_duration / np.max(i_inj),
+            ]
+            function = "FIGrowthExp"
+            f = fitting.Fitting().fitfuncmap[function]
             # now fit the full data set
             (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
                 [1.0],
@@ -1099,13 +1054,15 @@ class SpikeAnalysis:
                 spike_rate,
                 t0=fitbreak0,
                 t1=np.max(i_inj),
-                fitFunc=func,
+                fitFunc=function,
                 fitPars=initpars,
                 bounds=bounds,
                 fixedPars=None,
                 method=testMethod,
             )
             error = fitting.Fitting().getFitErr()
+            fitter_func = fitting.Fitting().fitfuncmap[function]
+            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
             self.FIKeys = f[6]
             imap = [-1, 0, -1, 1, 2]
 
@@ -1114,10 +1071,10 @@ class SpikeAnalysis:
             if fitbreak0 > 0.0:
                 fitbreak0 = 0.0
             x1 = np.argwhere((spike_rate > 0.0) & (i_inj > fitbreak0))
-            initpars = [spike_rate_max, 0.5*np.mean(i_inj[x1]), 1.0]
-            bounds = [(0., spike_rate_max*2.0), (0., np.max(i_inj)), (0., 10.0)]
-            func = "Hill"
-            f = fitting.Fitting().fitfuncmap[func]
+            initpars = [0.,       spike_rate_max,              0.5 * np.mean(i_inj[x1]), 1.0]
+            bounds = [(0., 200.), (0.0, spike_rate_max * 2.0), (0.0, np.max(i_inj)),    (0.0, 10.0)]
+            function = "Hill"
+            f = fitting.Fitting().fitfuncmap[function]
             # now fit the full data set
             (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
                 [1],
@@ -1126,14 +1083,17 @@ class SpikeAnalysis:
                 spike_rate,
                 t0=fitbreak0,
                 t1=np.max(i_inj),
-                fitFunc=func,
+                fitFunc=function,
                 fitPars=initpars,
                 bounds=bounds,
                 fixedPars=None,
                 method=testMethod,
             )
             error = fitting.Fitting().getFitErr()
+            fitter_func = fitting.Fitting().fitfuncmap[function]
+            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
             self.FIKeys = f[6]
+            # print("Hill fit results: ", fpar)
 
         elif self.FIGrowth == "piecewiselinear3":
             fitbreak0 = ibreak0
@@ -1166,7 +1126,7 @@ class SpikeAnalysis:
                 {"type": "ineq", "fun": lambda x: x[5] - x[4] / 2.0},
             )
 
-            func = "piecewiselinear3"
+            function = "piecewiselinear3"
             f = fitting.Fitting().fitfuncmap[func]
             # now fit the full data set
             (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
@@ -1176,7 +1136,7 @@ class SpikeAnalysis:
                 spike_rate,
                 t0=fitbreak0,
                 t1=np.max(i_inj),
-                fitFunc=func,
+                fitFunc=function,
                 fitPars=initpars,
                 bounds=bounds,
                 constraints=cons,
@@ -1184,6 +1144,8 @@ class SpikeAnalysis:
                 method=testMethod,
             )
             error = fitting.Fitting().getFitErr()
+            fitter_func = fitting.Fitting().fitfuncmap[function]
+            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
             self.FIKeys = f[6]
 
         elif self.FIGrowth == "FIGrowthPower":
@@ -1196,12 +1158,11 @@ class SpikeAnalysis:
             ix1 = np.argwhere(spike_rate > 0.0)  # find first point with spikes
             xna = i_inj
             x1 = xna[ix1[0]][0]
-            initpars = [ x1,
-                        spike_rate_max*self.analysis_summary["pulseDuration"],
-                        1.0]  
-            bounds = [(0.0, 5e-9),
-                        (0.0, 20.0*spike_rate_max*self.analysis_summary["pulseDuration"]), 
-                        (0.0, 5),
+            initpars = [x1, spike_rate_max * pulse_duration, 1.0]
+            bounds = [
+                (0.0, 5e-9),
+                (0.0, 20.0 * spike_rate_max * pulse_duration),
+                (0.0, 5),
             ]
             # cons = ( {'type': 'ineq', 'fun': lambda x:  x[0]},
             #           {'type': 'ineq', 'fun': lambda x: x[1]},
@@ -1211,8 +1172,7 @@ class SpikeAnalysis:
             #           {'type': 'ineq', 'fun': lambda x: x[4]*0.5 - x[5]},
             #      )
             #
-            func = "FIGrowthPower"
-            f = fitting.Fitting().fitfuncmap[func]
+            function = "FIGrowthPower"
             # now fit the full data set
             (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
                 [1],
@@ -1221,7 +1181,7 @@ class SpikeAnalysis:
                 spike_rate,
                 t0=fitbreak0,
                 t1=np.max(xna),
-                fitFunc=func,
+                fitFunc=function,
                 fitPars=initpars,
                 bounds=bounds,
                 constraints=None,
@@ -1229,6 +1189,9 @@ class SpikeAnalysis:
                 method=testMethod,
             )
             error = fitting.Fitting().getFitErr()
+            fitter_func = fitting.Fitting().fitfuncmap[function]
+            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+
             self.FIKeys = f[6]
         elif self.FIGrowth == "fitOneOriginal":
             pass
@@ -1236,13 +1199,16 @@ class SpikeAnalysis:
             raise ValueError(
                 "SpikeAnalysis: FIGrowth function %s is not known" % self.FIGrowth
             )
+
+
         self.analysis_summary["FI_Growth"].append(
             {
                 "FunctionName": self.FIGrowth,
-                "function": func,
+                "function": function,
                 "names": names,
                 "error": error,
                 "parameters": fpar,
                 "fit": [np.array(xf), yf],
+                "fit_at_data_points": [np.array(i_inj), np.array(yfit)]
             }
         )
