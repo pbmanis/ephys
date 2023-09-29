@@ -72,6 +72,9 @@ def test_fi_growth_exp():
 def test_fi_growth_Hill():
     FITester(method="Hill", plot=True)
 
+def test_fi_slope():
+    FITester(method="slope", plot=True)
+
 def get_testdata(
 ):
     """
@@ -113,15 +116,28 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
     testresult = spike_analyzer.analysis_summary
     spike_analyzer.analyzeSpikeShape(max_spikeshape=3, printSpikeInfo=False)
     spksh = spike_analyzer.spikeShapes
-    spike_analyzer.fitOne(
-        i_inj=testresult["FI_Curve"][0],
-        spike_count=testresult["FI_Curve"][1],
-        info="",
-        function=method,
-        fixNonMonotonic=True,
-        excludeNonMonotonic=False,
-        max_current = None,
-    )
+    if method != "slope":
+        spike_analyzer.fitOne(
+            i_inj=testresult["FI_Curve"][0],
+            spike_count=testresult["FI_Curve"][1],
+            pulse_duration = spike_analyzer.analysis_summary["pulseDuration"],
+            info="",
+            function=method,
+            fixNonMonotonic=True,
+            excludeNonMonotonic=False,
+            max_current = None,
+        )
+    else:
+        minI = 100e-12
+        maxI = 500e-12
+        slope_result = spike_analyzer.getFISlope(
+            i_inj=testresult["FI_Curve"][0],
+            spike_count=testresult["FI_Curve"][1],
+            pulse_duration = spike_analyzer.analysis_summary["pulseDuration"],
+            min_current = minI,
+            max_current = maxI,
+        )
+
 
     tr_line = []
     if plot:
@@ -141,12 +157,19 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
                     ax[0].plot([sh[j].left_halfwidth_T, sh[j].right_halfwidth_T], 
                              [sh[j].left_halfwidth_V, sh[j].right_halfwidth_V,], color=l_color,
                               marker='o', markersize=1, linestyle='-', linewidth=1)
-        print("FI max I: ", np.max(testresult["FI_Curve"][0]))
         ax[1].plot(testresult["FI_Curve"][0], testresult["FI_Curve"][1]/spike_analyzer.analysis_summary["pulseDuration"],
                     'o-', color="black", markersize=3)
-        # print(testresult["FI_Growth"][0]["fit"][0][0]*1e9)
-        # print(testresult["FI_Growth"][0]["fit"][1][0])
-        ax[1].plot(testresult["FI_Growth"][0]["fit"][0][0], testresult["FI_Growth"][0]["fit"][1][0], '--', color="red")
+
+        if method != "slope":
+            ax[1].plot(testresult["FI_Growth"][0]["fit"][0][0], testresult["FI_Growth"][0]["fit"][1][0], '--', color="red")
+            # also plot the fit values at the actual data points
+            ax[1].plot(testresult["FI_Growth"][0]["fit_at_data_points"][0],
+                       testresult["FI_Growth"][0]["fit_at_data_points"][1], 's', color="magenta")
+        else:  # slope - plot the line and indicate the slope
+            x_sl = np.arange(minI, maxI, 5e-12)
+            y_sl = slope_result.slope*x_sl + slope_result.intercept
+            ax[1].plot(x_sl, y_sl, '--', color="blue")
+            ax[1].set_title(f"slope = {1e-12*slope_result.slope:.2f} (SD: {1e-12*slope_result.stderr:.2f}) Hz/pA")
         mpl.show()
     return spksh
 
@@ -182,6 +205,7 @@ if __name__ == "__main__":
         # "piecewiselinear3",
        # "FIGrowthPower",
         "Hill",
+        "slope",
     ]
     testmethod = None
     print("Len sys.argv: ", len(sys.argv))

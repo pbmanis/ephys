@@ -567,16 +567,17 @@ class Fitting:
 
     def Hill(self, p, x, y=None, C=None, sumsq=False, weights=None):
         """
-        Hill function
-        p[0] is Fmax (maximal value)
-        p[1] is IC50 (point at half max)
-        p[2] is n (power/cooperativity)
-
+        Hill function, as used in Rothman et al., 2009
+        p[0] is the firing rate offset
+        p[1] is Fmax (maximal value)
+        p[2] is IC50 (point at half max)
+        p[3] is n (power/cooperativity)
+        Typically, p[0] will be set to 0 and not be allowed to vary.
         """
         # only for x > 0
         xn = np.where(x > 0)[0]
         yd = np.zeros_like(x)
-        yd[xn] = p[0] / (1.0 + (p[1]/x[xn])**p[2])
+        yd[xn] = p[0] + p[1] / (1.0 + (p[2]/x[xn])**p[3])
         if y is None:
             return yd
         else:
@@ -898,7 +899,7 @@ class Fitting:
         FitRegion(1, 0, tdat, ydat, FitFunc = 'exp1')
         e.g., the first argument should be 1, but this axis is ignored if datatype is 'xy'
         """
-        self.fitSum2Err = 0.0
+        self.fitSum2Err = []
         # if t0 == t1:
         #     if plotInstance is not None
         #         (x, y) = plotInstance.get_xlim()
@@ -1044,7 +1045,7 @@ class Fitting:
                 xfit = np.linspace(t0, t1, 100)
                 yfit = func[0](plsq, xfit - t0, C=fixedPars)
                 yy = func[0](plsq, tx, C=fixedPars)  # calculate function
-                self.fitSum2Err = np.sum((dy - yy) ** 2)
+                self.fitSum2Err.append(np.sum((dy - yy) ** 2)) # get error for this fit
                 #                print('fit error: ', self.fitSum2Err)
                 # if plotInstance is not None:
                 #     self.FitPlot(xFit=xfit, yFit=yfit, fitFunc=fund[0],
