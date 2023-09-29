@@ -109,8 +109,10 @@ class IVAnalysis(Analysis):
             self.datapath = file
             self.mode = "nwb2.5"
         self.datapath = str(datapath)
-        self.SP = spikeanalyzer  # spike_analysis.SpikeAnalysis()
-        self.RM = rmtauanalyzer  # rm_tau_analysis.RmTauAnalysis()
+        if spikeanalyzer is not None:
+            self.SP = spikeanalyzer  # spike_analysis.SpikeAnalysis()
+        if rmtauanalyzer is not None:
+            self.RM = rmtauanalyzer  # rm_tau_analysis.RmTauAnalysis()
         self.plot = plot
         self.plotting_mode = "normal"
         self.decorate = True
