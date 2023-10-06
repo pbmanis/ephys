@@ -54,7 +54,7 @@ class OneSpike:
     peak_T: Union[int, None] = None
     peak_V: Union[int, None] = None
     AP_latency: Union[float, None] = None
-    AP_beginV: Union[float, None] = None
+    AP_begin_V: Union[float, None] = None
     halfwidth: Union[float, None] = None
     halfwidth_V: Union[float, None] = None
     halfwidth_up: Union[float, None] = None
@@ -546,7 +546,7 @@ class SpikeAnalysis:
         # save values in dict here
         thisspike.AP_latency = self.Clamps.time_base[kthresh]
         thisspike.AP_beginIndex = kthresh
-        thisspike.AP_beginV = self.Clamps.traces[i][thisspike.AP_beginIndex]
+        thisspike.AP_begin_V = self.Clamps.traces[i][thisspike.AP_beginIndex]
 
         # compute rising and falling max dv/dt
         four_ms = int(4e-3 / dt)
@@ -577,7 +577,7 @@ class SpikeAnalysis:
             and (thisspike.AP_beginIndex < thisspike.AP_peakIndex)
             and (thisspike.AP_peakIndex < thisspike.AP_endIndex)
         ):
-            halfv = 0.5 * (thisspike.peak_V + thisspike.AP_beginV)
+            halfv = 0.5 * (thisspike.peak_V + thisspike.AP_begin_V)
             tr = np.array(self.Clamps.traces[i])
             xr = self.Clamps.time_base
             kup = np.argmin(
@@ -639,7 +639,7 @@ class SpikeAnalysis:
                             thisspike.halfwidth,
                         )
                         print(
-                            "   halfv: ", halfv, thisspike.peak_V, thisspike.AP_beginV
+                            "   halfv: ", halfv, thisspike.peak_V, thisspike.AP_begin_V
                         )
                     thisspike.halfwidth = None
                     thisspike.halfwidth_interpolated = None
@@ -780,9 +780,9 @@ class SpikeAnalysis:
                 len(self.spikeShapes[j150]) / self.spikeShapes[j150][0].pulseDuration
             )  # spikes per second, normalized for pulse duration
             AHPDepth = (
-                self.spikeShapes[j150][0].AP_beginV - self.spikeShapes[j150][0].trough_V
+                self.spikeShapes[j150][0].AP_begin_V - self.spikeShapes[j150][0].trough_V
             )  # from first spike             # first AHP depth
-            # print(f"AHP: Begin  = {self.spikeShapes[j150][0].AP_beginV*1e3:.2f} mV")
+            # print(f"AHP: Begin  = {self.spikeShapes[j150][0].AP_begin_V*1e3:.2f} mV")
             # print(f"     Trough = {self.spikeShapes[j150][0].trough_V*1e3:.2f} mV")
             # print(f"     Depth  = {AHPDepth*1e3:.2f} mV")
             self.analysis_summary["FiringRate_1p5T"] = rate

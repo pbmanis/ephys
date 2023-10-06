@@ -202,8 +202,12 @@ class IVAnalysis(Analysis):
         cell_directory = Path(
             self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id
         )
-        CP.cprint("m", f"file: {str(cell_directory):s}")
-        CP.cprint("m", f"Cell id: {str(self.df.iloc[icell].cell_id):s} ")
+        CP.cprint("m", f"File: {str(cell_directory):s}")
+        CP.cprint("m", f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}")
+        # CP.cprint("m", f"Notes: {self.df.iloc[icell].notes!s}")
+        # print(self.df.columns)
+        # CP.cprint("m", f"Location: {self.df.iloc[icell].cell_location!s}")
+        # CP.cprint("m", f"   type: {self.df.iloc[icell].cell_type!s}  layer: {self.df.iloc[icell].cell_layer!s}")
         if "IV" not in self.df.columns.values:
             self.df = self.df.assign(IV=None)
         if "Spikes" not in self.df.columns.values:

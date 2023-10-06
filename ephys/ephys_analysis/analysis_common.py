@@ -630,6 +630,7 @@ class Analysis:
         if isinstance(celltype, str):
             celltype = celltype.strip()
         if celltype in [None, "", "?", " ", "  ", "\t"]:
+            print(f"Changing Cell type to unnnown from {celltype:s}")
             celltype = "unknown"
         return celltype
 
@@ -928,6 +929,7 @@ class Analysis:
             if len(cell_df['cell_type'].values) > 0:
                 map_annotated_celltype = cell_df["cell_type"].values[0].strip()
             else:
+                CP.cprint("r", f"Changing cell type to 'unknown'; cell type was {cell_df['cell_type'].values[0]:s}")
                 map_annotated_celltype = "unknown"
 
         # now we have several possibilities: only original (prefered), annotated_celltype from
