@@ -526,7 +526,8 @@ class acq4_reader:
                 info = tr[0].infoCopy()
                 self.parseClampInfo(info, switchchan=False)
             except:
-                raise FileExistsError(f"The file: {str(fn):s} could not be parsed... ")
+                CP.cprint("r", f"The file: {str(fn):s} could not be parsed... ")
+                return None
         return info
 
     def parseClampInfo(self, info: list, switchchan):
