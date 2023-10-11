@@ -996,6 +996,7 @@ class acq4_reader:
 
     def getStim(self, stimname: str = "Stim") -> dict:
         supindex = self._readIndex(currdir=self.protocol)
+        # print(supindex["."]["devices"].keys())
         if supindex is None:
             supindex = self._readIndex()
             if supindex is None:
