@@ -46,6 +46,7 @@ from random import sample
 import numpy as np
 import scipy.signal
 from ephys.ephys_analysis import c_deriv
+import obspy.signal.interpolation as OSI  # lanczos resampling
 from numba import jit
 from numpy import ma as ma
 from scipy import fftpack as spFFT
@@ -107,11 +108,11 @@ def nb_clean_spiketimes(
         dst = np.diff(st)
         sp_ok = np.argwhere(dst > mindT)
         sp_ok_i = np.zeros(len(sp_ok)+1)
-        print(dst)
+        print('dst: ', dst)
         print("spok: ", sp_ok)
         sp_ok_i[0] = st[0]
-        print([i for i in sp_ok_i])
-        sp_ok_i[1:] = [st[int(i)+1] for i in sp_ok_i]
+        print('spok i: ', [i for i in sp_ok_i])
+        # sp_ok_i[1:] = [st[int(i)+1] for i in sp_ok_i]
         st[1:] = st[dst] 
         #np.append(st, [spikeTimes[s + 1] for s in sok])
         return st
@@ -211,6 +212,9 @@ def nb_arg_relmax(
 
 
 class Utility:
+    """ A class of various utility routines for doing signal processing,
+    spike finding, threshold finding, spectral analysis, etc.
+    """
     def __init__(self):
         self.debugFlag = False
 
@@ -605,6 +609,146 @@ class Utility:
             return (rn, vn)
         else:
             return rn
+
+    def deriv1(self, y, dt):
+        """deriv1 Compute first derivative from Taylor series expansion 
+        (see Sekelri et al. IEEE Trans. Biomed Eng, 51: 2004).
+        Some functions are from www.geometrictools.com (David Eberly). 
+        endpoints are 4th order forward and backwards, mixed 4th order in between
+        Parameters
+        ----------
+        y : np.array
+            voltage time series
+        dt : float
+            sample rate
+        """
+        dy = np.zeros_like(y)
+        Dh = 12.0 * dt
+        dy[0] = (-25*y[0] + 48*y[1] - 36*y[2] + 16*y[3] -3*y[4]) / Dh # 4th order forward
+        dy[1] = (-3*y[0] - 10*y[1] + 18*y[2] - 6*y[3] + 1*y[4]) / Dh # mixed forward
+        dy[-2] = (-1*y[-5] + 6*y[-4] - 18*y[-3] +10*y[-2] + 3*y[-1]) / Dh
+        dy[-1] = (3*y[-5] - 16*y[-4] + 36*y[-3] - 48*y[-2] + 25*y[-1]) / Dh # backwards
+        for k in range(2, len(y) - 2):
+            dy[k] = (-y[k+2] + 8*y[k + 1] - 8*y[k-1] + y[k-2]) / Dh
+        return dy
+
+    def deriv2(self, y, dt:float):
+        """deriv1 Compute first derivative from Taylor series expansion 
+        (see Sekelri et al. IEEE Trans. Biomed Eng, 51: 2004)
+
+        Parameters
+        ----------
+        y : np.array
+            voltage time series
+        dt : float
+            sample rate
+        """
+        dy = np.zeros_like(y)
+        Dh2 = 12*dt*dt
+        dy[0] = (45*y[0] - 154*y[1] + 214*y[2] - 156*y[3]+61*y[4] - 10*y[5]) / Dh2 
+        dy[1] = (10*y[0] - 15*y[1] + -4*y[2] +14*y[3] - 6*y[4] + 1*y[5]) / Dh2
+        dy[-2] = (1*y[-6] - 6*y[-5] + 14*y[-4] - 4*y[-3] - 15*y[-2] + 10*y[-1]) / Dh2
+        dy[-1] = (-10*y[-6] + 61*y[-5] -156*y[-4] +214*y[-3] - 154*y[-2] + 45*y[-1]) / Dh2
+        for k in range(2, len(y) - 2):
+            dy[k] = (-y[k+2] + 16*y[k + 1] - 30*y[k] + 16*y[k-1] - y[k-2])/ Dh2
+        return dy
+
+    def deriv3(self, y, dt:float):
+        """deriv1 Compute third derivative from Taylor series expansion 
+        (see Sekelri et al. IEEE Trans. Biomed Eng, 51: 2004)
+
+        Parameters
+        ----------
+        y : np.array
+            voltage time series
+        dt : float
+            sample rate
+        """
+        dy = np.zeros_like(y)
+        Dh3 = 8*dt*dt*dt
+        dy[0] = (-49*y[0] +232*y[1] -461*y[2] + 496*y[3] -307*y[4] + 104*y[5] - 15*y[6])/ Dh3
+        dy[1] = (-15*y[0] +56*y[1] - 83*y[2] + 64*y[3] - 29*y[4] + 8*y[5] -1*y[6])/ Dh3
+        dy[2] = (-1*y[0] -8*y[1] +35*y[2] -48*y[3] +29*y[4] -8*y[5] +1*y[6])/ Dh3
+        dy[-3] = (-1*y[-7] + 8*y[-6] - 29*y[-5] + 48*y[-4] - 35*y[-3] + 8*y[-2] + 1*y[-1])/ Dh3
+        dy[-2] = (1*y[-7] - 8*y[-6] + 29*y[-5] - 64*y[-4] + 83*y[-3] -56*(y[-2]) + 15*y[-1] )/ Dh3
+        dy[-1] = (15*y[-7] - 104*y[-6] + 307*y[-5] - 496*y[-4] + 461*y[-3] - 232*y[-2] + 49*y[-1])/ Dh3
+        for k in range(3, len(y) - 3):
+            dy[k] = (y[k-3] -8*y[k-2] + 13*y[k - 1] - 13*y[k+1] + 8*y[k+2] - y[k+3])/ (8.0*dt*dt*dt)
+        return dy
+
+    def find_threshold(self, y, dt:float, thrV_mVperms=20.0):
+        """
+        
+        Includes commented code to find_threshold using Method II from Sekelri et al 2004.
+        This method finds the maximum second deriviative with respect
+        to voltage in the phase space. 
+        We use 4th order accurate methods to compute the derivatives.
+
+        Parameters
+        ----------
+        y : np.array
+            voltage time series
+        dt : float
+            sample rate
+        """
+        usefindiff = False
+        old_dt = dt
+        yo = y
+        # # upsample spike
+        upfactor = 5
+        lwin = 10
+        yo = y.copy()
+        y = OSI.lanczos_interpolation(y, 0., old_dt, 0., old_dt/upfactor,
+                            new_npts = len(y)*upfactor - 2*lwin,
+                            a=lwin, window="hanning") # , *args, **kwargs):
+        dt = old_dt/upfactor
+        ydv = self.deriv1(y, dt) # compute max rising slope in upsampled data
+        i_pk = np.argmax(y) # spike peak index
+        i_dv_peak = np.argmax(ydv[lwin:i_pk])+lwin  # get the peak rising phase of spike, excluding the lanczos window
+        # print("peak index, deriv: ", i_dv_peak, np.max(ydv))
+        thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= thrV_mVperms)[0][-1] + lwin # first point on rising phase where slope is below threshold
+        itmin =  0
+        # itmax:int = np.argmax(ydv) # limit to max rising slope time
+        # print("itmax: ", itmax)
+        # itmin:int = itmax - int(2.5e-3/dt) # and 1 msec before peak
+        # if itmin < 0:
+        #     itmin = 0
+        # tthr = np.arange(dt*itmin, dt*itmax, dt)
+        # yt = y[itmin:itmax+1]
+
+        # print("thrpt_dv: ", np.where(ydv[:i_dv_peak] <= thrV_mVperms))
+        # if usefindiff:
+        #     dx1 = FinDiff(0, dt, deriv=1, acc=4)
+        #     dx2 = FinDiff(0, dt, deriv=2, acc=4)
+        #     dx3 = FinDiff(0, dt, deriv=3, acc=4)
+        #     D1 = dx1(yt)
+        #     D2 = dx2(yt)
+        #     D3 = dx3(yt)
+        # else:
+        #     D1 = deriv1(yt, dt)
+        #     D2 = deriv2(yt, dt)
+        #     D3 = deriv3(yt, dt)
+
+        # numerator = D3*D1 - D2*D2
+        # denominator = D1*D1*D1
+        # # print(numerator)
+        # # print(denominator)
+        # difffunc = numerator/denominator
+        # thrpt = np.argmax(difffunc)+lwin+1 # add back the lanczos window
+        thrpt = thrpt_dv + itmin
+        Vthr = y[thrpt]
+        Vthr_time = dt*thrpt
+        # thrpt = thrpt + itmin
+        # tx = np.arange(len(y))*dt
+        # fig, ax = mpl.subplots(2, 1, figsize=(5, 8), sharex=True)
+        # ax[0].plot(np.arange(len(yo))*old_dt, yo, 'kx', markersize=3)
+        # ax[0].plot(tx, y, 'bo', markersize=2)
+        # ax[0].plot(Vthr_time, Vthr, 'ro', markersize=3)
+        # ax[0].plot([0, np.max(tx)], [Vthr, Vthr], 'r--')
+        # ax[1].plot(tx, ydv, 'g-')
+        # ax[1].plot([0, np.max(tx)], [thrV_mVperms, thrV_mVperms], 'k--')
+        # mpl.show()
+        return Vthr, Vthr_time
 
     def clean_spiketimes(
         self, spikeTimes: Union[List, np.ndarray], mindT: float = 0.7
@@ -1745,6 +1889,61 @@ class Utility:
         RGB = [RGB[x] for x in rgb_order]
         return RGB
 
+def test_derivs_taylor():
+    import matplotlib.pyplot as mpl
+    U = Utility()
+    dt = 0.0001
+    t = np.arange(0, 0.1, dt)
+    y1 = 0.1*t+1    
+    dy1 = U.deriv1(y1, dt)
+    fig,ax = mpl.subplots(3, 1, figsize=(8,4))
+    ax[0].plot(t, dy1, 'k-')
+    ax[0].plot(t, 0.1*np.ones_like(t), 'r--')  # analytic
+    y2 = 2*t*t + 0.5*t + 3
+    yd = 2*2*t + 0.5
+    yd2 = 4*np.ones_like(t)
+    dy2 = U.deriv2(y2, dt)
+    ax[1].plot(t, dy2, 'k-')
+    ax[1].plot(t, yd2, 'r--') # analytic
+    y3 = 3*t*t*t + 2*t*t + 0.5*t + 3
+    yd1  =  9*t*t + 4*t + 0.5
+    yd2 = 18*t + 4
+    yd3 = 18*np.ones_like(t)
+    # ax[1].plot(t[:-2], np.diff(np.diff(y)/dt)/dt, 'r--')
+    dy3 = U.deriv3(y3, dt)
+    ax[2].plot(t, dy3, 'k-')
+    ax[2].plot(t, yd3, 'r--') # analytic
+    mpl.show()
+
+# def test_derivs_findiff():
+#     dt = 0.0001
+#     order = 4
+#     t = np.arange(0, 0.1, dt)
+#     y1 = 0.1*t+1   
+#     yd1 = 0.1*np.ones_like(t)
+#     dx1 = FinDiff(0, dt, deriv=1, acc=order)
+#     dx2 = FinDiff(0, dt, deriv=2, acc=order)
+#     dx3 = FinDiff(0, dt, deriv=3, acc=order) 
+#     dy1 = dx1(y1)
+#     fig,ax = mpl.subplots(3, 1, figsize=(8,4))
+#     ax[0].plot(t, dy1, 'k-')
+#     ax[0].plot(t, yd1, 'r--')  # analytic
+#     y2 = 2*t*t + 0.5*t + 3
+#     # yd = 2*2*t + 0.5
+#     yd2 = 4*np.ones_like(t)
+#     dy2 = dx2(y2)
+#     ax[1].plot(t, dy2, 'k-')
+#     ax[1].plot(t, yd2, 'r--') # analytic
+#     y3 = 3*t*t*t + 2*t*t + 0.5*t + 3
+#     # yd1  =  9*t*t + 4*t + 0.5
+#     # yd2 = 18*t + 4
+#     yd3 = 18*np.ones_like(t)
+#     # ax[1].plot(t[:-2], np.diff(np.diff(y)/dt)/dt, 'r--')
+#     dy3 = dx3(y3)
+#     ax[2].plot(t, dy3, 'k-')
+#     ax[2].plot(t, yd3, 'r--') # analytic
+#     mpl.show()
+
 
 ###############################################################################
 #
@@ -1755,7 +1954,10 @@ class Utility:
 if __name__ == "__main__":
     # test sequence parser
     
-    test_clean()
+    # test_clean()
+
+    # test derivatives
+    test_derivs_taylor()
     exit()
 
     U = Utility()
