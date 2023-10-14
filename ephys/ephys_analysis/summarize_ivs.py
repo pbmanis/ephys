@@ -323,6 +323,16 @@ class GetAllIVs:
     def set_exclude_codes(self, excludelist: list = []):
         self.exclude_codes = excludelist
 
+    def set_default_group(self, row):
+        """Set a default group for a row in the dataframe
+        Args:
+            row (pandas dataframe row): row of the dataframe to set the group for
+        Returns:
+            string: group name
+        """
+        row.Group = "Ctl" 
+        return row.Group
+    
     def set_experiments(self, experiments: Union[dict, list]):
         """experiments is the dict for experiments - paths, etc. each dict entry has a
             key naming the "experiment" The list has [path_to_data,
@@ -386,27 +396,31 @@ class GetAllIVs:
                 cprint("g", f"   Analyzing experiment: {str(expts[i]):s}")
                 self.basedir = Path(expt["rawdatapath"])
                 self.inputFilename = Path(
-                    expt["databasepath"],
+                    expt["databasepath"], expt['directory'],
                     expt["iv_analysisFilename"],
                 ).with_suffix(".pkl")
-                if expt["coding_file"] is None:
-                    raise ValueError("Coding file must be specified; got 'None'")
-                if expt["coding_sheet"] is None:
-                    raise ValueError(
-                        f"Coding shet in the file {str(expt['coding_file']):s} must be specified; got 'None'"
+                if expt["coding_file"] is not None:
+                    if expt["coding_sheet"] is None:
+                        raise ValueError(
+                            f"Coding sheet in the file {str(expt['coding_file']):s} must be specified; got 'None'"
+                        )
+                    self.outputPath = Path(expt["databasepath"])
+                    coding_f = Path(expt["databasepath"], expt["coding_file"])
+                    sheet_name = expt["coding_sheet"]
+                    print("    Input file name: ", self.inputFilename)
+                    df_i = clean_database_merge(
+                        pkl_file=self.inputFilename,
+                        coding_file=coding_f,
+                        coding_sheet=sheet_name,
                     )
-                self.outputPath = Path(expt["databasepath"])
-                coding_f = Path(expt["databasepath"], expt["coding_file"])
-                sheet_name = expt["coding_sheet"]
-                print("    Input file name: ", self.inputFilename)
-                df_i = clean_database_merge(
-                    pkl_file=self.inputFilename,
-                    coding_file=coding_f,
-                    coding_sheet=sheet_name,
-                )
-                self.dfs = pd.concat((self.dfs, df_i))
-                self.dfs["Group"] = self.dfs["Group"].values.astype(str)
+                    self.dfs = pd.concat((self.dfs, df_i))
+                    self.dfs["Group"] = self.dfs["Group"].values.astype(str)
+                else:
+                    self.dfs = pd.read_pickle(self.inputFilename)
+                    self.dfs["Group"] = self.dfs.apply(self.set_default_group, axis=1)
+                print(self.dfs.columns)
                 groups = sorted(list(set(self.dfs.Group.values)))
+                print(self.dfs.columns)
                 dates = sorted(list(set(self.dfs.date.values)))
                 print(f"    Expt: {expts[i]:s}, # dates found: {len(dates):d}")
                 for date in dates:

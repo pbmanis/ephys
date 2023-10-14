@@ -95,7 +95,7 @@ class acq4_reader:
             False # set to false to IGNORE the important flag for traces
         )
         # CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
-    
+        self.error_info = None # additional information about errors.
 
     def __enter__(self):
         return self
@@ -677,9 +677,15 @@ class acq4_reader:
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
+        self.error_info = None # clear any previous error info
         dirs = self.subDirs(self.protocol)
         if len(dirs) == 0:
-            CP.cprint("c", f"No data found for protocol: {str(self.protocol):s}")
+            if Path(self.protocol).is_dir():
+                self.error_info = f"Protocol dir exists, but is empty or has malformed structure: {self.protocol!s}"
+                CP.cprint("r", self.error_info)
+            else:
+                self.error_info = f"Protocol directory was not found: {self.protocol!s}"
+                CP.cprint("r", self.error_info)
             return False
         index = self._readIndex()
         self.clampInfo["dirs"] = dirs
@@ -810,9 +816,9 @@ class acq4_reader:
                 if allow_partial:  # just get what we can
                     continue
                 elif not silent:
-                    print(allow_partial)
-                    CP.cprint("r", 
-                        f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}")
+                    # print(allow_partial)
+                    msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
+                    CP.cprint("r", msg)
                     #raise ValueError(f"file failed: {str(fn):s}")
                     print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                     continue
@@ -875,7 +881,8 @@ class acq4_reader:
             try:
                 self.traces = np.array(trx)
             except:
-                CP.cprint("r", "Failed to reshape array as required")
+                self.error_info = f"Failed to reshape array as required"
+                CP.cprint("r", self.error_info)
                 return False
 
         if len(self.values) == 0:
