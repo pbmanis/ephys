@@ -79,7 +79,7 @@ class MAP_Analysis(Analysis):
         file = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id)
         datestr, slicestr, cellstr = self.make_cell(icell)
         slicecellstr = f"S{slicestr[-1]:s}C{cellstr[-1]:s}"
-        self.celltype, self.celltype_changed = self.get_celltype(icell)
+        self.this_celltype, self.celltype_changed = self.get_celltype(icell)
         CP.cprint(
             "c",
             f"    {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
@@ -179,10 +179,10 @@ class MAP_Analysis(Analysis):
                 dill.dump(results, fh)
 
         if self.celltype_changed:
-            CP.cprint("yellow", f"    cell annotated celltype: {self.celltype:s})")
+            CP.cprint("yellow", f"    cell annotated celltype: {self.this_celltype:s})")
         else:
-            txt = self.celltype.strip()
-            print("celltype: ", self.celltype)
+            txt = self.this_celltype.strip()
+            print("celltype: ", self.this_celltype)
             if len(txt) == 0 or txt == " " or txt is None:
                 msg = f"    Database celltype: Not specified"
                 CP.cprint("magenta", msg)
@@ -818,9 +818,9 @@ class MAP_Analysis(Analysis):
 
         if plotmap:
             if self.celltype_changed:
-                celltype_text = f"{self.celltype:s}* "
+                celltype_text = f"{self.this_celltype:s}* "
             else:
-                celltype_text = f"{self.celltype:s} "
+                celltype_text = f"{self.this_celltype:s} "
             getimage = False
             plotevents = True
             self.AM.Pars.overlay_scale = 0.0

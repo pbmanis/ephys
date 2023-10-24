@@ -497,9 +497,12 @@ class Analysis:
                         CP.cprint("g", f"Cell type(s): {self.celltype!s}")
                         if self.celltype == "all":
                             cell_ok = self.do_cell(icell, pdf=pdf)
+                            CP.cprint("r", f"***** All")
                         else:  # only do a select cell type
                             if self.celltype == self.df.iloc[icell]["cell_type"]:
                                 cell_ok = self.do_cell(icell, pdf=pdf)
+                                CP.cprint("r", f"***** selected: {self.celltype:s}")
+
             if self.iv_analysisFilename is None:
                 msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
                 # CP.cprint("y", msg)

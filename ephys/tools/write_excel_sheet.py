@@ -74,7 +74,7 @@ class ColorExcel():
         cellkeys = list(self.colors.keys())
         celltype = row.cell_type.lower()
         ctype = self._find_celltype_in_field(celltype, cellkeys) 
-        CP.cprint("y", f"celltype: {celltype:s},  ctype: {str(ctype):s}")
+        # CP.cprint("y", f"celltype: {celltype:s},  ctype: {str(ctype):s}")
         if ctype is not None and ctype != "":
             if self.last_cell is None:
                 self.last_cell = f"{row.date:s}~{row.slice_slice:s}~{row.cell_cell:s}"
