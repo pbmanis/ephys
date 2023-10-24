@@ -501,13 +501,13 @@ class Analysis:
                             if self.celltype == self.df.iloc[icell]["cell_type"]:
                                 cell_ok = self.do_cell(icell, pdf=pdf)
             if self.iv_analysisFilename is None:
-                msg = f"No IV analysis to write : {self.iv_analysisFilename} is None"
+                msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
                 # CP.cprint("y", msg)
                 Logger.warning(msg)
             else:
                 CP.cprint(
                 "c",
-                f"Writing ALL IV analysis results to PKL file: {str(self.iv_analysisFilename):s}",
+                f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
                 )
                 with open(self.iv_analysisFilename, "wb") as fh:
                     self.df.to_pickle(
