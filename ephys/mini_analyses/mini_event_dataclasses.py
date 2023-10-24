@@ -280,6 +280,7 @@ class AnalysisPars:
     artifact_filename: Union[Path, None] = None  # file with artifact "traces" to subtract
     artifact_path: Union[Path, None] = None  # path to the artifact files
     LaserBlueTimes: Union[dict, None] = None
+    LEDTimes: Union[dict, None] = None
     artifactData: Union[dict, None] = None
     artifact_scale: Union[float, None] = None
     artifact_autoscale: bool = True
