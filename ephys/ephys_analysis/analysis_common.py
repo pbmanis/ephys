@@ -929,7 +929,7 @@ class Analysis:
             if len(cell_df['cell_type'].values) > 0:
                 map_annotated_celltype = cell_df["cell_type"].values[0].strip()
             else:
-                CP.cprint("r", f"Changing cell type to 'unknown'; cell type was {cell_df['cell_type'].values[0]:s}")
+                CP.cprint("r", f"Changing cell type to 'unknown'; cell type was {cell_df['cell_type'].values!s}")
                 map_annotated_celltype = "unknown"
 
         # now we have several possibilities: only original (prefered), annotated_celltype from

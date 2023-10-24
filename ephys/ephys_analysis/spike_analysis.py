@@ -381,7 +381,7 @@ class SpikeAnalysis:
     ):
         """analyze the spike shape.
         Does analysis of ONE protocol, all traces.
-        Based on the analysis from Druckman et al. Cerebral Cortex, 2013
+        Based loosely on the analysis from Druckman et al. Cerebral Cortex, 2013
 
         The results of the analysis are stored in the SpikeAnalysis object
         as SpikeAnalysis.analysis_summary, a dictionary with specific keys.

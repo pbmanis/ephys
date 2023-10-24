@@ -364,7 +364,16 @@ class IVAnalysis(Analysis):
             ] = rsp  # everything in the SP analysus_summary structure
 
         self.df["annotated"] = self.df["annotated"].astype(int)
-        self.df["expUnit"] = self.df["expUnit"].astype(int)
+        def clean_exp_unit(row):
+            if pd.isnull(row.expUnit):
+                return 0
+            else:
+                if row.expUnit:
+                    return 1
+                else:
+                    return 0
+        self.df["expUnit"] = self.df.apply(clean_exp_unit, axis=1)
+        # self.df["expUnit"] = self.df["expUnit"].astype(int)
 
         if (
             len(allivs) > 0
@@ -856,6 +865,7 @@ class IVAnalysis(Analysis):
             tstr += (
                 f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
             )
+            tstr += (f"${{Pip Cap}}$: {self.RM.analysis_summary['CCComp']['NeutralizationCap']*1e12:.2f} pF\n")
             tstr += f"{taum:s}: {self.RM.analysis_summary['taum']*1e3:.2f} ms\n"
             tstr += f"{tauh:s}: {self.RM.analysis_summary['tauh_tau']*1e3:.3f} ms\n"
             tstr += f"${{G_h}}$: {self.RM.analysis_summary['tauh_Gh'] *1e9:.3f} nS\n"
