@@ -259,10 +259,18 @@ class AnalyzeMap(object):
             self.Pars.analysis_window[0] = self.AR.tend + 0.010
 
         # get the laser pulse times
-        self.AR.getLaserBlueTimes()
-        self.Pars.LaserBlueTimes = self.AR.LaserBlueTimes
-        self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
-        self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
+        if "laser" in str(protocolFilename) or "Laser" in str(protocolFilename):
+            self.AR.getLaserBlueTimes()
+            self.Pars.LaserBlueTimes = self.AR.LaserBlueTimes
+            self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
+            self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
+        elif "LED" in str(protocolFilename):
+            self.AR.getLEDCommand()
+            self.Pars.LEDTimes = self.AR.LEDTimes
+            self.Pars.stimtimes['starts'] = self.AR.LEDTimes['start']
+            self.Pars.stimtimes['durations'] = self.AR.LEDTimes['duration']
+        else:
+            pass
 
         if self.Pars.artifact_filename is not None:
             with open(Path(self.Pars.artifact_path, self.Pars.artifact_filename).with_suffix(".pkl"), "rb") as fh:
@@ -316,6 +324,9 @@ class AnalyzeMap(object):
                         - self.Pars.time_zero,
                     ]
                 )
+        self.LaserBlue = False
+        self.photodiode = False
+        self.LED = False
         if self.AR.getLaserBlueCommand():
             self.Data.laser_blue_pCell = self.AR.LaserBlue_pCell[
                 self.Pars.time_zero_index : self.Pars.time_end_index
@@ -324,6 +335,8 @@ class AnalyzeMap(object):
                 self.Pars.time_zero_index : self.Pars.time_end_index
             ]
             self.Data.laser_blue_sample_rate = self.AR.LaserBlue_sample_rate
+            self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
+            self.LaserBlue = True
         else:
             CP.cprint("r", "**** Could not get blue laser command traces")
 
@@ -334,10 +347,20 @@ class AnalyzeMap(object):
             self.Data.photodiode_timebase = self.AR.Photodiode_time_base[
                 self.Pars.time_zero_index : self.Pars.time_end_index
             ]
-        else:
-            CP.cprint("r", "**** Could not get photodiode traces")
+            self.Data.photodiode_sample_rate = self.AR.Photodiode_sample_rate
+            self.photodiode = True
+       
+        if self.AR.getLEDCommand():
+            self.Data.LED_Raw = self.AR.LED_Raw[
+                self.Pars.time_zero_index : self.Pars.time_end_index
+            ]
+            self.Data.LED_timebase = self.AR.LED_time_base[
+                self.Pars.time_zero_index : self.Pars.time_end_index
+            ]
+            self.Data.LED_sample_rate = self.AR.LED_sample_rate
+            self.LED = True
 
-        self.shutter = self.AR.getDeviceData("Laser-Blue-raw", "Shutter")
+
         self.AR.getScannerPositions()
         print("-" * 46)
         print("Scanning array shape;  min and max x,y limits")
