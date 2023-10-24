@@ -1996,7 +1996,7 @@ class PlotMapData:
                 t_end = timebase[it_end-it_beg]
                 # the full trace
                 if self.panels["average_panel_2"] is not None:
-                    PH.referenceline(self.P.axdict[self.panels["average_panel_2"]], 0.0)
+                    PH.referenceline(self.P.axdict[self.panels["average_panel_2"]], 0.0, color='grey')
  
                     self.P.axdict[self.panels["average_panel_2"]].plot((self.Data.timebase-self.Pars.time_zero),
                                                                  self.Data.raw_data_averaged,
@@ -2070,7 +2070,7 @@ class PlotMapData:
                     weight="normal",
                     font="Arial",
                 )
-                PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.0)
+                PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.0, color="grey")
                 self.plot_timemarker(self.P.axdict[self.panels["average_panel"]], zerotime=first_stim_onset)
 
         elif plotmode is "publication":
@@ -2093,7 +2093,7 @@ class PlotMapData:
         PH.nice_plot(self.P.axdict[trace_panel], direction="outward",
                 ticklength=3, position=-0.03)
         ylims = self.P.axdict[trace_panel].get_ylim()
-        # PH.referenceline(self.P.axdict[trace_panel], 0.)
+        # PH.referenceline(self.P.axdict[trace_panel], 0., color="black")
         if cal_height == None:
             cal_height = self.get_calbar_Yscale(np.fabs(ylims[1] - ylims[0]) / 4.0)*1e-12
         else:
@@ -2175,20 +2175,16 @@ class PlotMapData:
             self.P.axdict[photodiode_panel].set_xlim(0., self.Pars.time_end - self.Pars.time_zero)
             PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
                 ticklength=3, position=-0.03)
-        elif "LED" in str(dataset.name):
-            lbt = self.Data.laser_blue_timebase.squeeze()
-            if lbt.shape[0] == 0:
-                lbt = np.squeeze(lbt)
-            else:
-                lbt = self.Data.laser_blue_timebase
-                self.P.axdict[photodiode_panel].plot(
-                lbt,
-                self.Data.laser_blue_pCell,
-                'b-',
-            )
+        if self.Data.photodiode is None and "LED" in str(dataset.name):
+            source = "LED"
+            self.P.axdict[photodiode_panel].plot(
+                self.Data.LED_timebase[0],
+                self.Data.LED_Raw[0],
+                'b-', linewidth=0.5, alpha=0.5)
+
             PH.nice_plot(self.P.axdict[photodiode_panel], direction="outward",
                 ticklength=3, position=-0.03)  
-            self.P.axdict[photodiode_panel].set_ylabel("Laser Command (V)")
+            self.P.axdict[photodiode_panel].set_ylabel(f"{source:s} Command (V)")
             self.P.axdict[photodiode_panel].set_xlim(0., self.Pars.time_end - self.Pars.time_zero)
 
         
