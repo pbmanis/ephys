@@ -524,59 +524,91 @@ class acq4_reader:
             try:
                 tr = EM.MetaArray(file=fn, readAllData=False)
                 info = tr[0].infoCopy()
-                self.parseClampInfo(info, switchchan=False)
+                self.parseClampInfo(info)
             except:
                 CP.cprint("r", f"The file: {str(fn):s} could not be parsed... ")
                 return None
         return info
 
-    def parseClampInfo(self, info: list, switchchan):
+    def parseClampInfo(self, info: list):
         """
         Get important information from the info[1] directory that we can use
-        to determine the acquisition type
+        to determine the acquisition type and channel order
         """
-        chorder = [1, 0]
+        self.trClampInfo = info
         # print("switchchan: ", switchchan)
-        if switchchan:
-            chorder = [0, 1]
-        try:  # old acq4 may not have this
-            self.mode = info[1]["ClampState"]["mode"]
-            if self.mode in ["IC", "I=0"]:
-                self.tracepos = chorder[0]
-                self.cmdpos = chorder[1]
-            elif self.mode in ["VC"]:
-                self.tracepos = chorder[0]
-                self.cmdpos = chorder[1]
-            else:
-                raise ValueError("Unable to determine how to map channels")
+        # indices correspond to info[0][cols]
+        self.primary_trace_index = 0
+        self.secondary_trace_index = 1
+        self.command_trace_index = 2
+        # print("\nparse clamp info, Clamp state: \n", info[1]) # ["ClampState"])
+
+        # try:  # old acq4 files may not have this
+        self.mode = info[1]["ClampState"]["mode"]
+        primary_signal = info[1]["ClampState"]["primarySignal"]
+        secondary_signal = info[1]["ClampState"]["secondarySignal"]
+        # print("Mode: ", self.mode)
+        if self.mode in ["IC", "I=0"]:
+            match primary_signal:
+                case "Membrane Potential":
+                    self.primary_trace_index = 0
+                    self.secondary_trace_index = 1
+                case "Pipette Potential":
+                    self.primary_trace_index = 1
+                    self.secondary_trace_index = 0
+                case _ : 
+                    pass
+        elif self.mode in ['VC']:
+            match primary_signal:
+                case "Membrane Current":
+                    self.primary_trace_index = 0
+                    self.secondary_trace_index = 1
+                case "Pipette Potential":
+                    self.primary_trace_index = 1
+                    self.secondary_trace_index = 0
+                case _ :
+                    pass
+        #         chorder[0] = 1
+        #     if secondary_signal == "Pipette Potential":
+        #         chorder[1] = 2
+        #     self.command_trace_index = chorder[1]
+        # elif self.mode in ["VC"]:
+        #     self.primary_trace_index = chorder[0]
+        #     if secondary_signal == "Pipette Potential":
+        #         chorder[1] = 2
+        #     self.command_trace_index = chorder[1]
+        else:
+            raise ValueError(f"Unable to determine how to map channels for mode = {self.mode:s}")
+        # print(self.primary_trace_index, self.secondary_trace_index, self.command_trace_index)
+
             # print("Mode found: ", self.mode)
-        except:
-            print("info 1: ")
-            for k in list(info[1].keys()):
-                print(k, '=', info[1][k])
-            print("info 0: ")
-            for k in list(info[0].keys()):
-                print(k, '=', info[0][k])
-            self.units = [info[1]['units'], 'V']
-            self.samp_rate = info[1]['rate']
-            if info[1]['units'] == 'V':
-                self.mode = 'IC'
-            if self.mode in ["IC", "I=0"]:
-                if not switchchan:
-                    self.tracepos = 1
-                    self.cmdpos = 0
-                else:
-                    self.tracepos = 0
-                    self.cmdpos = 1
-            elif self.mode in ["VC"]:
-                if not switchchan:
-                    self.tracepos = 1
-                    self.cmdpos = 0
-                else: 
-                    self.tracepos = 0
-                    self.cmdpos = 1           
+        # except:  # this is for "old" acq4 data files.  very old.
+        #     print("info 1: ")
+        #     for k in list(info[1].keys()):
+        #         print(k, '=', info[1][k])
+        #     print("info 0: ")
+        #     for k in list(info[0].keys()):
+        #         print(k, '=', info[0][k])
+        #     self.units = [info[1]['units'], 'V']
+        #     self.samp_rate = info[1]['rate']
+        #     if info[1]['units'] == 'V':
+        #         self.mode = 'IC'
+        #     if self.mode in ["IC", "I=0"]:
+        #         if not switchchan:
+        #             self.primary_trace_index = 1
+        #             self.command_trace_index = 0
+        #         else:
+        #             self.primary_trace_index = 0
+        #             self.command_trace_index = 1
+        #     elif self.mode in ["VC"]:
+        #         if not switchchan:
+        #             self.primary_trace_index = 1
+        #             self.command_trace_index = 0
+        #         else: 
+        #             self.primary_trace_index = 0
+        #             self.command_trace_index = 1           
             
-            return
+        #     return
         
         self.units = [
             info[1]["ClampState"]["primaryUnits"],
@@ -704,7 +736,7 @@ class acq4_reader:
         holdcheck = False
         holdvalue = 0.0
         switchchan = False
-
+        self.getDataInfo(Path(dirs[0], self.dataname))
         if self.info is not None and "devices" in list(self.info.keys()):
             devices = list(self.info["devices"].keys())
             if devices[0] == 'DAQ':
@@ -715,19 +747,29 @@ class acq4_reader:
             if device in self.clampdevices:
                 if device not in list(self.info["devices"].keys()):
                     print(f"**Unable to match device: {device:s} in ")
-                    print(self.info["devices"].keys())
+                    print("    Device keys: ", self.info["devices"].keys())
                     raise ValueError
 
                 holdcheck = self.info["devices"][device]["holdingCheck"]
                 holdvalue = self.info["devices"][device]["holdingSpin"]
-                priSignal = self.info["devices"][device]["primarySignalCombo"]
-                secSignal = self.info["devices"][device]["secondarySignalCombo"]
-                icampmode = self.info["devices"][device]["icModeRadio"]
-                # CP.cprint('r', f"priSignal: {priSignal:s}   secSignal: {secSignal:s}  ic_ampmode: {icampmode:d}")
-                if icampmode == 1 and priSignal == "Membrane Current":
-                    # Erroneous report from mulitclamp - force switch of channels below
-                    CP.cprint("r", f"Switching channels: inconsistent amplifier mode and primary signals")
-                    switchchan = True
+                # priSignal = self.info["devices"][device]["primarySignalCombo"]
+                # secSignal = self.info["devices"][device]["secondarySignalCombo"]
+                # ic_ampmode = self.info["devices"][device]["icModeRadio"]
+                # CP.cprint('r', f"priSignal: {priSignal:s}   secSignal: {secSignal:s}  ic_ampmode: {ic_ampmode!s}")
+                ic_amp_mode  = self.trClampInfo[1]["ClampState"]["mode"] # self.checkProtocolinfo[1]["ClampState"]["mode"]
+                primary_signal = self.trClampInfo[1]["ClampState"]["primarySignal"]
+                # secondary_signal = self.trClampInfo[1]["ClampState"]["secondarySignal"]
+                # CP.cprint('r', f"priSignal: {primary_signal:s}   secSignal: {secondary_signal:s}  ic_ampmode: {ic_amp_mode:s}")
+                self.v_scalefactor = 1.0
+                self.bad_clamp_mode = False
+                if ic_amp_mode in ["IC", "I=0"] and primary_signal != "Membrane Potential":
+                    # Erroneous report from mulitclamp - Change scaling
+                    CP.cprint("r", f"Inconsistent amplifier mode: {ic_amp_mode:s} and primary signal: {primary_signal:s}")
+                    CP.cprint("r", f"    Will attempt to correct...")
+                    self.v_scalefactor = 52e-3/1.332e-9  # picked from a trace where this happened: mV/nA match up.
+                    self.bad_clamp_mode = True
+
+
         else:
             if check:
                 return False
@@ -735,7 +777,7 @@ class acq4_reader:
                 raise ValueError       
         self.holding = holdvalue
         trx = []
-        cmd = []
+        cmd:list = []
         self.protocol_important = self._getImportant(
             self.info
         )  # save the protocol importance flag
@@ -799,7 +841,7 @@ class acq4_reader:
         for i, d in enumerate(dirs):
             fn = Path(d, self.dataname)
             if check:
-                if not fn.is_file() and notsilent:
+                if not fn.is_file():
                     CP.cprint("r", f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}")
                     raise ValueError
                 return True  # just note we found the first file
@@ -827,18 +869,23 @@ class acq4_reader:
 
 
             tr_info = tr[0].infoCopy()
-            self.parseClampInfo(tr_info, switchchan)
+            self.parseClampInfo(tr_info)
             self.WCComp = self.parseClampWCCompSettings(tr_info)
             self.CCComp = self.parseClampCCCompSettings(tr_info)
             # if i == 0:
             #     pp.pprint(info)
+            if self.bad_clamp_mode:
+                if tr.hasColumn("Channel", "primary"):
+                    tr["Channel":"primary"] *= self.v_scalefactor
             cmd = self.getClampCommand(tr)
             
             self.traces.append(tr)
             self.trace_index.append(i)
             trx.append(tr.view(np.ndarray))
-            self.data_array.append(tr.view(np.ndarray)[self.tracepos])
-            self.cmd_wave.append(tr.view(np.ndarray)[self.cmdpos])
+            if tr.hasColumn("Channel", "primary"):  # hascolumn is a metaarray method
+                self.data_array.append(tr["Channel":"primary"])
+                # self.data_array.append(tr.view(np.ndarray)[self.primary_trace_index])
+            self.cmd_wave.append(tr.view(np.ndarray)[self.command_trace_index])
 
             if sequence_values is not None:
                 if j >= len(sequence_values):
