@@ -865,7 +865,8 @@ class IVAnalysis(Analysis):
             tstr += (
                 f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
             )
-            tstr += (f"${{Pip Cap}}$: {self.RM.analysis_summary['CCComp']['NeutralizationCap']*1e12:.2f} pF\n")
+
+            tstr += (f"${{Pip Cap}}$: {self.RM.analysis_summary['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n")
             tstr += f"{taum:s}: {self.RM.analysis_summary['taum']*1e3:.2f} ms\n"
             tstr += f"{tauh:s}: {self.RM.analysis_summary['tauh_tau']*1e3:.3f} ms\n"
             tstr += f"${{G_h}}$: {self.RM.analysis_summary['tauh_Gh'] *1e9:.3f} nS\n"
