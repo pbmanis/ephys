@@ -53,6 +53,7 @@ class acq4_reader:
         Nothing
         """
         self.protocol = None
+        self.bad_clamp_mode = False
         if pathtoprotocol is not None:
             self.setProtocol(pathtoprotocol)
         if dataname is None:
@@ -1069,6 +1070,8 @@ class acq4_reader:
             if supindex is None:
                 raise ValueError("Cannot read index....")
         # print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
+        if "Laser-Blue-raw" not in list(supindex["."]["devices"].keys()):
+            return False
         try:
             stimuli = supindex["."]["devices"]["Laser-Blue-raw"]["channels"]["pCell"]
         except:
@@ -1083,6 +1086,42 @@ class acq4_reader:
         stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
         self.LaserBlueTimes = self._getPulses(stimuli)
         return True
+    
+    def getLEDCommand(self) -> bool:
+        """
+        Get LED pulse times
+        """
+        dirs = self.subDirs(self.protocol)
+        self.LED_Raw = []
+        self.LED_time_base = []
+        self.LED_sample_rate = []
+        supindex = self._readIndex(currdir=self.protocol)
+        if supindex is None:
+            supindex = self._readIndex()
+            if supindex is None:
+                raise ValueError("Cannot read index....")
+        # print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
+        if "LED-Blue" not in list(supindex["."]["devices"].keys()):
+            return False
+        stimuli = supindex["."]["devices"]["LED-Blue"]["channels"]["Command"]
+        real_stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
+        self.LEDTimes = self._getPulses(real_stimuli)
+        for i, d in enumerate(dirs):
+            fn = Path(d, "LED-Blue.ma")
+            if not fn.is_file():
+                print(" acq4_reader.getLEDData, File not found: ", fn)
+                return False
+            lbr = EM.MetaArray(file=fn)
+            info = lbr[0].infoCopy()
+            try:
+                sr = info[1]["DAQ"]['Command']["rate"]/info[1]["DAQ"]['Command']["downsampling"]
+            except:
+                raise ValueError(f"Info keys for LED is missing requested DAQ.samplerate: {info[1]['DAQ'].keys()!s}")
+            self.LED_sample_rate.append(sr)
+            self.LED_Raw.append(lbr.view(np.ndarray)[0])  # shutter
+            self.LED_time_base.append(lbr.xvals("Time"))
+        return True
+    
 
     def _getPulses(self, stimuli: dict) -> dict:
         if "PulseTrain" in stimuli.keys():
@@ -1264,7 +1303,7 @@ class acq4_reader:
             try:
                 sr = info[1]["DAQ"]["Shutter"]["rate"]
             except:
-                print("Info keys is missing requested DAQ.Shutter.rate: ", info[1]["DAQ"].keys())
+                raise ValueError(f"Info keys is missing requested DAQ.Shutter.rate:  {info[1]['DAQ'].keys()!s}")
                 exit(1)
             self.LaserBlue_sample_rate.append(sr)
         self.LaserBlue_Info = info
@@ -1300,8 +1339,8 @@ class acq4_reader:
         for i, d in enumerate(dirs):
             fn = Path(d, "Photodiode.ma")
             if not fn.is_file():
-                print(" acq4_reader.getPhotodiode: File not found: ", fn)
-                continue
+                # print(" acq4_reader.getPhotodiode: File not found: ", fn)
+                return False # continue
             pdr = EM.MetaArray(file=fn)
             info = pdr[0].infoCopy()
             self.Photodiode.append(pdr.view(np.ndarray)[0])
@@ -1417,14 +1456,15 @@ class acq4_reader:
             #     self.spotsize = index['.']['Scanner']['spotSize']
             #     self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             else:
-                print(
-                    f"Scanner information for point {i:d} not found in index: ",
-                    d,
-                    "\n",
-                    index["."].keys(),
-                )
-                continue  # protocol is short...
-            #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
+                return False
+            #     print(
+            #         f"Scanner information for point {i:d} not found in index: ",
+            #         d,
+            #         "\n",
+            #         index["."].keys(),
+            #     )
+            #     continue  # protocol is short...
+            # #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             if (
                 "Camera" in supindex["."]["devices"].keys()
                 and len(self.scanner_camera) == 0
