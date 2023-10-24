@@ -2172,7 +2172,7 @@ class MiniAnalyses:
             params,
             nan_policy="omit",
             time=timebase,
-            max_nfev=3000,
+            # max_nfev=3000,
             method="nelder",
         )
         # now repeat with 2 exponentials.
@@ -2186,7 +2186,7 @@ class MiniAnalyses:
             params,
             nan_policy="raise",
             time=timebase,
-            max_nfev=3000,
+            # max_nfev=3000,
             method="nelder",
             )
         except:
