@@ -780,7 +780,7 @@ class Analysis:
             uupdated copy of allprots.
         """
         if allprots is None:
-            allprots = {"maps": [], "stdIVs": [], "CCIV_long": [], "VCIVs": []}
+            allprots = {"maps": [], "stdIVs": [], "CCIV_long": [], "CCIV_posonly": [], "VCIVs": []}
         self.stdIVs = ["CCIV_short", "CCIV_1nA_max", "CCIV_4nA_max"]
         prox = sorted(
             list(set(protocols))
@@ -822,6 +822,11 @@ class Analysis:
             # Long IVs (0.5 or 1 second)
             if x.startswith("CCIV_long"):
                 allprots["CCIV_long"].append(c_str)
+            # positive only ivs:
+            if x.startswith("CCIV_1nA_Pos"):
+                allprots["CCIV_posonly"].append(c_str)
+            if x.startswith("CCIV_4nA_Pos"):
+                allprots["CCIV_posonly"].append(c_str)
             # VCIVs
             if x.startswith("VCIV"):
                 allprots["VCIVs"].append(c_str)
@@ -1255,7 +1260,8 @@ class Analysis:
 
         prots = self.df.iloc[icell]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
-
+        # print("analysis common: ", allprots)
+        # exit()
         if self.dry_run:
             msg = f"\nIV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
             msg += f"\n        with fullpath {str(fullfile):s}"
