@@ -219,6 +219,9 @@ class RmTauAnalysis:
             np.mean(traces[:, int((time_window[1]-0.001)/dt) : int(time_window[1]/dt)], axis=1)
                 - self.ivbaseline
         )
+        vbl = (  # mean of trace at the last 10 msec prior to the step
+            np.mean(traces[:, int((time_window[0]-0.01)/dt) : int(time_window[0]/dt)], axis=1)
+        )
 
         indxs = np.where(
             np.logical_and((vmeans[ineg] >= vrange[0]), (vmeans[ineg] <= vrange[1]))
@@ -305,6 +308,7 @@ class RmTauAnalysis:
                 else:
                     initpars[2] = 0.5 * ipeak * dt
                 # print('inits: ', initpars)
+
             if debug:
                 print("times: ", time_window, len(time_base), np.min(time_base), np.max(time_base))
                 print('taubounds: ', taubounds)
@@ -322,10 +326,19 @@ class RmTauAnalysis:
                 fixedPars=[tgap],
                 tgap = tgap,
                 method="SLSQP",
-                bounds=[(-0.1, 0.0), (-0.05, 0.05), (taubounds)],
+                # 11/8/2023: tighten up the baseline bounds and use the trace's own baseline for fit
+                bounds=[(vbl[k]-0.005, vbl[k]+0.005), (0, 0.05), (taubounds)],
                 capture_error = True,
             )
-
+ 
+            # import matplotlib.pyplot as mpl
+            # print(self.ivbaseline)
+            # mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
+            # mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
+            # mpl.plot([np.min(xf[0]), np.max(xf[0])], [vbl[k], vbl[k]], 'k--', linewidth=0.5)
+            # mpl.show()
+            # exit(1)
+    
             if not fparx:
                 raise Exception(
                     "IVCurve::update_Tau_membrane: Charging tau fitting failed - see log"
@@ -337,17 +350,7 @@ class RmTauAnalysis:
             names.append(namesx[0])
             okdata.append(k)
             self.taum_fitted[k] = [xf[0], yf[0]]
-            if debug:
-                ax[1].plot(xf[0], yf[0], 'r--')
-                ax[2].plot(time_base, traces[k], 'm-')
 
-                mpl.show()
-            #    ax[1].set_xlim(xspan)
-            # import matplotlib.pyplot as mpl
-            # mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
-            # mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
-            # mpl.show()
-            # exit(1)
         if debug:
             print("Fpar: ", fpar)
         self.taum_pars = fpar
@@ -440,27 +443,26 @@ class RmTauAnalysis:
             self.analyzeSpikes()
 
         self.ivss_v_all = data1.mean(axis=1)  # all traces
-        self.analysis_summary["Rin"] = np.NaN
+        self.analysis_summary["Rin"] = np.nan
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
-            self.ivss_v = self.ivss_v_all[self.Spikes.nospk]
-            self.ivss_cmd_all = self.Clamps.commandLevels
-            # print("** ", self.Spikes.nospk)
-            # print("    ", np.max(self.Spikes.nospk))
-            # print("   ", len(self.ivss_cmd_all), "**")
-            if len(self.Spikes.nospk[0]) == 0:
+            # however, handle case where there are spikes at currents LESS
+            # than some of those with no spikes.
+            ivss_valid = self.Clamps.commandLevels < 0.5e-9
+            ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
+            if not any(ivss_valid):
                 return
-            if np.max(self.Spikes.nospk) >= len(self.ivss_cmd_all):
-                return
-            self.ivss_cmd = self.ivss_cmd_all[self.Spikes.nospk]
+            self.ivss_v = self.ivss_v_all[ivss_valid]
+            self.ivss_cmd_all = self.Clamps.commandLevels[ivss_valid]
+            self.ivss_cmd = self.ivss_cmd_all
             isort = np.argsort(self.ivss_cmd)
             self.ivss_cmd = self.ivss_cmd[isort]
             self.ivss_v = self.ivss_v[isort]
             bl = self.ivbaseline[isort]
             self.ivss_bl = bl
             # compute Rin from the SS IV:
-            # this makes the assumption that:
-            # successive trials are in order so we wort above
+            # this makes the assumption that
+            # successive trials are in order, so we sort above
             # commands are not repeated...
             if len(self.ivss_cmd) > 2 and len(self.ivss_v) > 2:
                 pf = np.polyfit(
@@ -490,6 +492,9 @@ class RmTauAnalysis:
                 else:
                     maxloc = 0
                     minloc = 0
+                # print("ivss cmd max loc: ", self.ivss_cmd[maxloc])
+                # if self.ivss_cmd[maxloc] >= 0.0 :
+                #     return  # must be in response to hyperpolarization
                 self.r_in = slope[maxloc]
                 self.r_in_loc = [
                     self.ivss_cmd[maxloc],
