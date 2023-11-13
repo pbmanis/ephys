@@ -886,7 +886,10 @@ class acq4_reader:
             if tr.hasColumn("Channel", "primary"):  # hascolumn is a metaarray method
                 self.data_array.append(tr["Channel":"primary"])
                 # self.data_array.append(tr.view(np.ndarray)[self.primary_trace_index])
-            self.cmd_wave.append(tr.view(np.ndarray)[self.command_trace_index])
+            if tr.hasColumn("Channel", "command"):
+                self.cmd_wave.append(tr["Channel":"command"])
+            else:
+                self.cmd_wave.append(tr.view(np.ndarray)[self.command_trace_index])
 
             if sequence_values is not None:
                 if j >= len(sequence_values):
