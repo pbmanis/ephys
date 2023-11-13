@@ -13,5 +13,6 @@ from . import minis_methods
 from . import mini_analysis
 from . import mini_summary
 from . import mini_summary_plots
+from . import mini_event_dataclasses
 from . import clembek
 

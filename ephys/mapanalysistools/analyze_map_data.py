@@ -31,13 +31,15 @@ import scipy.signal
 
 import ephys.datareaders as DR
 import ephys.ephys_analysis as EP
-import ephys.mini_analyses.mini_analysis as mini_analysis
+
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 import ephys.tools.digital_filters as FILT
 import ephys.tools.functions as functions
 from ephys.mapanalysistools import compute_scores
 from ephys.mapanalysistools import plot_map_data as PMD
 from ephys.mini_analyses import minis_methods
+AnalysisPars = MEDC.AnalysisPars  # make analysispars available for other programs
+# when reading pickled output....
 
 re_degree = re.compile(r"\s*(\d{1,3}d)\s*")
 re_duration = re.compile(r"(\d{1,3}ms)")
