@@ -192,19 +192,30 @@ class RmTauAnalysis:
         assert len(time_window) == 2
         debug = False
 
+        Func = "exp1"  # single exponential fit with DC offset.
+        self.taum_func = Func
+        self.analysis_summary["taum"] = np.nan
+        self.analysis_summary["taupars"] = []
+        self.analysis_summary["taufunc"] = self.taum_func
+
         if debug:
             print("taum")
             print("time_window: ", time_window)
             print("PEAK TIME: ", peak_time)
-        Func = "exp1"  # single exponential fit with DC offset.
+
         if self.rmp is None:
             self.rmp_analysis(time_window=self.baseline)
 
         Fits = fitting.Fitting()  # get a fitting instance
         initpars = [self.rmp * 1e-3, -0.010, 0.010]  # rmp is in units of mV
-        icmdneg = np.where(self.Clamps.commandLevels < -10e-12)
-        maxcmd = np.min(self.Clamps.commandLevels)
-        ineg = np.where(self.Clamps.commandLevels[icmdneg] < 0.0)
+        ineg_valid = self.Clamps.commandLevels < -10e-12
+        ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
+        if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
+            [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
+        self.taum_fitted = {}
+
+        if not any(ineg_valid):
+            return
         if debug:
             print('command levels: ', self.Clamps.commandLevels)
             print("ineg: ", ineg)
@@ -224,34 +235,30 @@ class RmTauAnalysis:
         )
 
         indxs = np.where(
-            np.logical_and((vmeans[ineg] >= vrange[0]), (vmeans[ineg] <= vrange[1]))
+            np.logical_and((vmeans[ineg_valid] >= vrange[0]), (vmeans[ineg_valid] <= vrange[1]))
         )
+
         if debug:
             print('baseline: ', self.ivbaseline)
             print('vrange: ', vrange)
             print('vmeans: ', vmeans.view(np.ndarray))
             print('indxs: ', indxs)
-            print('ineg: ', ineg)
+            print('ineg: ', ineg_valid)
             print('self.Clamps.commandLevels', self.Clamps.commandLevels.view(np.ndarray))
             print("IV baseline: ", self.ivbaseline)
-            print( 'ineg: ', ineg)
-            print( 'icmdneg: ', icmdneg)
             print( 'vrange: ', vrange)
-            print( 'vmeans[ineg]: ', vmeans[ineg].view(np.ndarray))
+            print( 'vmeans[ineg_valid]: ', vmeans[ineg_valid].view(np.ndarray))
             print( 'indxs: ', indxs)
         indxs = list(indxs[0])
-        if len(ineg) == 0:  # if there are no traces that match, just return
-            return
-        whichdata = ineg[0][indxs]  # restricts to valid values
-        # print('whichdata: ', whichdata)
-        itaucmd = self.Clamps.commandLevels[ineg]
+        # exit()
+        whichdata = indxs  # restricts to valid values
+
+        itaucmd = self.Clamps.commandLevels[ineg_valid]
         whichaxis = 0
         fpar = []
         names = []
         okdata = []
-        if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
-            [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
-        self.taum_fitted = {}
+ 
         whichdata = whichdata[-1:]
         if debug:
             print("whichdata: ", whichdata)
