@@ -24,11 +24,7 @@ for acq4
 
 """
 
-
-from collections import OrderedDict
 import numpy as np
-import pyqtgraph as pg
-from typing import List, Union
 import ephys.tools.fitting as fitting
 
 
@@ -191,7 +187,7 @@ class RmTauAnalysis:
 
         assert len(time_window) == 2
         debug = False
-
+        print("Time Window0: ", time_window)
         Func = "exp1"  # single exponential fit with DC offset.
         self.taum_func = Func
         self.analysis_summary["taum"] = np.nan
@@ -210,12 +206,13 @@ class RmTauAnalysis:
         initpars = [self.rmp * 1e-3, -0.010, 0.010]  # rmp is in units of mV
         ineg_valid = self.Clamps.commandLevels < -10e-12
         ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
+        if not any(ineg_valid):
+            return
+        
         if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
 
-        if not any(ineg_valid):
-            return
         if debug:
             print('command levels: ', self.Clamps.commandLevels)
             print("ineg: ", ineg)
@@ -226,12 +223,12 @@ class RmTauAnalysis:
         time_base_fit = time_base[int(time_window[0]/dt) : int(time_window[1]/dt)]
         traces = self.Clamps.traces.view(np.ndarray)
         vrange = np.sort(vrange)         # vrange is in mV
-        vmeans = (  # mean of trace at the last 1 msec the time window, as difference from baseline
+        vmeans = (  # mean of trace at the last 1 msec the measurment time window, as difference from baseline
             np.mean(traces[:, int((time_window[1]-0.001)/dt) : int(time_window[1]/dt)], axis=1)
                 - self.ivbaseline
         )
-        vbl = (  # mean of trace at the last 10 msec prior to the step
-            np.mean(traces[:, int((time_window[0]-0.01)/dt) : int(time_window[0]/dt)], axis=1)
+        vbl = (  # mean of trace at the last 2 msec prior to the start of the measurement step
+            np.mean(traces[:, int((time_window[0]-0.002)/dt) : int(time_window[0]/dt)], axis=1)
         )
 
         indxs = np.where(
@@ -242,6 +239,7 @@ class RmTauAnalysis:
             print('baseline: ', self.ivbaseline)
             print('vrange: ', vrange)
             print('vmeans: ', vmeans.view(np.ndarray))
+            print("Vbl: ", vbl.view(np.ndarray))
             print('indxs: ', indxs)
             print('ineg: ', ineg_valid)
             print('self.Clamps.commandLevels', self.Clamps.commandLevels.view(np.ndarray))
@@ -290,7 +288,11 @@ class RmTauAnalysis:
                 # peak negativity.
                 vtr1 = traces[k][int((time_window[0]+tgap) / dt) : int(time_window[1] / dt)]
                 ipeak = np.argmin(vtr1)+int(tgap/dt)
-                time_window[1] = (ipeak * dt) + time_window[0]
+                if ipeak * dt < 0.002:  # force a minimum fit window of 2 msec
+                    ipeak = 0.002/dt
+                    time_window[1] = 0.002 + time_window[0]
+                else:
+                    time_window[1] = (ipeak+1)*dt + time_window[0]
                 vtr2 = traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)]
                 v0 = vtr2[0]
                 v1 = vtr2[-1] - v0
@@ -319,7 +321,7 @@ class RmTauAnalysis:
             if debug:
                 print("times: ", time_window, len(time_base), np.min(time_base), np.max(time_base))
                 print('taubounds: ', taubounds)
-
+            print("fitwindow: ", time_window)
             (fparx, xf, yf, namesx) = Fits.FitRegion(
                 [k],
                 thisaxis=whichaxis,
@@ -338,12 +340,13 @@ class RmTauAnalysis:
                 capture_error = True,
             )
  
-            # import matplotlib.pyplot as mpl
-            # print(self.ivbaseline)
-            # mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
-            # mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
-            # mpl.plot([np.min(xf[0]), np.max(xf[0])], [vbl[k], vbl[k]], 'k--', linewidth=0.5)
-            # mpl.show()
+            if debug:
+                import matplotlib.pyplot as mpl
+                print(self.ivbaseline)
+                mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
+                mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
+                mpl.plot([np.min(xf[0]), np.max(xf[0])], [vbl[k], vbl[k]], 'k--', linewidth=0.5)
+                mpl.show()
             # exit(1)
     
             if not fparx:

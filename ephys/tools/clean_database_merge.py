@@ -23,10 +23,15 @@ def clean_database_merge(pkl_file: Union[str, Path], coding_file: Union[str, Pat
     
     print("Reading pkl file: ", pkl_file)
     print(f"    File exists: {str(Path(pkl_file).is_file()):s}")
-    df = pd.read_pickle(pkl_file) # , compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+    try:
+        df = pd.read_pickle(pkl_file, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
+    except:
+        raise KeyError(f"Could not read file {str(pkl_file):s}")
     if "ID" in df.columns:
         df = df.rename(columns={"ID": "Animal_ID"})
-
+    # print(df.columns)
+    if "age" in df.columns:
+        df = df.rename(columns={"age": "Age"})
     df = df.apply(sanitize_age, axis=1)
     print(f"    With {len(df.index):d} entries")
     df["cell_type"] = df["cell_type"].values.astype(str)
@@ -55,7 +60,9 @@ def clean_database_merge(pkl_file: Union[str, Path], coding_file: Union[str, Pat
     # df_c = df_c.apply(mapdate, axis=1)
     df_c = df_c.apply(sanitize_age, axis=1, agename='Coded_Age')
     df_c["Group"] = df_c['Group'].values.astype(str)
-    # print(df.columns)
+    print(df.columns)
+    if "date" in df.columns:
+        df = df.rename(columns={"date": "Date"})
     # print(df_c.columns)
     # print("df dates: ", df.Date.values)
     # print("df_c dates: ", df_c.date.values)

@@ -269,6 +269,10 @@ class Analysis:
 
         Args:
             exclusions (Union[dict, None], optional): a dict of the files. Defaults to None.
+            The dict consists of cell_id keys, followed by a list of protocols, and the reason:
+            e.g., 
+            exclusions = {'2023.01.01_000/slice_000/cell_000': {'protocols': ['CCIV_4nA_Max'], 'reason': 'bad seal'},
+                            ... etc.}
         """
         self.exclusions = exclusions
 

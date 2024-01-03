@@ -53,6 +53,7 @@ This program writes several files (an output PDF figures) and prints some statis
 
 import argparse
 import dataclasses
+import pickle
 import os
 import subprocess
 from collections import OrderedDict
@@ -70,6 +71,7 @@ import seaborn as sns
 from ephys.tools.clean_database_merge import clean_database_merge
 from ephys.tools.parse_ages import ISO8601_age
 from pylibrary.tools import cprint as CP
+from ephys.tools import db_tools as DBTOOLS
 
 rcParams = matplotlib.rcParams
 rcParams["svg.fonttype"] = "none"  # No text as paths. Assume font installed.
@@ -371,6 +373,7 @@ class GetAllIVs:
 
         self.experiments = experiments
 
+
     def build_dataframe(self):
         """Build pandas data frame from selected experiments
         This function builds a new pandas dataframe ("self.dfs") that
@@ -393,6 +396,7 @@ class GetAllIVs:
             print(f"Experiments: {str(expts):s}")
             for i in range(len(expts)):
                 expt = self.experiments[expts[i]]
+                self.analyzed_datapath = Path(expt['databasepath'], expt['directory'])
                 cprint("g", f"   Analyzing experiment: {str(expts[i]):s}")
                 self.basedir = Path(expt["rawdatapath"])
                 self.inputFilename = Path(
@@ -405,7 +409,8 @@ class GetAllIVs:
                             f"Coding sheet in the file {str(expt['coding_file']):s} must be specified; got 'None'"
                         )
                     self.outputPath = Path(expt["databasepath"])
-                    coding_f = Path(expt["databasepath"], expt["coding_file"])
+
+                    coding_f = Path(expt["databasepath"], expt['directory'], expt["coding_file"])
                     sheet_name = expt["coding_sheet"]
                     print("    Input file name: ", self.inputFilename)
                     df_i = clean_database_merge(
@@ -418,14 +423,13 @@ class GetAllIVs:
                 else:
                     self.dfs = pd.read_pickle(self.inputFilename)
                     self.dfs["Group"] = self.dfs.apply(self.set_default_group, axis=1)
-                print(self.dfs.columns)
                 groups = sorted(list(set(self.dfs.Group.values)))
-                print(self.dfs.columns)
                 dates = sorted(list(set(self.dfs.date.values)))
                 print(f"    Expt: {expts[i]:s}, # dates found: {len(dates):d}")
-                for date in dates:
-                    print(f"       {date:s}")
+                # for date in dates:
+                #     print(f"       {date:s}")
                 CP.cprint("c", f"    with these groups: {str(groups):s}")
+
 
         self.dfs = self.dfs.reset_index(drop=True)
         self.rainbowcolors = iter(
@@ -436,6 +440,8 @@ class GetAllIVs:
             "g",
             "All data loaded, intermediate date file iv_summarize_intermediate_datafile.xlsx written",
         )
+        print(self.dfs.cell_id)
+        print("merged dataframe built")
         return
 
     def print_census(self, df_accum):
@@ -447,13 +453,15 @@ class GetAllIVs:
         Args:
             df_accum (_type_): _description_
         """
-        print("colnames: ", df_accum.columns.names)
+        # print("colnames: ", df_accum.columns)
+
         df_accum = df_accum.rename(columns={"animal identifier": "Animal_ID"})
         # ident = list(set(df_accum["Animal_ID"].values))
+        print("Census columns: ", df_accum.columns)
         cell_ids = list(set(df_accum["Cell_ID"].values))
         # counts = {'M_GFP+': 0, 'M_GFP-':0, 'F_GFP+': 0, 'F_GFP-':0}
         print("Census: ")
-        print("Columns in df_accum: ", df_accum.columns)
+        # print("Columns in df_accum: ", df_accum.columns)
         groups = list(set(df_accum["code"].values))
         counts = {}
         for g in groups:
@@ -511,11 +519,12 @@ class GetAllIVs:
         # now do the FI curves and the two subfigures
         # along with their analyses
         self.plot_FI(self.PFig)
-
+        mpl.show()
+        
         P1 = self.plot_IV_info(self.mode, code=self.group_mode, parentFigure=self.PFig)
-        P2 = self.plot_spike_info(
-            self.mode, code=self.group_mode, parentFigure=self.PFig
-        )
+        # P2 = self.plot_spike_info(
+        #     self.mode, code=self.group_mode, parentFigure=self.PFig
+        # )
         mpl.show()
 
     def set_protocols(self, protocols: list):
@@ -564,13 +573,19 @@ class GetAllIVs:
         self.dfs = self.set_grouping(self.dfs)
         for idx in self.dfs.index:
             # print("   ", self.dfs.columns)
-            dx = self.dfs.iloc[idx]["Spikes"]  # get the spikes dict
+            if "Spikes" in self.dfs.iloc[idx]:
+                dx = self.dfs.iloc[idx]["Spikes"]  # get the spikes dict
+            else:
+                dx = None
             code = self.dfs.iloc[idx]['grouping']
-            cn = code.split("_")
-            code = cn[0]
-            genotype = cn[1]
             if isinstance(code, list):
                 code = code[0]
+            cn = code.split("_")
+            genotype = "U"
+            code = cn[0]
+            if len(cn) > 1:
+                genotype = cn[1]
+
             if code not in self.code_names:
                 continue
             color = self.codecolors[code]
@@ -805,14 +820,15 @@ class GetAllIVs:
                     accumulator[m] = np.nan
         return accumulator
 
-    def _get_spike_info(self, mode: str):
+    def _get_spike_info(self, mode: str, existing=None):
         """analyze spike data
 
         Args:
             mode (str): Type of accumulation to do:
                 EU: "experimental unit", usually animal
                 OU: "observational unit", usually cell
-
+            existing: existing dataframe to put data into.
+                if None, a new dataframe is created
         Raises:
             ValueError: mode out of spec.
 
@@ -828,8 +844,10 @@ class GetAllIVs:
         # for each mouse (day) :: Observational Unit AND Experimental Unit
         # The observational unit is the cell.
         # the Experimetnal unit is the day (perhaps it should be the "Animal_ID")
-
-        OU_accumulator = []
+        print("get_spike info: dfs head: ", self.dfs.head())
+        exit()
+        if existing is None:
+            OU_accumulator = []
         protocol_list = []
         for day in dates:
             cprint("y", f"Day: {str(day):s}")
@@ -837,7 +855,7 @@ class GetAllIVs:
                 self.dfs["date"] == day
             ]:  # for each cell in that day: Observational UNIT
                 Cell_accumulator = self.make_emptydict(spike_measures)
-                Cell_ID = self.make_cell(idx)
+                Cell_ID = DBToools.make_cell_ID(self.dfs, idx)
                 # cprint("g", f"    gspk: Cell: {str(Cell_ID):s}   idx: {idx:d}, cell_id: {self.dfs.iloc[idx]['cell_id']:s} ")
                 if 'code' in self.dfs.columns:
                     code = self.dfs.iloc[idx]['code']
@@ -846,8 +864,14 @@ class GetAllIVs:
                 Animal_ID = self.dfs.iloc[idx]["Animal_ID"]
                 Group = self.dfs.iloc[idx]["Group"]
                 grouping = self.dfs.iloc[idx]["grouping"]
-                genotype = self.dfs.iloc[idx]["genotype"]
-                cell_expression = self.dfs.iloc[idx]["cell_expression"]
+                if "genotype" not in self.dfs.columns:
+                    self.dfs["genotype"] = "U"
+                else:
+                    genotype = self.dfs.iloc[idx]["genotype"]
+                if "cell_expression" not in self.dfs.columns:
+                    self.dfs["cell_expression"] = "U"
+                else:
+                    cell_expression = self.dfs.iloc[idx]["cell_expression"]
                 sex = self.dfs.iloc[idx]["sex"]
                 ages = self.make_emptydict(spike_measures)
                 dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
@@ -885,7 +909,7 @@ class GetAllIVs:
                         spike_measures,
                     )  # get mean values for the cell
                     OU_accumulator.append(Cell_means)
-            accumulator = pd.DataFrame(OU_accumulator)
+        accumulator = pd.DataFrame(OU_accumulator)
 
         return accumulator
 
@@ -893,9 +917,11 @@ class GetAllIVs:
         return int(len(~np.isnan(a)))
 
     def group_by_sex_and_genotype(self, row):
-        if row.sex == []:
-            raise ValueError("sex is not defined")
-        row.grouping = f"{row.sex:s}_{row.genotype:s}"
+        if 'sex' in row.names and 'genotype' in row.names:
+            row.grouping = f"{row.sex:s}_{row.genotype:s}"
+        else:
+            row.grouping = f"U_U"
+
         return row
 
     def group_by_expression(self, row):
@@ -927,24 +953,27 @@ class GetAllIVs:
         return row
 
     def set_grouping(self, df_accum):
-        if "code" in df_accum.columns.values:
-            df_accum = df_accum[df_accum.code != " "]  # remove unidentified groups
-            df_accum = df_accum[df_accum.cell_expression != "ND"]  # remove unidentified cells
-        df_accum = df_accum.assign(grouping="")  # assign some groupings in a new column
-        if self.group_mode == "genotype":
-            df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
-        elif self.group_mode == "code":
-            df_accum = df_accum.apply(self.group_by_code, axis=1)
-        elif self.group_mode == "Group":
-            df_accum = df_accum.apply(self.group_by_group, axis=1)
-        elif self.group_mode == "cell_expression":
-            df_accum = df_accum.apply(self.group_by_expression, axis=1)
-        elif self.group_mode == "expression_and_genotype":
-            df_accum = df_accum.apply(self.group_by_expression_and_genotype, axis=1)
-        else:
-            raise ValueError(
-                f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
-            )
+        print("Group mode: ", self.group_mode)
+
+        # if "code" in df_accum.columns:
+        #     df_accum = df_accum[df_accum.code != " "]  # remove unidentified groups
+        #     df_accum = df_accum[df_accum.cell_expression != "ND"]  # remove unidentified cells
+        df_accum["grouping"] = "" # assign some groupings in a new column
+        match self.group_mode:
+            case "genotype":
+                df_accum = df_accum.apply(self.group_by_sex_and_genotype, axis=1)
+            case "code":
+                df_accum = df_accum.apply(self.group_by_code, axis=1)
+            case "Group":
+                df_accum = df_accum.apply(self.group_by_group, axis=1)
+            case "cell_expression":
+                df_accum = df_accum.apply(self.group_by_expression, axis=1)
+            case "expression_and_genotype":
+                df_accum = df_accum.apply(self.group_by_expression_and_genotype, axis=1)
+            case _ :
+                raise ValueError(
+                    f"Grouping mode: {self.group_mode:s} did not match known values [genotype, code, Group]"
+                )
         return df_accum
 
     def plot_summary_info(
@@ -974,17 +1003,22 @@ class GetAllIVs:
             )
         assert code in ["genotype", "code", "Group", "cell_expression", "expression_and_genotype"]
 
-        if datatype == "spike":
-            # print("getting spike data")
-            df_accum = self._get_spike_info(mode)
-            use_measures = spike_measures
-            paxx = paxes
+
+        df_accum = self._get_iv_info(mode)
         if datatype == "iv":
             use_measures = iv_measures
-            df_accum = self._get_iv_info(mode)
-            paxx = paxesb
-        df_accum = self.set_grouping(df_accum)
 
+            paxx = paxesb
+        if datatype == "spike":
+            # # print("getting spike data")
+            # df_accum = self._get_spike_info(mode, existing=df_accum)
+            use_measures = spike_measures
+            paxx = paxes
+
+        print("Prior to grouping: ")
+        self.print_census(df_accum)
+        df_accum = self.set_grouping(df_accum)
+        print("after grouping: ")
         print("plot summary info: df_accum = \n", df_accum.head())
         self.print_census(df_accum)
 
@@ -996,14 +1030,23 @@ class GetAllIVs:
         print("group codes: ", list(set(df_accum_main.grouping.values)))
         usecode = "grouping"  # or "code"
         # print("datatype: <", datatype, "> measures: ", use_measures)
+        
+        def inftona(row):
+            for m in ['taum', 'tauh_bovera', 'tauh_tau', 'Rin', 'RMP']:
+                if row[m] == np.inf:
+                    row[m] = np.nan
+            return row
+        
         for param in use_measures:
             if param in ["FR_Slope", "Ibreak", "Irate"]:
                 continue
             all_codes = {}
             # print("param: ", param, " usecode: ", usecode)
-            with pd.option_context("mode.use_inf_as_null", True):
-                df_accum = df_accum_main.dropna(subset=[param, usecode], how="all")
-            # get all of the code values in the dataframe, from the selected column
+            df_accum_main = df_accum_main.apply(inftona, axis=1)
+            # with pd.option_context("mode.use_inf_as_na", True):
+            #     df_accum = df_accum_main.dropna(subset=[param, usecode], how="all")
+            # # get all of the code values in the dataframe, from the selected column
+            # print("ZZZ: ", df_accum)
             no_code = df_accum.iloc[0][usecode] == []
 
             if no_code:
@@ -1020,6 +1063,8 @@ class GetAllIVs:
                 # and len(code_by_param[param][0]) > 1
                 # and len(code_by_param[param][1]) > 1
             ):
+                print("usecode, param: ", usecode, param)
+                print("df_accum columns: ", df_accum.columns)
                 group_1 = df_accum[df_accum[usecode] == group_codes[0]][param].values
                 group_2 = df_accum[df_accum[usecode] == group_codes[1]][param].values
                 print("param: ", param, " group sizes: ", len(group_1), len(group_2))
@@ -1240,18 +1285,17 @@ class GetAllIVs:
     def _get_iv_parameter(
         self,
         measure: str,
-        measurename: str,
         cellmeas: dict,
         accumulator: dict,
         func: object = np.nanmean,
-        df: object = None,
+        dfiv: object = None,
+        dspk: object = None,
     ):
         """Get the IV values averaged (or smallest) from one protocol/measurement in one cell
         accumulate the measures in the accumulator (dict of measures), using lists.
 
         Args:
             measure: the name of the measure to be stored
-            measurename: the name of the measure as found in the iv array
             accumulator (dict): _description_
             cellmeas (_type_): _description_
             func (function object): name of function to use on values (np.nanmean, np.nanmin)
@@ -1271,10 +1315,33 @@ class GetAllIVs:
             raise ValueError()
         return accumulator
 
-    def _get_protocol_iv_data(
+    def _get_protocol_spike_data2(self, spike_dict):
+        """_get_protocol_spike_data2 get a subset of measures
+
+        Parameters
+        ----------
+        spike_dict : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        meas = ['FiringRate_1p5T', 'AdaptRatio', 'AHP_Trough', 'AHP_Depth', 'AP1_HalfWidth', 'AP1_Latency']
+        sp_dict = {measure: np.nan for measure in meas}
+        for m in meas:
+            if m in spike_dict.keys():
+                sp_dict[m] = spike_dict[m]
+            else:
+                sp_dict[m] = np.nan
+        return sp_dict, meas
+
+    
+    def _get_protocol_data(
         self,
         dspk: dict = None,
-        dfi: dict = None,
+        dfiv: dict = None,
         proto: str = None,
         Cell_ID: str = None,
         Animal_ID: str = None,
@@ -1297,8 +1364,12 @@ class GetAllIVs:
             dspk (dict): spike dictionary for one cell
             dfi (dict): FI dictionary (IV) for one cell
             proto (str): Protocol name within the dict to use
+
+
         """
-        cellmeas = dfi[proto]
+        cellmeas = dfiv[proto]
+        m_dspk, sp_measures = self._get_protocol_spike_data2(spike_dict = dspk[proto])
+
         cellmeas["age"] = age
         cellmeas["code"] = code
         cellmeas["sex"] = sex
@@ -1312,11 +1383,11 @@ class GetAllIVs:
             if m not in no_average:
                 accumulator = self._get_iv_parameter(
                     measure=m,
-                    measurename=m,
                     cellmeas=cellmeas,
                     accumulator=accumulator,
                     func=np.nanmean,
-                    df=dfi,
+                    dspk=m_dspk,
+                    dfiv=dfiv,
                 )
 
             elif m in no_average:
@@ -1379,7 +1450,7 @@ class GetAllIVs:
         # print("dates: ", dates)
         # for each mouse (day) :: Observational Unit AND Experimental Unit
         # The observational unit is the cell.
-        # the Experimetnal unit is the day (perhaps it should be the "ID")
+        # the Experimetnal unit is the day (perhaps it should be the "Animal_ID")
 
         OU_accumulator = []
         protocol_list = []  # protocol includes full path to data
@@ -1392,7 +1463,7 @@ class GetAllIVs:
 
                 Cell_accumulator = self.make_emptydict(iv_measures)
                 n_protocols = 0
-                Cell_ID = self.make_cell(idx)
+                Cell_ID = DBTOOLS.make_cell_ID(self.dfs, idx)
                 code = self.dfs.iloc[idx]['grouping']
                 # print("code: ", code)
                 # print("self.dfs columns (1262): ", self.dfs.columns)
@@ -1401,33 +1472,60 @@ class GetAllIVs:
                     cprint("m", f"giv: Empty code for cell: {Cell_ID:s}, with group mode: {self.group_mode:s}")
                     continue
                 sex = self.dfs.iloc[idx]["sex"]
-                genotype = self.dfs.iloc[idx]["genotype"]
-                cell_expression = self.dfs.iloc[idx]["cell_expression"]
-                Animal_ID = self.dfs.iloc[idx]["Animal_ID"]
+                if "genotype" in self.dfs.columns:
+                    genotype = self.dfs.iloc[idx]["genotype"]
+                else:
+                    genotype = "U"
+                if "cell_expression" in self.dfs.columns:
+                    cell_expression = self.dfs.iloc[idx]["cell_expression"]
+                else:
+                    cell_expression = "ND"
+                if "Animal_ID" in self.dfs.columns:
+                    Animal_ID = self.dfs.iloc[idx]["Animal_ID"]
+                else:
+                    Animal_ID = "ND"
                 Group = self.dfs.iloc[idx]["Group"]
                 grouping = self.dfs.iloc[idx]["grouping"]
-                try:
+                if 'age' in self.dfs.columns:
                     age = self.dfs.iloc[idx]["age"]
-                except:
+                elif "age_x" in self.dfs.columns:
                     age = self.dfs.iloc[idx]["age_x"]
+                elif "Age" in self.dfs.columns:
+                    age = self.dfs.iloc[idx]["Age"]
+                else:
+                    age = "ND"
 
                 ages = self.make_emptydict(iv_measures)
-                dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
-                dfi = self.dfs.iloc[idx]["IV"]
+                if "Spikes" in self.dfs.columns:
+                    dspk = self.dfs.iloc[idx]["Spikes"]  # get the Spikes dict
+                else:
+                    dspk = []
+                if "IV" in self.dfs.columns:
+                    dfi = self.dfs.iloc[idx]["IV"]
+                else:
+                    dfi = []
 
                 day_label = self.dfs.iloc[idx]["date"][:-4]
 
                 if pd.isnull(dspk) or len(dspk) == 0:  # nothing in the Spikes column
-                    cprint("m", f"giv: No spikes for cell: {Cell_ID:s}, with group mode: {self.group_mode:s}")
-                    continue
-                for proto in dspk.keys():
+                    # try looking for spikes from the analysis .pkl file
+                    # make a file name:
+                    dx = DBTOOLS.get_pickled_cell_data(self.dfs, idx, analyzed_datapath=self.analyzed_datapath)
+                    if dx is None:
+                        continue
+                
+                    dspk = dx["Spikes"]
+                    dfi = dx["IV"]
+
+                for proto in dspk.keys():  # protocol name includes day/slice/cell/protocol
                     if proto not in protocol_list:  # protect against double counting
                         protocol_list.append(proto)
                     else:
                         continue
-                    cprint("c", f"        Protocol: {str(proto):s}, {day:s}")
+                    cprint("c", f"        Cell: {Cell_ID:s} iv Protocol: {str(Path(proto).name):s}")
+
                     n_protocols += 1
-                    Cell_accumulator = self._get_protocol_iv_data(
+                    Cell_accumulator = self._get_protocol_data(
                         dspk,
                         dfi,
                         proto,
@@ -1450,8 +1548,9 @@ class GetAllIVs:
                         iv_measures,
                     )  # get mean values for the cell
                     OU_accumulator.append(Cell_means)
-
-        return pd.DataFrame(OU_accumulator)
+        OU = pd.DataFrame(OU_accumulator)
+        print("OU: ", OU.columns)
+        return OU
 
     def plot_IV_info(self, mode, code: str, parentFigure=None):
         """
@@ -1534,11 +1633,6 @@ class GetAllIVs:
             d[k] = []
         return d
 
-    def make_cell(self, iday):
-        datestr = self.dfs.at[iday, "date"]
-        slicestr = self.dfs.at[iday, "slice_slice"]
-        cellstr = self.dfs.at[iday, "cell_cell"]
-        return str(Path(datestr, slicestr, cellstr))
 
 
 def get_rec_date(filename: Union[Path, str]):
@@ -1608,14 +1702,14 @@ def get_protocols_from_datasheet(
     # read the code dataframe (excel sheet)
     # code_df = pd.read_excel(code_file, sheet_name=code_sheet)
     # # be sure types are correct
-    # for coln in ["age", "ID", "Group", "sex", "cell_expression"]:
+    # for coln in ["age", "Animal_ID", "Group", "sex", "cell_expression"]:
     #     code_df[coln] = code_df[coln].astype(str)
     # code_df = code_df.drop("age", axis="columns")
     # dfm = pd.merge(
     #     df, code_df, left_on="shortdate", right_on="Date", how="left"
     # )  # codes are by date only
     dfm = df
-    dfm["iv_name"] = ""
+    dfm["protocol"] = ""
     # print("dfm columns: ", dfm.columns)
     # make an empty dataframe with defined columns
     df_new = pd.DataFrame(columns=outcols)
@@ -1627,10 +1721,10 @@ def get_protocols_from_datasheet(
         for prot in prots:
             data = {}
             for col in outcols:  # copy over the information from the input dataframe
-                if col != "iv_name":
+                if col != "protocol":
                     data[col] = dfm[col][index]
                 else:
-                    data["iv_name"] = prot  # add the protocol
+                    data["protocol"] = prot  # add the protocol
             if data["cell_type"] not in ["Pyramidal", "pyramidal"]:
                 continue
             if data["age"].strip() in ["", " ", "?"]:

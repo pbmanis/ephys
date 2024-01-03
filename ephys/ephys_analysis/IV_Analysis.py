@@ -293,16 +293,21 @@ class IVAnalysis(Analysis):
             if ptype in ["stdIVs", "CCIV_long", "CCIV_posonly"]:  # just CCIV types
                 for prot in allprots[ptype]:
                     allivs.append(prot)  # combine into a new list
-        validivs = []
-        if self.exclusions is not None:
-            for p in allivs:  # first remove excluded protocols
-                if p not in self.exclusions:
-                    validivs.append(
-                        p
-                    )  # note we do not just remove as this messes up the iterator of the maps
-        else:
-            validivs = allivs
-        nworkers = 16  # number of cores/threads to use
+
+        validivs = allivs 
+        
+        # build a list of all exclusions
+        exclude_ivs = []
+        for ex_cell in self.exclusions.keys():
+            for ex_proto in self.exclusions[ex_cell]['protocols']:
+                exclude_ivs.append(str(Path(ex_cell, ex_proto)))
+        print("Excluded IVs: ", exclude_ivs)
+        # the exclusion list is shorter (we hope), so let's iterate over it for removal
+        for iv_proto in exclude_ivs:
+            if iv_proto in validivs:
+                validivs.remove(iv_proto)
+
+        nworkers = 8  # number of cores/threads to use
         tasks = range(len(validivs))  # number of tasks that will be needed
         results: dict = dict(
             [("IV", {}), ("Spikes", {})]
@@ -973,6 +978,8 @@ class IVAnalysis(Analysis):
                 linewidth=0.35,
                 color=trace_colors[i],
             )
+            if i == 0:
+                break # only plot the first one
         P.axdict["E"].set_xlabel("V (mV)")
         P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
 

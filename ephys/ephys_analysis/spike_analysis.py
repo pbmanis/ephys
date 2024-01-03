@@ -916,6 +916,8 @@ class SpikeAnalysis:
         if np.max(i_inj) < 0.0:  # no fit if max rate occurs at < 0 current
             # CP.cprint("r", "Spike analysis fitOne: Max current inj is 0")
             return None
+        if len(i_inj) < 5:
+            return None
         # CP.cprint("m", f"after fixnonmono: {len(i_inj):d} points")
         # get max spike rate
         spike_rate_min = 5.0
@@ -1093,7 +1095,7 @@ class SpikeAnalysis:
             fitter_func = fitting.Fitting().fitfuncmap[function]
             yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
             self.FIKeys = f[6]
-            # print("Hill fit results: ", fpar)
+            print("spikeanalysis: Hill fit results: ", fpar)
 
         elif self.FIGrowth == "piecewiselinear3":
             fitbreak0 = ibreak0

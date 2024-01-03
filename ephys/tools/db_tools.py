@@ -48,7 +48,7 @@ def get_pickled_cell_data(df, idx, analyzed_datapath: Union[Path, str] = None):
     cname = cell_id.replace(".", "_")
     # print('cname: ', cname)
     cname = cname.replace("_000", "")
-    cname = f"{cname:s}_{df.iloc[idx]['celltype']:s}_IVs.pkl"
+    cname = f"{cname:s}_{df.iloc[idx]['cell_type']:s}_IVs.pkl"
     # print("cname 1: ", cname)
     fpath = Path(analyzed_datapath, df.iloc[idx]["cell_type"], cname)
     if not fpath.is_file():

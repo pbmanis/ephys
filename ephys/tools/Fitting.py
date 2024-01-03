@@ -972,6 +972,10 @@ class Fitting:
                 yn.append(names)
                 if not any(tx):
                     print("Fitting.py: No data in clipping window")
+                    print("    Fitting Window: t0, t1: ", t0, t1)
+                    print("    Min and max time in time array: ", np.min(tdat), np.max(tdat))
+                    print("    Data lengths: ", len(tdat), len(ydat[record, :]))
+                    raise ValueError("Fitting.py: No data in clipping window")
                     continue  # no data in the window...
                 ier = 0
                 #
