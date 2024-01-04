@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from Cython.Build import cythonize
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 3, 15, 'a')
+version_info = (0, 4, 0, 'a')
 __version__ = '%d.%d.%d%s' % version_info
 
 
@@ -19,6 +19,7 @@ setup(name='ephys',
       entry_points={
           'console_scripts': [
                'datasummary=ephys.tools.data_summary:main',
+               'datatable=ephys.gui.data_tables:main',
                'dircheck=ephys.tools.dir_check:main',
                'ma2tiff=ephys.tools.ma2tiff:convertfiles',
                'bridge=ephys.tools.bridge:main',
