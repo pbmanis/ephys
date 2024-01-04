@@ -12,6 +12,7 @@ from . import display_acq4
 from . import tifffile
 from . import fitting
 from . import utilities
+from . import get_configuration
 
 
 
