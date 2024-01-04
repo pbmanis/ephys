@@ -43,12 +43,23 @@ from .. import datareaders as DR
 cprint = CP.cprint
 
 # known data dirs by experiment:
+try:
+    print("Current Directory: ", os.getcwd())
+    cpath = Path(os.getcwd(), "config", "experiments.cfg")
+    config = pg.configfile.readConfigFile(cpath)
+    experiments = config['experiments']
+    print(experiments.keys())
 
-experiments = {"nf107": {
+
+except FileNotFoundError:
+    # use a default
+    experiments = {"nf107": {
                 'datadir':'/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32Het',
                 'dbfile': '/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het_BridgeCorrections.xlsx'
                 },
             }
+print("experiments: ", experiments)
+
 
 pg.setConfigOption('antialias', True)
 
