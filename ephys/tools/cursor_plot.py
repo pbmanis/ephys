@@ -15,6 +15,7 @@ from pyqtgraph.Point import Point
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 import ephys.ephys_analysis as EP
+import ephys.datareaders as DR
 import pylibrary.tools.fileselector as FS
 import lmfit
 # os.environ['QT_MAC_WANTS_LAYER'] = '1'
@@ -29,15 +30,18 @@ class CursorPlot(object):
     def __init__(self, title='crosshair'):
         
         self.title = title
-        self.app = QtGui.QApplication([])
+        self.app = pg.QtWidgets.QApplication([])
         self.app.setStyle("fusion")
-        self.win = pg.GraphicsWindow()
-        self.layout = QtGui.QGridLayout()
+        self.win = pg.GraphicsLayoutWidget(title="MiniViewer")
+        self.layout = pg.Qt.QtWidgets.QGridLayout()
+        self.layout.setSpacing(8)
         self.win.setLayout(self.layout)
+        # self.win.setLayout(self.layout)
         self.win.resize(1024,800)
-        self.AR = EP.acq4_reader.acq4_reader()  # make our own private version of the analysis and reader
+        self.AR = DR.acq4_reader.acq4_reader()  # make our own private version of the analysis and reader
         self.initParameters()
         self.buildParameters()
+        self.win.show()
 
     def initParameters(self):
         self.nextStore = 'T0'
@@ -48,7 +52,7 @@ class CursorPlot(object):
         self.fitplot = None
         self.win.setWindowTitle(self.title)
         self.label = pg.LabelItem(justify='right')
-        self.win.addItem(self.label)
+        # self.win.addItem(self.label)
         self.datadir = Path('/')
         self.vb = None
         self.lastx = 0.
@@ -65,11 +69,6 @@ class CursorPlot(object):
         self.T0_m = 0.
         self.T1_m = 0.
         
-        
-        
-
-        # self.plots['Windowed'] = self.win.addPlot(row=1, col=0)
-        # self.plots['Full'] = self.win.addPlot(row=2, col=0)
     def buildParameters(self):
         params = [
                 {'name': 'Cursor Plot', 'type': 'group', 'children': [
@@ -130,7 +129,6 @@ class CursorPlot(object):
         view = pg.GraphicsView()
         r_layout = pg.GraphicsLayout(border=(50,100,50))
         
-
         self.plots = {}
         self.pwin = None
         self.pfull = None
@@ -147,8 +145,8 @@ class CursorPlot(object):
 
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)  # connect parameters to their updates
 
-        # self.region = pg.LinearRegionItem()
-        # self.region.setZValue(10)
+        self.region = pg.LinearRegionItem()
+        self.region.setZValue(10)
         self.time_region = pg.LinearRegionItem()
         self.time_region.setZValue(10)
         
@@ -161,7 +159,7 @@ class CursorPlot(object):
         self.plots['Windowed'].setAutoVisible(y=True)
         self.proxy = pg.SignalProxy(self.plots['Windowed'].scene().sigMouseMoved, rateLimit=60, slot=self.mouseMoved)
         self.proxyclick = pg.SignalProxy(self.plots['Windowed'].scene().sigMouseClicked, rateLimit=60, slot=self.mouseClicked)
-    
+
     def command_dispatcher(self, param, changes):
         for param, change, data in changes:
             path = self.ptreedata.childPath(param)
@@ -377,7 +375,7 @@ class CursorPlot(object):
             self.pwin.setData(x=self.dataX, y=self.dataY, pen='c')
             # self.pfull.setData(x=self.dataX, y=self.dataY, pen="w")
 
-        # self.region.sigRegionChanged.connect(self.update_f)
+        self.region.sigRegionChanged.connect(self.update_f)
         xmin = np.min(self.dataX)
         xmax = np.max(self.dataX)
         xmin = 0.1*(xmax-xmin) + xmin
@@ -418,8 +416,8 @@ class CursorPlot(object):
     def update_w(self):
         self.update(region=self.time_region)
 
-    # def update_f(self):
-    #     self.update(region=self.region)
+    def update_f(self):
+        self.update(region=self.region)
         
     def update(self, region):
         region.setZValue(10)
@@ -500,13 +498,8 @@ class CursorPlot(object):
             pass
 
 def main():
-    import sys
-    app = pg.mkQApp()
     CP = CursorPlot()
-    # x, y = CP.make_testdata()
-    # CP.plotData(x, y)
-    #if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-    app.exec() # QtGui.QApplication.instance().exec_()    
+    CP.app.exec()
 
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
