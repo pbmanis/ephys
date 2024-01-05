@@ -22,13 +22,13 @@ def get_configuration(configfile: str = "experiments.cfg"):
         _description_
     """
     try:
-        print("Current Directory: ", Path().absolute())
+        print("Getting Configuration file from: ", Path().absolute())
         cpath = Path(Path().absolute(), "config", configfile)
         config = pg.configfile.readConfigFile(cpath)
         experiments = config["experiments"]
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            f"No config file found, expected in the top-level config directory, named '{configfile!s}'"
+            f"No config file found, expected in the top-level config directory, named '{cpath!s}'"
         ) from exc
 
     datasets = list(experiments.keys())
