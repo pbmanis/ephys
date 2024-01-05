@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import List, Union
 import ephys
 from ephys.tools import win_print as WP
+import pandas as pd
 
 import numpy as np
 from pylibrary.tools import cprint as CP
@@ -269,6 +270,8 @@ class TableManager:
         """
         Load up the index data class with selected information from the datasummary
         """
+        if pd.isnull(row.cell_id):
+            return None
         Index_data = IndexData()
         Index_data.ephys_hash = ephys_git_hash  # save hash for the model code
         Index_data.project_code_hash = git_head_hash  # this repository!
@@ -289,7 +292,8 @@ class TableManager:
         Index_data.Rin = f"{row.Rin:6.2f}"
         Index_data.taum = f"{row.taum*1e3:6.2f}" # convert to ms
         Index_data.holding = f"{row.holding*1e12:6.2f}" # convert to pA
-                
+        print("row.cellid: ", row.cell_id)
+        print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
         Index_data.protocols = str(prots)
         # Index_data.data_complete = str(row.data_complete)
@@ -431,7 +435,8 @@ class TableManager:
         indxs = []        
         for i, dfindex in enumerate(dataframe.index):
             index_file_data = self.make_indexdata(dataframe.loc[dfindex])
-            indxs.append(index_file_data)
+            if index_file_data is not None:
+                indxs.append(index_file_data)
         self.table_data = indxs
         print("indxs[0]: ", indxs[0])
         # transfer to the data array for the table

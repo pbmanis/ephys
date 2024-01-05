@@ -4,6 +4,7 @@
 
 from pathlib import Path
 from typing import Union
+import logging
 import pprint
 import numpy as np
 import pandas as pd
@@ -18,6 +19,61 @@ import matplotlib.pyplot as mpl
 
 UTIL = utilities.Utility()
 CP = cprint.cprint
+
+
+class CustomFormatter(logging.Formatter):
+    grey = "\x1b[38;21m"
+    yellow = "\x1b[33;21m"
+    red = "\x1b[31;21m"
+    bold_red = "\x1b[31;1m"
+    white = "\x1b[37m"
+    reset = "\x1b[0m"
+    lineformat = "%(asctime)s - %(levelname)s - (%(filename)s:%(lineno)d) %(message)s "
+
+    FORMATS = {
+        logging.DEBUG: grey + lineformat + reset,
+        logging.INFO: white + lineformat + reset,
+        logging.WARNING: yellow + lineformat + reset,
+        logging.ERROR: red + lineformat + reset,
+        logging.CRITICAL: bold_red + lineformat + reset,
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+def create_logger(
+    log_name: str = "Log Name",
+    log_file: str = "log_file.log",
+    log_message: str = "Starting Logging",
+):
+    logging.getLogger("fontTools.subset").disabled = True
+    Logger = logging.getLogger(log_name)
+    level = logging.DEBUG
+    Logger.setLevel(level)
+    # create file handler which logs even debug messages
+    logging_fh = logging.FileHandler(filename=log_file)
+    logging_fh.setLevel(level)
+    logging_sh = logging.StreamHandler()
+    logging_sh.setLevel(level)
+    log_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s "
+    )
+    logging_fh.setFormatter(log_formatter)
+    logging_sh.setFormatter(CustomFormatter())  # log_formatter)
+    Logger.addHandler(logging_fh)
+    Logger.addHandler(logging_sh)
+    Logger.info(log_message)
+    return Logger
+
+
+Logger = create_logger(
+    log_name="Spike Analysis",
+    log_file="spike_analysis.log",
+    log_message="Starting Process Spike Analysis",
+)
 
 PrettyPrinter = pprint.PrettyPrinter
 
@@ -108,6 +164,7 @@ iv_mapper: dict = {
     "Rin": "Rin",
     "RMP": "RMP",
 }
+
 
 def print_spike_keys(row):
     if pd.isnull(row.IV):
@@ -279,14 +336,14 @@ class Functions:
                 #             ax=ax[1],
                 #         )
 
-                    #     ax[1].scatter(
-                    #     low_spike.V[t_indices[i]] * 1e3,
-                    #     low_spike.dvdt[t_indices[i]],
-                    #     s=12,
-                    #     marker='|',
-                    #     color=colors[i],
-                    #     zorder = 10
-                    # )
+                #     ax[1].scatter(
+                #     low_spike.V[t_indices[i]] * 1e3,
+                #     low_spike.dvdt[t_indices[i]],
+                #     s=12,
+                #     marker='|',
+                #     color=colors[i],
+                #     zorder = 10
+                # )
                 # Plot each point with a different color
                 # ax[1].scatter(
                 #     low_spike.V[t_indices] * 1e3,
@@ -315,10 +372,8 @@ class Functions:
                 )
                 ax[0].plot(
                     [
-                        (low_spike.left_halfwidth_T - low_spike.peak_T - 0.0001)
-                        * 1e3,
-                        (low_spike.right_halfwidth_T - low_spike.peak_T + 0.0001)
-                        * 1e3,
+                        (low_spike.left_halfwidth_T - low_spike.peak_T - 0.0001) * 1e3,
+                        (low_spike.right_halfwidth_T - low_spike.peak_T + 0.0001) * 1e3,
                     ],
                     [  # in msec
                         low_spike.halfwidth_V * 1e3,
@@ -327,12 +382,12 @@ class Functions:
                     "g-",
                     zorder=10,
                 )
-                    # ax[0].plot(
-                    #     (low_spike.right_halfwidth_T - low_spike.peak_T)
-                    #     * 1e3,  # in msec
-                    #     low_spike.halfwidth_V * 1e3,
-                    #     "co",
-                    # )
+                # ax[0].plot(
+                #     (low_spike.right_halfwidth_T - low_spike.peak_T)
+                #     * 1e3,  # in msec
+                #     low_spike.halfwidth_V * 1e3,
+                #     "co",
+                # )
 
                 if nplots == 0:  # annotate
                     ax[0].set_xlabel("Time (msec), re Peak")
@@ -364,15 +419,16 @@ class Functions:
                 # cell_df, _ = self.get_cell(
                 #     experiment, assembleddata, cell=selected.cell_id
                 # )
-                fig, ax = mpl.subplots(1,1)
-                self.compute_FI_Fits(experiment, assembleddata, selected.cell_id, plot_fits=True, ax=ax)
+                fig, ax = mpl.subplots(1, 1)
+                self.compute_FI_Fits(
+                    experiment, assembleddata, selected.cell_id, plot_fits=True, ax=ax
+                )
 
             if nplots > 0:
                 mpl.show()
             return self.selected_index_rows
         else:
             return None
-    
 
     def average_FI(self, FI_Data_I_, FI_Data_FR_, max_current: float = 1.0e-9):
         if len(FI_Data_I_) > 0:
@@ -413,7 +469,9 @@ class Functions:
             # print(np.where(x==dupe), np.where(xa==dupe))
             ya[np.where(xa == dupe)] = np.nanmean(y[np.where(x == dupe)])
             ystd[np.where(xa == dupe)] = np.nanstd(y[np.where(x == dupe)])
-            yn[np.where(xa == dupe)] = np.count_nonzero(~np.isnan(y[np.where(x == dupe)]))
+            yn[np.where(xa == dupe)] = np.count_nonzero(
+                ~np.isnan(y[np.where(x == dupe)])
+            )
         return xa, ya, ystd, yn
 
     # get maximum slope from fit.
@@ -439,8 +497,8 @@ class Functions:
         hd /= (x * x) * np.power((np.power(m / x, n) + 1.0), 2.0)
         return hd
 
-
-    def fit_FI_Hill(self,
+    def fit_FI_Hill(
+        self,
         FI_Data_I,
         FI_Data_FR,
         FI_Data_FR_Std,
@@ -454,9 +512,9 @@ class Functions:
         cell: str,
         celltype: str,
         plot_fits=False,
-        ax:Union[mpl.Axes, None] = None
+        ax: Union[mpl.Axes, None] = None,
     ):
-        plot_raw = False # only to plot the unaveraged points.
+        plot_raw = False  # only to plot the unaveraged points.
         spanalyzer = spike_analysis.SpikeAnalysis()
         spanalyzer.fitOne(
             i_inj=FI_Data_I,
@@ -530,8 +588,12 @@ class Functions:
             )
             # ax[1].plot(FI_Data_I * 1e12, FI_Data_N, marker="s")
             if plot_raw:
-                for i, d in enumerate(FI_Data_I_):  # plot the raw points before combining
-                    ax.plot(np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k")
+                for i, d in enumerate(
+                    FI_Data_I_
+                ):  # plot the raw points before combining
+                    ax.plot(
+                        np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k"
+                    )
             # print("fit x * 1e9: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][0]*1e9)
             # print("fit y * 1: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][1])
 
@@ -539,8 +601,7 @@ class Functions:
             celln = Path(cell).name
 
             if len(spanalyzer.analysis_summary["FI_Growth"]) >= 0:
-
-                line_fit=ax.plot(
+                line_fit = ax.plot(
                     spanalyzer.analysis_summary["FI_Growth"][0]["fit"][0][0] * 1e9,
                     spanalyzer.analysis_summary["FI_Growth"][0]["fit"][1][0],
                     color="r",
@@ -548,16 +609,16 @@ class Functions:
                     zorder=100,
                 )
                 # derivative (in blue)
-                line_deriv=ax.plot(
+                line_deriv = ax.plot(
                     i_range * 1e9, deriv_hill, color="b", linestyle="--", zorder=100
                 )
                 d_max = np.argmax(deriv_hill)
-                ax2 = ax.twinx()  
+                ax2 = ax.twinx()
                 ax2.set_ylim(0, 500)
                 ax2.set_ylabel("Firing Rate Slope (sp/s/nA)")
-                line_drop=ax2.plot(
+                line_drop = ax2.plot(
                     [i_range[d_max] * 1e9, i_range[d_max] * 1e9],
-                    [0, 1.1*deriv_hill[d_max]],
+                    [0, 1.1 * deriv_hill[d_max]],
                     color="b",
                     zorder=100,
                 )
@@ -580,32 +641,70 @@ class Functions:
                 # do not draw the spine
                 PH.talbotTicks(ax, density=[2.0, 2.0])
                 PH.talbotTicks(ax2, density=[2.0, 2.0])
-                ax.legend([line_FI, line_fit[0], line_deriv[0], line_drop[0]], 
-                          ["Firing Rate", "Hill Fit", "Derivative", "Max Derivative"],
-                          loc="best", frameon=False)
+                ax.legend(
+                    [line_FI, line_fit[0], line_deriv[0], line_drop[0]],
+                    ["Firing Rate", "Hill Fit", "Derivative", "Max Derivative"],
+                    loc="best",
+                    frameon=False,
+                )
 
             mpl.show()
 
         return hill_max_derivs, hill_i_max_derivs, FI_fits, linfits
 
-    def compute_FI_Fits(self, experiment, df, cell, plot_fits:bool=False, ax:Union[mpl.Axes, None]=None):
-        print("Cell id: ", df.cell_id)
+    def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
+        exclude_flag = day_slice_cell in experiment["excludeIVs"]
+        print("    IV is in exclusion table: ", exclude_flag)
+        if exclude_flag:
+            exclude_table = experiment["excludeIVs"][day_slice_cell]
+            print("    excluded table data: ", exclude_table)
+            print("    testing protocol: ", protocol)
+            proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
+            if proto in exclude_table["protocols"] or exclude_table[
+                "protocols"
+            ] == ["all"]:
+                CP(
+                    "y",
+                    f"Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
+                )
+                Logger.info(
+                    f"Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
+                )
+                return True
+            print("    Protocol passed: ", protocol)
+        return False
+
+
+
+    def compute_FI_Fits(
+        self,
+        experiment,
+        df,
+        cell,
+        plot_fits: bool = False,
+        ax: Union[mpl.Axes, None] = None,
+    ):
         print("Cell: ", cell)
         df_cell, df_tmp = self.get_cell(experiment, df, cell)
         if df_cell is None:
             return None
-        
+
         protocols = list(df_cell.Spikes.keys())
         spike_keys = list(df_cell.Spikes[protocols[0]].keys())
         iv_keys = list(df_cell.IV[protocols[0]].keys())
-       
+
         srs = {}
         dur = {}
         # for each CCIV type of protocol that was run:
         for protocol in protocols:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
-
+            day_slice_cell = str(
+                Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell)
+            )
+            CP("m", f"day_slice_cell: {day_slice_cell:s}")
+            if self.check_excluded_dataset(day_slice_cell, experiment,  protocol):
+                continue
             fullpath = Path(
                 experiment["rawdatapath"], experiment["directory"], protocol
             )
@@ -618,7 +717,9 @@ class Functions:
                     dur[protocol] = duration
                 except:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
-                    raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
+                    raise ValueError(
+                        f"Acq4Read failed to read data file: {str(fullpath):s}"
+                    )
 
         protocols = list(srs.keys())  # only count valid protocols
 
@@ -709,7 +810,7 @@ class Functions:
                 cell=cell,
                 celltype=df_tmp.cell_type.values[0],
                 plot_fits=plot_fits,
-                ax = ax,
+                ax=ax,
             )
 
         # save the results
@@ -745,7 +846,6 @@ class Functions:
             i_four = np.where(FI_Data_I4 <= 4.01e-9)[0]
             datadict["FIMax_4"] = np.nanmax(FI_Data_FR4[i_four])
         return datadict
-
 
     def get_cell(self, experiment, df: pd.DataFrame, cell: str):
         df_tmp = df[df.cell_id == cell]
@@ -870,7 +970,6 @@ class Functions:
         # print(current[min_current_index], trace[min_current_index])
         return min_current_index, current[min_current_index], trace[min_current_index]
 
-
     def convert_FI_array(self, FI_values):
         """convert_FI_array Take a potential string representing the FI_data,
         and convert it to a numpy array
@@ -886,12 +985,7 @@ class Functions:
             converted data from FI_values
         """
         if isinstance(FI_values, str):
-            fistring = (
-                FI_values
-                .replace("[", "")
-                .replace("]", "")
-                .replace("\n", "")
-            )
+            fistring = FI_values.replace("[", "").replace("]", "").replace("\n", "")
             fistring = fistring.split(" ")
             FI_data = np.array([float(s) for s in fistring if len(s) > 0])
             FI_data = FI_data.reshape(2, int(FI_data.shape[0] / 2))
@@ -899,7 +993,6 @@ class Functions:
             FI_data = FI_values
         FI_data = np.array(FI_data)
         return FI_data
-    
 
     def get_measure(self, df_cell, measure, datadict, protocols):
         """get_measure : for the giveen cell, get the measure from the protocols
@@ -956,37 +1049,53 @@ class Functions:
             ) in protocols:  # for all protocols with spike analysis data for this cell
                 if "spikes" not in df_cell.Spikes[protocol].keys():
                     continue
-                # we need to get the first spike evoked by the lowest current level ... 
-                min_current_index, current, trace = self.find_lowest_current_trace(df_cell.Spikes[protocol])
+                # we need to get the first spike evoked by the lowest current level ...
+                min_current_index, current, trace = self.find_lowest_current_trace(
+                    df_cell.Spikes[protocol]
+                )
                 if not np.isnan(min_current_index):
                     m.append(current)
                 else:
                     m.append(np.nan)
-        
+
         else:
             for (
                 protocol
             ) in protocols:  # for all protocols with spike analysis data for this cell
-                # we need to get the first spike evoked by the lowest current level ... 
+                # we need to get the first spike evoked by the lowest current level ...
                 prot_spike_count = 0
                 if "spikes" not in df_cell.Spikes[protocol].keys():
                     continue
                 spike_data = df_cell.Spikes[protocol]["spikes"]
-                if measure in ["dvdt_rising", "dvdt_falling", "AP_HW", "AHP_trough_V", "AHP_depth_V"]: # use lowest current spike
-                    min_current_index, current, trace = self.find_lowest_current_trace(df_cell.Spikes[protocol])
+                if measure in [
+                    "dvdt_rising",
+                    "dvdt_falling",
+                    "AP_HW",
+                    "AHP_trough_V",
+                    "AHP_depth_V",
+                ]:  # use lowest current spike
+                    min_current_index, current, trace = self.find_lowest_current_trace(
+                        df_cell.Spikes[protocol]
+                    )
                     if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                    # print("spike data ", spike_data['dvdt_rising'])
+                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][
+                            0
+                        ].__dict__
+                        # print("spike data ", spike_data['dvdt_rising'])
                         m.append(spike_data[mapper[measure]])
                     else:
                         m.append(np.nan)
                     # print("spike data: ", spike_data.keys())
 
                 elif measure == "AP_thr_V":  # have to try two variants
-                    min_current_index, current, trace = self.find_lowest_current_trace(df_cell.Spikes[protocol])
+                    min_current_index, current, trace = self.find_lowest_current_trace(
+                        df_cell.Spikes[protocol]
+                    )
                     if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                    # CP("c", "Check AP_thr_V")
+                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][
+                            0
+                        ].__dict__
+                        # CP("c", "Check AP_thr_V")
                         thrslope = 20.0
                         Vthr, Vthr_time = UTIL.find_threshold(
                             spike_data["V"],
@@ -998,8 +1107,7 @@ class Functions:
                         m.append(np.nan)
 
                 elif (
-                    measure in mapper.keys()
-                    and mapper[measure] in spike_data.keys()
+                    measure in mapper.keys() and mapper[measure] in spike_data.keys()
                 ):  # if the measure exists for this sweep
                     m.append(spike_data[mapper[measure]])
                 else:
@@ -1015,7 +1123,7 @@ class Functions:
                     )
                     raise ValueError()
                     exit()
-                prot_spike_count += 1                               
+                prot_spike_count += 1
 
         # CP("c", f"measure: {measure!s}  : {m!s}")
         # else:

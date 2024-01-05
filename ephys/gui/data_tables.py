@@ -103,12 +103,15 @@ from ephys.gui import table_tools
 from ephys.tools import process_spike_analysis
 from ephys.gui import data_table_functions as functions
 from ephys.tools import win_print as WP
-import src.analyze_ivs as IVS
-import src.CBA_maps as MAPS
+
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from pylibrary.tools import cprint as CP
 import ephys
+
+
+PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
+PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
 
 FUNCS = functions.Functions()  # get the functions class
 cprint = CP.cprint
@@ -184,7 +187,6 @@ experimenttypes = [
 ]
 
 run_dates = make_rundates()
-
 
 class TableModel(QtGui.QStandardItemModel):
     _sort_order = QtCore.Qt.SortOrder.AscendingOrder
@@ -303,7 +305,6 @@ class DataTables:
         self.start_date = "None"
         self.end_date = "None"
         self.dataset = self.datasets[0]
-
         self.selvals = {
             "DataSets": [self.datasets, self.dataset],
             "Run Type": [runtypes, self.runtype],
@@ -346,15 +347,10 @@ class DataTables:
             {
                 "name": "Choose Experiment",
                 "type": "list",
-                "limits": [
-                    "NF107Ai32_NIHL",
-                    "NF107Ai32_Het",
-                    "CBA_Age",
-                    "VGAT_WT",
-                    "VGAT_NIHL",
-                ],
-                "value": "CBA_Age",
+                "limits": [ds for ds in self.datasets],
+                "value": self.datasets[0],
             },
+            {"name": "Reload Configuration", "type": "action"},
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
@@ -362,10 +358,10 @@ class DataTables:
                 "name": "IV Analysis",
                 "type": "group",
                 "children": [
-                    {"name": "Analyze ALL IVs", "type": "action"},
                     {"name": "Analyze Selected IVs", "type": "action"},
-                    {"name": "Assemble IV datasets", "type": "action"},
+                    {"name": "Analyze ALL IVs", "type": "action"},
                     {"name": "Process Spike Data", "type": "action"},
+                    {"name": "Assemble IV datasets", "type": "action"},
                 ],
             },
             {   "name": "Plotting",
@@ -401,6 +397,7 @@ class DataTables:
                             "pyramidal",
                             "cartwheel",
                             "golgi",
+                            "granule",
                             "stellate",
                             "tuberculoventral",
                             "unclassified",
@@ -552,7 +549,8 @@ class DataTables:
         self.textbox.clear()
         self.textbox.setText("")
         self.Dock_Report.addWidget(self.textbox)
-        self.set_experiment("CBA_Age")
+        self.set_experiment(self.dataset)
+
         self.win.show()
         self.table.setSelectionMode(
             pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
@@ -579,6 +577,7 @@ class DataTables:
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
         # through the CommandDispatcher.
+
 
     def on_double_Click(self, w):
         """
@@ -632,8 +631,12 @@ class DataTables:
             )
 
     def set_experiment(self, data):
+        FUNCS.textclear()
         self.experimentname = data
-        self.experiment = IVS.experiments[data]
+        self.dataset = data
+        self.experiment = self.experiments[data]
+        PSI.set_experiment(self.dataset, self.experiment)  # pass around to other functions
+        PSA.set_experiment(self.dataset, self.experiment)  # pass around to other functions
         FUNCS.textappend(f"Contents of Experiment Named: {self.experimentname:s}")
         pp = pprint.PrettyPrinter(indent=4)
         FUNCS.textappend(pp.pformat(self.experiment))
@@ -645,7 +648,7 @@ class DataTables:
                 cell = picker_funcs[pf].data.iloc[event.ind]
                 cell_id = cell["cell_id"].values[0]
                 print(f"Selected:   {cell_id!s}")  # find the matching data.
-                age = plot_spike_info.get_age(cell["age"])
+                age = PSI.get_age(cell["age"])
                 print(
                     f"     Cell: {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
                 )
@@ -682,10 +685,18 @@ class DataTables:
                 case "Choose Experiment":
                     self.set_experiment(data)
 
+                case "Reload Configuration":
+                    self.datasets, self.experiments = get_configuration()
+                    if self.experimentname not in self.datasets:
+                        self.experimentname = self.datasets[0]
+                    self.experiment = self.experiments[self.experimentname]
+
                 case "Update DataSummary":
                     FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
 
+
                 case "Load DataSummary":
+                    print("EXPERIMENT: ", self.experiment)
                     self.datasummaryfile = Path(
                         self.experiment["databasepath"],
                         self.experiment["directory"],
@@ -701,7 +712,7 @@ class DataTables:
                     print(self.datasummary.columns)
 
                 case "Load Assembled Data":
-                    self.assembledfile = plot_spike_info.get_assembled_filename(
+                    self.assembledfile = PSI.get_assembled_filename(
                         self.experiment
                     )
                     self.assembleddata = pd.read_pickle(self.assembledfile)
@@ -736,21 +747,20 @@ class DataTables:
                                 excelsheet,
                                 analysis_cell_types,
                                 adddata,
-                            ) = plot_spike_info.setup(self.experimentname, region="DCN")
-                            print("excelsheet: ", excelsheet)
+                            ) = plot_spike_info.setup(self.experiment)
                             print("analysis_cell_types: ", analysis_cell_types)
                             print("adddata: ", adddata)
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
+                            fn = PSI.get_assembled_filename(self.experiment)
                             print("adddata: ", adddata)
-                            plot_spike_info.assemble_datasets(
+                            PSI.assemble_datasets(
                                 excelsheet=excelsheet,
                                 analysis_cell_types=analysis_cell_types,
                                 adddata=adddata,
                                 fn=fn,
                             )
 
-                        case "Process Spike Analysis":
-                            process_spike_analysis.process_spikes(self.experiment)
+                        case "Process Spike Data":
+                            PSA.process_spikes()
 
 
                 case "Plotting" :
@@ -783,12 +793,12 @@ class DataTables:
                             self.show_pdf_on_pick = data
 
                         case "Plot Spike Data":
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
-                            df = plot_spike_info.preload(fn)
+                            fn = PSI.get_assembled_filename(self.experiment)
+                            df = PSI.preload(fn)
                             (
                                 P1,
                                 picker_funcs1,
-                            ) = plot_spike_info.summary_plot_spike_parameters_categorical(
+                            ) = PSI.summary_plot_spike_parameters_categorical(
                                 df,
                                 porder=porder,
                                 colors=colors,
@@ -805,13 +815,13 @@ class DataTables:
                             P1.figure_handle.show()
 
                         case "Plot Rmtau Data":
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
+                            fn = PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = plot_spike_info.preload(fn)
+                            df = PSI.preload(fn)
                             (
                                 P3,
                                 picker_funcs3,
-                            ) = plot_spike_info.summary_plot_RmTau_categorical(
+                            ) = PSI.summary_plot_RmTau_categorical(
                                 df,
                                 porder=porder,
                                 colors=colors,
@@ -828,13 +838,13 @@ class DataTables:
                             P3.figure_handle.show()
 
                         case "Plot FIData Data":
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
+                            fn = PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = plot_spike_info.preload(fn)
+                            df = PSI.preload(fn)
                             (
                                 P2,
                                 picker_funcs2,
-                            ) = plot_spike_info.summary_plot_spike_parameters_categorical(
+                            ) = PSI.summary_plot_spike_parameters_categorical(
                                 df,
                                 measure_cols=[
                                     "AdaptRatio",
@@ -859,10 +869,10 @@ class DataTables:
                             P2.figure_handle.show()
 
                         case "Plot FICurves":
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
+                            fn = PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = plot_spike_info.preload(fn)
-                            P4, picker_funcs4 = plot_spike_info.summary_plot_FI(
+                            df = PSI.preload(fn)
+                            P4, picker_funcs4 = PSI.summary_plot_FI(
                                 df,
                                 mode=["individual", "mean"],
                                 protosel=[
@@ -901,12 +911,12 @@ class DataTables:
                                 excelsheet,
                                 analysis_cell_types,
                                 adddata,
-                            ) = plot_spike_info.setup(self.experimentname, region="DCN")
-                            fn = plot_spike_info.get_assembled_filename(self.experiment)
+                            ) = PSI.setup(self.experimentname, region="DCN")
+                            fn = PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = plot_spike_info.preload(fn)
+                            df = PSI.preload(fn)
                             divider = "=" * 80
-                            stat_text = plot_spike_info.do_stats(
+                            stat_text = PSI.do_stats(
                                 df,
                                 analysis_cell_types=analysis_cell_types,
                                 divider=divider,
