@@ -205,6 +205,8 @@ class RmTauAnalysis:
         Fits = fitting.Fitting()  # get a fitting instance
         initpars = [self.rmp * 1e-3, -0.010, 0.010]  # rmp is in units of mV
         ineg_valid = self.Clamps.commandLevels < -10e-12
+        if len(ineg_valid) != len(self.Spikes.spikecount):
+            return # somehow is invalid...
         ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
         if not any(ineg_valid):
             return
@@ -459,6 +461,8 @@ class RmTauAnalysis:
             # however, handle case where there are spikes at currents LESS
             # than some of those with no spikes.
             ivss_valid = self.Clamps.commandLevels < 0.5e-9
+            if len(ivss_valid) != len(self.Spikes.spikecount):
+                return # somehow is invalid...
             ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
             if not any(ivss_valid):
                 return
