@@ -50,9 +50,10 @@ max_age = 200
 # expt = datasets[0]   # should be a selected one... but for now just pick first
 # experiment = experiment[expt]
 
+
 def set_ylims(experiment):
-    if 'ylims' in experiment.keys():
-        ylims = experiment['ylims']
+    if "ylims" in experiment.keys():
+        ylims = experiment["ylims"]
     else:
         ylims_pyr = {
             "dvdt_rising": [0, 2000],
@@ -69,12 +70,12 @@ def set_ylims(experiment):
             "RMP": [-80, -40],
             "Rin": [0, 250],
         }
-        ylims_tv =  {
+        ylims_tv = {
             "dvdt_rising": [0, 2000],
             "dvdt_falling": [0, 1000],
             "AP_HW": [0, 1.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
             "I_maxHillSlope": [0, 250],
@@ -84,7 +85,7 @@ def set_ylims(experiment):
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
-        ylims_cw =  {
+        ylims_cw = {
             "dvdt_rising": [0, 2000],
             "dvdt_falling": [0, 1000],
             "AP_HW": [0, 1.0],
@@ -92,7 +93,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 8],
             "FISlope": [0, 250],
             "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0,1000],
+            "I_maxHillSlope": [0, 1000],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -100,12 +101,12 @@ def set_ylims(experiment):
             "Rin": [0, 200],
         }
 
-        ylims_giant =  {
+        ylims_giant = {
             "dvdt_rising": [0, 2000],
             "dvdt_falling": [0, 1000],
             "AP_HW": [0, 1.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
             "I_maxHillSlope": [0, 1000],
@@ -115,12 +116,12 @@ def set_ylims(experiment):
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
-        ylims_bushy =  {
+        ylims_bushy = {
             "dvdt_rising": [0, 200],
             "dvdt_falling": [0, 200],
             "AP_HW": [0, 3.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
             "I_maxHillSlope": [0, 1000],
@@ -131,12 +132,12 @@ def set_ylims(experiment):
             "Rin": [0, 400],
         }
 
-        ylims_tstellate =  {
+        ylims_tstellate = {
             "dvdt_rising": [0, 400],
             "dvdt_falling": [0, 400],
             "AP_HW": [0, 3.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
             "I_maxHillSlope": [0, 1000],
@@ -147,12 +148,12 @@ def set_ylims(experiment):
             "Rin": [0, 400],
         }
 
-        ylims_dstellate =  {
+        ylims_dstellate = {
             "dvdt_rising": [0, 400],
             "dvdt_falling": [0, 400],
             "AP_HW": [0, 3.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
             "I_maxHillSlope": [0, 1000],
@@ -163,12 +164,12 @@ def set_ylims(experiment):
             "Rin": [0, 400],
         }
 
-        ylims_octopus=  {
+        ylims_octopus = {
             "dvdt_rising": [0, 200],
             "dvdt_falling": [0, 200],
             "AP_HW": [0, 3.0],
             "AP_thr_V": [-75, 0],
-            "AdaptRatio": [0,2],
+            "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
             "I_maxHillSlope": [0, 1000],
@@ -179,11 +180,19 @@ def set_ylims(experiment):
             "Rin": [0, 400],
         }
 
-
-        ylims = {"pyramidal": ylims_pyr, "tuberculoventral": ylims_tv, "cartwheel": ylims_cw, "giant": ylims_giant,
-                "bushy": ylims_bushy, "t-stellate": ylims_tstellate, "d-stellate": ylims_dstellate, "octopus": ylims_octopus}
+        ylims = {
+            "pyramidal": ylims_pyr,
+            "tuberculoventral": ylims_tv,
+            "cartwheel": ylims_cw,
+            "giant": ylims_giant,
+            "bushy": ylims_bushy,
+            "t-stellate": ylims_tstellate,
+            "d-stellate": ylims_dstellate,
+            "octopus": ylims_octopus,
+        }
         return ylims
-    
+
+
 class Picker(QObject):
     def __init__(self, space=None, data=None, axis=None):
         assert space in [None, 2, 3]
@@ -209,8 +218,7 @@ class Picker(QObject):
         # print(ax == self.axis)
         print(self.data.iloc[event.ind])  # find the matching data.
         return
-        
-    
+
 
 def get_plot_order(experiment):
     """get_plot_order get the order of the groups to plot
@@ -231,8 +239,9 @@ def get_plot_order(experiment):
         raise ValueError("No Plot Order is defined in the configuration file")
     return plot_order
 
+
 def get_protodurs(experiment):
-    if 'protocol_durations' in experiment.keys():
+    if "protocol_durations" in experiment.keys():
         protodurs = experiment["protocol_durations"]
     else:
         raise ValueError("No protocol durations are defined in the configuration file")
@@ -258,7 +267,9 @@ def get_plot_colors(experiment):
         raise ValueError("No Plot Colors are defined in the configuration file")
     return plot_colors
 
+
 GROUP_MAP: dict = {}  # maps group names to other names for consistency
+
 
 def rename_groups(row):
     # print("renaming row group: ", row.Group)
@@ -278,7 +289,7 @@ pd.set_option("display.max_columns", 40)
 #         if expt.endswith("NIHL"):
 #             excelsheet = "NIHL_IVs_PCT.xlsx"
 #             # adddata = "cleaned_NIHL_IVs_PCT.xlsx"
-        
+
 #         elif expt.endswith("_Age"):
 #             excelsheet = Path(
 #                 experiment["analyzeddatapath"],
@@ -321,19 +332,17 @@ pd.set_option("display.max_columns", 40)
 
 def setup(experiment):
     excelsheet = Path(
-                experiment["analyzeddatapath"],
-                experiment["directory"],
-                experiment['datasummaryFilename']
-            )
+        experiment["analyzeddatapath"],
+        experiment["directory"],
+        experiment["datasummaryFilename"],
+    )
     analysis_cell_types = experiment["celltypes"]
     adddata = Path(
-                    experiment["analyzeddatapath"],
-                    experiment["directory"],
-                    experiment["adddata"],
+        experiment["analyzeddatapath"],
+        experiment["directory"],
+        experiment["adddata"],
     )
     return excelsheet, analysis_cell_types, adddata
-
-
 
 
 cols = [
@@ -386,7 +395,6 @@ datacols = [
 ]
 
 
-
 """
 Each protocol has:
 "Spikes: ", dict_keys(['FI_Growth', 'AdaptRatio', 'FI_Curve', 'FiringRate', 'AP1_Latency', 'AP1_HalfWidth', 
@@ -405,7 +413,6 @@ spike data:  dict_keys(['trace', 'AP_number', 'dvdt', 'V', 'Vtime', 'pulseDurati
 'trough_T', 'trough_V', 'peaktotrough', 'current', 'iHold', 'dvdt_rising', 'dvdt_falling'])
 
 """
-
 
 
 def make_cell_id(row):
@@ -451,10 +458,14 @@ def numeric_age(row):
 
 def nantoB_groups(row):
     row.age = numeric_age(row)
-    for k in experiment['age_definitions'].keys():
-        if row.age >= experiment['age_definitions'][k][0] and row.age <= experiment['age_definitions'][k][1]:
+    for k in experiment["age_definitions"].keys():
+        if (
+            row.age >= experiment["age_definitions"][k][0]
+            and row.age <= experiment["age_definitions"][k][1]
+        ):
             row.Group = k
     return row.Group
+
 
 def make_datetime_date(row, colname="Date"):
     if pd.isnull(row[colname]) or row[colname] == "nan":
@@ -475,13 +486,12 @@ def make_datetime_date(row, colname="Date"):
     return row.shortdate
 
 
-
 class PlotSpikeInfo(QObject):
     def __init__(self, dataset, experiment):
         self.set_experiment(dataset, experiment)
 
     def set_experiment(self, dataset, experiment):
-        """set_experiment Update the selected dataset and experiment so we 
+        """set_experiment Update the selected dataset and experiment so we
         access the right files and directories.
 
         Parameters
@@ -493,7 +503,6 @@ class PlotSpikeInfo(QObject):
         """
         self.dataset = dataset
         self.experiment = experiment
-
 
     def read_data_files(self, excelsheet, adddata=None, analysis_cell_types=[]):
         """read_data_files _summary_
@@ -513,9 +522,9 @@ class PlotSpikeInfo(QObject):
             _description_
         """
         CP("r", "\n Reading data files")
-        
+
         if Path(excelsheet).suffix == ".pkl":  # need to respecify as excel sheet
-                excelsheet = Path(excelsheet).with_suffix(".xlsx")
+            excelsheet = Path(excelsheet).with_suffix(".xlsx")
         print(f"    Excelsheet: {excelsheet!s}")
         df = pd.read_excel(excelsheet)
         print("    # entries in excel sheet: ", len(df))
@@ -546,7 +555,7 @@ class PlotSpikeInfo(QObject):
         df = FD.clean_data_files(
             df,
             remove_groups=["C", "D", "?", "X", "30D", "nan"],
-            excludeIVs=experiment["excludeIVs"],
+            excludeIVs=self.experiment["excludeIVs"],
             exclude_internal=["cesium", "Cesium"],
             exclude_temperature=["25C", "room temp"],
             analysis_cell_types=analysis_cell_types,
@@ -556,11 +565,8 @@ class PlotSpikeInfo(QObject):
         CP("m", "Finished reading files\n")
         return df
 
-
-
-
-    def combine_by_cell(self,
-        df, celltypes=None, plot_fits=False, valid_protocols=None
+    def combine_by_cell(
+        self, df, celltypes=None, plot_fits=False, valid_protocols=None
     ):
         """
         Rules for combining cells and pulling the data from the original analysis:
@@ -599,17 +605,18 @@ class PlotSpikeInfo(QObject):
         dfdict = {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
         # print("cells: ", cells, len(cells))
-        
+
         # do each cell in the database
         for icell, cell in enumerate(cells):
             if cell is None:
                 continue
-            datadict = FUNCS.compute_FI_Fits(experiment, df, cell, plot_fits=plot_fits)
+            datadict = FUNCS.compute_FI_Fits(
+                self.experiment, df, cell, plot_fits=plot_fits
+            )
             df_new = pd.concat(
                 [df_new, pd.Series(datadict).to_frame().T], ignore_index=True
-            )        
+            )
         return df_new
-
 
     def oldcode(self, df_new):
         # make sure columns are numeric in the end:
@@ -682,9 +689,7 @@ class PlotSpikeInfo(QObject):
 
         # return df_new
 
-        anova = (
-            False  # data are not normally distributed - Prob ominibus from anova is small
-        )
+        anova = False  # data are not normally distributed - Prob ominibus from anova is small
         welch = False
         ancova = True
 
@@ -694,7 +699,11 @@ class PlotSpikeInfo(QObject):
             SA = spike_analysis.SpikeAnalysis()
 
             SA.fitOne(
-                x=x, yd=y, function="fitOneOriginal", fixNonMonotonic=True, max_current=1e-9
+                x=x,
+                yd=y,
+                function="fitOneOriginal",
+                fixNonMonotonic=True,
+                max_current=1e-9,
             )
             if SA.analysis_summary["FI_Growth"][0]["parameters"] == []:
                 print("No FI fit for cell: ", row.Subject)
@@ -758,7 +767,9 @@ class PlotSpikeInfo(QObject):
                     # print("KW posthoc: ", posthoc)
                     # unequal variances, use Games-Howell test:
                     combinations = [["B", "A"], ["B", "AA"]]  # , ["B", "AAA"]]
-                    print(ping.pairwise_gameshowell(dv=par, between="Group", data=ct_df))
+                    print(
+                        ping.pairwise_gameshowell(dv=par, between="Group", data=ct_df)
+                    )
                     print("=" * 80)
                     # if ancova:
                     #     # use current and fpsec as covariates
@@ -775,10 +786,8 @@ class PlotSpikeInfo(QObject):
 
         return df_new
 
-
     def to_1D(self, series):
         return pd.Series([x for _list in series for x in _list])
-
 
     def clean_alt_list(lself, ist_):
         list_ = list_.replace(", ", '","')
@@ -786,7 +795,6 @@ class PlotSpikeInfo(QObject):
         list_ = list_.replace("]", '"]')
         list_ = list_.replace("\n", "")
         return list_
-
 
     def print_for_prism(self, row, celltype="tuberculoventral"):
         if row.celltype != celltype:
@@ -798,11 +806,8 @@ class PlotSpikeInfo(QObject):
             print(f"{x*1e9:.2f}  {row.spsec[i]:.1f}")
         print("")
 
-
-
-
-
-    def bar_pts(self,
+    def bar_pts(
+        self,
         df,
         yname,
         celltype: str = "pyramidal",
@@ -824,8 +829,8 @@ class PlotSpikeInfo(QObject):
         """
         df_x = df[df["cell_type"] == celltype]
         df_x.dropna(subset=["Group"], inplace=True)
-        df_x = df_x.apply(apply_scale, axis=1, measure=yname, scale=sign * scale)
-            # print('yname: ', yname)
+        df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
+        # print('yname: ', yname)
         if colors is None:  # set all to blue
             colors = {df_x[g]: "b" for g in df_x.Group.unique()}
 
@@ -867,9 +872,9 @@ class PlotSpikeInfo(QObject):
                 color="k",
                 order=porder,
             )
-        # print("bar pts picking enabled: ", enable_picking)
-        # if not enable_picking:
-        #     raise ValueError("Picking not enabled")
+            # print("bar pts picking enabled: ", enable_picking)
+            # if not enable_picking:
+            #     raise ValueError("Picking not enabled")
             if enable_picking:
                 ax.scatter(x=df_x["Group"], y=df_x[yname], c="k", s=30, picker=True)
         ax.set_xticks(ax.get_xticks(), ax.get_xticklabels(), rotation=45, ha="right")
@@ -889,14 +894,12 @@ class PlotSpikeInfo(QObject):
             picker_func = None
         return picker_func
 
-
     def make_cell_id(self, row):
         sliceno = int(row["slice_slice"][-3:])
         cellno = int(row["cell_cell"][-3:])
         cell_id = f"{row['date']:s}_S{sliceno:d}C{cellno:d}"
         row["cell_id"] = cell_id
         return row
-
 
     def getFIMax(self, row):
         """getFIMax get the maximum rate from the FI Hill fit
@@ -914,7 +917,6 @@ class PlotSpikeInfo(QObject):
             return np.nan
         return data[1]
 
-
     def getFIRate(self, row):
         data = np.squeeze(row.pars)
         print(data.size, data.shape)
@@ -927,14 +929,12 @@ class PlotSpikeInfo(QObject):
         else:
             return np.nan
 
-
     def flag_date(self, row):
         if row.shortdate >= after_parsed:
             row.SR = 1
         else:
             row.SR = 0
         return row.SR
-
 
     def relabel_axes(self, P):
         # relabel axes by dict:
@@ -964,31 +964,25 @@ class PlotSpikeInfo(QObject):
                 ax.set_ylabel(relabel_dict[ylab])
         return
 
-
-
     transforms = {
         # "maxHillSlope": np.log10,
     }
-
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
             row[measure] = row[measure] * scale
         return row[measure]
 
-
-    rescaling = {
-        "AP_HW": 1e3,
-        "AP_thr_V": 1e3,
-        "FISlope": 1e-9,
-        "maxHillSlope": 1,
-        "I_maxHillSlope": 1,
-        "dvdt_falling": -1.0,
-        "taum": 1e3,
-    }
-
-
     def rescale_values(self, df):
+        rescaling = {
+            "AP_HW": 1e3,
+            "AP_thr_V": 1e3,
+            "FISlope": 1e-9,
+            "maxHillSlope": 1,
+            "I_maxHillSlope": 1,
+            "dvdt_falling": -1.0,
+            "taum": 1e3,
+        }
         for measure in rescaling.keys():
             if measure not in df.columns:
                 continue
@@ -996,8 +990,6 @@ class PlotSpikeInfo(QObject):
                 rescale_values_apply, axis=1, measure=measure, scale=rescaling[measure]
             )
         return df
-
-
 
     def place_legend(self, P):
         legend_text = {
@@ -1016,8 +1008,8 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
 
-
-    def summary_plot_spike_parameters_categorical(self, 
+    def summary_plot_spike_parameters_categorical(
+        self,
         df,
         porder=["Ctl", "103dB 2W", "115dB 2W", "115dB 3D"],
         measure_cols=["dvdt_rising", "dvdt_falling", "AP_HW", "AP_thr_V"],
@@ -1068,7 +1060,9 @@ class PlotSpikeInfo(QObject):
         label_celltypes(P, analysis_cell_types=analysis_cell_types)
         relabel_axes(P)
         for ax in P.axdict:
-            PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+            PH.nice_plot(
+                P.axdict[ax], direction="outward", ticklength=3, position=-0.03
+            )
         picker_funcs = {}
         n_celltypes = len(analysis_cell_types)
         df = rescale_values(df)
@@ -1118,10 +1112,6 @@ class PlotSpikeInfo(QObject):
 
         return P, picker_funcs
 
-
-    
-
-
     def pick_handler(self, event, picker_funcs):
         for pf in picker_funcs.keys():
             if event.mouseevent.inaxes == pf:
@@ -1133,17 +1123,17 @@ class PlotSpikeInfo(QObject):
                     f"       {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
                 )
                 print(f"       Protocols: {cell['protocols'].values[0]!s}")
-                print(cell['dvdt_rising'], cell['dvdt_falling'])
+                print(cell["dvdt_rising"], cell["dvdt_falling"])
                 return cell["cell_id"].values[0]
         return None
 
-
-    def create_one_plot_continuous(self,
+    def create_one_plot_continuous(
+        self,
         data,
         x,
         y,
         ax,
-        celltype:str,
+        celltype: str,
         logx=False,
         ylims=None,
         xlims=None,
@@ -1192,13 +1182,12 @@ class PlotSpikeInfo(QObject):
         return picker_func
         # picker_funcs[celltype].setAction(handle_pick) # handle_pick is a function that takes the index of the picked point as an argument
 
-
     def apply_scale(self, row, measure, scale):
         row[measure] = row[measure] * scale
         return row
 
-
-    def create_one_plot_categorical(self, 
+    def create_one_plot_categorical(
+        self,
         data,
         x,
         y,
@@ -1262,14 +1251,14 @@ class PlotSpikeInfo(QObject):
             picker_func = None
         return picker_func
 
-
     def clean_Rin(self, row):
         if row.Rin < 6.0:
             row.Rin = np.nan
         return row.Rin
 
-
-    def summary_plot_spike_parameters_continuous(self, df, logx=False, xlims=[0, max_age]):
+    def summary_plot_spike_parameters_continuous(
+        self, df, logx=False, xlims=[0, max_age]
+    ):
         """Make a summary plot of spike parameters for selected cell types.
 
         Args:
@@ -1290,7 +1279,9 @@ class PlotSpikeInfo(QObject):
 
         ncols = len(measure_cols)
         letters = ["A", "B", "C"]
-        plabels = [f"{let:s}{num+1:d}" for let in ["A", "B", "C"] for num in range(ncols)]
+        plabels = [
+            f"{let:s}{num+1:d}" for let in ["A", "B", "C"] for num in range(ncols)
+        ]
         df = df.copy()
         # df["FIMax_1"] = df.apply(getFIMax_1, axis=1)
         # df["FIMax_4"] = df.apply(getFIMax_imax, axis=1, imax=4.0)
@@ -1320,7 +1311,9 @@ class PlotSpikeInfo(QObject):
             horizontalspacing=0.05,
         )
         for ax in P.axdict:
-            PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+            PH.nice_plot(
+                P.axdict[ax], direction="outward", ticklength=3, position=-0.03
+            )
 
         showcells = analysis_cell_types
         for i, celltype in enumerate(showcells):
@@ -1379,9 +1372,8 @@ class PlotSpikeInfo(QObject):
             )
         return P, picker_funcs
 
-
     def label_celltypes(self, P, analysis_cell_types):
-        """label_celltypes 
+        """label_celltypes
         put vertical labels on the left side of the figure,
         with each label centered on its row of plots.
 
@@ -1397,7 +1389,7 @@ class PlotSpikeInfo(QObject):
             yp = ax.get_position()
             mpl.text(
                 x=0.02,
-                y=yp.y0 + 0.5*(yp.y1 - yp.y0),  # center vertically
+                y=yp.y0 + 0.5 * (yp.y1 - yp.y0),  # center vertically
                 s=analysis_cell_types[i].title(),
                 color="k",
                 rotation="vertical",
@@ -1409,9 +1401,8 @@ class PlotSpikeInfo(QObject):
             )
         return
 
-
-    def summary_plot_RmTau_categorical(self, 
-        df, porder, colors=None, grouping="named", enable_picking=True
+    def summary_plot_RmTau_categorical(
+        self, df, porder, colors=None, grouping="named", enable_picking=True
     ):
         """Make a summary plot of spike parameters for selected cell types.
 
@@ -1455,7 +1446,9 @@ class PlotSpikeInfo(QObject):
         self.relabel_axes(P)
 
         for ax in P.axdict:
-            PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+            PH.nice_plot(
+                P.axdict[ax], direction="outward", ticklength=3, position=-0.03
+            )
         for i, celltype in enumerate(analysis_cell_types):
             let = letters[i]
 
@@ -1502,9 +1495,7 @@ class PlotSpikeInfo(QObject):
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
         # place_legend(P)
 
-
         return P, picker_funcs
-
 
     def limit_to_max_rate_and_current(self, fi_data, imax=None, id="", limit=0.9):
         """limit_to_max_rate_and_current:
@@ -1534,16 +1525,19 @@ class PlotSpikeInfo(QObject):
             fi_inj = f_out[0]
             fi_rate = f_out[1]
 
-        i_limit = np.argwhere(fi_inj <= imax)[-1][0] + 1 # only consider currents less than imax
+        i_limit = (
+            np.argwhere(fi_inj <= imax)[-1][0] + 1
+        )  # only consider currents less than imax
         fi_rate = fi_rate[:i_limit]
         fi_inj = fi_inj[:i_limit]
         spike_rate_max_index = np.argmax(fi_rate)  # get where the peak rate is located
         spike_rate_max = fi_rate[spike_rate_max_index]
         spike_rate_slope: np.ndarray = np.gradient(fi_rate, fi_inj)
         xnm = np.where(
-            (spike_rate_slope[spike_rate_max_index:] <= 0.0)  # find where slope is negative
-            &
-            (fi_rate[spike_rate_max_index:] < (limit * spike_rate_max))
+            (
+                spike_rate_slope[spike_rate_max_index:] <= 0.0
+            )  # find where slope is negative
+            & (fi_rate[spike_rate_max_index:] < (limit * spike_rate_max))
         )[
             0
         ]  # and rate is less than limit of max
@@ -1559,8 +1553,8 @@ class PlotSpikeInfo(QObject):
         # mpl.show()
         return np.array([fi_inj, fi_rate])
 
-
-    def summary_plot_FI(self,
+    def summary_plot_FI(
+        self,
         df,
         protosel: List = [
             "CCIV_1nA_max",
@@ -1597,7 +1591,9 @@ class PlotSpikeInfo(QObject):
             fontsize={"label": 12, "tick": 8, "panel": 16},
         )
         for ax in P.axdict:
-            PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+            PH.nice_plot(
+                P.axdict[ax], direction="outward", ticklength=3, position=-0.03
+            )
         # First, limit to just one IV curve type
         allprots = []
         for protocol in protosel:
@@ -1694,7 +1690,7 @@ class PlotSpikeInfo(QObject):
                     FIy_all: dict = {k: [] for k in N.keys()}
 
                     FIx_all: dict = {k: [] for k in N.keys()}
-                    
+
             for index in cdd.index:
                 group = cdd["Group"][index]
                 # print("index: ", index, "Group: ", group)
@@ -1722,7 +1718,7 @@ class PlotSpikeInfo(QObject):
                 if len(FI_data[0]) == 0:
                     continue
                 # print("max FI_data current: ", np.max(FI_data[0]))
-                FI_data[0] = np.round(np.array(FI_data[0])*1e9, 2)*1e-9
+                FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
                 # print("cell: ", cdd.cell_id[index])
                 # print("FI_data: ", FI_data, FI_data.shape)
                 if FI_data.shape == (2, 0):  # no fi data from the excel table....
@@ -1739,7 +1735,7 @@ class PlotSpikeInfo(QObject):
                     )
 
                     ax.plot(
-                        fix*1e9,
+                        fix * 1e9,
                         fiy,
                         color=colors[group],
                         marker="o",
@@ -1810,7 +1806,13 @@ class PlotSpikeInfo(QObject):
 
             if "mean" in mode:
                 fi_stats.append(
-                    {"celltype": celltype, "Group": g, "I_nA": fx, "sp_s": fy, "N": N[g]}
+                    {
+                        "celltype": celltype,
+                        "Group": g,
+                        "I_nA": fx,
+                        "sp_s": fy,
+                        "N": N[g],
+                    }
                 )
         print("Ncells: ", NCells)
         # d_fi = pd.DataFrame(fi_stats)
@@ -1824,7 +1826,6 @@ class PlotSpikeInfo(QObject):
         #             ).fit()
         # print(model.summary())
         return P, picker_funcs
-
 
     def stats(self, df, celltype, measure):
         df_x = df[df.cell_type == celltype]
@@ -1891,25 +1892,21 @@ class PlotSpikeInfo(QObject):
         stattext = "\n".join([stattext, f"{'='*80:s}"])
         return stattext
 
-
     def check_HW(self, row):
         if row.AP_HW < 0 or row.AP_HW > 0.010:
             print(
                 f"HW: {row.AP_HW:15.5f}, ID: {Path(row.cell_id).name!s}, Type: {row.cell_type:16s}, Group: {row.Group:5s}"
             )
 
-
     def check_APthr(self, row):
         print(
             f"APthr: {row.AP_thr_V:15.5f}, ID: {Path(row.cell_id).name!s}, Type: {row.cell_type:16s}, Group: {row.Group:5s}"
         )
 
-
     def check_Group(self, row):
         print(
             f"{row.AP_thr_V:15.5f}, {Path(row.cell_id).name!s}, {row.cell_type:16s}, {row.Group:5s}"
         )
-
 
     def assign_default_Group(row):
         age = get_age(row.Age)
@@ -1924,18 +1921,14 @@ class PlotSpikeInfo(QObject):
                 row.Group = "Mature Adult"
         return row
 
-
-
-
-
     def get_assembled_filename(self, experiment):
         assembled_fn = Path(
-                Path(
-                    experiment["analyzeddatapath"],
-                    experiment["directory"],
-                    experiment["assembled_filename"]
-                )
+            Path(
+                experiment["analyzeddatapath"],
+                experiment["directory"],
+                experiment["assembled_filename"],
             )
+        )
         return assembled_fn
 
     def assemble_datasets(
@@ -1946,8 +1939,9 @@ class PlotSpikeInfo(QObject):
         fn: str = "",
         plot_fits: bool = False,
     ):
-        print(f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    Cells: {analysis_cell_types!s}")
-
+        print(
+            f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    Cells: {analysis_cell_types!s}"
+        )
 
         df = self.read_data_files(excelsheet, adddata, analysis_cell_types)
         originalmax = np.max(df.dvdt_rising)
@@ -1956,7 +1950,6 @@ class PlotSpikeInfo(QObject):
         print(originalmax, np.max(df.dvdt_rising))
         print("Writing assembled data to : ", fn)
         df.to_pickle(fn)
-
 
     def preload(self, fn):
         CP("g", f"PRELOAD, {fn!s}")
@@ -1976,7 +1969,6 @@ class PlotSpikeInfo(QObject):
                 df.drop(df.loc[df.cell_id == fn].index, inplace=True)
                 CP("r", f"dropped {fn:s} from analysis, reason = {fns.split(':')[1]:s}")
         return df
-
 
     def do_stats(self, df, analysis_cell_types, divider="-" * 80):
         stat_text = " "
