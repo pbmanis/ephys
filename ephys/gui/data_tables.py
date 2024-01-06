@@ -1225,15 +1225,15 @@ class DataTables:
             return
         index_row = self.selected_index_rows[0]
         selected = self.table_manager.get_table_data(index_row)  # table_data[index_row]
-        # build a filename for the IVs
+        # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
+        # the first part is based on the selected cell_id from the table, and the rest
+        # just makes life easier when looking at the directories.
         cell_type = selected.cell_type
         sdate = selected.date[:-4]
-        cellid = f"{sdate:s}_{selected.cell_id[-4:]}"
-        cellid = cellid.replace(".", "_")
+        cellname_parts = selected.cell_id.split("_")
+        pdfname = f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_IVs.pdf"
         datapath = self.experiment["databasepath"]
         direct = self.experiment["directory"]
-        pdfname = f"{cellid:s}_{cell_type:s}_IVs.pdf"
-        pdfname = str(Path(pdfname).name)  # remove any leading path, like "BNE_3d"
         filename = f"{Path(datapath, direct, cell_type, pdfname)!s}"
         url = "file://" + filename
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
