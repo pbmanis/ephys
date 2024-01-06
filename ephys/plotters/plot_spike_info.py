@@ -52,8 +52,9 @@ max_age = 200
 
 
 def set_ylims(experiment):
-    if "ylims" in experiment.keys():
+    if experiment is not None and "ylims" in experiment.keys():
         ylims = experiment["ylims"]
+        return ylims
     else:
         ylims_pyr = {
             "dvdt_rising": [0, 2000],
@@ -342,6 +343,7 @@ def setup(experiment):
         experiment["directory"],
         experiment["adddata"],
     )
+
     return excelsheet, analysis_cell_types, adddata
 
 
@@ -456,17 +458,6 @@ def numeric_age(row):
     return float(row.age)
 
 
-def nantoB_groups(row):
-    row.age = numeric_age(row)
-    for k in experiment["age_definitions"].keys():
-        if (
-            row.age >= experiment["age_definitions"][k][0]
-            and row.age <= experiment["age_definitions"][k][1]
-        ):
-            row.Group = k
-    return row.Group
-
-
 def make_datetime_date(row, colname="Date"):
     if pd.isnull(row[colname]) or row[colname] == "nan":
         row.shortdate = 0
@@ -489,6 +480,10 @@ def make_datetime_date(row, colname="Date"):
 class PlotSpikeInfo(QObject):
     def __init__(self, dataset, experiment):
         self.set_experiment(dataset, experiment)
+        self.transforms = {
+            # "maxHillSlope": np.log10,
+        }
+
 
     def set_experiment(self, dataset, experiment):
         """set_experiment Update the selected dataset and experiment so we
@@ -503,8 +498,10 @@ class PlotSpikeInfo(QObject):
         """
         self.dataset = dataset
         self.experiment = experiment
+        print("experiment: ", experiment)
+        self.ylims = set_ylims(self.experiment)
 
-    def read_data_files(self, excelsheet, adddata=None, analysis_cell_types=[]):
+    def read_data_files(self, excelsheet, adddata=None):
         """read_data_files _summary_
 
         Parameters
@@ -538,7 +535,9 @@ class PlotSpikeInfo(QObject):
             ages = [f"P{i:2d}D" for i in range(12, 170)]
             df2 = pd.read_excel(adddata)
             print("    # entries in adddata: ", len(df2))
-            df2 = df2[df2["cell_type"].isin(analysis_cell_types)]  # limit to cell types
+            df2 = df2[
+                df2["cell_type"].isin(self.experiment["celltypes"])
+            ]  # limit to cell types
             df2 = df2[df2["age"].isin(ages)]  # limit ages
             df2["Date"] = df2["date"]
             df2 = df2.apply(make_cell_id, axis=1)
@@ -558,7 +557,7 @@ class PlotSpikeInfo(QObject):
             excludeIVs=self.experiment["excludeIVs"],
             exclude_internal=["cesium", "Cesium"],
             exclude_temperature=["25C", "room temp"],
-            analysis_cell_types=analysis_cell_types,
+            analysis_cell_types=self.experiment["celltypes"],
             verbose=True,
         )
         df["dvdt_falling"] = -df["dvdt_falling"]
@@ -919,9 +918,9 @@ class PlotSpikeInfo(QObject):
 
     def getFIRate(self, row):
         data = np.squeeze(row.pars)
-        print(data.size, data.shape)
-        print("row pars: ", row.pars)
-        print("data: ", data)
+        # print(data.size, data.shape)
+        # print("row pars: ", row.pars)
+        # print("data: ", data)
         if data.shape == ():  # single value
             return np.nan
         if len(data) == 4:
@@ -964,10 +963,6 @@ class PlotSpikeInfo(QObject):
                 ax.set_ylabel(relabel_dict[ylab])
         return
 
-    transforms = {
-        # "maxHillSlope": np.log10,
-    }
-
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
             row[measure] = row[measure] * scale
@@ -987,7 +982,10 @@ class PlotSpikeInfo(QObject):
             if measure not in df.columns:
                 continue
             df[measure] = df.apply(
-                rescale_values_apply, axis=1, measure=measure, scale=rescaling[measure]
+                self.rescale_values_apply,
+                axis=1,
+                measure=measure,
+                scale=rescaling[measure],
             )
         return df
 
@@ -1042,7 +1040,7 @@ class PlotSpikeInfo(QObject):
         figure_width = ncols * 2.5
         # print("meausre cols: ", measure_cols)
         P = PH.regular_grid(
-            len(analysis_cell_types),
+            len(self.experiment["celltypes"]),
             ncols,
             order="rowsfirst",
             figsize=(figure_width, 11),
@@ -1057,24 +1055,24 @@ class PlotSpikeInfo(QObject):
             verticalspacing=0.04,
             horizontalspacing=0.07,
         )
-        label_celltypes(P, analysis_cell_types=analysis_cell_types)
-        relabel_axes(P)
+        self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
+        self.relabel_axes(P)
         for ax in P.axdict:
             PH.nice_plot(
                 P.axdict[ax], direction="outward", ticklength=3, position=-0.03
             )
         picker_funcs = {}
-        n_celltypes = len(analysis_cell_types)
-        df = rescale_values(df)
+        n_celltypes = len(self.experiment["celltypes"])
+        df = self.rescale_values(df)
         for icol, measure in enumerate(measure_cols):
-            if measure in transforms.keys():
-                tf = transforms[measure]
+            if measure in self.transforms.keys():
+                tf = self.transforms[measure]
             else:
                 tf = None
-            for i, celltype in enumerate(analysis_cell_types):
+            for i, celltype in enumerate(self.experiment["celltypes"]):
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
 
-                picker_funcs[axp] = create_one_plot_categorical(
+                picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
                     x=porder,
                     y=measure,
@@ -1082,13 +1080,13 @@ class PlotSpikeInfo(QObject):
                     celltype=celltype,
                     colors=colors,
                     logx=False,
-                    ylims=ylims[celltype][measure],
+                    ylims=self.ylims[celltype][measure],
                     transform=tf,
                     xlims=None,
                     enable_picking=enable_picking,
                 )
 
-                if celltype != analysis_cell_types[-1]:
+                if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                     axp.set_xlabel("")
                     print("removed xlabel from ", icol, measure, celltype)
@@ -1098,7 +1096,7 @@ class PlotSpikeInfo(QObject):
 
         if any(picker_funcs) is not None and enable_picking:
             P.figure_handle.canvas.mpl_connect(
-                "pick_event", lambda event: pick_handler(event, picker_funcs)
+                "pick_event", lambda event: self.pick_handler(event, picker_funcs)
             )
         else:
             picker_funcs = None
@@ -1315,14 +1313,14 @@ class PlotSpikeInfo(QObject):
                 P.axdict[ax], direction="outward", ticklength=3, position=-0.03
             )
 
-        showcells = analysis_cell_types
+        showcells = self.experiment["celltypes"]
         for i, celltype in enumerate(showcells):
             let = letters[i]
             dfp = df[df["cell_type"] == celltype]
             axp = P.axdict[f"{let:s}1"]
             for icol, measure in enumerate(measure_cols):
-                if measure in transforms.keys():
-                    tf = transforms[measure]
+                if measure in self.transforms.keys():
+                    tf = self.transforms[measure]
                     dfp[measure] = dfp[measure].apply(tf, axis=1)
                 else:
                     tf = None
@@ -1335,7 +1333,7 @@ class PlotSpikeInfo(QObject):
                     ax=axp,
                     celltype=celltype,
                     logx=logx,
-                    ylims=ylims,
+                    ylims=self.ylims,
                     xlims=xlims,
                     transform=tf,
                 )  # yscale=yscale[measure]
@@ -1382,7 +1380,7 @@ class PlotSpikeInfo(QObject):
         P : PH.regular_grid object
             the PlotHandle object for this figure
         """
-        n_celltypes = len(analysis_cell_types)
+        n_celltypes = len(self.experiment["celltypes"])
 
         for i in range(n_celltypes):
             ax = P.axarr[i, 0]
@@ -1390,7 +1388,7 @@ class PlotSpikeInfo(QObject):
             mpl.text(
                 x=0.02,
                 y=yp.y0 + 0.5 * (yp.y1 - yp.y0),  # center vertically
-                s=analysis_cell_types[i].title(),
+                s=self.experiment["celltypes"][i].title(),
                 color="k",
                 rotation="vertical",
                 ha="center",
@@ -1427,7 +1425,7 @@ class PlotSpikeInfo(QObject):
         picker_funcs = {}
         figure_width = len(measures) * 2.75
         P = PH.regular_grid(
-            len(analysis_cell_types),
+            len(self.experiment["celltypes"]),
             len(measures),
             order="rowsfirst",
             figsize=(figure_width, 11),
@@ -1442,14 +1440,14 @@ class PlotSpikeInfo(QObject):
             verticalspacing=0.04,
             horizontalspacing=0.07,
         )
-        self.label_celltypes(P, analysis_cell_types=analysis_cell_types)
+        self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
         self.relabel_axes(P)
 
         for ax in P.axdict:
             PH.nice_plot(
                 P.axdict[ax], direction="outward", ticklength=3, position=-0.03
             )
-        for i, celltype in enumerate(analysis_cell_types):
+        for i, celltype in enumerate(self.experiment["celltypes"]):
             let = letters[i]
 
             for j, measure in enumerate(measures):
@@ -1470,14 +1468,14 @@ class PlotSpikeInfo(QObject):
                     celltype=celltype,
                     colors=colors,
                     logx=False,
-                    ylims=ylims[celltype][measure],
+                    ylims=self.ylims[celltype][measure],
                     xlims=None,
                     enable_picking=enable_picking,
                 )
 
                 # pickerfunc = bar_pts(df, yname=measure, ax=axp, celltype=celltype, porder=porder)
                 # picker_funcs[axp] = pickerfunc
-                if celltype != analysis_cell_types[-1]:
+                if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                 axp.set_xlabel("")
                 # if j > 0:
@@ -1574,7 +1572,7 @@ class PlotSpikeInfo(QObject):
 
         plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         P = PH.regular_grid(
-            len(analysis_cell_types),
+            len(self.experiment["celltypes"]),
             1,
             order="rowsfirst",
             figsize=(4, 11),
@@ -1652,10 +1650,10 @@ class PlotSpikeInfo(QObject):
         NCells = {}
         picker_funcs = {}
 
-        for i, celltype in enumerate(analysis_cell_types):
+        for i, celltype in enumerate(self.experiment["celltypes"]):
             if celltype not in NCells.keys():
                 NCells[celltype] = 0
-            print("cell types to analyze: ", analysis_cell_types)
+            print("cell types to analyze: ", self.experiment["celltypes"])
             ax = P.axdict[plabels[i]]
             ax.set_title(celltype.title(), y=1.05)
             ax.set_xlabel("I$_{inj}$ (nA)")
@@ -1818,7 +1816,7 @@ class PlotSpikeInfo(QObject):
         # d_fi = pd.DataFrame(fi_stats)
         # print(d_fi.columns)
         # print(d_fi.sp_s)
-        # for celltype in analysis_cell_types:
+        # for celltype in self.experiment['celltypes']:
         #     model = smf.mixedlm("sp_s ~ I_nA",
         #             data = d_fi[d_fi['celltype'] == celltype],
         #             groups=d_fi['Group'],
@@ -1935,15 +1933,14 @@ class PlotSpikeInfo(QObject):
         self,
         excelsheet: Union[Path, str],
         adddata: Union[str, None] = None,
-        analysis_cell_types: list = [],
         fn: str = "",
         plot_fits: bool = False,
     ):
         print(
-            f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    Cells: {analysis_cell_types!s}"
+            f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    Cells: {self.experiment['celltypes']!s}"
         )
 
-        df = self.read_data_files(excelsheet, adddata, analysis_cell_types)
+        df = self.read_data_files(excelsheet, adddata, self.experiment["celltypes"])
         originalmax = np.max(df.dvdt_rising)
 
         df = self.combine_by_cell(df, plot_fits=plot_fits)
@@ -1951,11 +1948,21 @@ class PlotSpikeInfo(QObject):
         print("Writing assembled data to : ", fn)
         df.to_pickle(fn)
 
+    def nantoB_groups(self, row):
+        row.age = numeric_age(row)
+        for k in self.experiment["age_definitions"].keys():
+            if (
+                row.age >= self.experiment["age_definitions"][k][0]
+                and row.age <= self.experiment["age_definitions"][k][1]
+            ):
+                row.Group = k
+        return row.Group
+
     def preload(self, fn):
         CP("g", f"PRELOAD, {fn!s}")
         df = pd.read_pickle(fn)
-        df["Rin"] = df.apply(clean_Rin, axis=1)
-        df["Group"] = df.apply(nantoB_groups, axis=1)
+        df["Rin"] = df.apply(self.clean_Rin, axis=1)
+        df["Group"] = df.apply(self.nantoB_groups, axis=1)
         print("len df reading pickle: ", len(df))
         # if "cell_id2" not in df.columns:
         #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
@@ -1970,9 +1977,9 @@ class PlotSpikeInfo(QObject):
                 CP("r", f"dropped {fn:s} from analysis, reason = {fns.split(':')[1]:s}")
         return df
 
-    def do_stats(self, df, analysis_cell_types, divider="-" * 80):
+    def do_stats(self, df, divider="-" * 80):
         stat_text = " "
-        for ctype in analysis_cell_types:
+        for ctype in self.experiment["celltypes"]:
             CP("g", f"\n{divider:s}")
             for measure in [
                 "dvdt_rising",
@@ -2048,7 +2055,6 @@ if __name__ == "__main__":
         self.assemble_datasets(
             excelsheet=excelsheet,
             adddata=adddata,
-            analysis_cell_types=analysis_cell_types,
             fn=fn,
             plot_fits=args.confirm,
         )
@@ -2069,7 +2075,7 @@ if __name__ == "__main__":
     # )
     divider = "=" * 80 + "\n"
     if args.stats:
-        PSI.do_stats(df, analysis_cell_types, divider=divider)
+        PSI.do_stats(df, divider=divider)
     porder = ["Preweaning", "Pubescent", "Young Adult", "Mature Adult"]
     # now we can do the plots:
 
