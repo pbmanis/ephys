@@ -350,7 +350,7 @@ class DataTables:
                 "limits": [ds for ds in self.datasets],
                 "value": self.datasets[0],
             },
-            {"name": "Reload Configuration", "type": "action"},
+            # {"name": "Reload Configuration", "type": "action"}, # probably not needed...
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
