@@ -109,7 +109,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pylibrary.tools import cprint as CP
 import ephys
 
-
+PSI_2 = plot_spike_info # reference to non-class routines in the module.
 PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
 PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
 
@@ -221,13 +221,15 @@ class DataTables:
         self.doing_reload = False
         self.picker_active = False
         self.show_pdf_on_pick = False
+        self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
         # self.FIGS = figures.Figures(parent=self)
+        self.ptreedata = None # flag this as not set up initially
+        self.table_manager = None # get this later
+        ptreewidth = 350
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
 
         # Define the table style for various parts dark scheme
-
-
         dark_palette = QtGui.QPalette()
         white = self.QColor(255, 255, 255)
         black = self.QColor(0, 0, 0)
@@ -262,14 +264,17 @@ class DataTables:
         self.dockArea = PGD.DockArea()
         self.win.setCentralWidget(self.dockArea)
         self.win.setWindowTitle("DataTables")
+        win_width = 1600
+        right_docks_width = 1600-ptreewidth-20
+        right_docks_height = 800
         self.win.resize(1600, 1024)
         # Initial Dock Arrangment
-        self.Dock_Params = PGD.Dock("Params", size=(250, 1024))
-        self.Dock_Table = PGD.Dock("Dataset Table", size=(1000, 800))
-        self.Dock_Report = PGD.Dock("Reporting", size=(1000, 200))
-        self.Dock_Traces = PGD.Dock("Traces", size=(1000, 700))
-        self.Dock_PDFView = PGD.Dock("PDFs", size=(1000, 700))
-
+        self.Dock_Params = PGD.Dock("Params", size=(ptreewidth, 1024))
+        self.Dock_Table = PGD.Dock("Dataset Table", size=(right_docks_width, right_docks_height))
+        self.Dock_Traces = PGD.Dock("Traces", size=(right_docks_width, right_docks_height))
+        self.Dock_PDFView = PGD.Dock("PDFs", size=(right_docks_width, right_docks_height))
+        self.Dock_Report = PGD.Dock("Reporting", size=(right_docks_width, 200))
+  
         self.dockArea.addDock(self.Dock_Params, "left")
         self.dockArea.addDock(self.Dock_Table, "right", self.Dock_Params)
         self.dockArea.addDock(self.Dock_PDFView, "below", self.Dock_Table)
@@ -292,6 +297,19 @@ class DataTables:
             self.PDFView.settings().WebAttribute.PdfViewerEnabled, True
         )
         self.Dock_PDFView.addWidget(self.PDFView)
+        
+        self.textbox = QtWidgets.QTextEdit()
+        FUNCS.textbox_setup(self.textbox) # make sure the funcitons know about the textbox
+        self.textbox.setReadOnly(True)
+        self.textbox.setTextColor(QtGui.QColor("white"))
+        self.textbox.setStyleSheet("background-color: black")
+        self.textbox.setFontFamily(
+            "Monaco"
+        )  # Lucida Console; Menlo, Monaco, San Francisco (some are OSX only)
+        self.textbox.setFontPointSize(11)
+        self.textbox.clear()
+        self.textbox.setText("")
+        self.Dock_Report.addWidget(self.textbox)
 
         style = "::section {background-color: darkblue; }"
         self.selected_index_row = None  # for single selection mode
@@ -305,6 +323,7 @@ class DataTables:
         self.start_date = "None"
         self.end_date = "None"
         self.dataset = self.datasets[0]
+        self.set_experiment(self.dataset)
         self.selvals = {
             "DataSets": [self.datasets, self.dataset],
             "Run Type": [runtypes, self.runtype],
@@ -357,6 +376,7 @@ class DataTables:
             {
                 "name": "IV Analysis",
                 "type": "group",
+                "expanded": False,
                 "children": [
                     {"name": "Analyze Selected IVs", "type": "action"},
                     {"name": "Analyze ALL IVs", "type": "action"},
@@ -367,6 +387,14 @@ class DataTables:
             {   "name": "Plotting",
                 "type": "group",
                 "children": [
+                    {"name": "Group By", "type": "list",
+                        "limits": [gr for gr in self.experiment['group_by']],
+                        "value": self.experiment['group_by'][0],
+                    },
+                    {"name": "2nd Group By", "type": "list",
+                        "limits": [gr for gr in self.experiment['secondary_group_by']],
+                        "value": self.experiment['secondary_group_by'][0],
+                    },
                     {"name": "View Cell Data", "type": "action"},
 
                     {"name": "Use Picker", "type": "bool", "value": False},
@@ -383,6 +411,7 @@ class DataTables:
             {
                 "name": "Filters",
                 "type": "group",
+                "expanded": False,
                 "children": [
                     # {"name": "Use Filter", "type": "bool", "value": False},
                     {
@@ -492,6 +521,7 @@ class DataTables:
             {
                 "name": "Tools",
                 "type": "group",
+                "expanded": False,
                 "children": [
                     {"name": "Reload", "type": "action"},
                     {"name": "View IndexFile", "type": "action"},
@@ -506,8 +536,9 @@ class DataTables:
             name="Models", type="group", children=self.params
         )
         self.ptree.setParameters(self.ptreedata)
-        self.ptree.setMaximumWidth(300)
-        self.ptree.setMinimumWidth(250)
+
+        self.ptree.setMaximumWidth(ptreewidth+50)
+        self.ptree.setMinimumWidth(ptreewidth)
 
         self.Dock_Params.addWidget(self.ptree)  # put the parameter three here
 
@@ -537,18 +568,6 @@ class DataTables:
             self.trace_selector_plot, row=5, col=0, rowspan=1, colspan=1
         )
 
-        self.textbox = QtWidgets.QTextEdit()
-        FUNCS.textbox_setup(self.textbox) # make sure the funcitons know about the textbox
-        self.textbox.setReadOnly(True)
-        self.textbox.setTextColor(QtGui.QColor("white"))
-        self.textbox.setStyleSheet("background-color: black")
-        self.textbox.setFontFamily(
-            "Monaco"
-        )  # Lucida Console; Menlo, Monaco, San Francisco (some are OSX only)
-        self.textbox.setFontPointSize(11)
-        self.textbox.clear()
-        self.textbox.setText("")
-        self.Dock_Report.addWidget(self.textbox)
         self.set_experiment(self.dataset)
 
         self.win.show()
@@ -566,10 +585,11 @@ class DataTables:
             altcolormethod=self.altColors,
         )
         self.table.itemDoubleClicked.connect(
-            functools.partial(self.on_double_Click, self.table)
+            functools.partial(self.on_double_click, self.table)
         )
-        self.table.clicked.connect(functools.partial(self.on_Single_Click, self.table))
+        self.table.clicked.connect(functools.partial(self.on_single_click, self.table))
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
+        self.update_assembled_data()
 
         # test PDF viewer:
         # self.PDFView.setUrl(pg.QtCore.QUrl(f"file://{self.datapaths['databasepath']}/NF107Ai32_NIHL/pyramidal/2018_06_20_S04C00_pyramidal_IVs.pdf#zoom=80"))
@@ -579,7 +599,7 @@ class DataTables:
         # through the CommandDispatcher.
 
 
-    def on_double_Click(self, w):
+    def on_double_click(self, w):
         """
         Double click gets the selected row and then does an analysis
         """
@@ -590,7 +610,7 @@ class DataTables:
         self.selected_index_row = i_row
         self.display_from_table(i_row)
 
-    def on_Single_Click(self, w):
+    def on_single_click(self, w):
         """
         Single click simply sets the selected rows
         """
@@ -635,11 +655,18 @@ class DataTables:
         self.experimentname = data
         self.dataset = data
         self.experiment = self.experiments[data]
-        PSI.set_experiment(self.dataset, self.experiment)  # pass around to other functions
+        self.win.setWindowTitle(f"DataTables: {self.experimentname!s}")
+        if self.ptreedata is not None:
+            group = self.ptreedata.child("Plotting").child("Group By")
+            group.setLimits(self.experiment['group_by'])  # update the group_by list
+            group2 = self.ptreedata.child("Plotting").child("2nd Group By")
+            group2.setLimits(self.experiment['secondary_group_by'])  # update the 2nd group_by list
+        self.PSI.set_experiment(self.dataset, self.experiment)  # pass around to other functions
         PSA.set_experiment(self.dataset, self.experiment)  # pass around to other functions
         FUNCS.textappend(f"Contents of Experiment Named: {self.experimentname:s}")
         pp = pprint.PrettyPrinter(indent=4)
         FUNCS.textappend(pp.pformat(self.experiment))
+        self.load_assembled_data()  # try to load the assembled data
 
     def pick_handler(self, event, picker_funcs):
         for pf in picker_funcs.keys():
@@ -648,7 +675,7 @@ class DataTables:
                 cell = picker_funcs[pf].data.iloc[event.ind]
                 cell_id = cell["cell_id"].values[0]
                 print(f"Selected:   {cell_id!s}")  # find the matching data.
-                age = PSI.get_age(cell["age"])
+                age = PSI_2.get_age(cell["age"])
                 print(
                     f"     Cell: {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
                 )
@@ -696,34 +723,10 @@ class DataTables:
 
 
                 case "Load DataSummary":
-                    print("EXPERIMENT: ", self.experiment)
-                    self.datasummaryfile = Path(
-                        self.experiment["databasepath"],
-                        self.experiment["directory"],
-                        self.experiment["datasummaryFilename"],
-                    )
-                    FUNCS.textappend(f"DataSummary file: {self.datasummaryfile!s}")
-                    FUNCS.textappend(f"      exists:  {self.datasummaryfile.is_file()!s}")
-                    FUNCS.textappend("Loading ...")
-                    self.datasummary = pd.read_pickle(self.datasummaryfile)
-                    FUNCS.textappend(
-                        f"DataSummary file loaded with {len(self.datasummary.index):d} entries"
-                    )
-                    print(self.datasummary.columns)
+                    self.load_data_summary()
 
                 case "Load Assembled Data":
-                    self.assembledfile = PSI.get_assembled_filename(
-                        self.experiment
-                    )
-                    self.assembleddata = pd.read_pickle(self.assembledfile)
-                    FUNCS.textappend(
-                        f"Assembled data loaded, entries: {len(self.assembleddata.index):d}"
-                    )
-                    FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
-                    if self.assembleddata is not None:
-                        self.table_manager.build_table(
-                            self.assembleddata, mode="scan", QtCore=QtCore, QtGui=QtGui
-                        )
+                    self.load_assembled_data()
 
                 case "IV Analysis":
                     match path[1]:
@@ -750,9 +753,9 @@ class DataTables:
                             ) = plot_spike_info.setup(self.experiment)
                             print("analysis_cell_types: ", analysis_cell_types)
                             print("adddata: ", adddata)
-                            fn = PSI.get_assembled_filename(self.experiment)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
                             print("adddata: ", adddata)
-                            PSI.assemble_datasets(
+                            self.PSI.assemble_datasets(
                                 excelsheet=excelsheet,
                                 analysis_cell_types=analysis_cell_types,
                                 adddata=adddata,
@@ -793,16 +796,21 @@ class DataTables:
                             self.show_pdf_on_pick = data
 
                         case "Plot Spike Data":
-                            fn = PSI.get_assembled_filename(self.experiment)
-                            df = PSI.preload(fn)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            if hue_category == "None":
+                                hue_category = None
+                            df = self.PSI.preload(fn)
                             (
                                 P1,
                                 picker_funcs1,
-                            ) = PSI.summary_plot_spike_parameters_categorical(
+                            ) = self.PSI.summary_plot_spike_parameters_categorical(
                                 df,
-                                porder=porder,
+                                xname=group_by,
+                                hue_category=hue_category,
+                                plot_order=self.experiment['plot_order'][group_by],
                                 colors=colors,
-                                grouping="named",
                                 enable_picking=self.picker_active,
                             )
                             P1.figure_handle.suptitle(
@@ -815,17 +823,28 @@ class DataTables:
                             P1.figure_handle.show()
 
                         case "Plot Rmtau Data":
-                            fn = PSI.get_assembled_filename(self.experiment)
-                            print("Loading fn: ", fn)
-                            df = PSI.preload(fn)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
+                            print("RmTau Plotting: \n    Loading fn: ", fn)
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            print("    group_by: ", group_by)  
+                            hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            if hue_category == "None":
+                                hue_category = None
+                            plot_order = self.experiment['plot_order'][group_by]
+                            x_categories = self.experiment['plot_order'][group_by] 
+                            print("    plot order: ", plot_order)
+                            # if not isinstance(group_by, list):
+                            #     group_by = [group_by]
+                            df = self.PSI.preload(fn)
                             (
                                 P3,
                                 picker_funcs3,
-                            ) = PSI.summary_plot_RmTau_categorical(
+                            ) = self.PSI.summary_plot_RmTau_categorical(
                                 df,
-                                porder=porder,
+                                xname=group_by,
+                                hue_category=hue_category,
+                                plot_order=plot_order,
                                 colors=colors,
-                                grouping="named",
                                 enable_picking=self.picker_active,
                             )
                             P3.figure_handle.suptitle(
@@ -838,14 +857,21 @@ class DataTables:
                             P3.figure_handle.show()
 
                         case "Plot FIData Data":
-                            fn = PSI.get_assembled_filename(self.experiment)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = PSI.preload(fn)
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            if hue_category == "None":
+                                hue_category = None
+                            plot_order = self.experiment['plot_order'][group_by]
+                            df = self.PSI.preload(fn)
                             (
                                 P2,
                                 picker_funcs2,
-                            ) = PSI.summary_plot_spike_parameters_categorical(
+                            ) = self.PSI.summary_plot_spike_parameters_categorical(
                                 df,
+                                xname=group_by,
+                                hue_category=hue_category,
                                 measure_cols=[
                                     "AdaptRatio",
                                     "FISlope",
@@ -854,9 +880,8 @@ class DataTables:
                                     "FIMax_1",
                                     "FIMax_4",
                                 ],
-                                porder=porder,
+                                plot_order=plot_order,
                                 colors=colors,
-                                grouping="named",
                                 enable_picking=self.picker_active,
                             )
                             P2.figure_handle.suptitle(
@@ -869,10 +894,10 @@ class DataTables:
                             P2.figure_handle.show()
 
                         case "Plot FICurves":
-                            fn = PSI.get_assembled_filename(self.experiment)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = PSI.preload(fn)
-                            P4, picker_funcs4 = PSI.summary_plot_FI(
+                            df = self.PSI.preload(fn)
+                            P4, picker_funcs4 = self.PSI.summary_plot_FI(
                                 df,
                                 mode=["individual", "mean"],
                                 protosel=[
@@ -911,14 +936,18 @@ class DataTables:
                                 excelsheet,
                                 analysis_cell_types,
                                 adddata,
-                            ) = PSI.setup(self.experimentname, region="DCN")
-                            fn = PSI.get_assembled_filename(self.experiment)
+                            ) = PSI_2.setup(self.experiment)
+                            fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
-                            df = PSI.preload(fn)
+                            df = self.PSI.preload(fn)
                             divider = "=" * 80
-                            stat_text = PSI.do_stats(
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            second_group_by = self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            stat_text = self.PSI.do_stats(
                                 df,
-                                analysis_cell_types=analysis_cell_types,
+                                experiment=self.experiment,
+                                group_by=group_by,
+                                second_group_by=second_group_by, 
                                 divider=divider,
                             )
                             FUNCS.textappend(stat_text, color=QtGui.QColor("cyan"))
@@ -1127,6 +1156,49 @@ class DataTables:
             FUNCS.textappend(f"{br[1]:s},")
         if mode == "list":
             FUNCS.textappend(f"    {br[1]:s},")
+
+    def load_data_summary(self):
+        self.datasummaryfile = Path(
+            self.experiment["databasepath"],
+            self.experiment["directory"],
+            self.experiment["datasummaryFilename"],
+        )
+        if not self.datasummaryfile.is_file():
+            FUNCS.textappend(f"DataSummary file: {self.datasummaryfile!s} does not yet exist - please generate it first")
+            return
+        FUNCS.textappend(f"DataSummary file: {self.datasummaryfile!s}  exists. Last updated: {self.datasummaryfile.stat().st_mtime:f}")
+        FUNCS.textappend("Loading ...")
+        self.datasummary = pd.read_pickle(self.datasummaryfile)
+        FUNCS.textappend(
+            f"DataSummary file loaded with {len(self.datasummary.index):d} entries."
+        )
+        FUNCS.textappend(f"DataSummary columns: \n, {self.datasummary.columns:s}")
+        
+    def load_assembled_data(self):
+        """ get the current assembled data file, if it exists
+        if not, just pass on it.
+        """
+        self.assembledfile = self.PSI.get_assembled_filename(
+            self.experiment
+        )
+        if not self.assembledfile.is_file():
+            FUNCS.textappend(f"Assembled data file: {self.assembledfile!s} does not yet exist - please generate it first")
+            return
+        
+        self.assembleddata = pd.read_pickle(self.assembledfile)
+        FUNCS.textappend(
+            f"Assembled data loaded, entries: {len(self.assembleddata.index):d}"
+        )
+        FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
+
+        self.update_assembled_data()
+        
+    def update_assembled_data(self):
+        if self.table_manager is not None and self.assembleddata is not None:
+            self.table_manager.build_table(
+                self.assembleddata, mode="scan", QtCore=QtCore, QtGui=QtGui
+            )
+
 
     # Next we provide dispatches for a few specific actions. These are mostly
     # to routines in plot_sims.py
