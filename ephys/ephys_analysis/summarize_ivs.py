@@ -393,7 +393,7 @@ class GetAllIVs:
                 expts = self.experiment.split("+")
             else:
                 expts = [self.experiment]
-            print(f"Experiments: {str(expts):s}")
+            # print(f"Experiments: {str(expts):s}")
             for i in range(len(expts)):
                 expt = self.experiments[expts[i]]
                 self.analyzed_datapath = Path(expt['databasepath'], expt['directory'])
