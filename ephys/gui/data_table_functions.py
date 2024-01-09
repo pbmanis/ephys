@@ -1188,7 +1188,7 @@ class Functions:
                             textl = textl[len(k) :]
                             textl = textl.replace("[0m", "")
                             color = colormap[k]
-                            self.textbox.setTextColor(self.QColor(color))
+                            self.textbox.setTextColor(QtGui.QColor(color))
                             break
                 textl = textl.replace("[0m", "")
                 self.textbox.append(textl)
