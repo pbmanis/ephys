@@ -83,7 +83,7 @@ class IndexData:
     cell_cell: str=""
     cell_type: str = ""
     data_complete: List = field(default_factory=defemptylist)
-    group: str = ""
+    Group: str = ""
     protocols = ""
     RMP: str = ""
     RMP_SD: str = ""
@@ -283,7 +283,7 @@ class TableManager:
         Index_data.weight = str(row.weight)
         # Index_data.temperature = str(row.temperature)
 
-        Index_data.group = str(row.Group)
+        Index_data.Group = str(row.Group)
         Index_data.RMP = f"{row.RMP:6.2f}"
         Index_data.RMP_SD =f"{row.RMP_SD:6.2f}"
         Index_data.flag = False
@@ -292,8 +292,8 @@ class TableManager:
         Index_data.Rin = f"{row.Rin:6.2f}"
         Index_data.taum = f"{row.taum*1e3:6.2f}" # convert to ms
         Index_data.holding = f"{row.holding*1e12:6.2f}" # convert to pA
-        print("row.cellid: ", row.cell_id)
-        print("row.protocols: ", row.protocols)
+        # print("row.cellid: ", row.cell_id)
+        # print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
         Index_data.protocols = str(prots)
         # Index_data.data_complete = str(row.data_complete)
@@ -449,7 +449,7 @@ class TableManager:
                     indxs[i].age,
                     indxs[i].weight,
                     indxs[i].sex,
-                    indxs[i].group,
+                    indxs[i].Group,
                     indxs[i].RMP,
                     indxs[i].RMP_SD,
                     indxs[i].Rin,
@@ -467,7 +467,7 @@ class TableManager:
                 ("age", object),  # 3
                 ("weight", object),  # 4
                 ("sex", object),  # 5
-                ("group", object),  # 6
+                ("Group", object),  # 6
                 ("RMP", object),  # 7
                 ("RMP_SD", object),  # 8
                 ("Rin", object),  # 9
@@ -524,7 +524,7 @@ class TableManager:
             "cell_type": 2, 
             "age": 3,
             "sex": 5,
-            "group": 6,
+            "Group": 6,
             "DataTable": 18,
         }
         self.parent.doing_reload = True
