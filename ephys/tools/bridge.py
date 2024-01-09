@@ -48,7 +48,7 @@ try:
     cpath = Path(os.getcwd(), "config", "experiments.cfg")
     config = pg.configfile.readConfigFile(cpath)
     experiments = config['experiments']
-    print(experiments.keys())
+    # print(experiments.keys())
 
 
 except FileNotFoundError:
@@ -58,7 +58,7 @@ except FileNotFoundError:
                 'dbfile': '/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het_BridgeCorrections.xlsx'
                 },
             }
-print("experiments: ", experiments)
+# print("experiments: ", experiments)
 
 
 pg.setConfigOption('antialias', True)
