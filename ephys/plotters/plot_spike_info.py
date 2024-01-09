@@ -269,14 +269,13 @@ def get_plot_colors(experiment):
     return plot_colors
 
 
-GROUP_MAP: dict = {}  # maps group names to other names for consistency
-
-
-def rename_groups(row):
+def rename_groups(row, experiment):
     # print("renaming row group: ", row.Group)
-    if row.Group in list(GROUP_MAP.keys()):
-        row.Group = GROUP_MAP[row.Group]
-    return row.Group
+    if row.Group in list(experiment["group_map"].keys()):
+        row.groupname = experiment["group_map"][row.Group]
+    else:
+        row.groupname = np.nan  # deassign the group
+    return row.groupname
 
 
 printflag = False
@@ -484,7 +483,6 @@ class PlotSpikeInfo(QObject):
             # "maxHillSlope": np.log10,
         }
 
-
     def set_experiment(self, dataset, experiment):
         """set_experiment Update the selected dataset and experiment so we
         access the right files and directories.
@@ -498,7 +496,7 @@ class PlotSpikeInfo(QObject):
         """
         self.dataset = dataset
         self.experiment = experiment
-        print("experiment: ", experiment)
+        # print("experiment: ", experiment)
         self.ylims = set_ylims(self.experiment)
 
     def read_data_files(self, excelsheet, adddata=None):
@@ -805,15 +803,37 @@ class PlotSpikeInfo(QObject):
             print(f"{x*1e9:.2f}  {row.spsec[i]:.1f}")
         print("")
 
+    def fill_missing_groups(self, df, groups, celltype):
+        """fill_missing_celltypes : add missing cell types in groups,
+        to the data frame but with
+        NaN values for all parameters
+
+        Parameters
+        ----------
+        df : pandas dataframe
+            _description_
+        """
+        return df
+        present_groups = df.Group.unique()
+        print("     Filling missing groups with dummy nan values")
+        print("       Present Groups: ", present_groups)
+        for group in groups:
+            if group not in present_groups:
+                df.loc[len(df)] = pd.Series(dtype="float64")
+                df.loc[len(df) - 1, "Group"] = group
+        return df
+
     def bar_pts(
         self,
         df,
-        yname,
+        xname: str,  # x
+        yname: str,  # variable
         celltype: str = "pyramidal",
+        hue_category: str = None,
         sign: float = 1.0,
         scale=1.0,
         ax: mpl.axis = None,
-        porder=["Ctl", "103dB 2W", "115dB 2W", "115dB 3D"],
+        plot_order=None,
         colors: Union[dict, None] = None,
         enable_picking=True,
     ):
@@ -821,61 +841,82 @@ class PlotSpikeInfo(QObject):
 
         Args:
             df (Pandas data frome): _description_
+            groups: Which grouping to use for the categories
             yname (str): dataset name to plot
             celltype (str, optional): Cell type to plot. Defaults to "pyramidal".
             ax (object, optional): Axis to plot into. Defaults to None.
             sf (float, optional): Scale factor to multipy data by.
+
+            Note:
+            seaborn.
+            Stripplot and boxplot palettes should be a dictionary mapping hue levels to matplotlib colors.
+
         """
         df_x = df[df["cell_type"] == celltype]
-        df_x.dropna(subset=["Group"], inplace=True)
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
-        # print('yname: ', yname)
         if colors is None:  # set all to blue
-            colors = {df_x[g]: "b" for g in df_x.Group.unique()}
+            colors = {df_x[g]: "b" for g in plot_order}
+        # print("Colors: ", colors)
+        # df_x.dropna(subset=[groups], inplace=True)  # drop anything unassigned
+        df_x[yname] = df_x[yname].astype(
+            float
+        )  # make sure values to be plotted are proper floats
+        if df_x[yname].isnull().values.all(axis=0):
+            return None
+        df_x.dropna(subset=["Group"], inplace=True)
+        df_x = self.fill_missing_groups(df_x, xname, celltype)
 
-        # print(porder, df_x.Group.unique())
-        # print("df yname: ", celltype, yname)
-        # print(df_x["Group"], df_x[yname])
-        # print(df_x[yname].isnull().values.all(axis=0))
-        # if len(df_x) > 0 and celltype != 'cartwheel' and yname != 'FIMax_4':
-        if not df_x[yname].isnull().values.all(axis=0):
-            try:
-                sns.boxplot(
-                    data=df_x,
-                    x="Group",
-                    y=yname,
-                    ax=ax,
-                    order=porder,
-                    color="w",
-                    orient="v",
-                    showfliers=False,
-                )
-            except:
-                print("boxplot failed for ", celltype, yname)
-            # print("porder: ", porder)
-            # print("colors: ", colors)
-            palette = [colors[g] for g in colors.keys()]
-            # print("palette: ", palette )
-            sns.stripplot(
-                x="Group",
-                y=yname,
+        print("      Celltype: ", celltype, " Groups: ", df_x.Group.unique())
+        print("      X values: ", xname)
+
+        print("Colors: ", colors)
+        dodge = True
+        if hue_category == "sex":
+            hue_palette = {"F": "#FF000088", "M": "#0000ff88", " ": "k"}
+        elif hue_category == "temperature":
+            hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
+        elif hue_category is None:
+            hue_palette = colors
+            dodge = False
+
+        try:
+            sns.boxplot(
                 data=df_x,
-                dodge=False,
-                jitter=True,
-                size=3.5,
-                # fliersize=None,
-                alpha=0.6,
+                x=xname,
+                y=yname,
+                hue=hue_category,
+                palette=hue_palette,
                 ax=ax,
-                hue="Group",
-                palette=palette,
-                color="k",
-                order=porder,
+                order=plot_order,
+                saturation=0.25,
+                orient="v",
+                showfliers=False,
+                linewidth=0.5,
             )
-            # print("bar pts picking enabled: ", enable_picking)
-            # if not enable_picking:
-            #     raise ValueError("Picking not enabled")
-            if enable_picking:
-                ax.scatter(x=df_x["Group"], y=df_x[yname], c="k", s=30, picker=True)
+        except Exception as e:
+            print("boxplot failed for ", celltype, yname)
+            raise e  # re-raise the exception
+        sns.stripplot(
+            x=xname,
+            y=yname,
+            data=df_x,
+            dodge=dodge,
+            jitter=True,
+            size=3.5,
+            # fliersize=None,
+            alpha=1.0,
+            ax=ax,
+            hue=hue_category,
+            palette=hue_palette,
+            edgecolor="k",
+            linewidth=0.5,
+            order=plot_order,
+        )
+        # print("bar pts picking enabled: ", enable_picking)
+        # if not enable_picking:
+        #     raise ValueError("Picking not enabled")
+        if enable_picking:
+            ax.scatter(x=df_x["Group"], y=df_x[yname], c="k", s=30, picker=True)
         ax.set_xticks(ax.get_xticks(), ax.get_xticklabels(), rotation=45, ha="right")
         # remove extra legend handles
         handles, labels = ax.get_legend_handles_labels()
@@ -1009,11 +1050,12 @@ class PlotSpikeInfo(QObject):
     def summary_plot_spike_parameters_categorical(
         self,
         df,
-        porder=["Ctl", "103dB 2W", "115dB 2W", "115dB 3D"],
-        measure_cols=["dvdt_rising", "dvdt_falling", "AP_HW", "AP_thr_V"],
+        xname: str,
+        hue_category=None,
+        plot_order: list = ["Ctl", "103dB 2W", "115dB 2W", "115dB 3D"],
+        measure_cols: list = ["dvdt_rising", "dvdt_falling", "AP_HW", "AP_thr_V"],
         # "AdaptRatio", "FISlope", "FIMax_1", "FIMax_4"],
         colors=None,
-        grouping="named",
         enable_picking=False,
     ):
         """Make a summary plot of spike parameters for selected cell types.
@@ -1028,14 +1070,10 @@ class PlotSpikeInfo(QObject):
 
         # df["FIMax_1"] = df.apply(getFIMax_1, axis=1)
         # df["FIMax_4"] = df.apply(getFIMax_imax, axis=1, imax=4.0)
-        df["FIRate"] = df.apply(self.getFIRate, axis=1)
-        df["Group"] = df.apply(rename_groups, axis=1)
-        df["age"] = df.apply(numeric_age, axis=1)
-        df["shortdate"] = df.apply(make_datetime_date, axis=1)
-        df["SR"] = df.apply(self.flag_date, axis=1)
-        df.dropna(subset=["age"], inplace=True)
-        df.dropna(subset=["Group"], inplace=True)
-        df = df[df["Group"] != "nan"]
+
+        # df.dropna(subset=["age"], inplace=True)
+        # df.dropna(subset=["Group"], inplace=True)
+        # df = df[df["Group"] != "nan"]
         # df = df[(df.Age > 0) & (df.Age <= max_age)]
         figure_width = ncols * 2.5
         # print("meausre cols: ", measure_cols)
@@ -1074,10 +1112,11 @@ class PlotSpikeInfo(QObject):
 
                 picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
-                    x=porder,
+                    xname=xname,
                     y=measure,
                     ax=axp,
                     celltype=celltype,
+                    hue_category=hue_category,
                     colors=colors,
                     logx=False,
                     ylims=self.ylims[celltype][measure],
@@ -1089,7 +1128,6 @@ class PlotSpikeInfo(QObject):
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                     axp.set_xlabel("")
-                    print("removed xlabel from ", icol, measure, celltype)
                 # if icol > 0:
                 #     axp.set_ylabel("")
                 #     print("removed ylabel from ", icol, measure, celltype)
@@ -1187,10 +1225,12 @@ class PlotSpikeInfo(QObject):
     def create_one_plot_categorical(
         self,
         data,
-        x,
+        xname,  # name of the dataframe column holding categorical data
         y,
         ax,
         celltype,
+        hue_category: str = None,
+        plot_order=None,
         colors=None,
         logx=False,
         ylims=None,
@@ -1224,6 +1264,7 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data[data["cell_type"] == celltype]
+        print("celltype: ", celltype, dfp.cell_type.unique(), dfp.Group.unique())
         dfp = dfp.copy()
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
         if transform is not None:
@@ -1231,10 +1272,12 @@ class PlotSpikeInfo(QObject):
         # print("1pcat")
         picker_func = self.bar_pts(
             dfp,
+            xname=xname,
             yname=y,
             ax=ax,
+            hue_category=hue_category,
             celltype=celltype,
-            porder=x,
+            plot_order=plot_order,
             colors=colors,
             enable_picking=enable_picking,
         )
@@ -1255,7 +1298,7 @@ class PlotSpikeInfo(QObject):
         return row.Rin
 
     def summary_plot_spike_parameters_continuous(
-        self, df, logx=False, xlims=[0, max_age]
+        self, df, groups, logx=False, xlims=[0, max_age]
     ):
         """Make a summary plot of spike parameters for selected cell types.
 
@@ -1284,7 +1327,7 @@ class PlotSpikeInfo(QObject):
         # df["FIMax_1"] = df.apply(getFIMax_1, axis=1)
         # df["FIMax_4"] = df.apply(getFIMax_imax, axis=1, imax=4.0)
         df["FIRate"] = df.apply(self.getFIRate, axis=1)
-        df["Group"] = df.apply(rename_groups, axis=1)
+        df.dropna(subset=["Group"], inplace=True)  # remove empty groups
         df["age"] = df.apply(numeric_age, axis=1)
         df["shortdate"] = df.apply(make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
@@ -1355,11 +1398,11 @@ class PlotSpikeInfo(QObject):
 
         # place_legend(P)
 
-        for i in range(len(showcells)):
+        for i, cell in enumerate(showcells):
             mpl.text(
                 x=0.05,
                 y=0.8 - i * 0.3,
-                s=showcells[i].title(),
+                s=cell.title(),
                 color="k",
                 rotation="vertical",
                 ha="center",
@@ -1400,28 +1443,28 @@ class PlotSpikeInfo(QObject):
         return
 
     def summary_plot_RmTau_categorical(
-        self, df, porder, colors=None, grouping="named", enable_picking=True
+        self,
+        df,
+        xname: str,
+        plot_order: list,
+        hue_category: str = None,
+        colors=None,
+        enable_picking=True,
     ):
         """Make a summary plot of spike parameters for selected cell types.
 
         Args:
             df (Pandas dataframe): _description_
         """
+        print("\nSummary Plot rmtau categorical")
         df = df.copy()
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         measures = ["RMP", "Rin", "taum"]
         plabels = [
             f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))
         ]
-        df["Rin"] = df.apply(self.clean_Rin, axis=1)
-        # print("before: ", df["Group"])
-        df["Group"] = df.apply(rename_groups, axis=1)
-        df = df[df["Group"] != "nan"]
+        # df["Rin"] = df.apply(self.clean_Rin, axis=1)
         self.rescale_values(df)
-        # print("after: ", df["Group"])
-        # print("porder: ", porder)
-        # exit()
-
         picker_funcs = {}
         figure_width = len(measures) * 2.75
         P = PH.regular_grid(
@@ -1459,11 +1502,13 @@ class PlotSpikeInfo(QObject):
                 # df = df.apply(apply_scale, axis=1, measure=measure, scale=yscale)
                 axp = P.axdict[f"{let:s}{j+1:d}"]
 
-                print("summary_plot_categorical  enable picking: ", enable_picking)
+                print("    enable picking: ", enable_picking)
                 picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
-                    x=porder,
+                    xname=xname,
                     y=measure,
+                    hue_category=hue_category,
+                    plot_order=plot_order,
                     ax=axp,
                     celltype=celltype,
                     colors=colors,
@@ -1472,8 +1517,6 @@ class PlotSpikeInfo(QObject):
                     xlims=None,
                     enable_picking=enable_picking,
                 )
-
-                # pickerfunc = bar_pts(df, yname=measure, ax=axp, celltype=celltype, porder=porder)
                 # picker_funcs[axp] = pickerfunc
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
@@ -1825,7 +1868,19 @@ class PlotSpikeInfo(QObject):
         # print(model.summary())
         return P, picker_funcs
 
-    def stats(self, df, celltype, measure):
+    def rename_group(self, row, group_by: str):
+        row[group_by] = row[group_by].replace(" ", "")
+        return row[group_by]
+
+    def stats(
+        self,
+        df,
+        celltype: str = None,
+        measure: str = None,
+        group_by: str = None,
+        second_group_by: str = None,
+        statistical_comparisons: list = None,
+    ):
         df_x = df[df.cell_type == celltype]
         # print(df_x.head())
         # fvalue, pvalue = scipy.stats.f_oneway(df['A'], df['B'], df['AA'], df['AAA'])
@@ -1842,11 +1897,11 @@ class PlotSpikeInfo(QObject):
         stattext = "\n\n".join(
             [
                 stattext,
-                CP(
-                    cellcolors[celltype],
-                    f"Celltype: {celltype!s}   Measure: {measure!s}",
-                    # textonly=True,
-                ),
+                # CP(
+                #     cellcolors[celltype],
+                f"Celltype: {celltype!s}   Measure: {measure!s}",
+                # textonly=True,
+                # ),
             ]
         )
 
@@ -1856,12 +1911,18 @@ class PlotSpikeInfo(QObject):
             row[measure] = pd.to_numeric(row[measure])
             return row
 
+        for i, s in enumerate(statistical_comparisons):
+            s = s.replace(" ", "")  # replace spaces with underscores for tests
+            statistical_comparisons[i] = s
         df_x = df_x.apply(make_numeric, measure=measure, axis=1)
         df_clean = df_x.dropna(subset=[measure], inplace=False)
+        df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
         if measure == "maxHillSlope":
             df_clean["maxHillSlope"] = np.log(df_clean["maxHillSlope"])
-        lm = sfa.ols(f"{measure:s} ~ Group", data=df_clean).fit()
+        lm = sfa.ols(f"{measure:s} ~ {group_by:s}", data=df_clean).fit()
         anova = sa.stats.anova_lm(lm)
+        print('%'*80)
+        print(f"\n\nANOVA: [{measure:s}]  celltype={celltype:s}\n\n {anova!s}")
         stattext = "\n".join([stattext, CP("w", f"ANOVA: {anova!s}", textonly=True)])
 
         # ph = sp.posthoc_ttest(df_clean, val_col=measure, group_col="Group", p_adjust="holm")
@@ -1875,14 +1936,20 @@ class PlotSpikeInfo(QObject):
 
         # sh = pairwise_tukeyhsd(df[measure], df["Group"])
         # print(sh)
-        pw = lm.t_test_pairwise("Group", method="sh")
-        subdf = pw.result_frame.loc[["B-A", "B-AA", "B-AAA"]]
-        mtests = multipletests(subdf["P>|t|"].values, method="sh")
-        # print("mtests: ", mtests)
-        stattext = "\n".join([stattext, CP("w", f"{mtests!s}", textonly=True)])
-        subdf["adj_p"] = mtests[1]
-        # print("subdf: ", subdf)
-        stattext = "\n".join([stattext, CP("w", f"{subdf!s}", textonly=True)])
+        print("lm: \n", lm.summary())
+        pw = lm.t_test_pairwise(group_by, method="sh")
+        print("pw: \n", pw.result_frame)
+        try:
+            subdf = pw.result_frame.loc[statistical_comparisons]
+            mtests = multipletests(subdf["P>|t|"].values, method="sh")
+            # print("mtests: ", mtests)
+            stattext = "\n".join([stattext, CP("w", f"{mtests!s}", textonly=True)])
+            subdf["adj_p"] = mtests[1]
+            # print("subdf: ", subdf)
+            stattext = "\n".join([stattext, CP("w", f"{subdf!s}", textonly=True)])
+        except KeyError:
+            msg = f"Missing data for comparisons for {celltype:s} and {measure:s}"
+            stattext = "\n".join([msg])
         # res = stat()
         # res.tukey_hsd(df=df_pyr, res_var='dvdt_rising', xfac_var='Group', anova_model='dvdt_rising ~ C(Group)')
         # print(res.tukey_summary)
@@ -1948,38 +2015,63 @@ class PlotSpikeInfo(QObject):
         print("Writing assembled data to : ", fn)
         df.to_pickle(fn)
 
-    def nantoB_groups(self, row):
+    def categorize_ages(self, row):
         row.age = numeric_age(row)
-        for k in self.experiment["age_definitions"].keys():
+        for k in self.experiment["age_categories"].keys():
             if (
-                row.age >= self.experiment["age_definitions"][k][0]
-                and row.age <= self.experiment["age_definitions"][k][1]
+                row.age >= self.experiment["age_categories"][k][0]
+                and row.age <= self.experiment["age_categories"][k][1]
             ):
-                row.Group = k
-        return row.Group
+                row.age_category = k
+        return row.age_category
 
     def preload(self, fn):
-        CP("g", f"PRELOAD, {fn!s}")
+        CP("g", f"    PRELOAD, {fn!s}")
         df = pd.read_pickle(fn)
+
         df["Rin"] = df.apply(self.clean_Rin, axis=1)
-        df["Group"] = df.apply(self.nantoB_groups, axis=1)
-        print("len df reading pickle: ", len(df))
+        df["age_category"] = df.apply(self.categorize_ages, axis=1)
+        df["FIRate"] = df.apply(self.getFIRate, axis=1)
+        df["Group"] = df["Group"].astype("str")
+        groups = df.Group.unique()
+        print("        # Groups found: ", groups, " n = ", len(groups))
+        if self.experiment["set_group_control"]:
+            df["Group"] = "Control"
+            # self.data_table_manager.update_table(data=df)
+        else:
+            df["groupname"] = df.apply(
+                rename_groups, experiment=self.experiment, axis=1
+            )
+            if len(groups) > 1:
+                df.dropna(subset=["Group"], inplace=True)  # remove empty groups
+                df.drop(df.loc[df.Group == "nan"].index, inplace=True)
+            else:
+                df["Group"] = "Control"
+        print(
+            "        # Groups found after dropping nan: ",
+            df.Group.unique(),
+            len(df.Group.unique()),
+        )
+        df["age"] = df.apply(numeric_age, axis=1)
+        df["shortdate"] = df.apply(make_datetime_date, axis=1)
+        df["SR"] = df.apply(self.flag_date, axis=1)
+        print("        # entries in dataframe: ", len(df))
         # if "cell_id2" not in df.columns:
         #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
-        print("cell ids: \n", df.cell_id)
+        # print("cell ids: \n", df.cell_id)
         if self.experiment["excludeIVs"] is None:
             return df
         for fns in self.experiment["excludeIVs"]:
             fn = fns.split(":")[0]  # remove the comment
-            print("checking exclude for: ", fn)
+            # print("checking exclude for: ", fn)
             if fn in list(df.cell_id.values):
                 df.drop(df.loc[df.cell_id == fn].index, inplace=True)
                 CP("r", f"dropped {fn:s} from analysis, reason = {fns.split(':')[1]:s}")
         return df
 
-    def do_stats(self, df, divider="-" * 80):
+    def do_stats(self, df, experiment, group_by, second_group_by, divider="-" * 80):
         stat_text = " "
-        for ctype in self.experiment["celltypes"]:
+        for ctype in experiment["celltypes"]:
             CP("g", f"\n{divider:s}")
             for measure in [
                 "dvdt_rising",
@@ -1997,7 +2089,21 @@ class PlotSpikeInfo(QObject):
                 "Rin",
                 "taum",
             ]:
-                stat_text = "\n".join([stat_text, stats(df, ctype, measure)])
+                stat_text = "\n".join(
+                    [
+                        stat_text,
+                        self.stats(
+                            df,
+                            celltype=ctype,
+                            measure=measure,
+                            group_by=group_by,
+                            second_group_by=second_group_by,
+                            statistical_comparisons=experiment[
+                                "statistical_comparisons"
+                            ],
+                        ),
+                    ]
+                )
         print(stat_text)
         return stat_text
 
@@ -2076,7 +2182,7 @@ if __name__ == "__main__":
     divider = "=" * 80 + "\n"
     if args.stats:
         PSI.do_stats(df, divider=divider)
-    porder = ["Preweaning", "Pubescent", "Young Adult", "Mature Adult"]
+    # porder = ["Preweaning", "Pubescent", "Young Adult", "Mature Adult"]
     # now we can do the plots:
 
     print(f"args.plot: <{args.plot:s}>")
@@ -2085,9 +2191,9 @@ if __name__ == "__main__":
     if args.plot in ["all", "spikes"]:
         P1, picker_funcs1 = PSI.summary_plot_spike_parameters_categorical(
             df,
-            porder=PSI.experiment["plot_order"],
+            groups=PSI.experiment["plot_order"]["age"],
+            porder=PSI.experiment["plot_order"]["age"],
             colors=PSI.experiment["plot_colors"],
-            grouping="named",
             enable_picking=enable_picking,
         )
         P1.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
@@ -2114,9 +2220,9 @@ if __name__ == "__main__":
     if args.plot == "rmtau":
         P3, picker_funcs3 = PSI.summary_plot_RmTau_categorical(
             df,
+            groups=["Preweaning", "Pubescent", "Young Adult", "Mature Adult"],
             porder=PSI.experiment["plot_order"],
             colors=PSI.experiment["plot_colors"],
-            grouping="named",
             enable_picking=enable_picking,
         )
         P3.figure_handle.suptitle("Membrane Properties", fontweight="bold", fontsize=18)
