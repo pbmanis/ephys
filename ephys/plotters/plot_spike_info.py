@@ -1,35 +1,29 @@
 """Plot summaries of spike and basic electrophys properties of cells.
 Does stats at the end.
 """
-import dataclasses
-from pathlib import Path
-from typing import Union, List
 import datetime
+import pprint
+from pathlib import Path
+from typing import List, Union
+import textwrap
+import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
+import pingouin as ping
+import pylibrary.plotting.plothelpers as PH
 import scikit_posthocs as sp
-import pprint
-import scipy.stats
 import seaborn as sns
 import statsmodels.api as sa
 import statsmodels.formula.api as sfa
 import statsmodels.formula.api as smf
-
-from statsmodels.stats.anova import AnovaRM
-import pylibrary.plotting.plothelpers as PH
 from pylibrary.tools import cprint
-import ephys.datareaders as DR
-import pingouin as ping
-from ephys.ephys_analysis import spike_analysis
-from ephys.tools import fitting
-from ephys.tools import utilities
-from ephys.tools import filter_data
-from ephys.gui import data_table_functions
-from ephys.tools.get_configuration import get_configuration
+from pyqtgraph.Qt.QtCore import QObject
+from statsmodels.stats.multitest import multipletests
 
-from pyqtgraph.Qt.QtCore import QObject, pyqtSignal
-import dateutil.parser as DUP
+from ephys.ephys_analysis import spike_analysis
+from ephys.gui import data_table_functions
+from ephys.tools import filter_data, fitting, utilities
 
 PP = pprint.PrettyPrinter()
 
@@ -1884,8 +1878,10 @@ class PlotSpikeInfo(QObject):
         df_x = df[df.cell_type == celltype]
         # print(df_x.head())
         # fvalue, pvalue = scipy.stats.f_oneway(df['A'], df['B'], df['AA'], df['AAA'])
+        # indent the statistical results
+        # wrapper = textwrap.TextWrapper(width=80, initial_indent=" "*8, subsequent_indent=" " * 8)
 
-        stattext = ""
+        headertext = ""
         cellcolors = {
             "pyramidal": "b",
             "cartwheel": "g",
@@ -1894,17 +1890,18 @@ class PlotSpikeInfo(QObject):
         }
         if celltype not in cellcolors.keys():
             cellcolors[celltype] = "r"
-        stattext = "\n\n".join(
+        headertext = "\n\n".join(
             [
-                stattext,
-                # CP(
-                #     cellcolors[celltype],
-                f"Celltype: {celltype!s}   Measure: {measure!s}",
-                # textonly=True,
-                # ),
+                headertext,
+                CP(
+                    "y",
+                f"{'%'*80:s}\n\nCelltype: {celltype!s}   Measure: {measure!s}",
+                textonly=True,
+                ),
             ]
         )
-
+        FUNCS.textappend(headertext)
+        
         def make_numeric(row, measure):
             # print(row)
             # print(measure)
@@ -1916,46 +1913,66 @@ class PlotSpikeInfo(QObject):
             statistical_comparisons[i] = s
         df_x = df_x.apply(make_numeric, measure=measure, axis=1)
         df_clean = df_x.dropna(subset=[measure], inplace=False)
+
+        groups_in_data = df_clean[group_by].unique()
+        if len(groups_in_data) == 0:
+            nodatatext = "\n".join(["",
+                    CP("r", f"****** No data for {celltype:s} and {measure:s}", textonly=True),
+                ]
+            )
+            FUNCS.textappend(nodatatext)
+            return
         df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
         if measure == "maxHillSlope":
             df_clean["maxHillSlope"] = np.log(df_clean["maxHillSlope"])
         lm = sfa.ols(f"{measure:s} ~ {group_by:s}", data=df_clean).fit()
         anova = sa.stats.anova_lm(lm)
-        print('%'*80)
-        print(f"\n\nANOVA: [{measure:s}]  celltype={celltype:s}\n\n {anova!s}")
-        stattext = "\n".join([stattext, CP("w", f"ANOVA: {anova!s}", textonly=True)])
+        in8 = " "*8
+        msg = f"\nANOVA: [{measure:s}]  celltype={celltype:s}\n\n {textwrap.indent(str(anova), in8)!s}"
+        stattext = "".join(["", CP("y", msg, textonly=True)])
+        print(stattext)
+        FUNCS.textappend(stattext)
 
+        lmt = f"\nOLS: \n{textwrap.indent(str(lm.summary()),in8)!s}"
+        stattext = "\n".join(["", CP("b", f"{lmt!s}", textonly=True)])
+        print(stattext)
+        FUNCS.textappend(stattext)
         # ph = sp.posthoc_ttest(df_clean, val_col=measure, group_col="Group", p_adjust="holm")
         # print(ph)
 
         # res = stat()
         # res.anova_stat(df=df_pyr, res_var='dvdt_rising', anova_model='dvdt_rising ~ C(Group)')
         # print(res.anova_summary)
-        from statsmodels.stats.multicomp import pairwise_tukeyhsd
-        from statsmodels.stats.multitest import multipletests
+
 
         # sh = pairwise_tukeyhsd(df[measure], df["Group"])
         # print(sh)
-        print("lm: \n", lm.summary())
-        pw = lm.t_test_pairwise(group_by, method="sh")
-        print("pw: \n", pw.result_frame)
+
+
         try:
+            pw = lm.t_test_pairwise(group_by, method="sh")
+            pwt = f"\nPairwise tests:\n{textwrap.indent(str(pw.result_frame), in8)!s}"
+            stattext = "\n".join(["", CP("b", f"{pwt!s}", textonly=True)])
+            FUNCS.textappend(stattext)
+            print(stattext)
+
             subdf = pw.result_frame.loc[statistical_comparisons]
             mtests = multipletests(subdf["P>|t|"].values, method="sh")
-            # print("mtests: ", mtests)
-            stattext = "\n".join([stattext, CP("w", f"{mtests!s}", textonly=True)])
-            subdf["adj_p"] = mtests[1]
-            # print("subdf: ", subdf)
-            stattext = "\n".join([stattext, CP("w", f"{subdf!s}", textonly=True)])
-        except KeyError:
-            msg = f"Missing data for comparisons for {celltype:s} and {measure:s}"
+            stattext = "\n".join(["MultiComparison Tests:\n", CP("b", f"{textwrap.indent(str(mtests), in8)!s}", textonly=True)])
+            subdf["adj_p"] = textwrap.indent(str(mtests[1]), in8)
+            stattext = "\n".join([stattext, CP("b", f"{subdf!s}", textonly=True)])
+            FUNCS.textappend(stattext)
+            print(stattext)
+
+        except (KeyError, ValueError) as error:
+            msg = f"****** Missing data for comparisons for {celltype:s} and {measure:s}\n{error!s}"
             stattext = "\n".join([msg])
-        # res = stat()
-        # res.tukey_hsd(df=df_pyr, res_var='dvdt_rising', xfac_var='Group', anova_model='dvdt_rising ~ C(Group)')
-        # print(res.tukey_summary)
-        # print("=" * 40)
+        # # res = stat()
+        # # res.tukey_hsd(df=df_pyr, res_var='dvdt_rising', xfac_var='Group', anova_model='dvdt_rising ~ C(Group)')
+        # # print(res.tukey_summary)
+        # # print("=" * 40)
         stattext = "\n".join([stattext, f"{'='*80:s}"])
-        return stattext
+
 
     def check_HW(self, row):
         if row.AP_HW < 0 or row.AP_HW > 0.010:
@@ -2069,8 +2086,11 @@ class PlotSpikeInfo(QObject):
                 CP("r", f"dropped {fn:s} from analysis, reason = {fns.split(':')[1]:s}")
         return df
 
-    def do_stats(self, df, experiment, group_by, second_group_by, divider="-" * 80):
-        stat_text = " "
+    def do_stats(self, df, experiment, group_by, second_group_by, textbox:object=None, divider="-" * 80):
+        if textbox is not None:
+            FUNCS.textbox_setup(textbox)
+            FUNCS.textclear()
+
         for ctype in experiment["celltypes"]:
             CP("g", f"\n{divider:s}")
             for measure in [
@@ -2089,23 +2109,18 @@ class PlotSpikeInfo(QObject):
                 "Rin",
                 "taum",
             ]:
-                stat_text = "\n".join(
-                    [
-                        stat_text,
-                        self.stats(
-                            df,
-                            celltype=ctype,
-                            measure=measure,
-                            group_by=group_by,
-                            second_group_by=second_group_by,
-                            statistical_comparisons=experiment[
-                                "statistical_comparisons"
-                            ],
-                        ),
-                    ]
-                )
-        print(stat_text)
-        return stat_text
+
+                self.stats(
+                    df,
+                    celltype=ctype,
+                    measure=measure,
+                    group_by=group_by,
+                    second_group_by=second_group_by,
+                    statistical_comparisons=experiment[
+                        "statistical_comparisons"
+                    ],
+                ),
+        return
 
 
 if __name__ == "__main__":
