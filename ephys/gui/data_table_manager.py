@@ -22,17 +22,19 @@ import datetime
 import pickle
 import pprint
 import subprocess
-import sys
+import textwrap
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Union
-import ephys
-from ephys.tools import win_print as WP
-import pandas as pd
 
+import ephys.gui.data_table_functions as FUNCS
+import ephys
 import numpy as np
+import pandas as pd
 from pylibrary.tools import cprint as CP
+
+from ephys.tools import win_print as WP
 
 # import vcnmodel.util.fixpicklemodule as FPM
 
@@ -47,18 +49,7 @@ PP = pprint.PrettyPrinter(indent=8, width=80)
 
 print("Current path: ", Path().absolute())
 
-process = subprocess.Popen(
-    ["git", "rev-parse", "HEAD"], shell=False, stdout=subprocess.PIPE
-)
-git_head_hash = process.communicate()[0].strip()
-
-ephyspath = Path(ephys.__file__).parent
-process = subprocess.Popen(
-    ["git", "-C", str(ephyspath), "rev-parse", "HEAD"],
-    shell=False,
-    stdout=subprocess.PIPE,
-)
-ephys_git_hash = process.communicate()[0].strip()
+git_hashes = FUNCS.get_git_hashes()
 
 
 def defemptylist():
@@ -71,8 +62,8 @@ def defemptylist():
 #
 @dataclass
 class IndexData:
-    project_code_hash: str = git_head_hash  # this repository!
-    ephys_hash: str = ephys_git_hash  # save hash for the model code
+    project_code_hash: str = git_hashes['project']  # current project
+    ephys_hash: str = git_hashes['ephys']  # ephys
     date: str = ""
     cell_id: str=""
     sex: str=""
@@ -273,8 +264,8 @@ class TableManager:
         if pd.isnull(row.cell_id):
             return None
         Index_data = IndexData()
-        Index_data.ephys_hash = ephys_git_hash  # save hash for the model code
-        Index_data.project_code_hash = git_head_hash  # this repository!
+        Index_data.ephys_hash = git_hashes['ephys']  # save hash for the model code
+        Index_data.project_code_hash = git_hashes['project']  # this repository!
         Index_data.cell_id = str(row.cell_id)
         Index_data.date = str(row.Date)
         Index_data.age = str(row.age)
@@ -295,7 +286,8 @@ class TableManager:
         # print("row.cellid: ", row.cell_id)
         # print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
-        Index_data.protocols = str(prots)
+        Index_data.protocols = textwrap.fill(str(prots), width=40)
+
         # Index_data.data_complete = str(row.data_complete)
         return Index_data
 
@@ -438,7 +430,6 @@ class TableManager:
             if index_file_data is not None:
                 indxs.append(index_file_data)
         self.table_data = indxs
-        print("indxs[0]: ", indxs[0])
         # transfer to the data array for the table
         self.data = np.array(
             [
@@ -489,10 +480,10 @@ class TableManager:
         #     # print('sorting by a column')
         #     self.table.sortByColumn(0, QtCore.Qt.SortOrder.AscendingOrder)
         # self.table.setStyle(QtGui.QFont('Arial', 6))
-        self.table.resizeRowsToContents()
+        # self.table.resizeRowsToContents()
         self.table.resizeColumnsToContents()
         self.current_table_data = data
-        self.altColors()  # reset the coloring for alternate lines
+        self.altColors(self.table)  # reset the coloring for alternate lines
         if QtGui is not None:
             for i in range(self.table.rowCount()):
                 if self.table_data[i].flag:

@@ -2,20 +2,23 @@
     We are using a class here just to make it easier to pass around
 """
 
-from pathlib import Path
-from typing import Union
 import logging
 import pprint
+import subprocess
+from pathlib import Path
+from typing import Union
+
+import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
-import ephys.datareaders as DR
-from ephys.ephys_analysis import spike_analysis
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtGui
-from ephys.tools import utilities
 
-import matplotlib.pyplot as mpl
+import ephys.datareaders as DR
+from ephys.ephys_analysis import spike_analysis
+from ephys.tools import utilities
+import ephys
 
 UTIL = utilities.Utility()
 CP = cprint.cprint
@@ -42,6 +45,20 @@ class CustomFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+
+
+def get_git_hashes():
+    process = subprocess.Popen(["git", "rev-parse", "HEAD"], shell=False, stdout=subprocess.PIPE)
+    git_head_hash = process.communicate()[0].strip()
+
+    ephyspath = Path(ephys.__file__).parent
+    process = subprocess.Popen(
+        ["git", "-C", str(ephyspath), "rev-parse", "HEAD"],
+        shell=False,
+        stdout=subprocess.PIPE,
+    )
+    ephys_git_hash = process.communicate()[0].strip()
+    return {"project": git_head_hash, "ephys": ephys_git_hash}
 
 
 def create_logger(
@@ -269,9 +286,7 @@ class Functions:
                 selected = table_manager.get_table_data(index_row)
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
-                cell_df, _ = self.get_cell(
-                    experiment, assembleddata, cell=selected.cell_id
-                )
+                cell_df, _ = self.get_cell(experiment, assembleddata, cell=selected.cell_id)
                 protocols = list(cell_df["Spikes"].keys())
                 min_index = None
                 min_current = 1
@@ -311,12 +326,8 @@ class Functions:
                 ax[0].plot(vtime, low_spike.V * 1e3)
                 ax[1].plot(low_spike.V * 1e3, low_spike.dvdt)
                 dvdt_ticks = np.arange(-4, 2.01, 0.1)
-                t_indices = np.array(
-                    [np.abs(vtime - point).argmin() for point in dvdt_ticks]
-                )
-                thr_index = np.abs(
-                    vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3
-                ).argmin()
+                t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
+                thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
                 # Create a colormap
                 cmap = mpl.get_cmap("tab10")
                 # Create an array of colors based on the index of each point
@@ -469,9 +480,7 @@ class Functions:
             # print(np.where(x==dupe), np.where(xa==dupe))
             ya[np.where(xa == dupe)] = np.nanmean(y[np.where(x == dupe)])
             ystd[np.where(xa == dupe)] = np.nanstd(y[np.where(x == dupe)])
-            yn[np.where(xa == dupe)] = np.count_nonzero(
-                ~np.isnan(y[np.where(x == dupe)])
-            )
+            yn[np.where(xa == dupe)] = np.count_nonzero(~np.isnan(y[np.where(x == dupe)]))
         return xa, ya, ystd, yn
 
     # get maximum slope from fit.
@@ -559,9 +568,7 @@ class Functions:
         # print(xyfit[1])
         if len(spanalyzer.analysis_summary["FI_Growth"]) > 0:
             FI_fits["fits"].append(spanalyzer.analysis_summary["FI_Growth"][0]["fit"])
-            FI_fits["pars"].append(
-                spanalyzer.analysis_summary["FI_Growth"][0]["parameters"]
-            )
+            FI_fits["pars"].append(spanalyzer.analysis_summary["FI_Growth"][0]["parameters"])
         linfit = spanalyzer.getFISlope(
             i_inj=FI_Data_I,
             spike_count=FI_Data_FR,
@@ -588,12 +595,8 @@ class Functions:
             )
             # ax[1].plot(FI_Data_I * 1e12, FI_Data_N, marker="s")
             if plot_raw:
-                for i, d in enumerate(
-                    FI_Data_I_
-                ):  # plot the raw points before combining
-                    ax.plot(
-                        np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k"
-                    )
+                for i, d in enumerate(FI_Data_I_):  # plot the raw points before combining
+                    ax.plot(np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k")
             # print("fit x * 1e9: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][0]*1e9)
             # print("fit y * 1: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][1])
 
@@ -660,9 +663,7 @@ class Functions:
             print("    excluded table data: ", exclude_table)
             print("    testing protocol: ", protocol)
             proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
-            if proto in exclude_table["protocols"] or exclude_table[
-                "protocols"
-            ] == ["all"]:
+            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"]:
                 CP(
                     "y",
                     f"Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
@@ -673,8 +674,6 @@ class Functions:
                 return True
             print("    Protocol passed: ", protocol)
         return False
-
-
 
     def compute_FI_Fits(
         self,
@@ -699,15 +698,11 @@ class Functions:
         for protocol in protocols:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
-            day_slice_cell = str(
-                Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell)
-            )
+            day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}")
-            if self.check_excluded_dataset(day_slice_cell, experiment,  protocol):
+            if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
                 continue
-            fullpath = Path(
-                experiment["rawdatapath"], experiment["directory"], protocol
-            )
+            fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
                     AR.getData(fullpath)
@@ -717,9 +712,7 @@ class Functions:
                     dur[protocol] = duration
                 except:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
-                    raise ValueError(
-                        f"Acq4Read failed to read data file: {str(fullpath):s}"
-                    )
+                    raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = list(srs.keys())  # only count valid protocols
 
@@ -885,13 +878,9 @@ class Functions:
         # if cell_parts != ['2019.02.22', '000', 'S0C0']:
         #     return None, None
         cname2 = f"{cell_day_name.replace('.', '_'):s}_S{sn:02d}C{cn:02d}_{celltype:s}_IVs.pkl"
-        datapath2 = Path(
-            experiment["analyzeddatapath"], experiment["directory"], celltype, cname2
-        )
+        datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
         cname1 = f"{cell_day_name.replace('.', '_'):s}_S{sn:01d}C{cn:01d}_{celltype:s}_IVs.pkl"
-        datapath1 = Path(
-            experiment["analyzeddatapath"], experiment["directory"], celltype, cname1
-        )
+        datapath1 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname1)
         # print(datapath)
         if datapath1.is_file():
             CP("c", f"... {datapath1!s} is OK")
@@ -937,9 +926,7 @@ class Functions:
             currents = []
             for d in dvdts:  # for each first spike, make a list of the currents
                 currents.append(d.current)
-            min_current = np.argmin(
-                currents
-            )  # find spike elicited by the minimum current
+            min_current = np.argmin(currents)  # find spike elicited by the minimum current
             row.dvdt_rising = dvdts[min_current].dvdt_rising
             row.dvdt_falling = dvdts[min_current].dvdt_falling
             row.dvdt_current = currents[min_current] * 1e12  # put in pA
@@ -1044,9 +1031,7 @@ class Functions:
                 if mapper1[measure] in df_cell.Spikes[protocol].keys():
                     m.append(df_cell.Spikes[protocol][mapper1[measure]])
         elif measure == "current":
-            for (
-                protocol
-            ) in protocols:  # for all protocols with spike analysis data for this cell
+            for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 if "spikes" not in df_cell.Spikes[protocol].keys():
                     continue
                 # we need to get the first spike evoked by the lowest current level ...
@@ -1059,9 +1044,7 @@ class Functions:
                     m.append(np.nan)
 
         else:
-            for (
-                protocol
-            ) in protocols:  # for all protocols with spike analysis data for this cell
+            for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 # we need to get the first spike evoked by the lowest current level ...
                 prot_spike_count = 0
                 if "spikes" not in df_cell.Spikes[protocol].keys():
@@ -1078,9 +1061,7 @@ class Functions:
                         df_cell.Spikes[protocol]
                     )
                     if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][
-                            0
-                        ].__dict__
+                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
                         # print("spike data ", spike_data['dvdt_rising'])
                         m.append(spike_data[mapper[measure]])
                     else:
@@ -1092,9 +1073,7 @@ class Functions:
                         df_cell.Spikes[protocol]
                     )
                     if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][
-                            0
-                        ].__dict__
+                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
                         # CP("c", "Check AP_thr_V")
                         thrslope = 20.0
                         Vthr, Vthr_time = UTIL.find_threshold(
@@ -1154,6 +1133,11 @@ class Functions:
             return
         else:
             self.textbox.clear()
+
+    def text_get(self):
+        if self.textbox is None:
+            raise ValueError("datatables - functions - textbox has not been set up")
+        return self.textbox.toPlainText()
 
     def textappend(self, text, color="white"):
         if self.textbox is None:
