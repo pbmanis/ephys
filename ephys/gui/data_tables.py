@@ -104,8 +104,14 @@ from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
 from ephys.plotters import plot_spike_info
 from ephys.tools import process_spike_analysis
+from ephys.tools import data_summary
 from ephys.tools.get_configuration import get_configuration
-
+from ephys.ephys_analysis import (
+    analysis_common,
+    iv_analysis,
+    map_analysis,
+    summarize_ivs,
+)
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
 PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
 PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
@@ -680,7 +686,7 @@ class DataTables:
                 # print("\nDataframe index: ", event.ind)
                 cell = picker_funcs[pf].data.iloc[event.ind]
                 cell_id = cell["cell_id"].values[0]
-                print(f"Selected:   {cell_id!s}")  # find the matching data.
+                print(f"\nSelected:   {cell_id!s}")  # find the matching data.
                 age = PSI_2.get_age(cell["age"])
                 print(
                     f"     Cell: {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
@@ -725,10 +731,12 @@ class DataTables:
                     self.experiment = self.experiments[self.experimentname]
 
                 case "Update DataSummary":
-                    FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
+                    # FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
+                    self.create_data_summary()
 
                 case "Load DataSummary":
                     self.load_data_summary()
+                    self.Dock_DataSummary.raiseDock()
 
                 case "Load Assembled Data":
                     self.load_assembled_data()
@@ -736,21 +744,27 @@ class DataTables:
                 case "IV Analysis":
                     match path[1]:
                         case "Analyze ALL IVs":
-                            IVS.analyze(self.experiment)
+                            self.analyze_ivs("all")
 
-                        case "Analyze Selected IVs":
-                            FUNCS.get_row_selection(self.table_manager)
+                        case "Analyze Selected IVs":  # work from the *datasummary* table.
+                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            if index_rows is None:
+                                return
+                            
                             FUNCS.textappend(
-                                f"Analyze Selected IVs at rows: {self.selected_index_rows!s}"
+                                f"Analyze IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
-                            if self.selected_index_rows is not None:
-                                index_row = self.selected_index_rows[0]
-                                selected = self.table_manager.get_table_data(index_row)
+                            self.Dock_Report.raiseDock()  # so we can monitor progress
+                            for index_row in index_rows:
+                                selected = self.DS_table_manager.get_table_data(index_row)
                                 FUNCS.textappend(f"    Selected: {selected!s}")
-                                day = selected.date[:-4]
-                                slicecell = selected.cell_id[-4:]
+                                pathparts = Path(selected.cell_id).parts
+                                day = pathparts[0]
+                                slicecell = f"S{pathparts[1][-1]:s}C{pathparts[2][-1:]:s}"
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
-                                IVS.analyze(self.experimentname, slicecell=[day, slicecell])
+                                self.analyze_ivs(mode="selected", day=day, slicecell=slicecell)
+                                self.iv_finished_message()
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Assemble IV datasets":
                             (
@@ -828,6 +842,7 @@ class DataTables:
                                 xname=group_by,
                                 hue_category=hue_category,
                                 plot_order=self.experiment["plot_order"][group_by],
+                                measures=self.experiment["spike_measures"],
                                 colors=colors,
                                 enable_picking=self.picker_active,
                             )
@@ -853,7 +868,7 @@ class DataTables:
                             if hue_category == "None":
                                 hue_category = None
                             plot_order = self.experiment["plot_order"][group_by]
-                            x_categories = self.experiment["plot_order"][group_by]
+                            hue_category = self.experiment["plot_order"][group_by]
                             print("    plot order: ", plot_order)
                             # if not isinstance(group_by, list):
                             #     group_by = [group_by]
@@ -861,13 +876,14 @@ class DataTables:
                             (
                                 P3,
                                 picker_funcs3,
-                            ) = self.PSI.summary_plot_RmTau_categorical(
+                            ) = self.PSI.summary_plot_rm_tau_categorical(
                                 df,
                                 xname=group_by,
                                 hue_category=hue_category,
                                 plot_order=plot_order,
                                 colors=colors,
                                 enable_picking=self.picker_active,
+                                measures=self.experiment["rmtau_measures"],
                             )
                             P3.figure_handle.suptitle(
                                 "Membrane Properties", fontweight="bold", fontsize=18
@@ -900,16 +916,9 @@ class DataTables:
                                 df,
                                 xname=group_by,
                                 hue_category=hue_category,
-                                measure_cols=[
-                                    "AdaptRatio",
-                                    "FISlope",
-                                    "maxHillSlope",
-                                    "I_maxHillSlope",
-                                    "FIMax_1",
-                                    "FIMax_4",
-                                ],
+                                measures=self.experiment["FI_measures"],
                                 plot_order=plot_order,
-                                colors=colors,
+                                colors=self.experiment["plot_colors"],
                                 enable_picking=self.picker_active,
                             )
                             P2.figure_handle.suptitle("Firing Rate", fontweight="bold", fontsize=18)
@@ -927,7 +936,7 @@ class DataTables:
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
                             df = self.PSI.preload(fn)
-                            P4, picker_funcs4 = self.PSI.summary_plot_FI(
+                            P4, picker_funcs4 = self.PSI.summary_plot_fi(
                                 df,
                                 mode=["individual", "mean"],
                                 protosel=[
@@ -940,7 +949,6 @@ class DataTables:
                                     "CCIV_1nA_max_1s_pulse",
                                     # "CCIV_4nA_max_1s_pulse",
                                 ],
-                                grouping="named",
                                 colors=self.experiment["plot_colors"],
                                 enable_picking=self.picker_active,
                             )
@@ -1138,6 +1146,77 @@ class DataTables:
                             self.print_file_info(selected)
 
 
+    def analyze_ivs(self, mode="all", day:str=None, slicecell:str=None):
+        """
+        Analyze the IVs for the selected cell
+        """
+        args = analysis_common.cmdargs  # get from default class
+        args.dry_run = False
+        args.merge_flag = True
+        args.experiment = self.experiment
+        args.iv_flag = True
+        args.map_flag = False
+        args.autoout = True
+
+        args.verbose = False
+        args.spike_threshold = -0.020  # always in Volts
+        if mode == "selected":
+            args.day = day
+            args.slicecell = slicecell
+
+        #args.after= "2021.07.01"
+        
+        if args.configfile is not None:
+            config = None
+            if args.configfile is not None:
+                if ".json" in args.configfile:
+                    # The escaping of "\t" in the config file is necesarry as
+                    # otherwise Python will try to treat is as the string escape
+                    # sequence for ASCII Horizontal Tab when it encounters it
+                    # during json.load
+                    config = json.load(open(args.configfile))
+                elif ".toml" in args.configfile:
+                    config = toml.load(open(args.configfile))
+
+            vargs = vars(args)  # reach into the dict to change values in namespace
+            for c in config:
+                if c in args:
+                    # print("c: ", c)
+                    vargs[c] = config[c]
+        CP.cprint(
+            "g",
+            f"Starting IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+        )
+        print("\n" * 3)
+        CP.cprint("r", "=" * 80)
+        IV = iv_analysis.IVAnalysis(args)
+        IV.set_experiment(self.experiment)
+        # IV.set_exclusions(exclusions)
+        IV.setup()
+        IV.run()
+
+        # allp = sorted(list(set(NF.allprots)))
+        # print('All protocols in this dataset:')
+        # for p in allp:
+        #     print('   ', path)
+        # print('---')
+        #
+        CP.cprint(
+            "cyan",
+            f"Finished IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+        )
+        if mode == "all":
+            self.iv_finished_message()        
+        
+    def iv_finished_message(self):
+        CP.cprint("r", "=" * 80)
+        CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
+        CP.cprint("r", f"Then run 'assemble datasets' to plot summaries and get statistical results")
+        CP.cprint("r", f"Then try the plotting functions to plot summaries and get statistical results")
+        CP.cprint("r", "=" * 80)
+            
+
+
     def get_analysis_info(self, filename):
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
         second_group_by = (
@@ -1223,6 +1302,23 @@ class DataTables:
         if mode == "list":
             FUNCS.textappend(f"    {br[1]:s},")
 
+    def create_data_summary(self):
+        # -o pandas -f NF107_after_2018.04.16 -w --depth all
+        ds = data_summary.DataSummary(
+            basedir=Path(self.experiment["rawdatapath"]),
+            outputFile = Path(self.experiment["analyzeddatapath"], self.experiment["directory"], self.experiment["datasummaryFilename"]),
+            subdirs=self.experiment["extra_subdirectories"],
+            dryrun=True,
+            depth="all",
+            verbose=True,
+        )
+        print("Writing to output, recurively through directories ")
+        data_summary.dir_recurse(ds, Path(self.experiment["rawdatapath"]), self.experiment["excludeIVs"])
+        # after creation, load it
+        self.load_data_summary()
+
+
+
     def load_data_summary(self):
         self.datasummaryfile = Path(
             self.experiment["databasepath"],
@@ -1242,7 +1338,7 @@ class DataTables:
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         FUNCS.textappend(f"DataSummary file loaded with {len(self.datasummary.index):d} entries.")
-        FUNCS.textappend(f"DataSummary columns: \n, {self.datasummary.columns:s}")
+        # FUNCS.textappend(f"DataSummary columns: \n, {self.datasummary.columns:s}")
 
     def load_assembled_data(self):
         """get the current assembled data file, if it exists

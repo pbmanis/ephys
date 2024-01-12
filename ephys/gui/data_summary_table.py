@@ -139,6 +139,7 @@ class TableManager:
             force = True
         self.data = []
         self.table.setData(self.data)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         indxs = []        
         for i, dfindex in enumerate(dataframe.index):
             index_file_data = self.make_indexdata(dataframe.loc[dfindex])
@@ -220,4 +221,44 @@ class TableManager:
         # else:
         #     self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xf00))
 
+    def get_table_data_index(self, index_row, use_sibling=False):
+        if use_sibling:
+            value = index_row.sibling(index_row.row(), 1).data()
+            for i, d in enumerate(self.data):
+                if self.data[i][1] == value:
+                    return i
+            return None
+    
+        else:
+            value = index_row.row()
+            return value
         
+
+    def get_table_data(self, index_row):
+        """
+        Regardless of the sort, read the current index row and map it back to
+        the data in the table.
+        """
+        # print("get_table_data")
+        # print("  index row: ", index_row)
+        # print(dir(index_row))
+        # print(index_row.data())
+        ind = self.get_table_data_index(index_row)
+        # print("  ind: ", ind)
+        for i in range(len(self.table_data)):
+            if index_row.data() == self.table_data[i].cell_id:
+                # print("  found: ", i)
+                return self.table_data[i]
+            
+        if ind is not None:
+            return self.table_data[ind]
+        else:
+            return None
+
+    def select_row_by_cell_id(self, cell_id):
+        for i in range(len(self.table_data)):
+            if cell_id == self.table_data[i].cell_id:
+                self.table.selectRow(i)
+                return i
+        return None
+

@@ -211,6 +211,17 @@ class Functions:
             else:
                 return index_row, selected
 
+    def get_multiple_row_selection(self, table_manager):
+            """
+            Find the selected rows in the currently managed table, and if there is a valid selection,
+            return a list of indexs from the selected rows.
+            """
+            self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
+            if self.selected_index_rows is None:
+                return None, None
+            else:
+                return self.selected_index_rows
+
     def moving_average(self, data, window_size):
         """moving_average Compute a triangular moving average on the data over a window
 
