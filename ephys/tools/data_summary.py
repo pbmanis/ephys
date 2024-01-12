@@ -868,8 +868,8 @@ class DataSummary:
                 modes = ["Unknown mode"]
             gc.collect()
             if self.verbose:
-                print(prsp + "self.completeprotocols", self.completeprotocols)
-                print(prsp + "self.incompleteprotocols", self.incompleteprotocols)
+                print(prsp + "completeprotocols", self.completeprotocols)
+                print(prsp + "incompleteprotocols", self.incompleteprotocols)
 
         if len(self.completeprotocols) == 0:
             self.completeprotocols = " "
@@ -1223,8 +1223,11 @@ class DataSummary:
 
 
 def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
+    print("Found current dir?: ", Path(current_dir).is_dir())
     files = sorted(list(current_dir.glob("*")))
+    print("files: ", files)
     alldatadirs = [f for f in files if f.is_dir() and str(f.name).startswith("20") and str(f.name) not in exclude_list]
+    print("# dirs: ", alldatadirs)
     sp = " " * indent
     for d in alldatadirs:
         Printer(f"{sp:s}Data: {str(d.name):s}", "green")
@@ -1233,10 +1236,10 @@ def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
     if len(alldatadirs) > 0:
         ds.write_string_pandas()
     allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20") and str(f.name) not in exclude_list]
-    indent += 2
+    indent += 2 
     sp = " " * indent
     for d in allsubdirs:
-        Printer(f"\n{sp:s}Subdir: {str(d.name):s}", "yellow")
+        Printer(f"\n{sp:s}Subdir: {str(d.name):s}\n", "yellow")
         indent = dir_recurse(ds, d, exclude_list=exclude_list, indent=indent)
     indent -= 2
     if indent < 0:
@@ -1244,6 +1247,7 @@ def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
     Printer(f"\n{' '*indent:s}All Protocols in dataset: \n", "white")
     for prot in sorted(ds.all_dataset_protocols):
         Printer(f"{' '*indent:s}    {prot:s}", "blue")
+    print("all done?")
     return indent
 
 

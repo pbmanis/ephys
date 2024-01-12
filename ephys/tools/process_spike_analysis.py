@@ -261,7 +261,6 @@ class ProcessSpikeAnalysis:
                 return row
 
             row = self.get_lowest_current_spike(row, IVA.SP)
-            print("dvdt_current: ", row.dvdt_current)
 
             row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
             row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
