@@ -290,7 +290,7 @@ class IVAnalysis(Analysis):
         allivs = []
 
         for ptype in allprots.keys():  # check all the protocols
-            if ptype in ["stdIVs", "CCIV_long", "CCIV_posonly"]:  # just CCIV types
+            if ptype in ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
                 for prot in allprots[ptype]:
                     allivs.append(prot)  # combine into a new list
 

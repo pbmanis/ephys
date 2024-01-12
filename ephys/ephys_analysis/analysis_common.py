@@ -781,11 +781,14 @@ class Analysis:
         Returns
         -------
         allprots : dict
-            uupdated copy of allprots.
+            updated copy of allprots.
         """
-        if allprots is None:
+        if allprots is None: # provide a "standard" set
             allprots = {"maps": [], "stdIVs": [], "CCIV_long": [], "CCIV_posonly": [], "VCIVs": []}
-        self.stdIVs = ["CCIV_short", "CCIV_1nA_max", "CCIV_4nA_max"]
+        if "standard_IVs" in self.experiment.keys():
+            self.stdIVs = self.experiment["standard_IVs"]
+        else:
+            raise ValueError("standard_IVs not found in experiment configuration file")
         prox = sorted(
             list(set(protocols))
         )  # adjust for duplicates (must be a better way in pandas)
