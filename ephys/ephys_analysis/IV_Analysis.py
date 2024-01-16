@@ -194,13 +194,14 @@ class IVAnalysis(Analysis):
         Nothing - generates pdfs and updates the pickled database file.
         """
         Logger.info("Starting iv_analysis")
-        msg = f"    Analyzing ivs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}  cell: ({str(self.df.iloc[icell].cell_id):s} )",
+        msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
+        msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
         CP.cprint(
             "c", msg
         )
         Logger.info(msg)
         cell_directory = Path(
-            self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id
+            self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
         )
         CP.cprint("m", f"File: {str(cell_directory):s}")
         CP.cprint("m", f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}")
@@ -218,7 +219,7 @@ class IVAnalysis(Analysis):
         # )
         Logger.info(msg)
 
-        # clean up data in IV and SPikes : remove Posix
+        # clean up data in IV and Spikes : remove Posix
         def _cleanup_ivdata(results: dict):
             import numpy
 
@@ -288,14 +289,20 @@ class IVAnalysis(Analysis):
 
         nfiles = 0
         allivs = []
-
-        for ptype in allprots.keys():  # check all the protocols
-            if ptype in ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
-                for prot in allprots[ptype]:
-                    allivs.append(prot)  # combine into a new list
+        print(allprots)
+        print("allprots: ", allprots["CCIV"])
+        cciv_protocols = list(self.experiment['protocols']["CCIV"].keys())
+        for protoname in allprots["CCIV"]:  # check all the protocols
+            protocol_type = str(Path(protoname).name)[:-4]
+            print(" protocol type: ", protocol_type)
+            if protocol_type in cciv_protocols: # ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
+                allivs.append(protoname)  # combine into a new list
+                print("     appended")
+            else:
+                print("     not appended")
 
         validivs = allivs 
-        
+        print("original valid ivs: ", validivs)
         # build a list of all exclusions
         exclude_ivs = []
         for ex_cell in self.exclusions.keys():
@@ -306,7 +313,7 @@ class IVAnalysis(Analysis):
         for iv_proto in exclude_ivs:
             if iv_proto in validivs:
                 validivs.remove(iv_proto)
-
+        print("Valid IDs: ", validivs)
         nworkers = 8  # number of cores/threads to use
         tasks = range(len(validivs))  # number of tasks that will be needed
         results: dict = dict(
@@ -472,11 +479,13 @@ class IVAnalysis(Analysis):
         result = {}
         iv_result = {}
         sp_result = {}
+        print("cell directory: ", cell_directory)
+        print("protocol: ", protocol)
 
         protocol_directory = Path(cell_directory, protocol)
 
         if not protocol_directory.is_dir():
-            msg = f"Protocol directory not found: {str(protocol_directory):s}"
+            msg = f"Protocol directory not found (A): {str(protocol_directory):s}"
             CP.cprint(
                 "r",
                 msg,   )
