@@ -501,7 +501,7 @@ class Analysis:
                         CP.cprint("g", f"Cell type(s): {self.celltype!s}")
                         if self.celltype == "all":
                             cell_ok = self.do_cell(icell, pdf=pdf)
-                            CP.cprint("r", f"***** All")
+                            # CP.cprint("r", f"***** All")
                         else:  # only do a select cell type
                             if self.celltype == self.df.iloc[icell]["cell_type"]:
                                 cell_ok = self.do_cell(icell, pdf=pdf)
@@ -512,14 +512,15 @@ class Analysis:
                 # CP.cprint("y", msg)
                 Logger.warning(msg)
             else:
-                CP.cprint(
-                "c",
-                f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
-                )
-                with open(self.iv_analysisFilename, "wb") as fh:
-                    self.df.to_pickle(
-                        fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+                if not self.dry_run:
+                    CP.cprint(
+                    "c",
+                    f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
                     )
+                    with open(self.iv_analysisFilename, "wb") as fh:
+                        self.df.to_pickle(
+                            fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+                        )
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -637,7 +638,7 @@ class Analysis:
         if isinstance(celltype, str):
             celltype = celltype.strip()
         if celltype in [None, "", "?", " ", "  ", "\t"]:
-            print(f"Changing Cell type to unnnown from {celltype:s}")
+            print(f"Changing Cell type to unknown from {celltype:s}")
             celltype = "unknown"
         return celltype
 
@@ -687,7 +688,7 @@ class Analysis:
         celltype = self.check_celltype(celltype)
         if slicecell is None:
             raise ValueError(
-                "iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set"
+                f"iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set. celltype was: {celltype!s} "
             )
 
         if self.dry_run or not self.autoout:
@@ -767,6 +768,10 @@ class Analysis:
         First call will likely have allprots = None, to initialize
         after that will update allprots with new lists of protocols.
 
+        The variable "allprots" is a dictionary that accumulates
+        the specific protocols from this cell according to type.
+        The type is then used to determine what analysis to perform.
+
         Parameters
         ----------
         protocols: list
@@ -783,60 +788,70 @@ class Analysis:
         allprots : dict
             updated copy of allprots.
         """
-        if allprots is None: # provide a "standard" set
-            allprots = {"maps": [], "stdIVs": [], "CCIV_long": [], "CCIV_posonly": [], "VCIVs": []}
-        if "standard_IVs" in self.experiment.keys():
-            self.stdIVs = self.experiment["standard_IVs"]
+        if allprots is None: # Start with the protocol groups in the configuration file
+            protogroups = list(self.experiment["protocols"].keys())
+            allprots = {k: [] for k in protogroups}
+            # {"maps": [], "stdIVs": [], "CCIV_long": [], "CCIV_posonly": [], "VCIVs": []}
         else:
-            raise ValueError("standard_IVs not found in experiment configuration file")
+            protogroups = list(self.experiment["protocols"].keys())
         prox = sorted(
             list(set(protocols))
-        )  # adjust for duplicates (must be a better way in pandas)
-        for i, x in enumerate(prox):  # construct filenames and sort by analysis types
-            if len(x) == 0:
+        )  # remove duplicates and sort alphabetically
+
+        for i, protocol in enumerate(prox):  # construct filenames and sort by analysis types
+            if len(protocol) == 0:
                 continue
-            # clean up protocols that have a path ahead of the protocol (can happen when combining datasets in datasummary)
-            xp = Path(x).parts
-            if xp[0] == "/" and len(xp) > 1:
-                x = xp[-1]  # just get the protocol directory
+            # if a single protocol name has been selected, then this is the filter
             if (
                 (self.protocol is not None)
                 and (len(self.protocol) > 1)
-                and (self.protocol != x)
+                and (self.protocol != protocol)
             ):
                 continue
-            # c = os.path.join(day, prots.iloc[i]['slice_slice'], prots.iloc[i]['cell_cell'], x)
+            # clean up protocols that have a path ahead of the protocol (can happen when combining datasets in datasummary)
+            protocol = Path(protocol).name
+
+            # construct a path to the protocol, starting with the day
             if day is None:
-                c = Path(prots["date"], prots["slice_slice"], prots["cell_cell"], x)
+                c = Path(prots["date"], prots["slice_slice"], prots["cell_cell"], protocol)
             else:
                 c = Path(
-                    day, prots.iloc[i]["slice_slice"], prots.iloc[i]["cell_cell"], x
+                    day, prots.iloc[i]["slice_slice"], prots.iloc[i]["cell_cell"], protocol
                 )
             c_str = str(c)  # make sure it is serializable for later on with JSON.
             # maps
-            if x.startswith("Map"):
-                allprots["maps"].append(c_str)
-            if x.startswith("VGAT_"):
-                allprots["maps"].append(c_str)
-            if x.startswith(
-                "Vc_LED"
-            ):  # these are treated as maps, even though they are just repeated...
-                allprots["maps"].append(c_str)
-            # Standard IVs (100 msec, devined as above)
-            for piv in self.stdIVs:
-                if x.startswith(piv):
-                    allprots["stdIVs"].append(c_str)
-            # Long IVs (0.5 or 1 second)
-            if x.startswith("CCIV_long"):
-                allprots["CCIV_long"].append(c_str)
-            # positive only ivs:
-            if x.startswith("CCIV_1nA_Pos"):
-                allprots["CCIV_posonly"].append(c_str)
-            if x.startswith("CCIV_4nA_Pos"):
-                allprots["CCIV_posonly"].append(c_str)
-            # VCIVs
-            if x.startswith("VCIV"):
-                allprots["VCIVs"].append(c_str)
+            this_protocol = protocol[:-4]
+            for pg in protogroups:
+                pg_prots = self.experiment["protocols"][pg]
+                if pg_prots is None:
+                    continue
+                if this_protocol in pg_prots:
+                    allprots[pg].append(c_str)
+
+            # if x.startswith("Map"):
+            #     allprots["maps"].append(c_str)
+            # if x.startswith("VGAT_"):
+            #     allprots["maps"].append(c_str)
+            # if x.startswith(
+            #     "Vc_LED"
+            # ):  # these are treated as maps, even though they are just repeated...
+            #     allprots["maps"].append(c_str)
+            # # Standard IVs (100 msec, devined as above)
+            # for piv in self.stdIVs:
+            #     if x.startswith(piv):
+            #         allprots["stdIVs"].append(c_str)
+            # # Long IVs (0.5 or 1 second)
+            # if x.startswith("CCIV_long"):
+            #     allprots["CCIV_long"].append(c_str)
+            # # positive only ivs:
+            # if x.startswith("CCIV_1nA_Pos"):
+            #     allprots["CCIV_posonly"].append(c_str)
+            # if x.startswith("CCIV_4nA_Pos"):
+            #     allprots["CCIV_posonly"].append(c_str)
+            # # VCIVs
+            # if x.startswith("VCIV"):
+            #     allprots["VCIVs"].append(c_str)
+        print("Gather_protocols: all protocols: ", allprots)
         return allprots
 
     def make_cell(self, icell: int):
@@ -1239,6 +1254,7 @@ class Analysis:
         if not fullfile.is_dir():
             fullfile = Path(
                 self.df.iloc[icell]["data_directory"],
+                self.experiment["directory"],
                 self.make_cellstr(self.df, icell, shortpath=True),
             )
 
@@ -1267,12 +1283,11 @@ class Analysis:
 
         prots = self.df.iloc[icell]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
-        # print("analysis common: ", allprots)
-        # exit()
+
         if self.dry_run:
-            msg = f"\nIV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
+            msg = f"\n    IV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
             msg += f"\n        with fullpath {str(fullfile):s}"
-            print(msg)
+            CP.cprint("c", msg)
             Logger.info(msg)
 
         if not fullfile.is_dir():
@@ -1291,11 +1306,12 @@ class Analysis:
             CP.cprint("m", "Cell found, but no protocols were found")
             Logger.warning(msg)
             return False
+        
         elif fullfile.is_dir() and len(allprots) > 0:
             # check for the protocol paths
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
-                    ffile = Path(self.df.iloc[icell].data_directory, prot)
+                    ffile = Path(self.df.iloc[icell].data_directory, self.experiment['directory'], prot)
                     if not ffile.is_dir():
                         msg = f"file/protocol day={icell:d} not found: {str(ffile):s}\n"
                         msg += f"    {str(prottype):s}  {str(prot):s}\n"
@@ -1303,6 +1319,9 @@ class Analysis:
                         Logger.error(msg)
                         exit()
                     if ffile in self.prots_done:
+                        print("prots done?: " )
+                        print("ffile: ", ffile)
+                        exit()
                         return False
                     else:
                         self.prots_done.append(ffile)  # avoid duplicats.
@@ -1343,6 +1362,8 @@ class Analysis:
             if self.cell_tempdir is not None:
                 self.make_tempdir()  # clean up temporary directory
             self.analyze_ivs(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+            if self.dry_run:
+                return True
 
             self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
 
