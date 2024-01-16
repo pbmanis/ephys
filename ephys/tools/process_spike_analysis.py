@@ -89,8 +89,6 @@ cumulative_memory = 0
 # RMP SD across protocol
 rmp_sd_limit = 3.0  # mV
 #
-# Smallest event to consider a spike
-minimum_spike_voltage = -0.020  # V
 max_rows = -1
 
 
@@ -168,7 +166,7 @@ class ProcessSpikeAnalysis:
         dataok = False
         if pd.isnull(row.date):
             return row
-        if row.cell_type not in self.experiment["celltypes"]:
+        if self.experiment["celltypes"] != ["all"] and row.cell_type not in self.experiment["celltypes"]:
             return row
 
         if int(row.name) > max_rows and max_rows != -1:
@@ -185,19 +183,16 @@ class ProcessSpikeAnalysis:
         print("    >>>> got row age: ", row.date, row.age)
 
         fullpatha = Path(
-            self.experiment["rawdatapath"], date, row.slice_slice, row.cell_cell, row.iv_name
+            self.experiment["rawdatapath"], self.experiment['directory'], date, row.slice_slice, row.cell_cell, row.iv_name
         )
-        if fullpatha.name.startswith("CCIV_1nA_max"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_1nA_Posonly"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_long"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_4nA_max"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_long_HK"):
-            fullpath = fullpatha
-        else:
+        fullpath = None
+        for protocol in list(self.experiment["protocols"]["CCIV"].keys()):
+            # print("testing protocol and fullpath name: ", protocol, fullpatha.name)
+            if fullpatha.name.startswith(protocol):
+                fullpath = fullpatha
+        
+        if fullpath is None:
+            CP.cprint("r", "    No IVs of the right kind were found")
             return row  # Nothing to do here, there are no IVs of the right kind to analyze.
 
         # CP("c", f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)")
@@ -256,7 +251,7 @@ class ProcessSpikeAnalysis:
                 )
                 return row
 
-            IVA.compute_iv(to_peak=False, threshold=minimum_spike_voltage, plotiv=True)
+            IVA.compute_iv(to_peak=False, threshold=self.experiment["AP_threshold_V"], plotiv=True)
             if len(IVA.SP.spikeShapes) == 0:  # no spikes
                 return row
 
@@ -299,7 +294,7 @@ class ProcessSpikeAnalysis:
 
         # print("\nRow date: ", row.date, row.slice_slice, row.cell_cell)
         dataok = False
-        if row.cell_type not in self.experiment["celltypes"]:
+        if self.experiment["celltypes"] != ["all"] and row.cell_type not in self.experiment["celltypes"]:
             return row
         if pd.isnull(row.date):
             return row
@@ -331,16 +326,18 @@ class ProcessSpikeAnalysis:
             CP("y", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
             Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
             return row
-        if fullpatha.name.startswith("CCIV_1nA_max"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_1nA_Posonly"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_long"):
-            fullpath = fullpatha
-        elif fullpatha.name.startswith("CCIV_4nA_max"):
-            fullpath = fullpatha
-        else:
+
+        fullpath = None
+        for protocol in list(self.experiment["protocols"]["CCIV"].keys()):
+            # print("testing protocol and fullpath name: ", protocol, fullpatha.name)
+            if fullpatha.name.startswith(protocol):
+                fullpath = fullpatha
+        if fullpath is None:
+            msg = f"protocol did not match our list: {day_slice_cell:s}, {row.protocol:s}"
+            CP("y", msg)
+            raise ValueError(msg)
             return row
+        
         CP(
             "c",
             f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)",
@@ -408,8 +405,10 @@ class ProcessSpikeAnalysis:
             # IVA.SP.set_detector("argrelmax")
             # IVA.SP.threshold=-0.015
             # return row # no further analysis.
-            IVA.compute_iv(to_peak=False, threshold=minimum_spike_voltage, plotiv=True)
+            CP("m", f"Processing Spikes: Computing IV: {day_slice_cell:s}, {row.protocol:s}")
+            IVA.compute_iv(to_peak=False, threshold=self.experiment["AP_threshold_V"], plotiv=True)
             if len(IVA.SP.spikeShapes) == 0:  # no spikes
+                CP("y", f"No spike shape data: {day_slice_cell:s}, {row.protocol:s}")
                 return row
 
             row = self.get_lowest_current_spike(row, IVA.SP)
@@ -437,7 +436,7 @@ class ProcessSpikeAnalysis:
 
     def _data_complete_to_series(self, row):
         dc = row.data_complete.split(",")
-        dc = [p.strip(" ") for p in dc if p != "nan" and p.lstrip(" ").startswith("CC")]
+        dc = [p.strip(" ") for p in dc if p != "nan" and "CCIV".casefold() in p.casefold()]
         # print("\ndc: ", dc)
         row.protocol = pd.Series(dc)
         # print(row.date, row.data_complete.values)
@@ -502,23 +501,29 @@ class ProcessSpikeAnalysis:
         df["protocol"] = np.nan
         # convert the data complete column to a list of protocols
         df = df.apply(self._data_complete_to_series, axis=1)
-
+        print(len(df), " rows after data complete to series")
         # now make a new dataframe that has a separate row for each protocol
         df = df.explode("protocol")
+        print("Number of protocols after explode", len(df))
         df = df.dropna(subset=["protocol"])
-        print("Number of protocols", len(df))
+        print("Number of protocols after dropna", len(df))
 
         df_null = df[df["cell_id"].isnull()]
         print("Null columns: ", df_null)
         df = df.dropna(subset=["cell_id"])
         print("# of protocols with ID: ", len(df))
+        protostrings = "|".join(list(self.experiment["protocols"]["CCIV"].keys()))
+        print("protostrings: ", protostrings)
+        print(df["protocol"].unique())
 
         df = df[
             df["protocol"].str.contains(
-                "CCIV_1nA_max|CCIV_1nA_Posonly|CCIV_long|CCIV_4nA_max"
+                protostrings
             )
         ]
+        
         print("# of protocols of right type: ", len(df))
+        print(df["protocol"].unique())
         Logger.info(f"Number of protocols of right type for analysis: {len(df):d}")
         add_cols = [
             "holding",
@@ -549,9 +554,12 @@ class ProcessSpikeAnalysis:
 
         # now do an analysis
         Logger.info("Starting analysis on protocols in database")
-        CP("g", f"exp : {exp!s}")
         # df = df.apply(_get_iv_protocol, experiment=exp, pdf_pages=pdf_pages, axis=1)
-        df = DataFrameParallel(df, n_cores=self.nworkers, pbar=True).apply(
+        if len(df) < self.nworkers:
+            nworkers = len(df)
+        else:
+            nworkers = self.nworkers
+        df = DataFrameParallel(df, n_cores=nworkers, pbar=True).apply(
             self._get_iv_protocol, pdf_pages=None, axis=1
         )
 

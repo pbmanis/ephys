@@ -676,7 +676,7 @@ class Utility:
             dy[k] = (y[k-3] -8*y[k-2] + 13*y[k - 1] - 13*y[k+1] + 8*y[k+2] - y[k+3])/ (8.0*dt*dt*dt)
         return dy
 
-    def find_threshold(self, y, dt:float, thrV_mVperms=20.0):
+    def find_threshold(self, y, dt:float, threshold_slope:float=20.0):
         """
         
         Includes commented code to find_threshold using Method II from Sekelri et al 2004.
@@ -690,6 +690,8 @@ class Utility:
             voltage time series
         dt : float
             sample rate
+        threshold_slope : float (default: 20.0)
+            Slope to use when specifying threshold of an action potential. in V/s or mV/ms.
         """
         usefindiff = False
         old_dt = dt
@@ -703,10 +705,19 @@ class Utility:
                             a=lwin, window="hanning") # , *args, **kwargs):
         dt = old_dt/upfactor
         ydv = self.deriv1(y, dt) # compute max rising slope in upsampled data
+        print("len ydv, y: ", len(ydv), len(y))
         i_pk = np.argmax(y) # spike peak index
+        if lwin == i_pk:
+            lwin -= 1
+            i_pk += 1  # give algorithm some room
+            print("ydv[lwin:i_pk]: ", ydv[lwin:i_pk])
+        print("lwin: ", lwin, "i_pk: ", i_pk, "max: ", np.max(ydv[lwin:i_pk]), np.argmax(ydv[lwin:i_pk]))
         i_dv_peak = np.argmax(ydv[lwin:i_pk])+lwin  # get the peak rising phase of spike, excluding the lanczos window
         # print("peak index, deriv: ", i_dv_peak, np.max(ydv))
-        thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= thrV_mVperms)[0][-1] + lwin # first point on rising phase where slope is below threshold
+        thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= threshold_slope)[0]
+        print("ydv: ", ydv[lwin:i_dv_peak])
+        print(thrpt_dv, lwin, i_dv_peak, len(ydv), threshold_slope)
+        thrpt_dv = thrpt_dv[-1] + lwin # first point on rising phase where slope is below threshold
         itmin =  0
         # itmax:int = np.argmax(ydv) # limit to max rising slope time
         # print("itmax: ", itmax)
@@ -716,7 +727,7 @@ class Utility:
         # tthr = np.arange(dt*itmin, dt*itmax, dt)
         # yt = y[itmin:itmax+1]
 
-        # print("thrpt_dv: ", np.where(ydv[:i_dv_peak] <= thrV_mVperms))
+        # print("thrpt_dv: ", np.where(ydv[:i_dv_peak] <= threshold_slope))
         # if usefindiff:
         #     dx1 = FinDiff(0, dt, deriv=1, acc=4)
         #     dx2 = FinDiff(0, dt, deriv=2, acc=4)
@@ -746,7 +757,7 @@ class Utility:
         # ax[0].plot(Vthr_time, Vthr, 'ro', markersize=3)
         # ax[0].plot([0, np.max(tx)], [Vthr, Vthr], 'r--')
         # ax[1].plot(tx, ydv, 'g-')
-        # ax[1].plot([0, np.max(tx)], [thrV_mVperms, thrV_mVperms], 'k--')
+        # ax[1].plot([0, np.max(tx)], [threshold_slope, thrV_slope], 'k--')
         # mpl.show()
         return Vthr, Vthr_time
 

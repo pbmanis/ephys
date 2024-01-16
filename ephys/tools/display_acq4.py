@@ -111,14 +111,14 @@ class ReadAcq4:
         fig.suptitle(
             f"{str(self.filename):s}  {protocol:s}", fontsize=8, fontweight="demibold"
         )
-        if protocol.startswith("CCIV") or protocol.startswith("Ic"):
+        if "CCIV".casefold() in protocol.casefold() or protocol.startswith("Ic"):
             delta_I = 0.075
-        elif protocol.startswith("Vc") or protocol.startswith("Map"):
+        elif protocol.startswith("Vc") or "Map".casefold() in protocol.casefold():
             delta_I = 100e-12
         else:
             raise ValueError(f"Protocol starting with : {protocol:s} not handled.")
         self.opto = False
-        if protocol.startswith("Map"):
+        if "Map".casefold() in protocol.casefold():
             self.opto = True
 
         for i in range(self.AR.traces.shape[0]):
