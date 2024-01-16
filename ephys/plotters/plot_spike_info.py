@@ -182,6 +182,22 @@ def set_ylims(experiment):
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
+        ylims_all = {
+            "dvdt_rising": [0, 1000],
+            "dvdt_falling": [0, 1000],
+            "AP_HW": [0, 2.5],
+            "AP_thr_V": [-75, 0],
+            "AHP_depth_V": [-85, -45],
+            "AdaptRatio": [0, 5],
+            "FISlope": [0, 1500],
+            "maxHillSlope": [0, None],
+            "I_maxHillSlope": [0, 1200],
+            "FIMax_1": [0, 800],
+            "FIMax_4": [0, 800],
+            "taum": [0, None],
+            "RMP": [-80, -40],
+            "Rin": [0, None],
+        }
 
         ylims = {
             "pyramidal": ylims_pyr,
@@ -192,6 +208,7 @@ def set_ylims(experiment):
             "t-stellate": ylims_tstellate,
             "d-stellate": ylims_dstellate,
             "octopus": ylims_octopus,
+            "all": ylims_all, # a default set when "all" is specified in the configuration
         }
         return ylims
 
@@ -532,7 +549,8 @@ class PlotSpikeInfo(QObject):
         if adddata is not None:
             ages = [f"P{i:2d}D" for i in range(12, 170)]
             df2 = pd.read_excel(adddata)
-            df2 = df2[df2["cell_type"].isin(self.experiment["celltypes"])]  # limit to cell types
+            if self.experiment["celltypes"] != ["all"]:
+                df2 = df2[df2["cell_type"].isin(self.experiment["celltypes"])]  # limit to cell types
             df2 = df2[df2["age"].isin(ages)]  # limit ages
             df2["Date"] = df2["date"]
             df2 = df2.apply(make_cell_id, axis=1)
@@ -555,7 +573,7 @@ class PlotSpikeInfo(QObject):
         CP("m", "Finished reading files\n")
         return df
 
-    def combine_by_cell(self, df, celltypes=None, plot_fits=False, valid_protocols=None):
+    def combine_by_cell(self, df, plot_fits=False, valid_protocols=None):
         """
         Rules for combining cells and pulling the data from the original analysis:
         1. Combine data from cells with the same ID
@@ -574,7 +592,8 @@ class PlotSpikeInfo(QObject):
         df.dropna(subset=["cell_id"], inplace=True)
         print("2: after dropping nan ids", len(df))
         df.rename(columns={"sex_x": "sex"}, inplace=True)
-        df = df[df.cell_type.isin(celltypes)]
+        if self.experiment["celltypes"] != ["all"]:
+            df = df[df.cell_type.isin(self.experiment["celltypes"])]
         print("3: in selected cell types", len(df))
         print("Combine by cell")
 
@@ -671,7 +690,10 @@ class PlotSpikeInfo(QObject):
             Stripplot and boxplot palettes should be a dictionary mapping hue levels to matplotlib colors.
 
         """
-        df_x = df[df["cell_type"] == celltype]
+        if celltype != "all":
+            df_x = df[df["cell_type"] == celltype]
+        else:
+            df_x = df
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
         if colors is None:  # set all to blue
             colors = {df_x[g]: "b" for g in plot_order}
@@ -900,12 +922,12 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             ncols,
             order="rowsfirst",
-            figsize=(figure_width, 11),
+            figsize=(figure_width, 2.5*len(self.experiment["celltypes"])+1.0),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
-                "topmargin": 0.08,
-                "bottommargin": 0.1,
+                "topmargin": 0.12,
+                "bottommargin": 0.12,
                 "leftmargin": 0.1,
                 "rightmargin": 0.05,
             },
@@ -1015,7 +1037,10 @@ class PlotSpikeInfo(QObject):
         logx : bool, optional
             Use log scale on x axis, by default False
         """
-        dfp = data[data["cell_type"] == celltype]
+        if celltype != "all":
+            dfp = data[data["cell_type"] == celltype]
+        else:
+            dfp = data
         dfp[y] = dfp[y] * yscale
         if transform is not None:
             dfp[y] = dfp[y].apply(transform, axis=1)
@@ -1081,8 +1106,11 @@ class PlotSpikeInfo(QObject):
         logx : bool, optional
             Use log scale on x axis, by default False
         """
-        dfp = data[data["cell_type"] == celltype]
-        dfp = dfp.copy()
+        dfp = data.copy()
+        print("cat plot: celltype: ", celltype, len(dfp))
+        if celltype != "all":
+            dfp = dfp[dfp["cell_type"] == celltype]
+        print(len(dfp))
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
         if transform is not None:
             dfp[y] = dfp[y].apply(transform)
@@ -1157,8 +1185,8 @@ class PlotSpikeInfo(QObject):
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
-                "topmargin": 0.1,
-                "bottommargin": 0.1,
+                "topmargin": 0.12,
+                "bottommargin": 0.12,
                 "leftmargin": 0.1,
                 "rightmargin": 0.15,
             },
@@ -1171,7 +1199,10 @@ class PlotSpikeInfo(QObject):
         showcells = self.experiment["celltypes"]
         for i, celltype in enumerate(showcells):
             let = letters[i]
-            dfp = df[df["cell_type"] == celltype]
+            if self.experiment["celltypes"] != ["all"]:
+                dfp = df[df["cell_type"] == celltype]
+            else:
+                dfp = df
             axp = P.axdict[f"{let:s}1"]
             for icol, measure in enumerate(measuress):
                 if measure in self.transforms.keys():
@@ -1270,6 +1301,7 @@ class PlotSpikeInfo(QObject):
             df (Pandas dataframe): _description_
         """
         print("\nSummary Plot rmtau categorical")
+        print("# of entries in the table: ", len(df))
         df = df.copy()
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         measures = ["RMP", "Rin", "taum"]
@@ -1282,12 +1314,12 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             len(measures),
             order="rowsfirst",
-            figsize=(figure_width, 11),
+            figsize=(figure_width, 2.5*len(self.experiment["celltypes"])),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
-                "topmargin": 0.1,
-                "bottommargin": 0.1,
+                "topmargin": 0.12,
+                "bottommargin": 0.12,
                 "leftmargin": 0.12,
                 "rightmargin": 0.05,
             },
@@ -1309,6 +1341,7 @@ class PlotSpikeInfo(QObject):
                 #         yscale = 1
 
                 # df = df.apply(apply_scale, axis=1, measure=measure, scale=yscale)
+                print("celltype: ", celltype, "measure: ", measure)
                 axp = P.axdict[f"{let:s}{j+1:d}"]
 
                 print("    enable picking: ", enable_picking)
@@ -1436,12 +1469,12 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             1,
             order="rowsfirst",
-            figsize=(4, 11),
+            figsize=(4, 2.5*len(self.experiment["celltypes"])+1.0),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
-                "topmargin": 0.1,
-                "bottommargin": 0.1,
+                "topmargin": 0.12,
+                "bottommargin": 0.12,
                 "leftmargin": 0.15,
                 "rightmargin": 0.15,
             },
@@ -1454,9 +1487,9 @@ class PlotSpikeInfo(QObject):
         # First, limit to just one IV curve type
         allprots = []
         for protocol in protosel:
-            if protocol != "CCIV_":
-                allprots.extend([f"{protocol:s}_{i:03d}" for i in range(3)])
-            else:
+            # if protocol != "CCIV_":
+            #     allprots.extend([f"{protocol:s}_{i:03d}" for i in range(3)])
+            # else:
                 allprots.extend([protocol])
         ymax = {
             "pyramidal": 500,
@@ -1468,6 +1501,7 @@ class PlotSpikeInfo(QObject):
             "d-stellate": 800,
             "giant": 800,
             "octopus": 100,
+            "all": 500,
         }
         pos = {
             "pyramidal": [0.4, 0.15],
@@ -1478,6 +1512,7 @@ class PlotSpikeInfo(QObject):
             "t-stellate": [0.6, 0.4],
             "d-stellate": [0.6, 0.4],
             "giant": [0.6, 0.4],
+            "all": [0.4, 0.15],
         }
 
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
@@ -1497,7 +1532,10 @@ class PlotSpikeInfo(QObject):
             ax.set_xlabel("I$_{inj}$ (nA)")
             ax.set_ylabel("Rate (sp/s)")
 
-            cdd = df[df["celltype"] == celltype]
+            if celltype != "all":
+                cdd = df[df["celltype"] == celltype]
+            else:
+                cdd = df.copy()
             print("Unique CCIVs: ", celltype, cdd["protocol"].unique())
             N = self.experiment["group_map"]
 
@@ -1527,6 +1565,8 @@ class PlotSpikeInfo(QObject):
                 # if this_protocol not in protosel:
                 #     continue
                 # print("CCIV: \n", cdd["FI_Curve"][index], "\n")
+                if pd.isnull(cdd["cell_id"][index]):
+                    continue
                 FI_data = FUNCS.convert_FI_array(cdd["FI_Curve"][index])
 
                 if len(FI_data[0]) == 0:
@@ -1609,10 +1649,11 @@ class PlotSpikeInfo(QObject):
                 #     transform=ax.transAxes,
                 # )
 
-            ax.set_ylim(0, ymax[celltype])
-            if "individual" in mode:
-                ax.set_ylim(0, 750)
-            ax.set_xlim(0, 1.0)
+            if celltype != "all":
+                ax.set_ylim(0, ymax[celltype])
+                if "individual" in mode:
+                    ax.set_ylim(0, 750)
+                ax.set_xlim(0, 1.0)
             print("-" * 80)
 
             if "mean" in mode:
@@ -1804,7 +1845,7 @@ class PlotSpikeInfo(QObject):
             f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    Cells: {self.experiment['celltypes']!s}"
         )
 
-        df = self.read_data_files(excelsheet, adddata, self.experiment["celltypes"])
+        df = self.read_data_files(excelsheet, adddata)
         originalmax = np.max(df.dvdt_rising)
 
         df = self.combine_by_cell(df, plot_fits=plot_fits)
