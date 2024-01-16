@@ -44,7 +44,7 @@ cprint = CP.cprint
 
 # known data dirs by experiment:
 try:
-    print("Current Directory: ", os.getcwd())
+    # print("Current Directory: ", os.getcwd())
     cpath = Path(os.getcwd(), "config", "experiments.cfg")
     config = pg.configfile.readConfigFile(cpath)
     experiments = config['experiments']
