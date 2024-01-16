@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 from Cython.Build import cythonize
 
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 4, 0, 'a')
+version_info = (0, 5, 0, 'a')
 __version__ = '%d.%d.%d%s' % version_info
 
 
@@ -33,7 +33,7 @@ setup(name='ephys',
           ]
       },
       classifiers = [
-             "Programming Language :: Python :: 3.6+",
+             "Programming Language :: Python :: 3.10+",
              "Development Status ::  Beta",
              "Environment :: Console",
              "Intended Audience :: Neuroscientists",
