@@ -222,6 +222,93 @@ class Functions:
             else:
                 return self.selected_index_rows
 
+    def get_datasummary_protocols(self, datasummary):
+        """
+        Print a configuration file-like text of all the datasummary protocols, as categorized here.
+
+        """
+        data_complete = datasummary["data_complete"].values
+        print("# of datasummary entries: ", len(data_complete))
+        protocols = []
+        for i, prots in enumerate(data_complete):
+            prots = prots.split(",")
+            for prot in prots:
+                protocols.append(prot[:-4].strip(" "))  # remove trailing "_000" etc
+
+        allprots = sorted(list(set(protocols)))
+        print("# of unique protocols: ", len(allprots))
+        # print(allprots)
+
+        # make a little table for config dict:
+        txt = "protocols:\n"
+        txt += "    CCIV:"
+        ncciv = 0
+        prots_used = []
+        for i, prot in enumerate(allprots):
+            if "CCIV".casefold() in prot.casefold():
+                computes = "['RmTau', 'IV', 'Spikes', 'FI']"
+                if "posonly".casefold() in prot.casefold():  # cannot compute rmtau for posonly
+                    computes = "['IV', 'Spikes', 'FI']"
+                txt += f"\n        {prot:s}: {computes:s}"
+                prots_used.append(i)
+                ncciv += 1
+        if ncciv == 0:
+            txt += " None"
+        txt += "\n    VCIV:"
+        nvciv = 0
+        for i, prot in enumerate(allprots):
+            if "VCIV".casefold() in prot.casefold():
+                computes = "['VC']"
+                txt += f"\n        {prot:s}: {computes:s}"
+                nvciv += 1
+                prots_used.append(i)
+        if nvciv == 0:
+            txt += " None"
+        txt += "\n    Maps:"
+        nmaps = 0
+        for i, prot in enumerate(allprots):
+            if "Map".casefold() in prot.casefold():
+                computes = "['Maps']"
+                txt += f"\n        {prot:s}: {computes:s}"
+                nmaps += 1
+                prots_used.append(i)
+        if nmaps == 0:
+            txt += " None"
+        txt += "\n    Minis:"
+        nminis = 0
+        for i, prot in enumerate(allprots):
+            cprot = prot.casefold()
+            if "Mini".casefold() in cprot or "VC_Spont".casefold() in cprot:
+                computes = "['Mini']"
+                txt += f"\n        {prot:s}: {computes:s}"
+                nminis += 1
+                prots_used.append(i)
+        if nminis == 0:
+            txt += " None"
+        txt += "\n    PSCs:"
+        npsc = 0
+        for i, prot in enumerate(allprots):
+            if "PSC".casefold() in prot.casefold():
+                computes = "['PSC']"
+                txt += f"\n        {prot:s}: {computes:s}"
+                npsc += 1
+                prots_used.append(i)
+        if npsc == 0:
+            txt += " None"
+        txt += "\n    Uncategorized:"
+        allprots = [prot for i, prot in enumerate(allprots) if i not in prots_used]
+        nother = 0
+        for i, prot in enumerate(allprots):
+            if len(prot) == 0 or prot == " ":
+                prot = "No Name"
+            computes = "None"
+            txt += f"\n        {prot:s}: {computes:s}"
+            nother += 1
+        if nother == 0:
+            txt += "\n        None"
+        print(f"\n{txt:s}\n")
+        # this print should be pasted into the configuration file (watch indentation)
+
     def moving_average(self, data, window_size):
         """moving_average Compute a triangular moving average on the data over a window
 
@@ -744,7 +831,7 @@ class Functions:
 
         # get the measures for the fixed values from the measure list
         for measure in datacols:
-            datadict = self.get_measure(df_cell, measure, datadict, protocols)
+            datadict = self.get_measure(df_cell, measure, datadict, protocols, threshold_slope=experiment["AP_threshold_dvdt"])
         # now combine the FI data across protocols for this cell
         FI_Data_I1_ = []
         FI_Data_FR1_ = []  # firing rate
@@ -859,7 +946,8 @@ class Functions:
         except ValueError:
             celltype = df_tmp.cell_type
         celltype = str(celltype).replace("\n", "")
-
+        if celltype == " ":  # no cell type
+            celltype = "unknown"
         # look for original PKL file for cell in the dataset
         # if it exists, use it to get the FI curve
         # base_cellname = str(Path(cell)).split("_")
@@ -992,7 +1080,7 @@ class Functions:
         FI_data = np.array(FI_data)
         return FI_data
 
-    def get_measure(self, df_cell, measure, datadict, protocols):
+    def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope:float=20.0):
         """get_measure : for the giveen cell, get the measure from the protocols
 
         Parameters
@@ -1079,18 +1167,18 @@ class Functions:
                         m.append(np.nan)
                     # print("spike data: ", spike_data.keys())
 
-                elif measure == "AP_thr_V":  # have to try two variants
+                elif measure == "AP_thr_V":  # have to try two variants. Note that threshold slope is defined in config file
                     min_current_index, current, trace = self.find_lowest_current_trace(
                         df_cell.Spikes[protocol]
                     )
                     if not np.isnan(min_current_index):
                         spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
                         # CP("c", "Check AP_thr_V")
-                        thrslope = 20.0
+
                         Vthr, Vthr_time = UTIL.find_threshold(
                             spike_data["V"],
                             np.mean(np.diff(spike_data["Vtime"])),
-                            thrV_mVperms=thrslope,
+                            threshold_slope=threshold_slope,
                         )
                         m.append(Vthr)
                     else:

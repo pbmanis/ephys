@@ -106,12 +106,15 @@ from ephys.plotters import plot_spike_info
 from ephys.tools import process_spike_analysis
 from ephys.tools import data_summary
 from ephys.tools.get_configuration import get_configuration
+import ephys.tools.configuration_manager as configuration_manager
+
 from ephys.ephys_analysis import (
     analysis_common,
     iv_analysis,
     map_analysis,
     summarize_ivs,
 )
+
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
 PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
 PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
@@ -185,11 +188,7 @@ RMP_Values = [
 
 taum_Values = [0.0005, 0.05]
 
-experimenttypes = [
-    "CCIV",
-    "VC",
-    "Map",
-]
+experimenttypes = ["CCIV", "VC", "Map", "Minis", "PSC"]
 
 run_dates = make_rundates()
 
@@ -218,7 +217,9 @@ class DataTables:
 
     def __init__(self, datasets=None, experiments=None):
         self.QColor = QtGui.QColor  # for access in plotsims (pass so we can reload)
-        self.git_hash = functions.get_git_hashes()  # get the hash for the current versions of ephys and our project
+        self.git_hash = (
+            functions.get_git_hashes()
+        )  # get the hash for the current versions of ephys and our project
         self.datasummary = None
         self.experimentname = None
         self.datasets = datasets
@@ -227,6 +228,7 @@ class DataTables:
         self.doing_reload = False
         self.picker_active = False
         self.show_pdf_on_pick = False
+        self.dry_run = False
         self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
@@ -389,6 +391,7 @@ class DataTables:
                 "expanded": False,
                 "children": [
                     {"name": "Analyze Selected IVs", "type": "action"},
+                    {"name": "Dry run (test)", "type": "bool", "value": False},
                     {"name": "Analyze ALL IVs", "type": "action"},
                     {"name": "Process Spike Data", "type": "action"},
                     {"name": "Assemble IV datasets", "type": "action"},
@@ -637,19 +640,19 @@ class DataTables:
         # for index in selrows: self.selected_index_row = index.row()
         #     self.analyze_from_table(index.row())
 
-    def display_from_table(self, cell_id):
-        """
-        Display the selected cell_id from the table
-        """
-        if not self.show_pdf_on_pick:
-            return
-        FUNCS.textappend(f"Displaying cell: {cell_id:s}")
+    # def display_from_table(self, cell_id):
+    #     """
+    #     Display the selected cell_id from the table
+    #     """
+    #     if not self.show_pdf_on_pick:
+    #         return
+    #     FUNCS.textappend(f"Displaying cell: {cell_id:s}")
 
-        i_row = self.table_manager.select_row_by_cell_id(cell_id)
-        if i_row is not None:
-            self.display_from_table(i_row)
-        else:
-            FUNCS.textappend(f"Cell {cell_id:s} not found in table")
+    #     i_row = self.table_manager.select_row_by_cell_id(cell_id)
+    #     if i_row is not None:
+    #         self.display_from_table(i_row)
+    #     else:
+    #         FUNCS.textappend(f"Cell {cell_id:s} not found in table")
 
     def handleSortIndicatorChanged(self, index, order):
         """
@@ -743,6 +746,9 @@ class DataTables:
 
                 case "IV Analysis":
                     match path[1]:
+                        case "Dry run (test)":
+                            self.dry_run = data
+
                         case "Analyze ALL IVs":
                             self.analyze_ivs("all")
 
@@ -750,7 +756,7 @@ class DataTables:
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             if index_rows is None:
                                 return
-                            
+
                             FUNCS.textappend(
                                 f"Analyze IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
@@ -772,13 +778,11 @@ class DataTables:
                                 analysis_cell_types,
                                 adddata,
                             ) = plot_spike_info.setup(self.experiment)
-                            print("analysis_cell_types: ", analysis_cell_types)
                             print("adddata: ", adddata)
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("adddata: ", adddata)
                             self.PSI.assemble_datasets(
                                 excelsheet=excelsheet,
-                                analysis_cell_types=analysis_cell_types,
                                 adddata=adddata,
                                 fn=fn,
                             )
@@ -852,9 +856,16 @@ class DataTables:
                                 lambda event: self.pick_handler(event, picker_funcs1),
                             )
                             header = self.get_analysis_info(fn)
-                            P1.figure_handle.text(self.infobox_x, self.infobox_y, header, 
-                                                  fontdict={"fontsize": self.infobox_fontsize, 
-                                                            "fontstyle": "normal", "font": "Courier"})
+                            P1.figure_handle.text(
+                                self.infobox_x,
+                                self.infobox_y,
+                                header,
+                                fontdict={
+                                    "fontsize": self.infobox_fontsize,
+                                    "fontstyle": "normal",
+                                    "font": "Courier",
+                                },
+                            )
                             P1.figure_handle.show()
 
                         case "Plot Rmtau Data":
@@ -893,9 +904,16 @@ class DataTables:
                                 lambda event: self.pick_handler(event, picker_funcs3),
                             )
                             header = self.get_analysis_info(fn)
-                            P3.figure_handle.text(self.infobox_x, self.infobox_y, header, 
-                                                  fontdict={"fontsize": self.infobox_fontsize, 
-                                                            "fontstyle": "normal", "font": "helvetica"})
+                            P3.figure_handle.text(
+                                self.infobox_x,
+                                self.infobox_y,
+                                header,
+                                fontdict={
+                                    "fontsize": self.infobox_fontsize,
+                                    "fontstyle": "normal",
+                                    "font": "helvetica",
+                                },
+                            )
                             P3.figure_handle.show()
 
                         case "Plot FIData Data":
@@ -927,9 +945,16 @@ class DataTables:
                                 lambda event: self.pick_handler(event, picker_funcs2),
                             )
                             header = self.get_analysis_info(fn)
-                            P2.figure_handle.text(self.infobox_x, self.infobox_y, header, 
-                                                  fontdict={"fontsize": self.infobox_fontsize, 
-                                                            "fontstyle": "normal", "font": "helvetica"})
+                            P2.figure_handle.text(
+                                self.infobox_x,
+                                self.infobox_y,
+                                header,
+                                fontdict={
+                                    "fontsize": self.infobox_fontsize,
+                                    "fontstyle": "normal",
+                                    "font": "helvetica",
+                                },
+                            )
                             P2.figure_handle.show()
 
                         case "Plot FICurves":
@@ -957,9 +982,16 @@ class DataTables:
                                 lambda event: self.pick_handler(event, picker_funcs4),
                             )
                             header = self.get_analysis_info(fn)
-                            P4.figure_handle.text(self.infobox_x, self.infobox_y, header, 
-                                                  fontdict={"fontsize": self.infobox_fontsize, 
-                                                            "fontstyle": "normal", "font": "helvetica"})
+                            P4.figure_handle.text(
+                                self.infobox_x,
+                                self.infobox_y,
+                                header,
+                                fontdict={
+                                    "fontsize": self.infobox_fontsize,
+                                    "fontstyle": "normal",
+                                    "font": "helvetica",
+                                },
+                            )
                             P4.figure_handle.show()
 
                         case "Plot Selected Spike":
@@ -1009,7 +1041,7 @@ class DataTables:
                             header += f"Experiment Name: {self.experimentname:s}\n"
                             header += f"Project git hash: {self.git_hash['project']!s}\nephys git hash: {self.git_hash['ephys']!s}\n"
                             header += f"{'='*80:s}\n\n"
-                            stats_text = header +  stats_text
+                            stats_text = header + stats_text
                             stats_filename = f"{self.experiment['stats_filename']:s}_G1_{group_by:s}_G2_{second_group_by:s}.txt"
                             stats_path = Path(
                                 self.experiment["analyzeddatapath"],
@@ -1145,13 +1177,12 @@ class DataTables:
                                 return
                             self.print_file_info(selected)
 
-
-    def analyze_ivs(self, mode="all", day:str=None, slicecell:str=None):
+    def analyze_ivs(self, mode="all", day: str = None, slicecell: str = None):
         """
         Analyze the IVs for the selected cell
         """
         args = analysis_common.cmdargs  # get from default class
-        args.dry_run = False
+        args.dry_run = self.dry_run
         args.merge_flag = True
         args.experiment = self.experiment
         args.iv_flag = True
@@ -1159,13 +1190,13 @@ class DataTables:
         args.autoout = True
 
         args.verbose = False
-        args.spike_threshold = -0.020  # always in Volts
+        args.spike_threshold = self.experiment['AP_threshold_V']  # always in Volts
         if mode == "selected":
             args.day = day
             args.slicecell = slicecell
 
-        #args.after= "2021.07.01"
-        
+        # args.after= "2021.07.01"
+
         if args.configfile is not None:
             config = None
             if args.configfile is not None:
@@ -1195,33 +1226,33 @@ class DataTables:
         IV.setup()
         IV.run()
 
-        # allp = sorted(list(set(NF.allprots)))
-        # print('All protocols in this dataset:')
-        # for p in allp:
-        #     print('   ', path)
-        # print('---')
-        #
-        CP.cprint(
-            "cyan",
-            f"Finished IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
-        )
-        if mode == "all":
-            self.iv_finished_message()        
-        
+        if self.dry_run:
+            CP.cprint(
+                "cyan",
+                f"Finished DRY RUN of IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+            )
+        else:
+            CP.cprint(
+                "cyan",
+                f"Finished IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+                )
+            if mode == "all":
+                self.iv_finished_message()
+
     def iv_finished_message(self):
         CP.cprint("r", "=" * 80)
         CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
-        CP.cprint("r", f"Then run 'assemble datasets' to plot summaries and get statistical results")
-        CP.cprint("r", f"Then try the plotting functions to plot summaries and get statistical results")
+        CP.cprint(
+            "r", f"Then run 'assemble datasets' to plot summaries and get statistical results"
+        )
+        CP.cprint(
+            "r", f"Then try the plotting functions to plot summaries and get statistical results"
+        )
         CP.cprint("r", "=" * 80)
-            
-
 
     def get_analysis_info(self, filename):
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
-        second_group_by = (
-            self.ptreedata.child("Plotting").child("2nd Group By").value()
-                            )
+        second_group_by = self.ptreedata.child("Plotting").child("2nd Group By").value()
         datetime_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         header = f"Experiment Name: {self.experimentname:s}\n"
         header += f"File: {filename.name!s} [{datetime.datetime.fromtimestamp(filename.stat().st_mtime)!s}]\n"
@@ -1230,7 +1261,6 @@ class DataTables:
         header += f"Git hashes: Proj={self.git_hash['project'][-9:]!s}\n       ephys={self.git_hash['ephys'][-9:]!s}\n"
         return header
 
-    
     def error_message(self, text):
         """
         Provide an error message to the lower text box
@@ -1304,19 +1334,36 @@ class DataTables:
 
     def create_data_summary(self):
         # -o pandas -f NF107_after_2018.04.16 -w --depth all
+        configuration_manager.verify_paths(self.experiment)
+
         ds = data_summary.DataSummary(
-            basedir=Path(self.experiment["rawdatapath"]),
-            outputFile = Path(self.experiment["analyzeddatapath"], self.experiment["directory"], self.experiment["datasummaryFilename"]),
+            basedir=Path(self.experiment["rawdatapath"], self.experiment['directory']),
+            outputFile=Path(
+                self.experiment["analyzeddatapath"],
+                self.experiment["directory"],
+                self.experiment["datasummaryFilename"],
+            ),
             subdirs=self.experiment["extra_subdirectories"],
             dryrun=True,
             depth="all",
             verbose=True,
         )
         print("Writing to output, recurively through directories ")
-        data_summary.dir_recurse(ds, Path(self.experiment["rawdatapath"]), self.experiment["excludeIVs"])
+        data_summary.dir_recurse(
+            ds, Path(self.experiment["rawdatapath"], self.experiment['directory']), self.experiment["excludeIVs"]
+        )
         # after creation, load it
         self.load_data_summary()
 
+    def find_unique_protocols(self):
+        """
+        find all of the unique protocols in this database
+
+        """
+        if self.datasummary is None:
+            raise ValueError("Please load the datasummary file first")
+        FUNCS.get_datasummary_protocols(self.datasummary )
+        
 
 
     def load_data_summary(self):
@@ -1339,6 +1386,7 @@ class DataTables:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         FUNCS.textappend(f"DataSummary file loaded with {len(self.datasummary.index):d} entries.")
         # FUNCS.textappend(f"DataSummary columns: \n, {self.datasummary.columns:s}")
+        self.find_unique_protocols()
 
     def load_assembled_data(self):
         """get the current assembled data file, if it exists
@@ -1462,6 +1510,8 @@ class DataTables:
         # the first part is based on the selected cell_id from the table, and the rest
         # just makes life easier when looking at the directories.
         cell_type = selected.cell_type
+        if cell_type == " " or len(cell_type) == 0:
+            cell_type = "unknown"
         sdate = selected.date[:-4]
         cellname_parts = selected.cell_id.split("_")
         pdfname = (
