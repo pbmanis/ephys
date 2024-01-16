@@ -30,6 +30,7 @@ from typing import Union
 
 import numpy as np
 import scipy.stats
+from numba import jit
 
 from ..tools import fitting  # pbm's fitting stuff...
 from ..tools import utilities  # pbm's utilities...
@@ -73,6 +74,40 @@ class OneSpike:
     dvdt_falling: Union[float, None] = None
 
 
+@jit(nopython=True)
+def interpolate_halfwidth(tr, xr, kup, halfv, kdown):
+    if tr[kup] <= halfv:
+        vi = tr[kup - 1 : kup + 1]
+        xi = xr[kup - 1 : kup + 1]
+    else:
+        vi = tr[kup : kup + 2]
+        xi = xr[kup : kup + 2]
+    m1 = (vi[1] - vi[0]) / (xi[1] - xi[0])
+    b1 = vi[1] - m1 * xi[1]
+    if m1 == 0.0 or np.std(tr) == 0.0:
+        # print('a: ', vi[1], vi[0], kup, tr[kup:kup+2], tr[kup-1:kup+1], tr[kup], halfv)
+        # raise ValueError("m1 is 0 or std(tr) is 0, ? ")
+        return None, None
+
+    t_hwup = (halfv - b1) / m1
+    if tr[kdown] <= halfv:
+        vi = tr[kdown : kdown + 2]
+        xi = xr[kdown : kdown + 2]
+        u = "a"
+    else:
+        vi = tr[kdown - 1 : kdown + 1]
+        xi = xr[kdown - 1 : kdown + 1]
+        u = "b"
+    m2 = (vi[1] - vi[0]) / (xi[1] - xi[0])
+    b2 = vi[1] - m2 * xi[1]
+    if m2 == 0.0 or np.std(tr) == 0.0:
+        # print('b: ', vi[1], vi[0], kup , tr[kdown-1:kdown+1], tr[kdown:kdown+2], tr[kdown], halfv)
+        # raise ValueError("m2 is 0 or std(tr) is 0, ? ")
+        return None, None
+    t_hwdown = (halfv - b2) / m2
+    return t_hwdown, t_hwup
+
+
 class SpikeAnalysis:
     def __init__(self):
         pass
@@ -84,12 +119,8 @@ class SpikeAnalysis:
         self.Clamps = None
         self.analysis_summary = {}
         self.verbose = False
-        self.FIGrowth = (
-            1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
-        )
-        self.analysis_summary[
-            "FI_Growth"
-        ] = []  # permit analysis of multiple growth functions.
+        self.FIGrowth = 1  # use function FIGrowth1 (can use simpler version FIGrowth 2 also)
+        self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
 
     def setup(
         self,
@@ -145,9 +176,7 @@ class SpikeAnalysis:
         assert data_time_units in ["s", "ms"]
         assert data_volt_units in ["V", "mV"]
         self.time_units = data_time_units
-        self.volt_units = (
-            data_volt_units  # needed by spike detector for data conversion
-        )
+        self.volt_units = data_volt_units  # needed by spike detector for data conversion
         self.threshold = threshold
         self.refractory = refractory
         self.interpolate = interpolate  # use interpolation on spike thresholds...
@@ -158,9 +187,7 @@ class SpikeAnalysis:
         self.mode = mode
         self.ar_window = 0.1
         self.ar_lastspike = 0.075
-        self.min_peaktotrough = (
-            0.010  # change in V on falling phase to be considered a spike
-        )
+        self.min_peaktotrough = 0.010  # change in V on falling phase to be considered a spike
         self.max_spike_look = 0.010  # msec over which to measure spike widths
 
     def set_detector(self, detector: str = "argrelmax"):
@@ -198,9 +225,7 @@ class SpikeAnalysis:
 
         """
         if reset:
-            self.analysis_summary[
-                "FI_Growth"
-            ] = []  # permit analysis of multiple growth functions.
+            self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
 
         maxspkrate = 50  # max rate to count in adaptation is 50 spikes/second
         minspk = 4
@@ -217,9 +242,7 @@ class SpikeAnalysis:
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
         U = utilities.Utility()
-        for i in range(
-            ntr
-        ):  # this is where we should parallelize the analysis for spikes
+        for i in range(ntr):  # this is where we should parallelize the analysis for spikes
             spikes = U.findspikes(
                 self.Clamps.time_base,
                 np.array(self.Clamps.traces[i]),
@@ -244,9 +267,7 @@ class SpikeAnalysis:
             spikes = np.array(spikes)
             self.spikes[i] = spikes
             # print( 'found %d spikes in trace %d' % (len(spikes), i))
-            self.spikeIndices[i] = [
-                np.argmin(np.fabs(self.Clamps.time_base - t)) for t in spikes
-            ]
+            self.spikeIndices[i] = [np.argmin(np.fabs(self.Clamps.time_base - t)) for t in spikes]
             self.spikecount[i] = len(spikes)
             self.fsl[i] = (spikes[0] - self.Clamps.tstart) * 1e3
             if len(spikes) > 1:
@@ -262,12 +283,8 @@ class SpikeAnalysis:
                     np.where(spikes - self.Clamps.tstart < self.ar_window)
                 ]  # default is 100 msec
                 if len(spx) >= 4:  # at least 4 spikes
-                    if (
-                        spx[-1] > self.ar_lastspike + self.Clamps.tstart
-                    ):  # default 75 msec
-                        misi = (
-                            np.mean(np.diff(spx[-2:])) * 1e3
-                        )  # last ISIs in the interval
+                    if spx[-1] > self.ar_lastspike + self.Clamps.tstart:  # default 75 msec
+                        misi = np.mean(np.diff(spx[-2:])) * 1e3  # last ISIs in the interval
                         ar[i] = misi / self.fisi[i]
             lastspikecount = self.spikecount[i]  # update rate (sets max rate)
 
@@ -279,9 +296,7 @@ class SpikeAnalysis:
         self.analysis_summary["AdaptRatio"] = self.adapt_ratio  # only the valid values
         self.nospk = np.where(self.spikecount == 0)
         self.spk = np.where(self.spikecount > 0)[0]
-        self.analysis_summary["FI_Curve"] = np.array(
-            [self.Clamps.values, self.spikecount]
-        )
+        self.analysis_summary["FI_Curve"] = np.array([self.Clamps.values, self.spikecount])
         self.analysis_summary["FiringRate"] = np.max(self.spikecount) / (
             self.Clamps.tend - self.Clamps.tstart
         )
@@ -455,14 +470,10 @@ class SpikeAnalysis:
             self.spikeShapes[i] = trspikes
 
         self.iHold = np.mean(self.iHold_i)
-        self.analysis_summary[
-            "spikes"
-        ] = self.spikeShapes  # save in the summary dictionary too
+        self.analysis_summary["spikes"] = self.spikeShapes  # save in the summary dictionary too
         self.analysis_summary["iHold"] = self.iHold
         try:
-            self.analysis_summary["pulseDuration"] = (
-                self.Clamps.tend - self.Clamps.tstart
-            )
+            self.analysis_summary["pulseDuration"] = self.Clamps.tend - self.Clamps.tstart
         except:
             self.analysis_summary["pulseDuration"] = np.max(self.Clamps.time_base)
         if len(self.spikeShapes.keys()) > 0:  # only try to classify if there are spikes
@@ -470,14 +481,11 @@ class SpikeAnalysis:
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
             for m in sorted(self.spikeShapes.keys()):
-                print(
-                    (
-                        "----\nTrace: %d  has %d APs"
-                        % (m, len(list(self.spikeShapes[m].keys())))
-                    )
-                )
+                print(("----\nTrace: %d  has %d APs" % (m, len(list(self.spikeShapes[m].keys())))))
                 for n in sorted(self.spikeShapes[m].keys()):
                     pp.pprint(self.spikeShapes[m][n])
+
+    
 
     def analyze_one_spike(self, i, j, begin_dV):
         thisspike = OneSpike(trace=i, AP_number=j)
@@ -531,7 +539,7 @@ class SpikeAnalysis:
             km = np.argmax(dvdt[kbegin:k]) + kbegin
         except:
             print(
-                f"can't analyze spike in {this_source_file:s}:: kbegin = {kbegin:d}, k = {k:d}"
+                "can't analyze spike in "  # {this_source_file:s}:: kbegin = {kbegin:d}, k = {k:d}"
             )
             print("len (dv/dt): ", len(dvdt))
             #  raise ValueError
@@ -553,15 +561,9 @@ class SpikeAnalysis:
         three_ms = int(3e-3 / dt)
         two_ms = int(2e-3 / dt)
         one_ms = int(1e-3 / dt)
-        thisspike.dvdt_rising = np.max(
-            dvdt[thisspike.AP_beginIndex : thisspike.AP_peakIndex]
-        )
-        thisspike.dvdt_falling = np.min(
-            dvdt[thisspike.AP_peakIndex : thisspike.AP_endIndex]
-        )
-        thisspike.dvdt = dvdt[
-            thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms
-        ]
+        thisspike.dvdt_rising = np.max(dvdt[thisspike.AP_beginIndex : thisspike.AP_peakIndex])
+        thisspike.dvdt_falling = np.min(dvdt[thisspike.AP_peakIndex : thisspike.AP_endIndex])
+        thisspike.dvdt = dvdt[thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms]
         thisspike.V = self.Clamps.traces[i][
             thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms
         ].view(np.ndarray)
@@ -580,13 +582,9 @@ class SpikeAnalysis:
             halfv = 0.5 * (thisspike.peak_V + thisspike.AP_begin_V)
             tr = np.array(self.Clamps.traces[i])
             xr = self.Clamps.time_base
-            kup = np.argmin(
-                np.fabs(tr[thisspike.AP_beginIndex : thisspike.AP_peakIndex] - halfv)
-            )
+            kup = np.argmin(np.fabs(tr[thisspike.AP_beginIndex : thisspike.AP_peakIndex] - halfv))
             kup += thisspike.AP_beginIndex
-            kdown = np.argmin(
-                np.fabs(tr[thisspike.AP_peakIndex : thisspike.AP_endIndex] - halfv)
-            )
+            kdown = np.argmin(np.fabs(tr[thisspike.AP_peakIndex : thisspike.AP_endIndex] - halfv))
             kdown += thisspike.AP_peakIndex
             if kup is not None and kdown is not None:
                 thisspike.halfwidth = xr[kdown] - xr[kup]
@@ -599,48 +597,21 @@ class SpikeAnalysis:
                 thisspike.right_halfwidth_V = tr[kdown]
 
                 # interpolated spike hwup, down and width
-                pkt = xr[thisspike.AP_peakIndex]
-                if tr[kup] <= halfv:
-                    vi = tr[kup - 1 : kup + 1]
-                    xi = xr[kup - 1 : kup + 1]
-                else:
-                    vi = tr[kup : kup + 2]
-                    xi = xr[kup : kup + 2]
-                m1 = (vi[1] - vi[0]) / (xi[1] - xi[0])
-                b1 = vi[1] - m1 * xi[1]
-                if m1 == 0.0 or np.std(tr) == 0.0:
-                    # print('a: ', vi[1], vi[0], kup, tr[kup:kup+2], tr[kup-1:kup+1], tr[kup], halfv)
-                    # raise ValueError("m1 is 0 or std(tr) is 0, ? ")
+                t_hwdown, t_hwup = interpolate_halfwidth(tr, xr, kup, halfv, kdown)
+                # print("half-width stuff original: ", thisspike.halfwidth_up, thisspike.halfwidth_down)
+                # print("interpolated: ", t_hwup, t_hwdown)
+
+                if t_hwdown is None:
                     return thisspike
 
-                t_hwup = (halfv - b1) / m1
-                if tr[kdown] <= halfv:
-                    vi = tr[kdown : kdown + 2]
-                    xi = xr[kdown : kdown + 2]
-                    u = "a"
-                else:
-                    vi = tr[kdown - 1 : kdown + 1]
-                    xi = xr[kdown - 1 : kdown + 1]
-                    u = "b"
-                m2 = (vi[1] - vi[0]) / (xi[1] - xi[0])
-                b2 = vi[1] - m2 * xi[1]
-                if m2 == 0.0 or np.std(tr) == 0.0:
-                    # print('b: ', vi[1], vi[0], kup , tr[kdown-1:kdown+1], tr[kdown:kdown+2], tr[kdown], halfv)
-                    # raise ValueError("m2 is 0 or std(tr) is 0, ? ")
-                    return thisspike
-                t_hwdown = (halfv - b2) / m2
                 thisspike.halfwidth = t_hwdown - t_hwup
-                if (
-                    thisspike.halfwidth > self.min_halfwidth
-                ):  # too broad to be acceptable
+                if thisspike.halfwidth > self.min_halfwidth:  # too broad to be acceptable
                     if self.verbose:
-                        print(
-                            f"{this_source_file:s}::\n   spikes > min half width",
-                            thisspike.halfwidth,
-                        )
-                        print(
-                            "   halfv: ", halfv, thisspike.peak_V, thisspike.AP_begin_V
-                        )
+                        # print(
+                        #     f"{this_source_file:s}::\n   spikes > min half width",
+                        #     thisspike.halfwidth,
+                        # )
+                        print("   halfv: ", halfv, thisspike.peak_V, thisspike.AP_begin_V)
                     thisspike.halfwidth = None
                     thisspike.halfwidth_interpolated = None
 
@@ -746,9 +717,7 @@ class SpikeAnalysis:
             self.analysis_summary["AP1_Latency"] = (
                 self.spikeShapes[j150][0].AP_latency - self.spikeShapes[j150][0].tstart
             ) * 1e3
-            self.analysis_summary["AP1_HalfWidth"] = (
-                self.spikeShapes[j150][0].halfwidth * 1e3
-            )
+            self.analysis_summary["AP1_HalfWidth"] = self.spikeShapes[j150][0].halfwidth * 1e3
             if self.spikeShapes[j150][0].halfwidth_interpolated is not None:
                 self.analysis_summary["AP1_HalfWidth_interpolated"] = (
                     self.spikeShapes[j150][0].halfwidth_interpolated * 1e3
@@ -765,9 +734,7 @@ class SpikeAnalysis:
             self.analysis_summary["AP2_Latency"] = (
                 self.spikeShapes[j150][1].AP_latency - self.spikeShapes[j150][1].tstart
             ) * 1e3
-            self.analysis_summary["AP2_HalfWidth"] = (
-                self.spikeShapes[j150][1].halfwidth * 1e3
-            )
+            self.analysis_summary["AP2_HalfWidth"] = self.spikeShapes[j150][1].halfwidth * 1e3
             if self.spikeShapes[j150][1].halfwidth_interpolated is not None:
                 self.analysis_summary["AP2_HalfWidth_interpolated"] = (
                     self.spikeShapes[j150][1].halfwidth_interpolated * 1e3
@@ -787,9 +754,7 @@ class SpikeAnalysis:
             # print(f"     Depth  = {AHPDepth*1e3:.2f} mV")
             self.analysis_summary["FiringRate_1p5T"] = rate
             self.analysis_summary["AHP_Depth"] = AHPDepth * 1e3  # convert to mV
-            self.analysis_summary["AHP_Trough"] = self.spikeShapes[j150][
-                0
-            ].trough_V  # absolute
+            self.analysis_summary["AHP_Trough"] = self.spikeShapes[j150][0].trough_V  # absolute
 
     def getFISlope(
         self,
@@ -818,7 +783,7 @@ class SpikeAnalysis:
             maximum current in range for fit, by defaule 300 pA (specify in A)
         """
         if pulse_duration is None:
-            pulse_duration = 1.0 # assume already have spike count in RATE
+            pulse_duration = 1.0  # assume already have spike count in RATE
         if i_inj is None:  # use class data
             i_inj = self.analysis_summary["FI_Curve"][0]
             spike_count = self.analysis_summary["FI_Curve"][1]
@@ -846,7 +811,7 @@ class SpikeAnalysis:
         """Fit the FI plot to one of several possible equations.
             1: 'FIGrowthExpBreak' - exponential growth with a breakpoint
             2: 'Hill'
-            3: 
+            3:
         Parameters
         ----------
             i_inj : numpy array (no default)
@@ -856,7 +821,7 @@ class SpikeAnalysis:
                 The y data to fit (typically an array of spike counts)
             if i_inj and spike_count are none, then we extract them from the
                 'FI_Curve' for this cell.
-            
+
             pulse_duration: float or none.
                 If float, this should be the duration of the pulse in seconds.
                 if None, then we will assume that the spike count is actually corrected spike rate
@@ -882,7 +847,7 @@ class SpikeAnalysis:
             These are the fit parameters
         """
         if pulse_duration is None:
-            pulse_duration = 1.0 # no correction, assumes spike_count is already converted to rate
+            pulse_duration = 1.0  # no correction, assumes spike_count is already converted to rate
         if function is not None:
             self.FIGrowth = function
         if i_inj is None:  # use class data
@@ -899,12 +864,16 @@ class SpikeAnalysis:
             return None
         nonmono = 0
         dypos: list = [range(len(spike_rate))]
-        
+
         # clip to max firing rate to remove non-monotonic rates at high current
         if fixNonMonotonic:  # clip at max firing rate once rate is above the peak rate
-            spike_rate_slope:np.ndarray = np.gradient(spike_rate, i_inj)
-            xnm = np.where((spike_rate_slope[spike_rate_max_index:] < 0.0)  # find where slope is negative
-                            & (spike_rate[spike_rate_max_index:] < 0.8*spike_rate_max))[0] # and rate is less than 80% of max
+            spike_rate_slope: np.ndarray = np.gradient(spike_rate, i_inj)
+            xnm = np.where(
+                (spike_rate_slope[spike_rate_max_index:] < 0.0)  # find where slope is negative
+                & (spike_rate[spike_rate_max_index:] < 0.8 * spike_rate_max)
+            )[
+                0
+            ]  # and rate is less than 80% of max
             if len(xnm) > 0:
                 imax = xnm[0] + spike_rate_max_index
             else:
@@ -929,18 +898,12 @@ class SpikeAnalysis:
             nonmono += 1
             CP.cprint("r", "Spike analysis fitOne: exclude non monotonic was triggered")
             return None
-        fire_points = np.where((spike_rate[:-1] > 0) & (spike_rate[1:] > 0))[
-            0
-        ]
+        fire_points = np.where((spike_rate[:-1] > 0) & (spike_rate[1:] > 0))[0]
         # CP.cprint("m", f"fire_points: {len(fire_points):d} points")
-  # limit to positive current injections with successive spikes
-        if (
-            len(fire_points) == 0
-        ):  # no fit if there are no points in the curve where the cell fires
+        # limit to positive current injections with successive spikes
+        if len(fire_points) == 0:  # no fit if there are no points in the curve where the cell fires
             return None
-        firing_rate_break = fire_points[
-            0
-        ]  # this is the "break point" where the first spike occurs
+        firing_rate_break = fire_points[0]  # this is the "break point" where the first spike occurs
         ibreak0 = i_inj[
             firing_rate_break - 1
         ]  # use point before first spike as the initial break point
@@ -960,13 +923,9 @@ class SpikeAnalysis:
 
         if self.FIGrowth == "fitOneOriginal":
             res = []
-            fitter = (
-                fitting.Fitting()
-            )  # make sure we always work with the same instance
+            fitter = fitting.Fitting()  # make sure we always work with the same instance
 
-            for i in range(
-                0, int(len(i_inj) / 2)
-            ):  # allow breakpoint to move, but only in steps
+            for i in range(0, int(len(i_inj) / 2)):  # allow breakpoint to move, but only in steps
                 if firing_rate_break + i + 1 > len(i_inj) - 1:
                     continue
                 x0 = firing_rate_break + i
@@ -989,9 +948,7 @@ class SpikeAnalysis:
                         np.mean(bounds[1]),
                         yp[0],
                         spike_rate_max * pulse_duration,
-                        spike_rate_max
-                        * pulse_duration
-                        / np.max(i_inj),  # 100 spikes/sec/nA
+                        spike_rate_max * pulse_duration / np.max(i_inj),  # 100 spikes/sec/nA
                     ]
                     function = "FIGrowthExpBreak"
                     f = fitter.fitfuncmap[function]
@@ -1020,7 +977,7 @@ class SpikeAnalysis:
                             "error": error,
                         }
                     )
-            minerr = np.argmin([e['error'][0] for e in res])
+            minerr = np.argmin([e["error"][0] for e in res])
 
             # select the fit with the minimum error
             fpar = res[minerr]["fpar"]
@@ -1030,8 +987,8 @@ class SpikeAnalysis:
             error = res[minerr]["error"]
 
             fitter_func = fitting.Fitting().fitfuncmap[function]
-            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
-           
+            yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
+
         elif self.FIGrowth == "FIGrowthExp":  # FIGrowth is 2, Exponential from 0 rate
             bounds = (
                 np.sort([i_inj[x0], i_inj[x1]]),
@@ -1064,7 +1021,7 @@ class SpikeAnalysis:
             )
             error = fitting.Fitting().getFitErr()
             fitter_func = fitting.Fitting().fitfuncmap[function]
-            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+            yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
             imap = [-1, 0, -1, 1, 2]
 
@@ -1073,8 +1030,8 @@ class SpikeAnalysis:
             if fitbreak0 > 0.0:
                 fitbreak0 = 0.0
             x1 = np.argwhere((spike_rate > 0.0) & (i_inj > fitbreak0))
-            initpars = [0.,       spike_rate_max,              0.5 * np.mean(i_inj[x1]), 1.0]
-            bounds = [(0., 200.), (0.0, spike_rate_max * 2.0), (0.0, np.max(i_inj)),    (0.0, 10.0)]
+            initpars = [0.0, spike_rate_max, 0.5 * np.mean(i_inj[x1]), 1.0]
+            bounds = [(0.0, 200.0), (0.0, spike_rate_max * 2.0), (0.0, np.max(i_inj)), (0.0, 10.0)]
             function = "Hill"
             f = fitting.Fitting().fitfuncmap[function]
             # now fit the full data set
@@ -1093,7 +1050,7 @@ class SpikeAnalysis:
             )
             error = fitting.Fitting().getFitErr()
             fitter_func = fitting.Fitting().fitfuncmap[function]
-            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+            yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
             print("spikeanalysis: Hill fit results: ", fpar)
 
@@ -1147,7 +1104,7 @@ class SpikeAnalysis:
             )
             error = fitting.Fitting().getFitErr()
             fitter_func = fitting.Fitting().fitfuncmap[function]
-            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+            yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
 
         elif self.FIGrowth == "FIGrowthPower":
@@ -1192,16 +1149,13 @@ class SpikeAnalysis:
             )
             error = fitting.Fitting().getFitErr()
             fitter_func = fitting.Fitting().fitfuncmap[function]
-            yfit = fitter_func[0](fpar[0], x=i_inj,  C=None)
+            yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
 
             self.FIKeys = f[6]
         elif self.FIGrowth == "fitOneOriginal":
             pass
         else:
-            raise ValueError(
-                "SpikeAnalysis: FIGrowth function %s is not known" % self.FIGrowth
-            )
-
+            raise ValueError("SpikeAnalysis: FIGrowth function %s is not known" % self.FIGrowth)
 
         self.analysis_summary["FI_Growth"].append(
             {
@@ -1211,6 +1165,6 @@ class SpikeAnalysis:
                 "error": error,
                 "parameters": fpar,
                 "fit": [np.array(xf), yf],
-                "fit_at_data_points": [np.array(i_inj), np.array(yfit)]
+                "fit_at_data_points": [np.array(i_inj), np.array(yfit)],
             }
         )
