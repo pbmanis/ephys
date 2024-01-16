@@ -594,7 +594,7 @@ class DataSummary:
             for k in self.day_defs:
                 print("{:>32s} : {:<40s}".format(k, self.day_index[k]))
             self._doSlices(day)  # next level
-            os.closerange(8, 65535)  # close all files in each iteration
+            # os.closerange(8, 65535)  # close all files in each iteration
             gc.collect()
 
     def _doSlices(self, day):
@@ -1457,23 +1457,23 @@ def main():
                 )
                 ps = c.rstrip("_0123456789")  # remove sequence numbers
                 print("protocols: ", c)
-                if "Map" in c:
+                if "Map".casefold() in c.casefold():
                     maps.append(c)
                     if ps not in map_types:
                         map_types.append(p)
-                if "CCIV" in c:
+                if "CCIV".casefold() in c.casefold():
                     CCIVs.append(c)
                     if ps not in CCIV_types:
                         CCIV_types.append(p)
-                elif "VCIV" in c:
+                elif "VCIV".casefold() in c.casefold():
                     VCIVs.append(c)
                     if ps not in VCIV_types:
                         VCIV_types.append(p)
-                elif c.startswith("CC_Spont"):
+                elif "CC_Spont".casefold() in c.casefold():
                     CC_Sponts.append(c)
                     if ps not in CC_Spont_types:
                         CC_Spont_types.append(p)
-                elif c.startswith("VC_Spont"):
+                elif "VC_Spont".casefold() in c.casefold():
                     VC_Sponts.append(c)
                     if ps not in VC_Spont_types:
                         VC_Spont_types.append(p)
