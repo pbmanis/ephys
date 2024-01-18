@@ -123,8 +123,9 @@ class FilterDataset:
             _description_
         """
         print("\nCleaning database")
-        for group in remove_groups:
-            df.drop(df.loc[df["Group"] == group].index, inplace=True)
+        if remove_groups is not None:
+            for group in remove_groups:
+                df.drop(df.loc[df["Group"] == group].index, inplace=True)
 
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
         if excludeIVs is None:
@@ -133,11 +134,10 @@ class FilterDataset:
             fn = fns.split(":")[0]  # remove the comment
             if fn in list(df.cell_id2.values):
                 df.drop(df.loc[df.cell_id2 == fn].index, inplace=True)
-                CP(
+                CP.cprint(
                     "r",
                     f"Excluded {fn:s} from analysis, reason = {fns.split(':')[1]:s}",
                 )
-
         # exclude certain internal solutions
         for internal in exclude_internal:
             df = df[df["internal"] != internal]
@@ -157,6 +157,7 @@ class FilterDataset:
                 "   in selected cells: ",
                 len(list(df.cell_type.isin(analysis_cell_types))),
             )
+        # print("unique protocols: ", list(set(df.protocol)))
 
         return df
 

@@ -22,6 +22,9 @@ def get_configuration(configfile: str = "experiments.cfg"):
         _description_
     """
     try:
+        abspath = Path().absolute()
+        if abspath.name == 'nb':
+            abspath = Path(*abspath.parts[:-1])
         print("Getting Configuration file from: ", Path().absolute())
         cpath = Path(Path().absolute(), "config", configfile)
         config = pg.configfile.readConfigFile(cpath)

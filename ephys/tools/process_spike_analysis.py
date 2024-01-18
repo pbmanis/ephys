@@ -320,7 +320,7 @@ class ProcessSpikeAnalysis:
         day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
         print("day_slice_cell: ", day_slice_cell)
         if (day_slice_cell in self.experiment["excludeIVs"]) and (
-            (row.protocol in self.experiment["excludeIVs"]["protocols"])
+            (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
             or row.protocol in ["all", ["all"]]
         ):
             CP("y", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
@@ -551,7 +551,6 @@ class ProcessSpikeAnalysis:
         for col in add_cols:
             df[col] = np.nan
         nprots = 0
-
         # now do an analysis
         Logger.info("Starting analysis on protocols in database")
         # df = df.apply(_get_iv_protocol, experiment=exp, pdf_pages=pdf_pages, axis=1)
