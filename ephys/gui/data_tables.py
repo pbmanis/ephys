@@ -93,6 +93,7 @@ import pyqtgraph as pg
 import pyqtgraph.dockarea as PGD
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint as CP
+import PyQt6.QtWebEngineWidgets
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
@@ -236,8 +237,8 @@ class DataTables:
         ptreewidth = 350
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
-        self.infobox_x = 0.82
-        self.infobox_y = 0.935
+        self.infobox_x = 0.02
+        self.infobox_y = 0.94
         self.infobox_fontsize = 5.5
 
         # Define the table style for various parts dark scheme
@@ -964,6 +965,7 @@ class DataTables:
                             P4, picker_funcs4 = self.PSI.summary_plot_fi(
                                 df,
                                 mode=["individual", "mean"],
+                                group_by=self.ptreedata.child("Plotting").child("Group By").value(),
                                 protosel=[
                                     "CCIV_1nA_max",
                                     # "CCIV_4nA_max",

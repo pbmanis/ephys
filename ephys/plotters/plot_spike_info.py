@@ -55,7 +55,7 @@ def set_ylims(experiment):
             "dvdt_falling": [0, 800],
             "AP_HW": [0, 1.0],
             "AP_thr_V": [-75, 0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
@@ -70,7 +70,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
             "AP_HW": [0, 1.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1500],
@@ -86,7 +86,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
             "AP_HW": [0, 1.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 8],
             "FISlope": [0, 250],
@@ -103,7 +103,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
             "AP_HW": [0, 1.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
@@ -119,7 +119,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 200],
             "dvdt_falling": [0, 200],
             "AP_HW": [0, 3.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
@@ -136,7 +136,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 400],
             "dvdt_falling": [0, 400],
             "AP_HW": [0, 3.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
@@ -153,7 +153,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 400],
             "dvdt_falling": [0, 400],
             "AP_HW": [0, 3.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
@@ -170,7 +170,7 @@ def set_ylims(experiment):
             "dvdt_rising": [0, 200],
             "dvdt_falling": [0, 200],
             "AP_HW": [0, 3.0],
-            "AHP_depth_V": [-75, -45],
+            "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
@@ -187,7 +187,7 @@ def set_ylims(experiment):
             "dvdt_falling": [0, 1000],
             "AP_HW": [0, 2.5],
             "AP_thr_V": [-75, 0],
-            "AHP_depth_V": [-85, -45],
+            "AHP_depth_V": [-85, -40],
             "AdaptRatio": [0, 5],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
@@ -298,54 +298,6 @@ def rename_groups(row, experiment):
 
 printflag = False
 pd.set_option("display.max_columns", 40)
-
-
-# def setup(expt, region="DCN"):
-#     adddata = None
-#     print("expt: ", expt)
-#     if region == "DCN":
-#         if expt.endswith("NIHL"):
-#             excelsheet = "NIHL_IVs_PCT.xlsx"
-#             # adddata = "cleaned_NIHL_IVs_PCT.xlsx"
-
-#         elif expt.endswith("_Age"):
-#             excelsheet = Path(
-#                 experiment["analyzeddatapath"],
-#                 experiment["directory"],
-#                 "CBA_Age_28_Dec_2023.xlsx",
-#             )  #  "Het_AP_PCT.xlsx"
-#             adddata = Path(
-#                 experiment["analyzeddatapath"],
-#                 experiment["directory"],
-#                 "CBA_IVs_PCT_cleaned.xlsx",
-#             )
-
-#             analysis_cell_types = [
-#                 "pyramidal",
-#                 "tuberculoventral",
-#                 "cartwheel",
-#                 "giant",
-#             ]
-#         elif expt.endswith("Het"):
-#             excelsheet = "Het_AP_PCT.xlsx"
-#             adddata = "cleaned_Het_AP_PCT.xlsx"
-#             analysis_cell_types = [
-#                 "pyramidal",
-#                 "tuberculoventral",
-#                 "cartwheel",
-#                 # "giant",
-#             ]
-#     # excelsheet = "test.xlsx"
-#     elif region == "VCN":
-#         if expt.endswith("NIHL"):
-#             excelsheet = "nihl_AP_BuSt.xlsx"
-#         else:
-#             excelsheet = "Het_AP_BuSt.xlsx"
-#         analysis_cell_types = ["bushy", "stellate"]
-#     else:
-#         raise ValueError(f"Region {region:s} is not known")
-
-#     return excelsheet, analysis_cell_types, adddata
 
 
 def setup(experiment):
@@ -562,7 +514,7 @@ class PlotSpikeInfo(QObject):
         FD = filter_data.FilterDataset(df)
         df = FD.clean_data_files(
             df,
-            remove_groups=["C", "D", "?", "X", "30D", "nan"],
+            remove_groups=self.experiment["remove_groups"],
             excludeIVs=self.experiment["excludeIVs"],
             exclude_internal=["cesium", "Cesium"],
             exclude_temperature=["25C", "room temp"],
@@ -571,6 +523,7 @@ class PlotSpikeInfo(QObject):
         )
         df["dvdt_falling"] = -df["dvdt_falling"]
         CP("m", "Finished reading files\n")
+        # print("Protocols: ", df.protocol.unique())
         return df
 
     def combine_by_cell(self, df, plot_fits=False, valid_protocols=None):
@@ -595,7 +548,9 @@ class PlotSpikeInfo(QObject):
         if self.experiment["celltypes"] != ["all"]:
             df = df[df.cell_type.isin(self.experiment["celltypes"])]
         print("3: in selected cell types", len(df))
+        print("4: Protocols: ", df.protocol.unique())
         print("Combine by cell")
+
 
         df["shortdate"] = df.apply(
             make_datetime_date, colname="date", axis=1
@@ -619,6 +574,8 @@ class PlotSpikeInfo(QObject):
                 continue
             datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
             df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
+            # print("4: Protocols: ", df_new.protocol.unique())
+            # exit()
         return df_new
 
     def to_1D(self, series):
@@ -817,33 +774,23 @@ class PlotSpikeInfo(QObject):
             row.SR = 0
         return row.SR
 
-    def relabel_axes(self, P):
-        # relabel axes by dict:
-        relabel_dict = {
-            "Group": None,
-            "dvdt_rising": "Rising dV/dt (mV/ms)",
-            "dvdt_falling": "Falling dV/dt (mV/ms)",
-            "AP_HW": "AP Halfwidth (ms)",
-            "AP_thr_V": "AP Threshold (mV)",
-            "AdaptRatio": "Adaptation Ratio",
-            "FISlope": "FI Slope (sp/nA)",
-            "maxHillSlope": "Max Hill Slope (sp/nA)",
-            "I_maxHillSlope": "I at Max Hill Slope (pA)",
-            "FIMax_1": "Spike Rate at 1 nA",
-            "FIMax_4": "Spike Rate at 4 nA",
-            "taum": "Membrane Time Constant (ms)",
-            "Rin": "Input Resistance (MOhm)",
-            "RMP": "Resting Membrane Potential (mV)",
-        }
-        for ax_str in P.axdict:
-            ax = P.axdict[ax_str]
-            xlab = ax.get_xlabel()
-            if xlab in relabel_dict.keys():
-                ax.set_xlabel(relabel_dict[xlab])
-            ylab = ax.get_ylabel()
-            if ylab in relabel_dict.keys():
-                ax.set_ylabel(relabel_dict[ylab])
-        return
+    def relabel_yaxes(self, axp, measure):
+        if "new_ylabels" in self.experiment.keys():
+            if measure in self.experiment["new_ylabels"]:
+                axp.set_ylabel(self.experiment["new_ylabels"][measure])
+
+    def relabel_xaxes(self, axp):
+        if "new_xlabels" in self.experiment.keys():
+            print("relabel x axes")
+            xlabels = axp.get_xticklabels()
+            print("existing xlabels: ", xlabels)
+            for i, label in enumerate(xlabels):
+                labeltext = label.get_text()
+                if labeltext in self.experiment["new_xlabels"]:
+                    xlabels[i] = self.experiment["new_xlabels"][labeltext]   
+            axp.set_xticklabels(xlabels)  # we just replace them... 
+        else:
+            print("no new x labels available")
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
@@ -862,14 +809,14 @@ class PlotSpikeInfo(QObject):
             "dvdt_falling": -1.0,
             "taum": 1e3,
         }
-        for measure in rescaling.keys():
+        for measure, scale in rescaling.items():
             if measure not in df.columns:
                 continue
             df[measure] = df.apply(
                 self.rescale_values_apply,
                 axis=1,
                 measure=measure,
-                scale=rescaling[measure],
+                scale=scale,
             )
         return df
 
@@ -891,15 +838,15 @@ class PlotSpikeInfo(QObject):
             )
 
     def summary_plot_spike_parameters_categorical(
-        self,
-        df,
-        xname: str,
-        hue_category=None,
-        plot_order: Union[None, list] = None,
-        measures: Union[None, list] = None,
-        colors=None,
-        enable_picking=False,
-    ):
+            self,
+            df,
+            xname: str,
+            hue_category=None,
+            plot_order: Union[None, list] = None,
+            measures: Union[None, list] = None,
+            colors=None,
+            enable_picking=False,
+        ):
         """Make a summary plot of spike parameters for selected cell types.
 
         Args:
@@ -935,7 +882,6 @@ class PlotSpikeInfo(QObject):
             horizontalspacing=0.07,
         )
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
-        self.relabel_axes(P)
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         picker_funcs = {}
@@ -968,6 +914,11 @@ class PlotSpikeInfo(QObject):
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                     axp.set_xlabel("")
+                else:
+                    self.relabel_xaxes(axp)
+                self.relabel_yaxes(axp, measure=measure)
+
+
                 # if icol > 0:
                 #     axp.set_ylabel("")
                 #     print("removed ylabel from ", icol, measure, celltype)
@@ -1052,6 +1003,8 @@ class PlotSpikeInfo(QObject):
             logx=logx,
         )
         ax.scatter(x=dfp[x], y=dfp[y], c="b", s=4, picker=True)
+        self.relabel_yaxes(ax, measure=y)
+        self.relabel_xaxes(ax)
         if ylims is not None:
             ax.set_ylim(ylims[celltype][y])
         if xlims is not None:
@@ -1110,7 +1063,6 @@ class PlotSpikeInfo(QObject):
         print("cat plot: celltype: ", celltype, len(dfp))
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
-        print(len(dfp))
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
         if transform is not None:
             dfp[y] = dfp[y].apply(transform)
@@ -1129,7 +1081,8 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
-
+        self.relabel_yaxes(ax, measure=y)
+        self.relabel_xaxes(ax)
         if picker_func is not None:
             picker_func.setData(dfp.copy(deep=True))
         else:
@@ -1327,7 +1280,6 @@ class PlotSpikeInfo(QObject):
             horizontalspacing=0.07,
         )
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
-        self.relabel_axes(P)
 
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
@@ -1442,6 +1394,7 @@ class PlotSpikeInfo(QObject):
             "CCIV_long",
         ],  # , "CCIV_"],
         mode=["individual"],
+        group_by: str = "Group",
         colors: Union[dict, None] = None,
         plot_order: Union[None, list] = None,
         enable_picking: bool = False,
@@ -1463,7 +1416,12 @@ class PlotSpikeInfo(QObject):
         """
         print("summaryplotFI")
         df = df.copy()
-        df = df.rename({"iv_name": "protocol"}, axis="columns")
+        # The "protocol" field is not meaningful here as we combined the FI curves
+        # in the combine_fi_curves function.
+        # if "protocol" not in df.columns:
+        #     df = df.rename({"iv_name": "protocol"}, axis="columns")
+        # print("unique protocols: ", df["protocol"].unique())
+        # print("protocols: ", df["protocols"])
         plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         P = PH.regular_grid(
             len(self.experiment["celltypes"]),
@@ -1478,19 +1436,19 @@ class PlotSpikeInfo(QObject):
                 "leftmargin": 0.15,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.05,
+            verticalspacing=0.08,
             horizontalspacing=0.1,
             fontsize={"label": 12, "tick": 8, "panel": 16},
         )
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         # First, limit to just one IV curve type
-        allprots = []
-        for protocol in protosel:
-            # if protocol != "CCIV_":
-            #     allprots.extend([f"{protocol:s}_{i:03d}" for i in range(3)])
-            # else:
-                allprots.extend([protocol])
+        # allprots = []
+        # for protocol in protosel:
+        #     # if protocol != "CCIV_":
+        #     #     allprots.extend([f"{protocol:s}_{i:03d}" for i in range(3)])
+        #     # else:
+        #         allprots.extend([protocol])
         ymax = {
             "pyramidal": 500,
             "tuberculoventral": 600,
@@ -1536,28 +1494,29 @@ class PlotSpikeInfo(QObject):
                 cdd = df[df["celltype"] == celltype]
             else:
                 cdd = df.copy()
-            print("Unique CCIVs: ", celltype, cdd["protocol"].unique())
-            N = self.experiment["group_map"]
 
+            N = self.experiment["group_map"]
+            print("Ncells keys: ", NCells.keys())
+            print("N keys: ", N.keys())
             if "mean" in mode:  # set up arrays to compute mean
                 FIy_all: dict = {k: [] for k in N.keys()}
                 FIx_all: dict = {k: [] for k in N.keys()}
 
             for index in cdd.index:
-                group = cdd["Group"][index]
+                group = cdd[group_by][index]
                 if (celltype, group) not in NCells.keys():
                     NCells[(celltype, group)] = 0
                     print("   added ", (celltype, group), " to NCells")
 
-                if group == "?":
-                    continue
-                if group not in N.keys():
-                    continue
+                # if group == "?":
+                #     continue
+                # if group not in N.keys():
+                #     continue
                 NCells[(celltype, group)] += 1
                 # if cdd["protocol"][index].startswith("CCIV_"):
                 #     this_protocol = "CCIV_"
                 # else:
-                this_protocol = cdd["protocol"][index]  # [
+                # this_protocol = cdd["protocol"][index]  # # not meaningful if protocols are combined[
                 #                    :-4
                 #               ]  # get protocol, strip number
                 # print("This protocol: ", this_protocol, "sel: ", protosel, cdd["protocol"][index])
@@ -1588,7 +1547,7 @@ class PlotSpikeInfo(QObject):
                     ax.plot(
                         fix * 1e9,
                         fiy,
-                        color=colors[group],
+                        color= colors[group],
                         marker="o",
                         markersize=2.5,
                         linewidth=0.5,
@@ -1596,6 +1555,7 @@ class PlotSpikeInfo(QObject):
                         alpha=0.35,
                     )
                 if "mean" in mode:
+                    print("Fiy keys: ", FIy_all.keys())
                     FIy_all[group].append(np.array(FI_data[1]))
                     FIx_all[group].append(np.array(FI_data[0]) * 1e9)
 
@@ -1847,7 +1807,6 @@ class PlotSpikeInfo(QObject):
 
         df = self.read_data_files(excelsheet, adddata)
         originalmax = np.max(df.dvdt_rising)
-
         df = self.combine_by_cell(df, plot_fits=plot_fits)
         print(originalmax, np.max(df.dvdt_rising))
         print("Writing assembled data to : ", fn)
@@ -1903,6 +1862,7 @@ class PlotSpikeInfo(QObject):
             if fn in list(df.cell_id.values):
                 df.drop(df.loc[df.cell_id == fn].index, inplace=True)
                 CP("r", f"dropped {fn:s} from analysis, reason = {fns.split(':')[1]:s}")
+
         return df
 
     def do_stats(

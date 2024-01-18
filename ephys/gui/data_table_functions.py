@@ -797,7 +797,7 @@ class Functions:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
-            CP("m", f"day_slice_cell: {day_slice_cell:s}")
+            CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
             if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
                 continue
             fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
@@ -813,7 +813,10 @@ class Functions:
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = list(srs.keys())  # only count valid protocols
-
+        if len(protocols) > 0:
+            protname = "combined"
+        else:
+            protname = protocols[0]
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
             "cell_id": cell,
@@ -823,7 +826,7 @@ class Functions:
             "weight": str(df_tmp.weight.values[0]),
             "sex": str(df_tmp.sex.values[0]),
             "cell_type": df_tmp.cell_type.values[0],
-            "protocol": "",
+            "protocol": protname,
             "protocols": list(df_cell.IV),
             "sample_rate": srs,
             "duration": dur,
