@@ -287,6 +287,7 @@ class DataSummary:
             "cell_expression",
             "cell_important",
             "cell_id",
+
         ]
         self.data_defs = [
             "data_incomplete",

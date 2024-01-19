@@ -89,15 +89,15 @@ class FilterDataset:
 
         return row.cell_id2
 
-    def clean_data_files(
+    def filter_data_entries(
         self,
         df: pd.DataFrame,
         remove_groups: list = ["C", "D", "?", "X", "30D", "nan"],
         excludeIVs: list = [],
-        exclude_internal: list = ["cesium", "Cesium"],
-        exclude_temperature: list = ["25C", "room temp"],
-        analysis_cell_types: list = ["pyramidal", "cartwheel", "tuberculoventral"],
-        verbose: bool = False,
+        exclude_internals: list = ["cesium", "Cesium"],
+        exclude_temperatures: list = ["25C", "room temp"],
+        exclude_unimportant: bool = False,
+        verbose: bool = True,
     ):
         """clean_data_files Remove cells by group, exclusion,
         internal solution, temperature, empty cell_id.
@@ -122,9 +122,10 @@ class FilterDataset:
         _type_
             _description_
         """
-        print("\nCleaning database")
+        CP.cprint("y", "Filtering data entries")
         if remove_groups is not None:
             for group in remove_groups:
+                CP.cprint("y", f"    Filtering out group: {group:s}")
                 df.drop(df.loc[df["Group"] == group].index, inplace=True)
 
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
@@ -136,29 +137,40 @@ class FilterDataset:
                 df.drop(df.loc[df.cell_id2 == fn].index, inplace=True)
                 CP.cprint(
                     "r",
-                    f"Excluded {fn:s} from analysis, reason = {fns.split(':')[1]:s}",
+                    f"Excluding {fn:s} from analysis, reason = {fns.split(':')[1]:s}",
                 )
         # exclude certain internal solutions
-        for internal in exclude_internal:
-            df = df[df["internal"] != internal]
-
+        if exclude_internals is not None:
+            CP.cprint("y", f"    Starting with Internal Solutions: {df['internal'].unique()!s}")
+            for internal in exclude_internals:
+                CP.cprint("y", f"    Filtering out recordings with internal: {internal:s}")
+                df = df[df["internal"] != internal]
+            CP.cprint("y", f"   Remaining Internal Solutions: {df['internal'].unique()!s}")
+ 
         # exclude certain temperatures
-        for temperature in exclude_temperature:
-            df = df[df["temperature"] != temperature]
-
+        if exclude_temperatures is not None:
+            CP.cprint("y", f"    Starting with Temperatures: {df['temperature'].unique()!s}")
+            for temperature in exclude_temperatures:
+                CP.cprint("y", f"    Filtering out recordings with temperature: {temperature:s}")
+                df = df[df["temperature"] != temperature]
+            CP.cprint("y", f"    Remaining temperatures: {df['temperature'].unique()!s}")
+ 
+        # exclude "not" important
+        if exclude_unimportant:
+            CP.cprint("y", f"    Starting with Important: {df['important'].unique()!s}")
+            df = df[df["important"] == True]
+            CP.cprint("y", f"    Remaining important: {df['important'].unique()!s}")
+        
         if verbose:
             print("Groups Accepted: ", list(set(df.Group)))
             print("Internal Solutions Accepted: ", list(set(df.internal)))
             print("Temperatures Accepted: ", list(set(df.temperature)))
-            print("Dates in combined data after culling: ", list(set(df.date)))
+            print("Dates in combined data after culling: ", sorted(list(set(df.date))))
             print("   # days: ", len(list(set(df.date))))
             print("   # selected: ", len(df))
-            print(
-                "   in selected cells: ",
-                len(list(df.cell_type.isin(analysis_cell_types))),
-            )
-        # print("unique protocols: ", list(set(df.protocol)))
 
+        print("Unique protocols: ", list(set(df.protocol)))
+        print("Unique groups: ", list(set(df.Group)))
         return df
 
     def do_filters(self, row):

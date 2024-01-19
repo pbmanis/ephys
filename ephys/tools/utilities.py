@@ -705,18 +705,18 @@ class Utility:
                             a=lwin, window="hanning") # , *args, **kwargs):
         dt = old_dt/upfactor
         ydv = self.deriv1(y, dt) # compute max rising slope in upsampled data
-        print("len ydv, y: ", len(ydv), len(y))
+        # print("len ydv, y: ", len(ydv), len(y))
         i_pk = np.argmax(y) # spike peak index
         if lwin == i_pk:
             lwin -= 1
             i_pk += 1  # give algorithm some room
-            print("ydv[lwin:i_pk]: ", ydv[lwin:i_pk])
-        print("lwin: ", lwin, "i_pk: ", i_pk, "max: ", np.max(ydv[lwin:i_pk]), np.argmax(ydv[lwin:i_pk]))
+            # print("ydv[lwin:i_pk]: ", ydv[lwin:i_pk])
+        # print("lwin: ", lwin, "i_pk: ", i_pk, "max: ", np.max(ydv[lwin:i_pk]), np.argmax(ydv[lwin:i_pk]))
         i_dv_peak = np.argmax(ydv[lwin:i_pk])+lwin  # get the peak rising phase of spike, excluding the lanczos window
         # print("peak index, deriv: ", i_dv_peak, np.max(ydv))
         thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= threshold_slope)[0]
-        print("ydv: ", ydv[lwin:i_dv_peak])
-        print(thrpt_dv, lwin, i_dv_peak, len(ydv), threshold_slope)
+        # print("ydv: ", ydv[lwin:i_dv_peak])
+        # print(thrpt_dv, lwin, i_dv_peak, len(ydv), threshold_slope)
         thrpt_dv = thrpt_dv[-1] + lwin # first point on rising phase where slope is below threshold
         itmin =  0
         # itmax:int = np.argmax(ydv) # limit to max rising slope time
