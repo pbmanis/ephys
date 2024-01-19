@@ -205,6 +205,16 @@ class IVAnalysis(Analysis):
         )
         CP.cprint("m", f"File: {str(cell_directory):s}")
         CP.cprint("m", f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}")
+
+        cell_index = self.AR.getIndex(cell_directory)
+        if "important" in cell_index.keys():
+            important = cell_index["important"]
+            CP.cprint("m", f"   Important: {important!s}")
+        else:
+            CP.cprint("r", f"   Important flag: not found")   
+            important = False 
+        if not important:  # cell not marked important, so skip
+            return
         # CP.cprint("m", f"Notes: {self.df.iloc[icell].notes!s}")
         # print(self.df.columns)
         # CP.cprint("m", f"Location: {self.df.iloc[icell].cell_location!s}")
@@ -302,7 +312,6 @@ class IVAnalysis(Analysis):
                 print("     not appended")
 
         validivs = allivs 
-        print("original valid ivs: ", validivs)
         # build a list of all exclusions
         exclude_ivs = []
         for ex_cell in self.exclusions.keys():
@@ -491,6 +500,15 @@ class IVAnalysis(Analysis):
                 msg,   )
             Logger.error(msg)
             exit()
+        if self.important_flag_check:
+            if not self.AR.checkProtocolImportant(protocol_directory):
+                msg = f"Skipping protocol marked as not important: {str(protocol_directory):s}"
+                CP.cprint(
+                    "r",
+                    msg,
+                )
+                Logger.info(msg)
+                return (None, 0)
 
         self.configure(
             protocol_directory,
@@ -617,6 +635,9 @@ class IVAnalysis(Analysis):
                 self.datapath
             )  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            if self.important_flag_check:
+                if not self.AR.protocol_important:
+                    return None  # skip this protocol
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(
                 clamps=self.AR,
@@ -660,7 +681,7 @@ class IVAnalysis(Analysis):
             msg = f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             print(msg)
             Logger.error(msg)
-            return None
+        return None
 
     def plot_iv(self, pubmode=False) -> Union[None, object]:
         if not self.plot:
