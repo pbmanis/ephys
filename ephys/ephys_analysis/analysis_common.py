@@ -95,6 +95,7 @@ class cmdargs:
     slicecell: Union[str, None] = None
     protocol: Union[str, None] = None
     configfile: Union[str, None] = None
+    important_flag_check: bool = False
     iv_flag: bool = False
     vc_flag: bool = False
     map_flag: bool = False
@@ -188,6 +189,7 @@ class Analysis:
         self.vc_flag = args.vc_flag
         self.map_flag = args.map_flag
 
+        self.important_flag_check = args.important_flag_check
         # output controls
         self.merge_flag = args.merge_flag
 
