@@ -156,7 +156,7 @@ class ProcessSpikeAnalysis:
     ):
         """Get the IV protocol from this dataframe row.
         This is meant to be used in an "df.apply" function, so the row is passed in.
-
+        Also checks the protocol "important" flag and adds it to the row information.
         Args:
             row (_type_): _description_
             pdf_pages:
@@ -368,7 +368,17 @@ class ProcessSpikeAnalysis:
 
             if not dataok:
                 return row  # no update
-
+            CP("m", f"\nFullpath to protocol: {fullpatha!s}")
+            row.important = AR.checkProtocolImportant(fullpatha)
+            # print("protocol_index: ", protocol_index)
+            # if important:
+            #     # print(f"   Protocol index important: <{protocol_index["important]"!s}>")
+            #     row.important = important
+            #     # CP("m", f"   Important: {row.important!s}")
+            # else:
+            #     CP("r", f"   Important flag: not found, set False")   
+            #     row.important = False 
+            # return row
             args = analysis_common.cmdargs  # get from default class
             args.dry_run = False
             args.merge_flag = True
@@ -476,16 +486,14 @@ class ProcessSpikeAnalysis:
 
         if codesheet is not None:
             df_codes = pd.read_excel(codesheet)
+        
         assert result_sheet is not None
 
         df_summary = pd.read_pickle(datasummary)
 
-        # generate short names list
-        # df['shortdate'] = df.apply(_make_short_name, axis=1)
-
-        # df_new['date'] = sorted(list(df['shortdate', right_on='Date', how='left')
-        # print("codesheet: ", codesheet)
         # print("code_df: ", df_codes.date)
+        # NOTE: This merge requires that the date fields in both the codes and summary files
+        # match up. If they don't the problem is likely in the coding file date names.
 
         if codesheet is not None:
             df = pd.merge(
@@ -493,9 +501,16 @@ class ProcessSpikeAnalysis:
             )
         else:
             df = df_summary
-            df["Group"] = "B"  # all are control if there is no codesheet
+            df["Group"] = "Control"  # all are control if there is no codesheet
             df["ID"] = ""  # no animal ID here
             df["Date"] = ""  # no Data from here
+  
+        if 'sex_x' in df.columns and 'sex_y' in df.columns:
+            # two different sets of data in the merge with same name.
+            df['sex_x'].fillna(df['sex_y'], inplace=True)
+            df.loc[df["sex_x"] == ' ','sex_x'] = df["sex_y"]
+            df.rename(columns={"sex_x": "sex"}, inplace=True)
+            df.drop(['sex_y'], axis=1)
 
         print("Number of potential cells: ", len(df))
         df["protocol"] = np.nan
@@ -526,6 +541,7 @@ class ProcessSpikeAnalysis:
         print(df["protocol"].unique())
         Logger.info(f"Number of protocols of right type for analysis: {len(df):d}")
         add_cols = [
+            "important",
             "holding",
             "sample_rate",
             "RMP",
@@ -572,7 +588,7 @@ class ProcessSpikeAnalysis:
                 first_col=i + 1, last_col=i + 1, width=column_width
             )  # column_dimensions[str(column.title())].width = column_width
         writer.close()
-        CP("g", f"Spike analysis complete. Results in {str(result_sheet):s}")
+        CP("g", f"\nSpike analysis complete. Results in {str(result_sheet):s}\n{'='*80:s}\n")
         return df
 
     def process_spikes(self):

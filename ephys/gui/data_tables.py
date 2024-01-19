@@ -230,6 +230,8 @@ class DataTables:
         self.picker_active = False
         self.show_pdf_on_pick = False
         self.dry_run = False
+        self.exclude_unimportant = False
+
         self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
@@ -392,10 +394,13 @@ class DataTables:
                 "expanded": False,
                 "children": [
                     {"name": "Analyze Selected IVs", "type": "action"},
+                    {"name": "Analyze Selected IVs m/Important", "type": "action"},
                     {"name": "Dry run (test)", "type": "bool", "value": False},
                     {"name": "Analyze ALL IVs", "type": "action"},
+                    {"name": "Analyze ALL IVs m/Important", "type": "action"},
                     {"name": "Process Spike Data", "type": "action"},
                     {"name": "Assemble IV datasets", "type": "action"},
+                    {"name": "Exclude unimportant in assembly", "type": "bool", "value": False},
                 ],
             },
             {
@@ -749,9 +754,15 @@ class DataTables:
                     match path[1]:
                         case "Dry run (test)":
                             self.dry_run = data
+                        
+                        case "Exclude unimportant in assembly":
+                            self.exclude_unimportant = data
 
                         case "Analyze ALL IVs":
                             self.analyze_ivs("all")
+
+                        case "Analyze ALL IVs m/Important":
+                            self.analyze_ivs("important")
 
                         case "Analyze Selected IVs":  # work from the *datasummary* table.
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
@@ -773,6 +784,26 @@ class DataTables:
                                 self.iv_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
+                        case "Analyze Selected IVs m/Important":  # work from the *datasummary* table.
+                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            if index_rows is None:
+                                return
+
+                            FUNCS.textappend(
+                                f"Analyze IVs from selected cell(s) at rows: {len(index_rows)!s}"
+                            )
+                            self.Dock_Report.raiseDock()  # so we can monitor progress
+                            for index_row in index_rows:
+                                selected = self.DS_table_manager.get_table_data(index_row)
+                                FUNCS.textappend(f"    Selected: {selected!s}")
+                                pathparts = Path(selected.cell_id).parts
+                                day = pathparts[0]
+                                slicecell = f"S{pathparts[1][-1]:s}C{pathparts[2][-1:]:s}"
+                                FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                                self.analyze_ivs(mode="selected", important=True, day=day, slicecell=slicecell)
+                                self.iv_finished_message()
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
+
                         case "Assemble IV datasets":
                             (
                                 excelsheet,
@@ -780,11 +811,21 @@ class DataTables:
                                 adddata,
                             ) = plot_spike_info.setup(self.experiment)
                             print("adddata: ", adddata)
+                            print(self.experiment["coding_file"])
+                            if self.experiment["coding_file"] is not None:
+                                coding_file = Path(self.experiment["analyzeddatapath"], 
+                                            self.experiment["directory"], 
+                                            self.experiment["coding_file"])
+                            else:
+                                coding_file = None
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("adddata: ", adddata)
                             self.PSI.assemble_datasets(
                                 excelsheet=excelsheet,
                                 adddata=adddata,
+                                coding_file=coding_file,
+                                coding_sheet=self.experiment["coding_sheet"],
+                                exclude_unimportant=self.exclude_unimportant,
                                 fn=fn,
                             )
 
@@ -1179,9 +1220,19 @@ class DataTables:
                                 return
                             self.print_file_info(selected)
 
-    def analyze_ivs(self, mode="all", day: str = None, slicecell: str = None):
+    def analyze_ivs(self, mode="all", important:bool=False, day: str = None, slicecell: str = None):
         """
         Analyze the IVs for the selected cell
+        Parameters
+        mode can be: "all", "selected", "important"
+        If all, all protocols are analyzed.
+        if selected, only the selected protocols are analyzed for the day/slicecell
+        if important, only the "important" protocols are analyzed for the day/slicecell
+
+        important: bool 
+            if True, we pay attention to the "Important" flag in the data.
+            Otherwise, we just analyze everything.
+
         """
         args = analysis_common.cmdargs  # get from default class
         args.dry_run = self.dry_run
@@ -1190,6 +1241,8 @@ class DataTables:
         args.iv_flag = True
         args.map_flag = False
         args.autoout = True
+        if mode == "important" or important:
+            args.important_flag_check = True # only analyze the "important" ones
 
         args.verbose = False
         args.spike_threshold = self.experiment['AP_threshold_V']  # always in Volts
@@ -1346,7 +1399,7 @@ class DataTables:
                 self.experiment["datasummaryFilename"],
             ),
             subdirs=self.experiment["extra_subdirectories"],
-            dryrun=True,
+            dryrun=False,
             depth="all",
             verbose=True,
         )

@@ -384,7 +384,7 @@ class Functions:
                 selected = table_manager.get_table_data(index_row)
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
-                cell_df, _ = self.get_cell(experiment, assembleddata, cell=selected.cell_id)
+                cell_df, cell_df_tmp = self.get_cell(experiment, assembleddata, cell=selected.cell_id)
                 protocols = list(cell_df["Spikes"].keys())
                 min_index = None
                 min_current = 1
@@ -770,30 +770,33 @@ class Functions:
                     f"Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
                 )
                 return True
-            print("    Protocol passed: ", protocol)
+        print("    Protocol passed: ", protocol)
         return False
 
     def compute_FI_Fits(
         self,
         experiment,
-        df,
-        cell,
+        df: pd.DataFrame,
+        cell: str,
+        protodurs: list = [1.0],
         plot_fits: bool = False,
         ax: Union[mpl.Axes, None] = None,
     ):
-        print("Cell: ", cell)
+        CP("g", f"\n{'='*80:s}\nCell: {cell!s}")
         df_cell, df_tmp = self.get_cell(experiment, df, cell)
         if df_cell is None:
             return None
-
+        print("    df_tmp group>>: ", df_tmp.Group.values)
+        print("    df_cell group>>: ", df_cell.keys())
         protocols = list(df_cell.Spikes.keys())
         spike_keys = list(df_cell.Spikes[protocols[0]].keys())
         iv_keys = list(df_cell.IV[protocols[0]].keys())
 
         srs = {}
         dur = {}
+        important = {}
         # for each CCIV type of protocol that was run:
-        for protocol in protocols:
+        for nprot, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
@@ -808,7 +811,9 @@ class Functions:
                     duration = AR.tend - AR.tstart
                     srs[protocol] = sample_rate
                     dur[protocol] = duration
-                except:
+                    important[protocol] = AR.checkProtocolImportant(fullpath)
+                    CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                except ValueError:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
@@ -817,16 +822,25 @@ class Functions:
             protname = "combined"
         else:
             protname = protocols[0]
+        # parse group correctly.
+        # the first point in the Group column is likely a nan.
+        # if it is, then use the next point.
+        print("Group: ", df_tmp.Group, "protoname: ", protname)
+        group = df_tmp.Group.values[0]
+
+
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
+            "Subject": str(df_tmp.cell_id.values[0]),
             "cell_id": cell,
-            "Group": str(df_tmp.Group.values[0]),
+            "Group": group,
             "Date": str(df_tmp.Date.values[0]),
             "age": str(df_tmp.age.values[0]),
             "weight": str(df_tmp.weight.values[0]),
             "sex": str(df_tmp.sex.values[0]),
             "cell_type": df_tmp.cell_type.values[0],
             "protocol": protname,
+            "important": important,
             "protocols": list(df_cell.IV),
             "sample_rate": srs,
             "duration": dur,
@@ -836,24 +850,36 @@ class Functions:
         for measure in datacols:
             datadict = self.get_measure(df_cell, measure, datadict, protocols, threshold_slope=experiment["AP_threshold_dvdt"])
         # now combine the FI data across protocols for this cell
-        FI_Data_I1_ = []
-        FI_Data_FR1_ = []  # firing rate
-        FI_Data_I4_ = []
-        FI_Data_FR4_ = []  # firing rate
-        FI_fits = {"fits": [], "pars": [], "names": []}
-        linfits = []
-        hill_max_derivs = []
-        hill_i_max_derivs = []
+        FI_Data_I1_:list_ = []
+        FI_Data_FR1_:list_ = []  # firing rate
+        FI_Data_I4_:list_ = []
+        FI_Data_FR4_:list_ = []  # firing rate
+        FI_fits:dict = {"fits": [], "pars": [], "names": []}
+        linfits:list = []
+        hill_max_derivs:list = []
+        hill_i_max_derivs:list = []
         protofails = 0
         for protocol in protocols:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
+            # check if duration is acceptable:
+            if protodurs is not None:
+                durflag = False
+                for d in protodurs:
+                    if not np.isclose(dur[protocol], d):
+                        durflag = True
+                if durflag:
+                    CP("y", f"    >>>> Protocol {protocol:s} has duration of {dur[protocol]:e}")
+                    CP("y", f"               This is not in accepted limits of: {protodurs!s}")
+                    continue
+                else:
+                    CP("g", f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[protocol]:e}")
             # print("protocol: ", protocol, "spikes: ", df_cell.Spikes[protocol]['spikes'])
             if len(df_cell.Spikes[protocol]["spikes"]) == 0:
-                print("skipping protocol with no spikes: ", protocol)
+                CP("y", f"    >>>> Skipping protocol with no spikes:  {protocol:s}")
                 continue
             else:
-                print("analyzing FI for protocol: ", protocol)
+                CP("g", f"   >>>> Analyzing FI for protocol: {protocol:s}")
             try:
                 fidata = df_cell.Spikes[protocol]["FI_Curve"]
             except KeyError:
@@ -912,8 +938,10 @@ class Functions:
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
         datadict["current"] = FI_Data_I1
         datadict["spsec"] = FI_Data_FR1
-        datadict["Subject"] = df_tmp.cell_id.values[0]
-        datadict["celltype"] = df_tmp.cell_type.values[0]
+        # datadict["Subject"] = df_tmp.cell_id.values[0]
+        # datadict["Group"] = df_tmp.Group.values[0]
+        # datadict["sex"] = df_tmp.sex.values[0]
+        # datadict["celltype"] = df_tmp.cell_type.values[0]
         datadict["pars"] = [FI_fits["pars"]]
         datadict["names"] = []
         datadict["fit"] = [FI_fits["fits"]]
@@ -943,7 +971,11 @@ class Functions:
 
     def get_cell(self, experiment, df: pd.DataFrame, cell: str):
         df_tmp = df[df.cell_id == cell]
+        df_tmp = df_tmp.dropna(subset=["Date"])
+        print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].tolist(), "\n len df_tmp: ", len(df_tmp))
 
+        if len(df_tmp) == 0:
+            return None, None
         try:
             celltype = df_tmp.cell_type.values[0]
         except ValueError:
@@ -995,10 +1027,10 @@ class Functions:
             return None, None
         try:
             df_cell = pd.read_pickle(datapath, compression="gzip")
-        except:
+        except ValueError:
             try:
                 df_cell = pd.read_pickle(datapath)  # try with no compression
-            except:
+            except ValueError:
                 CP("r", f"Could not read {datapath!s}")
                 raise ValueError("Failed to read compressed pickle file")
         if df_cell.Spikes is None:
@@ -1007,13 +1039,15 @@ class Functions:
                 f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protos:",
             )
             return None, None
-        print(
-            "df_cell: ",
-            df_cell.age,
-            df_cell.cell_type,
-            "N spike protos: ",
-            len(df_cell.Spikes),
-        )
+        # print(
+        #     "df_cell: ",
+        #     df_cell.age,
+        #     df_cell.cell_type,
+        #     "N spike protos: ",
+        #     len(df_cell.Spikes),
+        #     "\n",
+        #     df_tmp['Group'],
+        # )
         return df_cell, df_tmp
 
     def get_lowest_current_spike(self, row, SP):

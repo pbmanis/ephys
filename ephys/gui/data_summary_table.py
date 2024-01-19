@@ -63,6 +63,7 @@ class IndexData:
     ephys_hash: str = ephys_git_hash  # save hash for the model code
     date: str = ""
     cell_id: str=""
+    important: str=""
     description: str=""
     notes: str=""
     species: str=""
@@ -111,6 +112,7 @@ class TableManager:
         Index_data.project_code_hash = git_head_hash  # this repository!
         Index_data.date = str(row.date)
         Index_data.cell_id = str(row.cell_id)
+        Index_data.important = str(row.important)
         Index_data.description = textwrap.fill(str(row.description), width=40)
         Index_data.notes = textwrap.fill(str(row.notes), width=40)
         Index_data.species = str(row.species)
@@ -152,6 +154,7 @@ class TableManager:
             [
                 (
                 indxs[i].cell_id,
+                indxs[i].important,
                 indxs[i].description,
                 indxs[i].notes,
                 indxs[i].species,
@@ -178,6 +181,7 @@ class TableManager:
             ],
             dtype=[
                 ("cell_id", object),  # 0
+                ("important", object),  # 1
                 ("description", object),  # 1
                 ("notes", object),  # 2
                 ("species", object),  # 3
