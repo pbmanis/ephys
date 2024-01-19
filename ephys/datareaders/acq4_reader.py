@@ -263,6 +263,9 @@ class acq4_reader:
             CP.cprint("acq4_reader.checkProtocol: No devices in the protocol")
             CP.cprint("  Here are the keys: \n", info.keys())
             return False
+        if "important" in info.keys():
+            CP.cprint("r", "Important flag set for protocol: {0:s}".format(protocolpath))
+            
         devices = info["devices"].keys()
         clampDevices = []
         for d in devices:
@@ -685,7 +688,7 @@ class acq4_reader:
         """
         try:
             return info[1]["ClampState"]["holding"]
-        except:
+        except KeyError:
             return 0.0
 
     def _getImportant(self, info: Union[int, dict]):
@@ -699,6 +702,15 @@ class acq4_reader:
         # CP.cprint('r', f"_getImportant: Important flag was identified: {important:b}")
         return important
 
+    def checkProtocolImportant(self, protocol):
+        """
+        Check the *protocol dir* to see if the protocol is marked as "important"
+        """
+        self.setProtocol(protocol)
+        self.info = self.getIndex(self.protocol)  # self.protocol)
+        important=self._getImportant(self.info)
+        return important
+
     def getData(self, pos: int = 1, check: bool = False, allow_partial=False, silent=True):
         """
         Get the data for the current protocol
@@ -710,6 +722,7 @@ class acq4_reader:
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
+        
         self.error_info = None # clear any previous error info
         dirs = self.subDirs(self.protocol)
         if len(dirs) == 0:
@@ -734,6 +747,9 @@ class acq4_reader:
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         self.info = self.getIndex(self.protocol)  # self.protocol)
+        self.protocol_important = self._getImportant(
+            self.info
+        )  # sa
         holdcheck = False
         holdvalue = 0.0
         switchchan = False
@@ -779,9 +795,7 @@ class acq4_reader:
         self.holding = holdvalue
         trx = []
         cmd:list = []
-        self.protocol_important = self._getImportant(
-            self.info
-        )  # save the protocol importance flag
+
         # CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
         sequence_values = None
         self.sequence = []
