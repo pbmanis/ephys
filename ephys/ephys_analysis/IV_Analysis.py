@@ -20,6 +20,7 @@ import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 
 import ephys.tools.build_info_string as BIS
+import ephys.tools.functions as functions
 from ephys.ephys_analysis.analysis_common import Analysis
 import ephys.datareaders.acq4_reader as acq4_reader
 import ephys.ephys_analysis.spike_analysis as spike_analysis
@@ -201,7 +202,8 @@ class IVAnalysis(Analysis):
         )
         Logger.info(msg)
         cell_directory = Path(
-            self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
+            # self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
+            self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id
         )
         CP.cprint("m", f"File: {str(cell_directory):s}")
         CP.cprint("m", f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}")
@@ -231,13 +233,14 @@ class IVAnalysis(Analysis):
 
         # clean up data in IV and Spikes : remove Posix
         def _cleanup_ivdata(results: dict):
-            import numpy
+
 
             if isinstance(results, dict) and len(results) == 0:
                 results = None
             if results is not None:
                 for r in list(results.keys()):
                     u = results[r]
+                    print("r, u: ", r, "  :  ", u)
                     for k in u.keys():
                         if isinstance(u[k], dict):
                             for uk in u[k].keys():
@@ -248,10 +251,10 @@ class IVAnalysis(Analysis):
                         if k in ["taupars", "RMPs", "Irmp"]:
                             # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, nfloat)):
                             # print("type for ", k, type(u[k]))
-                            if isinstance(u[k], numpy.ndarray):
+                            if isinstance(u[k], np.ndarray):
                                 u[k] = u[k].tolist()
                             elif isinstance(u[k], list) and len(u[k]) > 0:
-                                if isinstance(u[k][0], numpy.ndarray):
+                                if isinstance(u[k][0], np.ndarray):
                                     u[k] = u[k][0].tolist()
                             elif isinstance(u[k], float):
                                 u[k] = float(u[k])
@@ -299,12 +302,11 @@ class IVAnalysis(Analysis):
 
         nfiles = 0
         allivs = []
-        print(allprots)
         print("allprots: ", allprots["CCIV"])
         cciv_protocols = list(self.experiment['protocols']["CCIV"].keys())
         for protoname in allprots["CCIV"]:  # check all the protocols
             protocol_type = str(Path(protoname).name)[:-4]
-            print(" protocol type: ", protocol_type)
+            print(" protocol type: ", protocol_type, end="")
             if protocol_type in cciv_protocols: # ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
                 allivs.append(protoname)  # combine into a new list
                 print("     appended")
@@ -323,11 +325,14 @@ class IVAnalysis(Analysis):
             if iv_proto in validivs:
                 validivs.remove(iv_proto)
         print("Valid IDs: ", validivs)
-        nworkers = 8  # number of cores/threads to use
+        print("NoParallel: ", self.noparallel)
+        nworkers = self.nworkers  # number of cores/threads to use
+        print("nworkers: ", nworkers)
         tasks = range(len(validivs))  # number of tasks that will be needed
         results: dict = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
+
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
@@ -371,6 +376,7 @@ class IVAnalysis(Analysis):
             riv = {}
             rsp = {}
             for f in list(results.keys()):
+                print("f: ", f)
                 if "IV" in results[f]:
                     riv[f] = _cleanup_ivdata(results[f]["IV"])
                 if "Spikes" in results[f]:
@@ -554,6 +560,7 @@ class IVAnalysis(Analysis):
                 refractory=self.refractory,
                 bridge_offset=br_offset,
                 tgap=tgap,
+                max_spikeshape=self.max_spikeshape,
                 plotiv=True,
                 full_spike_analysis=True,
             )
@@ -638,6 +645,12 @@ class IVAnalysis(Analysis):
             if self.important_flag_check:
                 if not self.AR.protocol_important:
                     return None  # skip this protocol
+            # downsample, but also change the data in the acq4Reader
+            if self.downsample > 1 and self.AR.sample_rate > 1e4:
+                print("Decimating with: ", self.decimate)
+                self.AR.traces = functions.downsample(self.AR.traces, n=self.downsample, axis=1)
+                self.AR.cmd_wave = functions.downsample(self.AR.cmd_wave, n=self.downsample, axis=1)
+                self.AR.time_base = functions.downsample(self.AR.time_base, n=self.downsample, axis=0)
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(
                 clamps=self.AR,
@@ -650,7 +663,7 @@ class IVAnalysis(Analysis):
             )
             self.SP.analyzeSpikes()
             if full_spike_analysis:
-                self.SP.analyzeSpikeShape()
+                self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
                 # self.SP.analyzeSpikes_brief(mode="evoked")
                 self.SP.analyzeSpikes_brief(mode="baseline")
                 self.SP.analyzeSpikes_brief(mode="poststimulus")

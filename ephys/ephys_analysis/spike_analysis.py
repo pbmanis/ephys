@@ -392,7 +392,7 @@ class SpikeAnalysis:
         self.analysis_summary["AHP_Trough"] = np.inf  # convert to mV
 
     def analyzeSpikeShape(
-        self, printSpikeInfo=False, begin_dV=12.0, max_spikeshape: Union[int, None] = 5
+        self, printSpikeInfo=False, begin_dV=12.0, max_spikeshape: Union[int, None] = 5,
     ):
         """analyze the spike shape.
         Does analysis of ONE protocol, all traces.
@@ -424,6 +424,7 @@ class SpikeAnalysis:
             maxspikes in a trial (trace) are analyzed. The rest are counted and latency measured,
             but there is no detailed analysis.
             if None, all spikes are analyzed
+        
 
         Returns
         -------
@@ -460,9 +461,15 @@ class SpikeAnalysis:
                 self.Clamps.tstart,
             )
             trspikes = OrderedDict()
-            for j in range(len(self.spikes[i])):
+            if max_spikeshape is None:
+                jmax = len(self.spikes[i])
+            else:
+                jmax = max_spikeshape
+            for j in range(jmax):
                 # if max_spikeshape is not None and j > max_spikeshape:
                 #     continue
+                if j >= len(self.spikeIndices[i]):
+                    continue
                 # print('i,j,etc: ', i, j, begin_dV)
                 thisspike = self.analyze_one_spike(i, j, begin_dV)
                 if thisspike is not None:

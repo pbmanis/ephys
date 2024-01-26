@@ -122,7 +122,8 @@ class MAP_Analysis(Analysis):
                     validmaps.append(p)
         allprots["maps"] = validmaps
 
-        nworkers = 16  # number of cores/threads to use
+        computername = get_computer()
+        nworkers = self.experiment["NWORKERS"][computername]  # number of cores/threads to use
         tasks = range(len(allprots["maps"]))  # number of tasks that will be needed
         results = dict()  # storage for results
         result = [None] * len(tasks)  # likewise

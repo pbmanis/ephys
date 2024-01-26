@@ -116,7 +116,9 @@ class cmdargs:
     recalculate_events: bool = True
 
     # analysis parameters
+    downsample: int = 1
     ivduration: float = 0.0
+    max_spikeshape: int = 5
     threshold: float = 2.5  # cb event detection threshold (x baseline std)
     refractory: float = 0.0007  # absolute refractory period
     signflip: bool = False
@@ -138,6 +140,7 @@ class cmdargs:
     detrend_method: Union[str, None] = None
     detrend_order: int = 5
     detector: str = "cb"
+    nworkers: int = 1
 
 
 class Analysis:
@@ -194,6 +197,7 @@ class Analysis:
         self.merge_flag = args.merge_flag
 
         self.dry_run = args.dry_run
+        self.nworkers = args.nworkers
         self.verbose = args.verbose
         self.autoout = args.autoout
         self.excel = args.excel
@@ -208,8 +212,9 @@ class Analysis:
         self.recalculate_events = args.recalculate_events
 
         # analysis parameters
-
+        self.downsample = 1
         self.ivduration = args.ivduration
+        self.max_spikeshape = args.max_spikeshape
         self.threshold = args.threshold
         self.refractory = args.refractory
         self.signflip = args.signflip
@@ -1235,7 +1240,7 @@ class Analysis:
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = self.check_celltype(celltype)
-
+        self.prots_done = []
         fullfile = Path(self.rawdatapath, self.df.iloc[icell].cell_id)
 
         self.get_markers(fullfile, verbose=True)
@@ -1253,10 +1258,10 @@ class Analysis:
                     )
                     return  False# skip this data set
 
-        if not fullfile.is_dir():
+        if not fullfile.is_dir():  # moves one down? 
             fullfile = Path(
                 self.df.iloc[icell]["data_directory"],
-                self.experiment["directory"],
+                # self.experiment["directory"],
                 self.make_cellstr(self.df, icell, shortpath=True),
             )
 
@@ -1295,7 +1300,8 @@ class Analysis:
         if not fullfile.is_dir():
             # check for the cell directoyr
             msg = "   But that cell was not found.\n"
-            msg += f"{str(self.df.iloc[icell]):s}\n\n"
+            msg += f"{str(self.df.iloc[icell]):s}\n"
+            msg += f"    {str(fullfile):s}\n"
             CP.cprint("r", msg)
             print("*" * 40)
             Logger.warning(msg)
@@ -1313,20 +1319,22 @@ class Analysis:
             # check for the protocol paths
             for prottype in allprots.keys():
                 for prot in allprots[prottype]:
-                    ffile = Path(self.df.iloc[icell].data_directory, self.experiment['directory'], prot)
+                    # ffile = Path(self.df.iloc[icell].data_directory, self.experiment['directory'], prot)
+                    ffile = Path(self.df.iloc[icell].data_directory,  prot)
                     if not ffile.is_dir():
                         msg = f"file/protocol day={icell:d} not found: {str(ffile):s}\n"
                         msg += f"    {str(prottype):s}  {str(prot):s}\n"
                         CP.cprint("r",msg)
                         Logger.error(msg)
                         exit()
-                    if ffile in self.prots_done:
-                        print("prots done?: " )
-                        print("ffile: ", ffile)
-                        exit()
-                        return False
-                    else:
-                        self.prots_done.append(ffile)  # avoid duplicats.
+                    # if ffile in self.prots_done:
+                    #     print("prots done?: " )
+                    #     print("ffile: ", ffile)
+                    #     print("appears in: \n", self.prots_done)
+                    #     # exit()
+                    #     return False
+                    # else:
+                    #     self.prots_done.append(ffile)  # avoid duplicats.
         else:
             msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(allprots['maps']):4d} map protocols"
@@ -1376,7 +1384,7 @@ class Analysis:
             msg = f"Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}"
             CP.cprint("c", msg)
             Logger.info(msg)
-            if self.df.iloc[icell]["Spikes"] is None:
+            if "Spikes" not in self.df.iloc[icell].keys() or self.df.iloc[icell]["Spikes"] is None:
                 msg = f"   @@@ Spikes array is empty @@@"
                 CP.cprint("r", msg)
                 Logger.warning(msg)
