@@ -12,11 +12,13 @@ import numpy as np
 import pandas as pd
 import pingouin as ping
 import pylibrary.plotting.plothelpers as PH
-import scikit_posthocs as sp
+import scikit_posthocs
 import seaborn as sns
 import statsmodels.api as sa
 import statsmodels.formula.api as sfa
 import statsmodels.formula.api as smf
+import scipy.stats
+
 from pylibrary.tools import cprint
 from pyqtgraph.Qt.QtCore import QObject
 from statsmodels.stats.multitest import multipletests
@@ -53,13 +55,13 @@ def set_ylims(experiment):
         ylims_pyr = {
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
-            "AP_HW": [0, 1.0],
+            "AP_HW": [0, 1000],
             "AP_thr_V": [-75, 0],
             "AHP_depth_V": [-75, -40],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1500],
-            "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0, 1200],
+            "maxHillSlope": [0, 5000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -69,13 +71,13 @@ def set_ylims(experiment):
         ylims_tv = {
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
-            "AP_HW": [0, 1.0],
+            "AP_HW": [0, 1000],
             "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0, 250],
+            "I_maxHillSlope": [0, 0.5],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -85,13 +87,13 @@ def set_ylims(experiment):
         ylims_cw = {
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
-            "AP_HW": [0, 1.0],
+            "AP_HW": [0, 1000],
             "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 8],
             "FISlope": [0, 250],
-            "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0, 1000],
+            "maxHillSlope": [0, 5000],
+            "I_maxHillSlope": [0, 0.5],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -102,13 +104,13 @@ def set_ylims(experiment):
         ylims_giant = {
             "dvdt_rising": [0, 800],
             "dvdt_falling": [0, 800],
-            "AP_HW": [0, 1.0],
+            "AP_HW": [0, 1000],
             "AHP_depth_V": [-75, -40],
             "AP_thr_V": [-75, 0],
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
-            "I_maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -124,7 +126,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
-            "I_maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
@@ -141,7 +143,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
-            "I_maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
@@ -158,7 +160,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
-            "I_maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
@@ -175,7 +177,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 2],
             "FISlope": [0, 1000],
             "maxHillSlope": [0, 1000],
-            "I_maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
@@ -191,7 +193,7 @@ def set_ylims(experiment):
             "AdaptRatio": [0, 5],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0, 1200],
+            "I_maxHillSlope": [0, 1.2],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -208,7 +210,7 @@ def set_ylims(experiment):
             "t-stellate": ylims_tstellate,
             "d-stellate": ylims_dstellate,
             "octopus": ylims_octopus,
-            "all": ylims_all, # a default set when "all" is specified in the configuration
+            "all": ylims_all,  # a default set when "all" is specified in the configuration
         }
         return ylims
 
@@ -235,7 +237,7 @@ class Picker(QObject):
         # print(dir(event.mouseevent))
         # print(event.mouseevent.inaxes == ax)
         # print(ax == self.axis)
-        print(self.data.iloc[event.ind])  # find the matching data.
+        # print("psi.Picker pickEvent: ", self.data.iloc[event.ind])  # find the matching data.
         return
 
 
@@ -447,11 +449,13 @@ def make_datetime_date(row, colname="Date"):
 
 
 class PlotSpikeInfo(QObject):
-    def __init__(self, dataset, experiment):
+    def __init__(self, dataset, experiment, pick_display=False, pick_display_function=None):
         self.set_experiment(dataset, experiment)
         self.transforms = {
             # "maxHillSlope": np.log10,
         }
+        self.pick_display = pick_display
+        self.pick_display_function = pick_display_function
 
     def set_experiment(self, dataset, experiment):
         """set_experiment Update the selected dataset and experiment so we
@@ -469,6 +473,8 @@ class PlotSpikeInfo(QObject):
         # print("experiment: ", experiment)
         self.ylims = set_ylims(self.experiment)
 
+    def set_pick_display_function(self, function):
+        self.pick_display_function = function
 
     def read_config_file(self, df, coding_file, coding_sheet):
         df3 = pd.read_excel(coding_file, sheet_name=coding_sheet)
@@ -480,15 +486,22 @@ class PlotSpikeInfo(QObject):
             if row.Date in df3.date.values:
                 df.loc[index, "Group"] = df3[df3.date == row.Date].Group.values[0]
                 df.loc[index, "sex"] = df3[df3.date == row.Date].sex.values[0]
-                CP("m", f"setting groups and sex in assembled table: {df.loc[index, 'Group']!s}, {df.loc[index, 'sex']!s}")
+                CP(
+                    "m",
+                    f"setting groups and sex in assembled table: {df.loc[index, 'Group']!s}, {df.loc[index, 'sex']!s}",
+                )
             else:
                 df.loc[index, "Group"] = np.nan
         return df
-    
 
-    def read_intermediate_result_files(self, excelsheet, adddata=None, 
-                                       coding_file=None, coding_sheet="Sheet1",
-                                       exclude_unimportant=False):
+    def read_intermediate_result_files(
+        self,
+        excelsheet,
+        adddata=None,
+        coding_file=None,
+        coding_sheet="Sheet1",
+        exclude_unimportant=False,
+    ):
         """read_intermediate_result_files _summary_
 
         Parameters
@@ -498,7 +511,7 @@ class PlotSpikeInfo(QObject):
         adddata : _type_, optional
             analysis result data to merge with main excel sheet, by default None
         coding_file: string or Path, optional
-            excel file with coding information (full date, plus Group and sex columns as needed), 
+            excel file with coding information (full date, plus Group and sex columns as needed),
             by default None.
             Do not specify this if the Group column in the excelsheet already has valid groups,
             and the sex is already specified as well.
@@ -526,18 +539,19 @@ class PlotSpikeInfo(QObject):
             ages = [f"P{i:2d}D" for i in range(12, 170)]
             df2 = pd.read_excel(adddata)
             if self.experiment["celltypes"] != ["all"]:
-                df2 = df2[df2["cell_type"].isin(self.experiment["celltypes"])]  # limit to cell types
+                df2 = df2[
+                    df2["cell_type"].isin(self.experiment["celltypes"])
+                ]  # limit to cell types
             df2 = df2[df2["age"].isin(ages)]  # limit ages
             df2["Date"] = df2["date"]
             df2 = df2.apply(make_cell_id, axis=1)
             df = pd.concat([df, df2], ignore_index=True)
         else:
             print("    No data to add")
-        
+
         # print(df['Date'])
         # if coding_file is not None:
         #     df = self.read_config_file(df, coding_file, coding_sheet)
-
 
         FD = filter_data.FilterDataset(df)
         print("self.experiment['celltypes']: ", self.experiment["celltypes"])
@@ -550,7 +564,7 @@ class PlotSpikeInfo(QObject):
             exclude_unimportant=exclude_unimportant,
             verbose=True,
         )
-        
+
         df["dvdt_falling"] = -df["dvdt_falling"]
         CP("m", "Finished reading files\n")
         # print("Protocols: ", df.protocol.unique())
@@ -580,16 +594,16 @@ class PlotSpikeInfo(QObject):
         print("3: in selected cell types", len(df))
         print("4: Protocols: ", df.protocol.unique())
         print("5: # Cell IDs: ", len(df.cell_id.unique()))
+        # for index in df.index:
+        #     print("6: # cellids: ", index, df.iloc[index].cell_id, df.iloc[index].cell_type)
         print("Combine by cell")
-
         df["shortdate"] = df.apply(
             make_datetime_date, colname="date", axis=1
         )  # make a short date as a datetime for sorting
-
+        print("# Dates in original data range: ", len(df))
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
         print("# Dates in specified time range: ", len(df))
-
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
         dfdict = {col: [] for col in cols}
@@ -600,10 +614,10 @@ class PlotSpikeInfo(QObject):
             if cell is None:
                 CP.cprint("r", f"Cell # {icell:d} in the database is None")
                 continue
-
+            # print(cell, df[df.cell_id==cell].cell_type)
             datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
-            # print("datadict: ", datadict)
-
+            if datadict is None:
+                continue
             df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
         return df_new
 
@@ -688,60 +702,87 @@ class PlotSpikeInfo(QObject):
         if df_x[yname].isnull().values.all(axis=0):
             return None
         df_x.dropna(subset=["Group"], inplace=True)
-        df_x = self.fill_missing_groups(df_x, xname, celltype)
+        df_x = self.fill_missing_groups(df_x, xname, celltype)  # make sure emtpy groups have nan
 
         # print("      Celltype: ", celltype, " Groups: ", df_x.Group.unique())
         # print("      X values: ", xname)
 
         dodge = True
         if hue_category == "sex":
-            hue_palette = {"F": "#FF000088", "M": "#0000ff88", " ": "k"}
+            hue_palette = {
+                "F": "#FF000088",
+                "M": "#0000ff88",
+                " ": "k",
+                "AIE": "#444488FF",
+                "CON": "#9999ddFF",
+            }
         elif hue_category == "temperature":
             hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
         else:
             hue_category = xname
-            hue_palette = None
+            hue_palette = colors
             dodge = False
-
-
-        print("hue category: ", hue_category)
-        print("hue palette: ", hue_palette)
-        print("plot order: ", plot_order)
-        print("xname: ", xname)
-        try:
-            sns.boxplot(
-                data=df_x,
+        # print("plotting bar plot for ", celltype, yname, hue_category)
+        # must use scatterplot if you want to use picking.
+        if enable_picking:
+            sns.scatterplot(
                 x=xname,
                 y=yname,
+                data=df_x,
+                # dodge=dodge,
+                # jitter=True, # only for scatterplot
+                size=3.5,
+                # fliersize=None,
+                alpha=1.0,
+                ax=ax,
                 hue=hue_category,
                 palette=hue_palette,
-                ax=ax,
-                order=plot_order,
-                saturation=0.25,
-                orient="v",
-                showfliers=False,
+                edgecolor="k",
                 linewidth=0.5,
+                hue_order=plot_order,
+                picker=enable_picking,
+                zorder=100,
             )
-        except Exception as e:
-            print("boxplot failed for ", celltype, yname)
-            raise e  # re-raise the exception
-        sns.stripplot(
+        else:
+            sns.stripplot(
+                x=xname,
+                y=yname,
+                data=df_x,
+                # dodge=dodge,
+                # jitter=True, # only for scatterplot
+                size=3.5,
+                # fliersize=None,
+                jitter=0.25,
+                alpha=1.0,
+                ax=ax,
+                hue=hue_category,
+                palette=hue_palette,
+                edgecolor="k",
+                linewidth=0.5,
+                hue_order=plot_order,
+                order=plot_order,
+                picker=enable_picking,
+                zorder=100,
+            )
+
+        sns.boxplot(
+            data=df_x,
             x=xname,
             y=yname,
-            data=df_x,
-            dodge=dodge,
-            jitter=True,
-            size=3.5,
-            # fliersize=None,
-            alpha=1.0,
-            ax=ax,
             hue=hue_category,
             palette=hue_palette,
-            edgecolor="k",
-            linewidth=0.5,
+            ax=ax,
             order=plot_order,
-            picker=enable_picking,
+            saturation=0.25,
+            orient="v",
+            showfliers=False,
+            linewidth=0.5,
+            zorder=50,
         )
+        # except Exception as e:
+        #     print("boxplot failed for ", celltype, yname)
+        #     raise e  # re-raise the exception
+
         # print("bar pts picking enabled: ", enable_picking)
         # if not enable_picking:
         #     raise ValueError("Picking not enabled")
@@ -758,8 +799,10 @@ class PlotSpikeInfo(QObject):
             loc="upper left",
         )
         if enable_picking:
-            picker_func = Picker()  # create a new insatnce of the picker class
-            picker_func.setData(df_x.copy(deep=True))  # and set the data
+            picker_func = Picker(
+                space=2, data=df_x.copy(deep=True), axis=ax
+            )  # create a new instance of the picker class
+            print("Set PICKER data")
         else:
             picker_func = None
         return picker_func
@@ -810,16 +853,15 @@ class PlotSpikeInfo(QObject):
 
     def relabel_xaxes(self, axp):
         if "new_xlabels" in self.experiment.keys():
-            print("relabel x axes")
             xlabels = axp.get_xticklabels()
-            print("existing xlabels: ", xlabels)
             for i, label in enumerate(xlabels):
                 labeltext = label.get_text()
                 if labeltext in self.experiment["new_xlabels"]:
-                    xlabels[i] = self.experiment["new_xlabels"][labeltext]   
-            axp.set_xticklabels(xlabels)  # we just replace them... 
+                    xlabels[i] = self.experiment["new_xlabels"][labeltext]
+            axp.set_xticklabels(xlabels)  # we just replace them...
         else:
-            print("no new x labels available")
+            pass
+            #  print("no new x labels available")
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
@@ -828,13 +870,13 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values(self, df):
         rescaling = {
-            "AP_HW": 1e3,
+            "AP_HW": 1e6,  # convert to usec
             "AP_thr_V": 1e3,
             "AHP_depth_V": 1e3,
             "AHP_trough_V": 1e3,
             "FISlope": 1e-9,
             "maxHillSlope": 1,
-            "I_maxHillSlope": 1,
+            "I_maxHillSlope": 1e-3,
             "dvdt_falling": -1.0,
             "taum": 1e3,
         }
@@ -867,15 +909,15 @@ class PlotSpikeInfo(QObject):
             )
 
     def summary_plot_spike_parameters_categorical(
-            self,
-            df,
-            xname: str,
-            hue_category=None,
-            plot_order: Union[None, list] = None,
-            measures: Union[None, list] = None,
-            colors=None,
-            enable_picking=False,
-        ):
+        self,
+        df,
+        xname: str,
+        hue_category=None,
+        plot_order: Union[None, list] = None,
+        measures: Union[None, list] = None,
+        colors=None,
+        enable_picking=False,
+    ):
         """Make a summary plot of spike parameters for selected cell types.
 
         Args:
@@ -898,7 +940,7 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             ncols,
             order="rowsfirst",
-            figsize=(figure_width, 2.5*len(self.experiment["celltypes"])+1.0),
+            figsize=(figure_width, 2.5 * len(self.experiment["celltypes"]) + 1.0),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
@@ -922,9 +964,10 @@ class PlotSpikeInfo(QObject):
                 tf = self.transforms[measure]
             else:
                 tf = None
+            print(self.ylims.keys())
             for i, celltype in enumerate(self.experiment["celltypes"]):
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-                picker_funcs[axp] = self.create_one_plot_categorical(
+                picker_func = self.create_one_plot_categorical(
                     data=df,
                     xname=xname,
                     y=measure,
@@ -939,7 +982,7 @@ class PlotSpikeInfo(QObject):
                     xlims=None,
                     enable_picking=enable_picking,
                 )
-
+                picker_funcs[axp] = picker_func  # each axis has different data...
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                     axp.set_xlabel("")
@@ -947,12 +990,12 @@ class PlotSpikeInfo(QObject):
                     self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=measure)
 
-
                 # if icol > 0:
                 #     axp.set_ylabel("")
                 #     print("removed ylabel from ", icol, measure, celltype)
 
-        if any(picker_funcs) is not None and enable_picking:
+        print("picking: ", enable_picking, picker_funcs)
+        if len(picker_funcs) > 0 and enable_picking:
             P.figure_handle.canvas.mpl_connect(
                 "pick_event", lambda event: self.pick_handler(event, picker_funcs)
             )
@@ -969,18 +1012,33 @@ class PlotSpikeInfo(QObject):
         return P, picker_funcs
 
     def pick_handler(self, event, picker_funcs):
-        for pf in picker_funcs.keys():
-            if event.mouseevent.inaxes == pf:
-                print("\nDataframe index: ", event.ind)
-                cell = picker_funcs[pf].data.iloc[event.ind]
-                print(f"   {cell['cell_id'].values[0]:s}")  # find the matching data.
-                age = get_age(cell["age"])
+        print("\n\n\nPICKER")
+        if picker_funcs is None:
+            return
+        if event.mouseevent.inaxes in picker_funcs.keys():
+            picker_func = picker_funcs[
+                event.mouseevent.inaxes
+            ]  # get the picker function for this axis
+            print("\nDataframe index: ", event.ind)
+            print("# values in data: ", len(picker_func.data))
+            for i in event.ind:
+                cell = picker_func.data.iloc[i]
+
+                print(f"   {cell['cell_id']:s}")  # find the matching data.
                 print(
-                    f"       {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
+                    "cell:\n", cell["age"], cell["Group"], cell["cell_type"], cell["age_category"]
                 )
-                print(f"       Protocols: {cell['protocols'].values[0]!s}")
-                print(cell["dvdt_rising"], cell["dvdt_falling"])
-                return cell["cell_id"].values[0]
+                # age = get_age(cell["age"])
+                # print(
+                #     f"       {cell['cell_type'].values[0]:s}, Age: P{age:d}D Group: {cell['Group'].values[0]!s}"
+                # )
+                # print(f"       Protocols: {cell['protocols'].values[0]!s}")
+                # print(cell["dvdt_rising"], cell["dvdt_falling"])
+            # if self.pick_display:
+            if len(event.ind) == 1:
+                cell_by_id = picker_func.data.iloc[event.ind[0]]["cell_id"]
+                self.pick_display_function(cell_by_id)
+            return cell_by_id
         return None
 
     def create_one_plot_continuous(
@@ -1039,7 +1097,7 @@ class PlotSpikeInfo(QObject):
         if xlims is not None:
             ax.set_xlim(xlims)
         picker_func = Picker()
-        picker_func.setData(dfp.copy(deep=True))
+        picker_func.setData(dfp.copy(deep=True), axis=ax)
         return picker_func
         # picker_funcs[celltype].setAction(handle_pick) # handle_pick is a function that takes the index of the picked point as an argument
 
@@ -1089,7 +1147,8 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data.copy()
-        print("cat plot: celltype: ", celltype, len(dfp))
+        print("cat plot: celltype: ", celltype, xname, len(dfp))
+        print("colors: ", colors)
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
@@ -1112,10 +1171,7 @@ class PlotSpikeInfo(QObject):
             ax.set_xlim(xlims)
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
-        if picker_func is not None:
-            picker_func.setData(dfp.copy(deep=True))
-        else:
-            picker_func = None
+
         return picker_func
 
     def clean_Rin(self, row):
@@ -1285,6 +1341,7 @@ class PlotSpikeInfo(QObject):
         print("\nSummary Plot rmtau categorical")
         print("# of entries in the table: ", len(df))
         df = df.copy()
+        print("len df: ", len(df))
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         measures = ["RMP", "Rin", "taum"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))]
@@ -1296,7 +1353,7 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             len(measures),
             order="rowsfirst",
-            figsize=(figure_width, 2.5*len(self.experiment["celltypes"])),
+            figsize=(figure_width, 2.5 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
@@ -1456,7 +1513,7 @@ class PlotSpikeInfo(QObject):
             len(self.experiment["celltypes"]),
             1,
             order="rowsfirst",
-            figsize=(4, 2.5*len(self.experiment["celltypes"])+1.0),
+            figsize=(4, 2.5 * len(self.experiment["celltypes"]) + 1.0),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
@@ -1465,7 +1522,7 @@ class PlotSpikeInfo(QObject):
                 "leftmargin": 0.15,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.08,
+            verticalspacing=0.1,
             horizontalspacing=0.1,
             fontsize={"label": 12, "tick": 8, "panel": 16},
         )
@@ -1491,9 +1548,9 @@ class PlotSpikeInfo(QObject):
             "all": 500,
         }
         pos = {
-            "pyramidal": [0.4, 0.15],
-            "tuberculoventral": [0.4, 0.15],
-            "cartwheel": [0.4, 0.15],
+            "pyramidal": [0.0, 1.0],
+            "tuberculoventral": [0.0, 1.0],
+            "cartwheel": [0.0, 1.0],
             "bushy": [0.05, 0.95],
             "stellate": [0.6, 0.4],
             "t-stellate": [0.6, 0.4],
@@ -1511,6 +1568,7 @@ class PlotSpikeInfo(QObject):
         fi_stats = []
         NCells: Dict[tuple] = {}
         picker_funcs: Dict = {}
+        found_groups = []
 
         for i, celltype in enumerate(self.experiment["celltypes"]):
             print("cell types to analyze: ", self.experiment["celltypes"])
@@ -1518,30 +1576,24 @@ class PlotSpikeInfo(QObject):
             ax.set_title(celltype.title(), y=1.05)
             ax.set_xlabel("I$_{inj}$ (nA)")
             ax.set_ylabel("Rate (sp/s)")
-
+            print(df.columns)
             if celltype != "all":
-                cdd = df[df["celltype"] == celltype]
+                cdd = df[df["cell_type"] == celltype]
             else:
                 cdd = df.copy()
+            if group_by == "age_category":  # apply new grouping
+                cdd["age_category"] = cdd.apply(self.categorize_ages, axis=1)
 
             N = self.experiment["group_map"]
-            print("Ncells keys: ", NCells.keys())
-            print("N keys: ", N.keys())
+
             if "mean" in mode:  # set up arrays to compute mean
                 FIy_all: dict = {k: [] for k in N.keys()}
                 FIx_all: dict = {k: [] for k in N.keys()}
-
             for index in cdd.index:
                 group = cdd[group_by][index]
                 if (celltype, group) not in NCells.keys():
                     NCells[(celltype, group)] = 0
-                    print("   added ", (celltype, group), " to NCells")
 
-                # if group == "?":
-                #     continue
-                # if group not in N.keys():
-                #     continue
-                NCells[(celltype, group)] += 1
                 # if cdd["protocol"][index].startswith("CCIV_"):
                 #     this_protocol = "CCIV_"
                 # else:
@@ -1552,23 +1604,22 @@ class PlotSpikeInfo(QObject):
                 # exit()
                 # if this_protocol not in protosel:
                 #     continue
-                # print("CCIV: \n", cdd["FI_Curve"][index], "\n")
                 if pd.isnull(cdd["cell_id"][index]):
                     continue
                 FI_data = FUNCS.convert_FI_array(cdd["FI_Curve"][index])
-
                 if len(FI_data[0]) == 0:
                     continue
-                # print("max FI_data current: ", np.max(FI_data[0]))
+
                 FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
-                # print("cell: ", cdd.cell_id[index])
-                # print("FI_data: ", FI_data, FI_data.shape)
                 if FI_data.shape == (2, 0):  # no fi data from the excel table....
                     continue
+
                 FI_data = self.limit_to_max_rate_and_current(
                     FI_data, imax=1.05e-9, id=cdd["cell_id"][index]
                 )
-                NCells[(celltype, group)] += 1
+                NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                if group not in found_groups:
+                    found_groups.append(group)
 
                 if "individual" in mode:
                     fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
@@ -1576,7 +1627,7 @@ class PlotSpikeInfo(QObject):
                     ax.plot(
                         fix * 1e9,
                         fiy,
-                        color= colors[group],
+                        color=colors[group],
                         marker="o",
                         markersize=2.5,
                         linewidth=0.5,
@@ -1584,16 +1635,15 @@ class PlotSpikeInfo(QObject):
                         alpha=0.35,
                     )
                 if "mean" in mode:
-                    print("Fiy keys: ", FIy_all.keys())
-                    FIy_all[group].append(np.array(FI_data[1]))
-                    FIx_all[group].append(np.array(FI_data[0]) * 1e9)
+                    if group in FIy_all.keys():
+                        FIy_all[group].append(np.array(FI_data[1]))
+                        FIx_all[group].append(np.array(FI_data[0]) * 1e9)
 
             if "mean" in mode:
                 for i, group in enumerate(FIy_all.keys()):
                     fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
                     if len(fx) == 0:
                         continue
-                    print("mean in mode: max group average current: ", np.max(fx))
                     ax.errorbar(
                         fx,
                         fy,
@@ -1605,69 +1655,68 @@ class PlotSpikeInfo(QObject):
                         clip_on=False,
                     )
 
-            yoffset = 0.0
-            xoffset = 0.0
-            xo2 = 0.0
-            if "individual" in mode:
-                yoffset = 0.7
-                xoffset = -0.35
-                if celltype == "pyramidal":
-                    xo2 = 0.0
-                else:
-                    xo2 = -0.45
-            for i, group in enumerate(self.experiment["group_legend_map"].keys()):
-                if celltype == "pyramidal" and (celltype, group) in NCells.keys():
-                    ax.text(
-                        x=pos[celltype][0] - 0.05 + xoffset + xo2,
-                        y=pos[celltype][1] - 0.095 * (i - 0.5) + yoffset,
-                        s=f"{self.experiment['group_legend_map'][group]:<24s}",
-                        ha="left",
-                        va="bottom",
-                        fontsize=8,
-                        color=colors[group],
-                        transform=ax.transAxes,
-                    )
-                # ax.text(
-                #     x=pos[celltype][0] + 0.4 + xoffset + xo2,
-                #     y=pos[celltype][1] - 0.0625 * (i - 0.5) + yoffset,
-                #     s=f"N={N[g]:>3d} cells",
-                #     ha="left",
-                #     va="bottom",
-                #     fontsize=8,
-                #     color=colors[g],
-                #     transform=ax.transAxes,
-                # )
-
             if celltype != "all":
                 ax.set_ylim(0, ymax[celltype])
                 if "individual" in mode:
                     ax.set_ylim(0, 750)
                 ax.set_xlim(0, 1.0)
+
+            yoffset = -0.025
+            xoffset = 0.0
+            xo2 = 0.0
+            # if "individual" in mode:
+            #     yoffset = 0.7
+            #     xoffset = -0.35
+            #     if celltype == "pyramidal":
+            #         xo2 = 0.0
+            #     else:
+            #         xo2 = -0.45
+            for i, group in enumerate(self.experiment["group_legend_map"].keys()):
+                if group not in found_groups:
+                    continue
+                if celltype == "pyramidal":  # more legend - name of group
+                    ax.text(
+                        x=pos[celltype][0] + xoffset + xo2,
+                        y=pos[celltype][1] - 0.095 * (i - 0.5) + yoffset,
+                        s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
+                        ha="left",
+                        va="top",
+                        fontsize=8,
+                        color=colors[group],
+                        transform=ax.transAxes,
+                    )
+                else:
+                    if (celltype, group) in NCells.keys():
+                        textline = f"N={NCells[(celltype, group)]:>3d}"
+                    else:
+                        textline = f"N={0:>3d}"
+                        
+                    ax.text(
+                        x=pos[celltype][0] + xoffset + xo2,
+                        y=pos[celltype][1] - 0.095 * (i - 0.5) + yoffset,
+                        s=textline,
+                        ha="left",
+                        va="top",
+                        fontsize=8,
+                        color=colors[group],
+                        transform=ax.transAxes,
+                    )
+
             print("-" * 80)
 
             if "mean" in mode:
                 for i, group in enumerate(self.experiment["group_legend_map"].keys()):
                     if (celltype, group) in NCells.keys():
                         fi_stats.append(
-                        {
-                            "celltype": celltype,
-                            "Group": group,
-                            "I_nA": fx,
-                            "sp_s": fy,
-                            "N": NCells[(celltype, group)],
-                        }
-                    )
-        print("Ncells: ", NCells)
-        # d_fi = pd.DataFrame(fi_stats)
-        # print(d_fi.columns)
-        # print(d_fi.sp_s)
-        # for celltype in self.experiment['celltypes']:
-        #     model = smf.mixedlm("sp_s ~ I_nA",
-        #             data = d_fi[d_fi['celltype'] == celltype],
-        #             groups=d_fi['Group'],
-        #             re_forumla = "~I_nA"
-        #             ).fit()
-        # print(model.summary())
+                            {
+                                "celltype": celltype,
+                                "Group": group,
+                                "I_nA": fx,
+                                "sp_s": fy,
+                                "N": NCells[(celltype, group)],
+                            }
+                        )
+
         return P, picker_funcs
 
     def rename_group(self, row, group_by: str):
@@ -1682,8 +1731,9 @@ class PlotSpikeInfo(QObject):
         group_by: str = None,
         second_group_by: str = None,
         statistical_comparisons: list = None,
+        parametric: bool = False,
+        nonparametric: bool = True,
     ):
-
         if celltype != "all":
             df_x = df[df.cell_type == celltype]
         # print(df_x.head())
@@ -1733,59 +1783,103 @@ class PlotSpikeInfo(QObject):
             )
             FUNCS.textappend(nodatatext)
             return
-        df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
-        if measure == "maxHillSlope":
-            df_clean["maxHillSlope"] = np.log(df_clean["maxHillSlope"])
-        lm = sfa.ols(f"{measure:s} ~ {group_by:s}", data=df_clean).fit()
-        anova = sa.stats.anova_lm(lm)
-        in8 = " " * 8
-        msg = f"\nANOVA: [{measure:s}]  celltype={celltype:s}\n\n {textwrap.indent(str(anova), in8)!s}"
-        stattext = "".join(["", CP("y", msg, textonly=True)])
-        print(stattext)
-        FUNCS.textappend(stattext)
-
-        lmt = f"\nOLS: \n{textwrap.indent(str(lm.summary()),in8)!s}"
-        stattext = "\n".join(["", CP("b", f"{lmt!s}", textonly=True)])
-        print(stattext)
-        FUNCS.textappend(stattext)
-        # ph = sp.posthoc_ttest(df_clean, val_col=measure, group_col="Group", p_adjust="holm")
-        # print(ph)
-
-        # res = stat()
-        # res.anova_stat(df=df_pyr, res_var='dvdt_rising', anova_model='dvdt_rising ~ C(Group)')
-        # print(res.anova_summary)
-
-        # sh = pairwise_tukeyhsd(df[measure], df["Group"])
-        # print(sh)
-
-        try:
-            pw = lm.t_test_pairwise(group_by, method="sh")
-            pwt = f"\nPairwise tests:\n{textwrap.indent(str(pw.result_frame), in8)!s}"
-            stattext = "\n".join(["", CP("b", f"{pwt!s}", textonly=True)])
-            FUNCS.textappend(stattext)
+        if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
+            # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
+            df_clean = df_clean.apply(self.categorize_ages, axis=1)
+        # print(df_clean[group_by].unique())
+        if parametric:
+            # if measure == "maxHillSlope":
+            #     df_clean["maxHillSlope"] = np.log(df_clean["maxHillSlope"])
+            lm = sfa.ols(f"{measure:s} ~ {group_by:s}", data=df_clean).fit()
+            anova = sa.stats.anova_lm(lm)
+            in8 = " " * 8
+            msg = f"\nANOVA: [{measure:s}]  celltype={celltype:s}\n\n {textwrap.indent(str(anova), in8)!s}"
+            stattext = "".join(["", CP("y", msg, textonly=True)])
             print(stattext)
+            FUNCS.textappend(stattext)
 
-            subdf = pw.result_frame.loc[statistical_comparisons]
-            mtests = multipletests(subdf["P>|t|"].values, method="sh")
+            lmt = f"\nOLS: \n{textwrap.indent(str(lm.summary()),in8)!s}"
+            stattext = "\n".join(["", CP("b", f"{lmt!s}", textonly=True)])
+            print(stattext)
+            FUNCS.textappend(stattext)
+            # ph = sp.posthoc_ttest(df_clean, val_col=measure, group_col="Group", p_adjust="holm")
+            # print(ph)
+
+            # res = stat()
+            # res.anova_stat(df=df_pyr, res_var='dvdt_rising', anova_model='dvdt_rising ~ C(Group)')
+            # print(res.anova_summary)
+
+            # sh = pairwise_tukeyhsd(df[measure], df["Group"])
+            # print(sh)
+
+            try:
+                pw = lm.t_test_pairwise(group_by, method="sh")
+                pwt = f"\nPairwise tests:\n{textwrap.indent(str(pw.result_frame), in8)!s}"
+                stattext = "\n".join(["", CP("b", f"{pwt!s}", textonly=True)])
+                FUNCS.textappend(stattext)
+                print(stattext)
+
+                subdf = pw.result_frame.loc[statistical_comparisons]
+                mtests = multipletests(subdf["P>|t|"].values, method="holm-sidak")  # "sh")
+                stattext = "\n".join(
+                    [
+                        "MultiComparison Tests:\n",
+                        CP("b", f"{textwrap.indent(str(mtests), in8)!s}", textonly=True),
+                    ]
+                )
+                subdf["adj_p"] = textwrap.indent(str(mtests[1]), in8)
+                stattext = "\n".join([stattext, CP("b", f"{subdf!s}", textonly=True)])
+                FUNCS.textappend(stattext)
+                print(stattext)
+
+            except (KeyError, ValueError) as error:
+                msg = f"****** Missing data for comparisons for {celltype:s} and {measure:s}\n{error!s}"
+                stattext = "\n".join([msg])
+            # # res = stat()
+            # # res.tukey_hsd(df=df_pyr, res_var='dvdt_rising', xfac_var='Group', anova_model='dvdt_rising ~ C(Group)')
+            # # print(res.tukey_summary)
+            # # print("=" * 40)
+            stattext = "\n".join([stattext, f"{'='*80:s}"])
+
+        if nonparametric:
+            # nonparametric:
+            msg = f"\nKW: [{measure:s}]  celltype={celltype:s}\n\n "
+            stattext = "".join(["", CP("y", msg, textonly=True)])
+            groups_in_data = df_clean[group_by].unique()
+            # print("Groups: ", groups_in_data)
+            data = [
+                df_clean.loc[ids, measure].values
+                for ids in df_clean.groupby("Group").groups.values()
+            ]
+
+            s, p = scipy.stats.kruskal(*data)
             stattext = "\n".join(
                 [
-                    "MultiComparison Tests:\n",
-                    CP("b", f"{textwrap.indent(str(mtests), in8)!s}", textonly=True),
+                    "",
+                    CP(
+                        "y",
+                        f"Kruskal-Wallis: H:{s:.6f}   p={p:.6f}\n",
+                        textonly=True,
+                    ),
                 ]
             )
-            subdf["adj_p"] = textwrap.indent(str(mtests[1]), in8)
-            stattext = "\n".join([stattext, CP("b", f"{subdf!s}", textonly=True)])
+            print(f"Kruskal-Wallis: H:{s:.6f}   p={p:.6f}\n")
+            posthoc = scikit_posthocs.posthoc_conover(
+                df_clean, val_col=measure, group_col="Group", p_adjust="holm"
+            )
+            # print(posthoc)
+            stattext = "\n".join(
+                [
+                    stattext,
+                    CP(
+                        "y",
+                        f"Conover posthoc:\n{posthoc!s}\n",
+                        textonly=True,
+                    ),
+                ]
+            )
             FUNCS.textappend(stattext)
             print(stattext)
-
-        except (KeyError, ValueError) as error:
-            msg = f"****** Missing data for comparisons for {celltype:s} and {measure:s}\n{error!s}"
-            stattext = "\n".join([msg])
-        # # res = stat()
-        # # res.tukey_hsd(df=df_pyr, res_var='dvdt_rising', xfac_var='Group', anova_model='dvdt_rising ~ C(Group)')
-        # # print(res.tukey_summary)
-        # # print("=" * 40)
-        stattext = "\n".join([stattext, f"{'='*80:s}"])
 
     def check_HW(self, row):
         if row.AP_HW < 0 or row.AP_HW > 0.010:
@@ -1840,10 +1934,13 @@ class PlotSpikeInfo(QObject):
             f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
         )
 
-        df = self.read_intermediate_result_files(excelsheet, adddata, 
-                                                 coding_file=coding_file, 
-                                                 coding_sheet=coding_sheet,
-                                                 exclude_unimportant=exclude_unimportant)
+        df = self.read_intermediate_result_files(
+            excelsheet,
+            adddata,
+            coding_file=coding_file,
+            coding_sheet=coding_sheet,
+            exclude_unimportant=exclude_unimportant,
+        )
 
         print("Unique groups: ", df.Group.unique())
 
@@ -1870,19 +1967,18 @@ class PlotSpikeInfo(QObject):
         df["age_category"] = df.apply(self.categorize_ages, axis=1)
         df["FIRate"] = df.apply(self.getFIRate, axis=1)
         df["Group"] = df["Group"].astype("str")
-        df = df[df["Group"] != 'nan']
+        if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
+            if self.experiment["set_group_control"]:
+                df["Group"] = "Control"
+        # df = df[df["Group"] != 'nan']  # remove residual NaN groups
         groups = df.Group.unique()
         print("        # Groups found: ", groups, " n = ", len(groups))
-        if self.experiment["set_group_control"]:
-            df["Group"] = "Control"
-            # self.data_table_manager.update_table(data=df)
-        else:
-            df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
-            if len(groups) > 1:
-                df.dropna(subset=["Group"], inplace=True)  # remove empty groups
-                df.drop(df.loc[df.Group == "nan"].index, inplace=True)
-            else:
-                df["Group"] = "Control"
+        # self.data_table_manager.update_table(data=df)
+
+        df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
+        if len(groups) > 1:
+            df.dropna(subset=["Group"], inplace=True)  # remove empty groups
+            df.drop(df.loc[df.Group == "nan"].index, inplace=True)
         print(
             "        # Groups found after dropping nan: ",
             df.Group.unique(),
