@@ -789,7 +789,6 @@ class Functions:
             return None
         print("    df_tmp group>>: ", df_tmp.Group.values)
         print("    df_cell group>>: ", df_cell.keys())
-        print(" returned cell type: ", df_cell.cell_type)
         protocols = list(df_cell.Spikes.keys())
         spike_keys = list(df_cell.Spikes[protocols[0]].keys())
         iv_keys = list(df_cell.IV[protocols[0]].keys())
