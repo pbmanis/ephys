@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Union
 import pprint
 import psutil
+import gc
 
 import ephys.ephys_analysis as EP
 import ephys.datareaders as DR
@@ -25,6 +26,7 @@ from pylibrary.tools import cprint
 import pyqtgraph as pg
 
 from ephys.tools import decorate_excel_sheets as DE
+from ephys.tools.get_computer import get_computer
 
 
 from ephys.ephys_analysis import (
@@ -95,14 +97,18 @@ max_rows = -1
 class ProcessSpikeAnalysis:
     def __init__(self, dataset=None, experiment=None):
         self.set_experiment(dataset, experiment)
-        self.set_workers(10)
 
     def set_experiment(self, dataset=None, experiment=None):
         self.dataset = dataset
         self.experiment = experiment
+        if self.experiment is not None:
+            computer_name = get_computer()
+            nworkers = self.experiment["NWORKERS"][computer_name]
+            self.set_workers(nworkers, computer=computer_name)
 
-    def set_workers(self, nworkers: int = 10):
+    def set_workers(self, nworkers: int = 10, computer: str = "Unknown"):
         self.nworkers = nworkers
+        CP("m", f"Using {nworkers:d} workers for parallel processing on {computer:s}")
 
     def get_rec_date(self, filename: Union[Path, str]):
         """get the recording date of record from the filename as listed n the excel sheet
@@ -141,6 +147,7 @@ class ProcessSpikeAnalysis:
             if dvdts[min_current].halfwidth_interpolated is not None:
                 row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
             row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
+            print("row: ", row)
             CP(
                 "y",
                 f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f}, dvdtFall={row.dvdt_falling:6.1f}, APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
@@ -192,7 +199,7 @@ class ProcessSpikeAnalysis:
                 fullpath = fullpatha
         
         if fullpath is None:
-            CP.cprint("r", "    No IVs of the right kind were found")
+            CP("r", "    No IVs of the right kind were found")
             return row  # Nothing to do here, there are no IVs of the right kind to analyze.
 
         # CP("c", f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)")
@@ -224,6 +231,11 @@ class ProcessSpikeAnalysis:
             args.iv_flag = True
             args.map_flag = False
             args.autoout = True
+            args.noparallel = False  # try to use parallel processing
+            args.nworkers = self.nworkers
+            args.max_spikeshape = 1
+            args.downsample = 1
+            print("process spike analysis: nworkers, noparallel ", args.nworkers, args.noparallel)
             IVA = EP.iv_analysis.IVAnalysis(args)
             IVA.configure(datapath=fullpatha, reader=AR, plot=True, pdf_pages=pdf_pages)
             # print('   Data sample freq (Hz): ', IVA.AR.sample_rate[0])
@@ -268,10 +280,10 @@ class ProcessSpikeAnalysis:
             row.holding = IVA.RM.analysis_summary["holding"]
             row.tauh = IVA.RM.analysis_summary["tauh_tau"]
             row.Gh = IVA.RM.analysis_summary["tauh_Gh"]
-
             row.FI_Curve = IVA.SP.analysis_summary["FI_Curve"]
             # CP("g", f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)")
             # print(resource.getrusage(resource.RUSAGE_SELF))
+            gc.collect()
             return row
 
     def _get_iv_protocol(self, row, pdf_pages: Union[object, None] = None, axis=1):
@@ -325,6 +337,7 @@ class ProcessSpikeAnalysis:
         ):
             CP("y", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
             Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
+            gc.collect()
             return row
 
         fullpath = None
@@ -335,6 +348,7 @@ class ProcessSpikeAnalysis:
         if fullpath is None:
             msg = f"protocol did not match our list: {day_slice_cell:s}, {row.protocol:s}"
             CP("y", msg)
+            gc.collect()
             raise ValueError(msg)
             return row
         
@@ -358,15 +372,18 @@ class ProcessSpikeAnalysis:
                 else:
                     if AR.error_info is not None:
                         Logger.error(AR.error_info)
+                    gc.collect()
                     return (
                         row  # failed to get data, error will be indicated by acq4read
                     )
             except ValueError as exc:
                 CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
                 Logger.critical(f"Acq4Read failed to read data file: {str(fullpath):s}")
+                gc.collect()
                 return row
 
             if not dataok:
+                gc.collect()
                 return row  # no update
             CP("m", f"\nFullpath to protocol: {fullpatha!s}")
             row.important = AR.checkProtocolImportant(fullpatha)
@@ -429,6 +446,8 @@ class ProcessSpikeAnalysis:
             row.RMP_SD = IVA.RM.analysis_summary["RMP_SD"]
             row.Rin = IVA.RM.analysis_summary["Rin"]
             row.taum = IVA.RM.analysis_summary["taum"]
+            if "AP_begin_V" in IVA.SP.analysis_summary.keys():
+                row.AP_begin_V = 1e3 * IVA.SP.analysis_summary["AP_begin_V"]
             row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough"]
             row.AHP_depth_V = IVA.SP.analysis_summary["AHP_Depth"]
             row.holding = IVA.RM.analysis_summary["holding"]
@@ -438,7 +457,7 @@ class ProcessSpikeAnalysis:
             row.FI_Curve = IVA.SP.analysis_summary["FI_Curve"]
             # CP("g", f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)")
             # print(resource.getrusage(resource.RUSAGE_SELF))
-
+            gc.collect()
             return row
 
     def _make_short_name(self, row):
@@ -569,12 +588,14 @@ class ProcessSpikeAnalysis:
         nprots = 0
         # now do an analysis
         Logger.info("Starting analysis on protocols in database")
+        print("workers: ", self.nworkers)
+
         # df = df.apply(_get_iv_protocol, experiment=exp, pdf_pages=pdf_pages, axis=1)
         if len(df) < self.nworkers:
             nworkers = len(df)
         else:
             nworkers = self.nworkers
-        df = DataFrameParallel(df, n_cores=nworkers, pbar=True).apply(
+        df = DataFrameParallel(df, n_cores=nworkers-2, pbar=True).apply(
             self._get_iv_protocol, pdf_pages=None, axis=1
         )
 
@@ -622,6 +643,7 @@ class ProcessSpikeAnalysis:
                 ),
                 pdf_pages=pdfs,
             )
+            gc.collect()
 
         # DE.cleanup(result_sheet, outfile=cleaned_sheet)
 

@@ -158,8 +158,13 @@ class FilterDataset:
         # exclude "not" important
         if exclude_unimportant:
             CP.cprint("y", f"    Starting with Important: {df['important'].unique()!s}")
+            print(len(df))
             df = df[df["important"] == True]
-            CP.cprint("y", f"    Remaining important: {df['important'].unique()!s}")
+            print(len(df))
+            CP.cprint("y", f"    Remaining important: {len(df['important'])!s}")
+        else:  #
+            CP.cprint("c", f"    not excluding the unimportant entries - Remaining entries: {len(df['important'])!s}")
+
         
         if verbose:
             print("Groups Accepted: ", list(set(df.Group)))
