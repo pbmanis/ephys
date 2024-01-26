@@ -681,7 +681,7 @@ class AnalyzeMap(object):
         """
         if self.verbose:
             print("   analyze one trial")
-        nworkers = 7
+        
         tasks = range(
             data.shape[0]
         )  # number of tasks that will be needed is number of targets
@@ -691,7 +691,7 @@ class AnalyzeMap(object):
         # if not self.noparallel:
         #     print("Parallel on all traces in a map")
         #     with mp.Parallelize(
-        #         enumerate(tasks), results=results, workers=nworkers
+        #         enumerate(tasks), results=results, workers=self.nworkers
         #     ) as tasker:
         #         for itarget, x in tasker:
         #             result = self.analyze_one_trace(data[itarget], itarget, pars=pars)
