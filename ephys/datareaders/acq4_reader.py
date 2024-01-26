@@ -23,12 +23,14 @@ import numpy as np
 import pylibrary.tools.cprint as CP
 import pylibrary.tools.tifffile as tf
 import scipy.ndimage as SND
+
 # from ephys.ephys_analysis import MetaArray as EM
 from pyqtgraph import configfile
 
 import MetaArray as EM
 
 pp = pprint.PrettyPrinter(indent=4)
+
 
 class acq4_reader:
     """
@@ -44,10 +46,10 @@ class acq4_reader:
         ----------
         pathtoprotocol str or Path (default: None)
             Path to the protocol directory to set for this instance of the reader
-        
+
         dataname: str (default: None)
             Name of the data file to read (for example, 'MultiClamp1.ma')
-        
+
         Returns
         -------
         Nothing
@@ -57,9 +59,7 @@ class acq4_reader:
         if pathtoprotocol is not None:
             self.setProtocol(pathtoprotocol)
         if dataname is None:
-            dataname = (
-                "MultiClamp1.ma"  # the default, but sometimes need to use Clamp1.ma
-            )
+            dataname = "MultiClamp1.ma"  # the default, but sometimes need to use Clamp1.ma
         self.setDataName(dataname)
         self.clampInfo = {}
         self.lb = "\n"
@@ -91,26 +91,24 @@ class acq4_reader:
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         self.pre_process_filters = {"LPF": None, "Notch": []}
-        
-        self.importantFlag = (
-            False # set to false to IGNORE the important flag for traces
-        )
+
+        self.importantFlag = False  # set to false to IGNORE the important flag for traces
         # CP.cprint('r', f"Important flag at entry is: {self.importantFlag:b}")
-        self.error_info = None # additional information about errors.
+        self.error_info = None  # additional information about errors.
 
     def __enter__(self):
         return self
 
     def __exit__(self, type, value, traceback):
-        del(self.time_base)
-        del(self.traces)
-        del(self.data_array)
-        del(self.cmd_wave)
-        del(self.values)
-        del(self.clamps)
-        del(self.sample_rate)
-        del(self.clampInfo)
-        del(self.clampdevices)
+        del self.time_base
+        del self.traces
+        del self.data_array
+        del self.cmd_wave
+        del self.values
+        del self.clamps
+        del self.sample_rate
+        del self.clampInfo
+        del self.clampdevices
         gc.collect()
 
     def setImportant(self, flag: bool = False) -> None:
@@ -122,24 +120,24 @@ class acq4_reader:
             for each trace when returning data; if False, we ignore the flag
         """
         self.importantFlag = flag
-        CP.cprint('r', f"Important' flag was set: {flag:b}")
-       
+        CP.cprint("r", f"Important' flag was set: {flag:b}")
+
     def setProtocol(self, pathtoprotocol: Union[str, Path, None] = None) -> None:
         """
         Parameters
         ----------
         pathtoprotocol str or Path (default: None)
             Path to the protocol directory to set for this instance of the reader
-        
+
         Returns
         -------
         Nothing
         """
         self.protocol = pathtoprotocol
-        
-    def set_pre_process(self, LPF:Union[None, float]=None, Notch:Union[None, list]=None):
-        self.pre_process_filters['LPF'] = LPF
-        self.pre_process_filters['Notch'] = Notch
+
+    def set_pre_process(self, LPF: Union[None, float] = None, Notch: Union[None, list] = None):
+        self.pre_process_filters["LPF"] = LPF
+        self.pre_process_filters["Notch"] = Notch
 
     def setDataName(self, dataname: Union[str, Path]) -> None:
         """
@@ -153,23 +151,25 @@ class acq4_reader:
     def subDirs(self, p: Union[str, Path]) -> List:
         """
         return a list of the subdirectories just below this path
-        
+
         Parameters
         ----------
         p : str  or path (no default)
             path to investigate
-        
+
         Returns
         -------
         Sorted list of the directories in the path
         """
         p = Path(p)  # convert if not already
         dirs = [d for d in list(p.glob("*")) if d.is_dir()]
-        #dirs = filter(Path.is_dir, list(Path(p).glob("*")))
+        # dirs = filter(Path.is_dir, list(Path(p).glob("*")))
         dirs = sorted(list(dirs))  # make sure these are in proper order...
         return dirs
 
-    def checkProtocol(self, protocolpath: Union[str, Path, None] = None, allow_partial=False) -> bool:
+    def checkProtocol(
+        self, protocolpath: Union[str, Path, None] = None, allow_partial=False
+    ) -> bool:
         """
         Check the protocol to see if the data is complete
 
@@ -196,8 +196,9 @@ class acq4_reader:
         info = self.readDirIndex(protocolpath)  # top level info dict
         if info is None:
             print(
-                f"acq4_reader.checkProtocol: Protocol is not managed (no .index file found): {str(protocolpath):s}")
-            
+                f"acq4_reader.checkProtocol: Protocol is not managed (no .index file found): {str(protocolpath):s}"
+            )
+
             return False
         info = info["."]
         if "devices" not in info.keys():  # just safety...
@@ -219,9 +220,7 @@ class acq4_reader:
         for i, directory_name in enumerate(
             dirs
         ):  # dirs has the names of the runs within the protocol
-            datafile = Path(
-                directory_name, mainDevice + ".ma"
-            )  # clamp device file name
+            datafile = Path(directory_name, mainDevice + ".ma")  # clamp device file name
             clampInfo = self.getDataInfo(datafile)
             if clampInfo is None:
                 break
@@ -234,9 +233,7 @@ class acq4_reader:
                 return False
         return True
 
-    def checkProtocolImportantFlags(
-        self, protocolpath: Union[str, Path, None] = None
-    ) -> bool:
+    def checkProtocolImportantFlags(self, protocolpath: Union[str, Path, None] = None) -> bool:
         """
         Check the protocol directory to see what "important" flags might be set or not
         for individual traces
@@ -252,10 +249,11 @@ class acq4_reader:
         modes = []
         info = self.readDirIndex(protocolpath)  # top level info dict
         if info is None:
-            CP.cprint("r",
+            CP.cprint(
+                "r",
                 "acq4_reader.checkProtocol: Protocol is not managed (no .index file found): {0:s}".format(
                     protocolpath
-                )
+                ),
             )
             return False
         info = info["."]
@@ -265,7 +263,7 @@ class acq4_reader:
             return False
         if "important" in info.keys():
             CP.cprint("r", "Important flag set for protocol: {0:s}".format(protocolpath))
-            
+
         devices = info["devices"].keys()
         clampDevices = []
         for d in devices:
@@ -281,9 +279,7 @@ class acq4_reader:
         for i, directory_name in enumerate(
             dirs
         ):  # dirs has the names of the runs within the protocol
-            datafile = Path(
-                directory_name, mainDevice + ".ma"
-            )  # clamp device file name
+            datafile = Path(directory_name, mainDevice + ".ma")  # clamp device file name
             tr_info = self.readDirIndex(directory_name)["."]  # get info
             # print('tr_info: ', directory_name.name,  tr_info['.'])
             clampInfo = self.getDataInfo(datafile)
@@ -307,12 +303,12 @@ class acq4_reader:
             return dh.info()["sequenceParams"]
         except KeyError:
             if len(dh.info()) == 0:
-                CP.cprint("r",
-                    "****************** Error: Missing .index file? (fails to detect protocol sequence)"
+                CP.cprint(
+                    "r",
+                    "****************** Error: Missing .index file? (fails to detect protocol sequence)",
                 )
                 raise Exception(
-                    "Directory '%s' does not appear to be a protocol sequence."
-                    % dh.name()
+                    "Directory '%s' does not appear to be a protocol sequence." % dh.name()
                 )
 
     def getIndex(self, currdir: Union[str, Path, None] = None, lineend: str = "\n"):
@@ -331,11 +327,10 @@ class acq4_reader:
         else:
             indexFile = Path(currdir, ".index")
         if not indexFile.is_file():
-            CP.cprint("r",
-                "Directory '%s' is not managed or '.index' file not found"
-                % (str(indexFile))
+            CP.cprint(
+                "r", "Directory '%s' is not managed or '.index' file not found" % (str(indexFile))
             )
-            print ("_readIndex 334:  ", indexFile, " is file: ", indexFile.is_file())
+            print("_readIndex 334:  ", indexFile, " is file: ", indexFile.is_file())
             raise FileNotFoundError
             return self._index
         self._index = configfile.readConfigFile(indexFile)
@@ -346,11 +341,11 @@ class acq4_reader:
         self._dirindex = None
         indexFile = Path(currdir, ".index")
         if not indexFile.is_file():
-            CP.cprint("r",
-                f"Directory '{str(currdir):s}' is not managed or '.index' file not found"
+            CP.cprint(
+                "r", f"Directory '{str(currdir):s}' is not managed or '.index' file not found"
             )
-            print ("readDirIndex 347:  ", indexFile, " is file: ", indexFile.is_file())
-            raise FileNotFoundError 
+            print("readDirIndex 347:  ", indexFile, " is file: ", indexFile.is_file())
+            raise FileNotFoundError
             return self._dirindex
         # print('\nindex file found for currdir: ', currdir)
         # self._dirindex = configfile.readConfigFile(str(indexFile))
@@ -368,9 +363,7 @@ class acq4_reader:
         ts = self.tstamp.match(lstr)
         if ts is not None:
             fts = float(ts.group(2))
-            tstamp = datetime.datetime.fromtimestamp(fts).strftime(
-                "%Y-%m-%d  %H:%M:%S %z"
-            )
+            tstamp = datetime.datetime.fromtimestamp(fts).strftime("%Y-%m-%d  %H:%M:%S %z")
         return tstamp
 
     def convert_timestamp(self, fts: datetime.datetime.timestamp) -> str:
@@ -443,9 +436,7 @@ class acq4_reader:
             index, bytes
         ):  # change all bytestrings to string and remove internal quotes
             index = index.decode("utf-8").replace("'", "")
-            self.textline += "{0:s}  b: {1:d}{2:s}".format(
-                " " * self.indent * 4, index, self.lb
-            )
+            self.textline += "{0:s}  b: {1:d}{2:s}".format(" " * self.indent * 4, index, self.lb)
         self.indent -= 1
         return index
 
@@ -497,9 +488,9 @@ class acq4_reader:
         self, currdir: Union[str, Path, None] = None, verbose: bool = False
     ) -> dict:
         """
-        Search for a known clamp device in the list of devices 
+        Search for a known clamp device in the list of devices
         used in the current protocol directory...
-        
+
         Return
         ------
         list of valid clamp devices found (there may be more than one)
@@ -517,7 +508,7 @@ class acq4_reader:
                     devs.append(d)
         return devs
 
-    def getDataInfo(self, filename: Union[str, Path, None] = None, silent:bool=False):
+    def getDataInfo(self, filename: Union[str, Path, None] = None, silent: bool = False):
         """
         Get the index info for a record, without reading the trace data
         """
@@ -560,9 +551,9 @@ class acq4_reader:
                 case "Pipette Potential":
                     self.primary_trace_index = 1
                     self.secondary_trace_index = 0
-                case _ : 
+                case _:
                     pass
-        elif self.mode in ['VC']:
+        elif self.mode in ["VC"]:
             match primary_signal:
                 case "Membrane Current":
                     self.primary_trace_index = 0
@@ -570,7 +561,7 @@ class acq4_reader:
                 case "Pipette Potential":
                     self.primary_trace_index = 1
                     self.secondary_trace_index = 0
-                case _ :
+                case _:
                     pass
         #         chorder[0] = 1
         #     if secondary_signal == "Pipette Potential":
@@ -585,7 +576,7 @@ class acq4_reader:
             raise ValueError(f"Unable to determine how to map channels for mode = {self.mode:s}")
         # print(self.primary_trace_index, self.secondary_trace_index, self.command_trace_index)
 
-            # print("Mode found: ", self.mode)
+        # print("Mode found: ", self.mode)
         # except:  # this is for "old" acq4 data files.  very old.
         #     print("info 1: ")
         #     for k in list(info[1].keys()):
@@ -608,12 +599,12 @@ class acq4_reader:
         #         if not switchchan:
         #             self.primary_trace_index = 1
         #             self.command_trace_index = 0
-        #         else: 
+        #         else:
         #             self.primary_trace_index = 0
-        #             self.command_trace_index = 1           
-            
+        #             self.command_trace_index = 1
+
         #     return
-        
+
         self.units = [
             info[1]["ClampState"]["primaryUnits"],
             info[1]["ClampState"]["secondaryUnits"],
@@ -621,18 +612,13 @@ class acq4_reader:
         self.samp_rate = info[1]["DAQ"]["primary"]["rate"]
         # CP.cprint("r", f"parseclampinfo, mode = {self.mode:s}")
 
-
-
     def parseClampWCCompSettings(self, info: list) -> dict:
         """
-        Given the .index file for this protocol dir, try to parse the 
+        Given the .index file for this protocol dir, try to parse the
         clamp state and compensation
         """
         d = {}
-        if (
-            "ClampState" in info[1].keys()
-            and "ClampParams" in info[1]["ClampState"].keys()
-        ):
+        if "ClampState" in info[1].keys() and "ClampParams" in info[1]["ClampState"].keys():
             par = info[1]["ClampState"]["ClampParams"]
             d["WCCompValid"] = True
             d["WCEnabled"] = par["WholeCellCompEnable"]
@@ -657,10 +643,7 @@ class acq4_reader:
 
     def parseClampCCCompSettings(self, info: list) -> dict:
         d = {}
-        if (
-            "ClampState" in info[1].keys()
-            and "ClampParams" in info[1]["ClampState"].keys()
-        ):
+        if "ClampState" in info[1].keys() and "ClampParams" in info[1]["ClampState"].keys():
             par = info[1]["ClampState"]["ClampParams"]
             d["CCCompValid"] = True
             d["CCBridgeEnable"] = par["BridgeBalEnable"]
@@ -708,10 +691,17 @@ class acq4_reader:
         """
         self.setProtocol(protocol)
         self.info = self.getIndex(self.protocol)  # self.protocol)
-        important=self._getImportant(self.info)
+        important = self._getImportant(self.info)
         return important
 
-    def getData(self, pos: int = 1, check: bool = False, allow_partial=False, silent=True):
+    def getData(
+        self,
+        pos: int = 1,
+        check: bool = False,
+        allow_partial: bool = False,
+        downsample: int = 1,
+        silent: bool = True,
+    ):
         """
         Get the data for the current protocol
         if check is True, we just check that the requested file exists and return
@@ -722,8 +712,8 @@ class acq4_reader:
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
-        
-        self.error_info = None # clear any previous error info
+
+        self.error_info = None  # clear any previous error info
         dirs = self.subDirs(self.protocol)
         if len(dirs) == 0:
             if Path(self.protocol).is_dir():
@@ -747,16 +737,14 @@ class acq4_reader:
         self.trace_StartTimes = np.zeros(0)
         self.sample_rate = []
         self.info = self.getIndex(self.protocol)  # self.protocol)
-        self.protocol_important = self._getImportant(
-            self.info
-        )  # sa
+        self.protocol_important = self._getImportant(self.info)  # sa
         holdcheck = False
         holdvalue = 0.0
         switchchan = False
         self.getDataInfo(Path(dirs[0], self.dataname))
         if self.info is not None and "devices" in list(self.info.keys()):
             devices = list(self.info["devices"].keys())
-            if devices[0] == 'DAQ':
+            if devices[0] == "DAQ":
                 device = devices[1]
             else:
                 device = devices[0]
@@ -773,7 +761,9 @@ class acq4_reader:
                 # secSignal = self.info["devices"][device]["secondarySignalCombo"]
                 # ic_ampmode = self.info["devices"][device]["icModeRadio"]
                 # CP.cprint('r', f"priSignal: {priSignal:s}   secSignal: {secSignal:s}  ic_ampmode: {ic_ampmode!s}")
-                ic_amp_mode  = self.trClampInfo[1]["ClampState"]["mode"] # self.checkProtocolinfo[1]["ClampState"]["mode"]
+                ic_amp_mode = self.trClampInfo[1]["ClampState"][
+                    "mode"
+                ]  # self.checkProtocolinfo[1]["ClampState"]["mode"]
                 primary_signal = self.trClampInfo[1]["ClampState"]["primarySignal"]
                 # secondary_signal = self.trClampInfo[1]["ClampState"]["secondarySignal"]
                 # CP.cprint('r', f"priSignal: {primary_signal:s}   secSignal: {secondary_signal:s}  ic_ampmode: {ic_amp_mode:s}")
@@ -781,20 +771,24 @@ class acq4_reader:
                 self.bad_clamp_mode = False
                 if ic_amp_mode in ["IC", "I=0"] and primary_signal != "Membrane Potential":
                     # Erroneous report from mulitclamp - Change scaling
-                    CP.cprint("r", f"Inconsistent amplifier mode: {ic_amp_mode:s} and primary signal: {primary_signal:s}")
+                    CP.cprint(
+                        "r",
+                        f"Inconsistent amplifier mode: {ic_amp_mode:s} and primary signal: {primary_signal:s}",
+                    )
                     CP.cprint("r", f"    Will attempt to correct...")
-                    self.v_scalefactor = 52e-3/1.332e-9  # picked from a trace where this happened: mV/nA match up.
+                    self.v_scalefactor = (
+                        52e-3 / 1.332e-9
+                    )  # picked from a trace where this happened: mV/nA match up.
                     self.bad_clamp_mode = True
-
 
         else:
             if check:
                 return False
             else:
-                raise ValueError       
+                raise ValueError
         self.holding = holdvalue
         trx = []
-        cmd:list = []
+        cmd: list = []
 
         # CP.cprint('r', f"_getImportant: Protocol Important flag was identified: {self.protocol_important:b}")
         sequence_values = None
@@ -811,9 +805,7 @@ class acq4_reader:
                 self.clampValues = self.sequence[clamp]
                 self.nclamp = len(self.clampValues)
                 if sequence_values is not None:
-                    sequence_values = [
-                        x for x in self.clampValues for y in sequence_values
-                    ]
+                    sequence_values = [x for x in self.clampValues for y in sequence_values]
                 else:
                     sequence_values = [x for x in self.clampValues]
         self.mode = None
@@ -835,9 +827,7 @@ class acq4_reader:
                 if important[i] is False and state is True:  # transistion to True
                     important[i] = state
                     continue
-                if (
-                    important[i] is True and state is True
-                ):  # next one goes back to false
+                if important[i] is True and state is True:  # next one goes back to false
                     state = False
                     continue
                 if important[i] is False and state is False:  # no change...
@@ -846,7 +836,7 @@ class acq4_reader:
         if not any(important):
             important = [True for i in range(len(important))]  # set all true
         self.trace_important = important
-        
+
         j = 0
         # get traces.
         # if traces are not marked (or computed above) to be "important", then they
@@ -857,16 +847,19 @@ class acq4_reader:
             fn = Path(d, self.dataname)
             if check:
                 if not fn.is_file():
-                    CP.cprint("r", f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}")
+                    CP.cprint(
+                        "r",
+                        f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}",
+                    )
                     raise ValueError
                 return True  # just note we found the first file
 
-            if self.importantFlag and not important[i] and not silent:  # only return traces marked "important"
+            if (
+                self.importantFlag and not important[i] and not silent
+            ):  # only return traces marked "important"
                 CP.cprint("m", "acq4_reader: Skipping non-important data")
                 continue
-            self.protoDirs.append(
-                Path(d).name
-            )  # keep track of valid protocol directories here
+            self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
             try:
                 tr = EM.MetaArray(file=fn)
             except:
@@ -876,12 +869,11 @@ class acq4_reader:
                     # print(allow_partial)
                     msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
                     CP.cprint("r", msg)
-                    #raise ValueError(f"file failed: {str(fn):s}")
+                    # raise ValueError(f"file failed: {str(fn):s}")
                     print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                     continue
                 else:
                     pass
-
 
             tr_info = tr[0].infoCopy()
             self.parseClampInfo(tr_info)
@@ -893,7 +885,7 @@ class acq4_reader:
                 if tr.hasColumn("Channel", "primary"):
                     tr["Channel":"primary"] *= self.v_scalefactor
             cmd = self.getClampCommand(tr)
-            
+
             self.traces.append(tr)
             self.trace_index.append(i)
             trx.append(tr.view(np.ndarray))
@@ -939,10 +931,10 @@ class acq4_reader:
 
             CP.cprint("y", "          Reshaping to shortest length in time dimension")
             for i in range(len(trx)):
-               trx[i] = trx[i][:,:dim1_new]  # make all lise elements the same shorter size
-               self.data_array[i] = self.data_array[i][:dim1_new]
-               self.cmd_wave[i] = self.cmd_wave[i][:dim1_new]
-               self.time_base[i] = self.time_base[i][:dim1_new]
+                trx[i] = trx[i][:, :dim1_new]  # make all lise elements the same shorter size
+                self.data_array[i] = self.data_array[i][:dim1_new]
+                self.cmd_wave[i] = self.cmd_wave[i][:dim1_new]
+                self.time_base[i] = self.time_base[i][:dim1_new]
             try:
                 self.traces = np.array(trx)
             except:
@@ -958,22 +950,22 @@ class acq4_reader:
             ntr = len(self.values)
         # print('acq4_read: cmd: ', cmd)
         if isinstance(cmd, list):
-            uni = 'None'
+            uni = "None"
         else:
             uni = cmd.axisUnits(-1)
         try:
             self.traces = EM.MetaArray(
-            self.data_array,
-            info=[
-                {
-                    "name": "Command",
-                    "units": uni,
-                    "values": np.array(self.values),
-                },
-                tr.infoCopy("Time"),
-                tr.infoCopy(-1),
-            ],
-        )
+                self.data_array,
+                info=[
+                    {
+                        "name": "Command",
+                        "units": uni,
+                        "values": np.array(self.values),
+                    },
+                    tr.infoCopy("Time"),
+                    tr.infoCopy(-1),
+                ],
+            )
         except:
             CP.cprint("r", "No valid traces found")
             return False
@@ -1004,9 +996,7 @@ class acq4_reader:
             seqparams = index["."]["sequenceParams"]
             # print('sequence params: ', seqparams)
             # self.printIndex(index)
-            stimuli = index["."]["devices"][self.shortdname]["waveGeneratorWidget"][
-                "stimuli"
-            ]
+            stimuli = index["."]["devices"][self.shortdname]["waveGeneratorWidget"]["stimuli"]
             if "Pulse" in list(stimuli.keys()):
                 self.tstart = stimuli["Pulse"]["start"]["value"]
                 self.tend = self.tstart + stimuli["Pulse"]["length"]["value"]
@@ -1017,11 +1007,11 @@ class acq4_reader:
             if mclamppulses in seqkeys:
                 if protoreps in list(seqparams.keys()):
                     self.repetitions = len(seqparams[protoreps])
-                self.commandLevels = np.repeat(np.array(seqparams[mclamppulses]), self.repetitions).ravel()
+                self.commandLevels = np.repeat(
+                    np.array(seqparams[mclamppulses]), self.repetitions
+                ).ravel()
 
-                function = index["."]["devices"][self.shortdname][
-                    "waveGeneratorWidget"
-                ]["function"]
+                function = index["."]["devices"][self.shortdname]["waveGeneratorWidget"]["function"]
             elif protoreps in seqkeys:
                 self.repetitions = len(seqparams[protoreps])
                 # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
@@ -1040,7 +1030,7 @@ class acq4_reader:
         self, data: Type[EM.MetaArray], generateEmpty: bool = True
     ) -> Union[Type[EM.MetaArray], None]:
         """Returns the command data from a clamp MetaArray.
-        If there was no command specified, the function will 
+        If there was no command specified, the function will
         return all zeros if generateEmpty=True (default).
         """
 
@@ -1103,7 +1093,7 @@ class acq4_reader:
         stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
         self.LaserBlueTimes = self._getPulses(stimuli)
         return True
-    
+
     def getLEDCommand(self) -> bool:
         """
         Get LED pulse times
@@ -1131,14 +1121,15 @@ class acq4_reader:
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
             try:
-                sr = info[1]["DAQ"]['Command']["rate"]/info[1]["DAQ"]['Command']["downsampling"]
+                sr = info[1]["DAQ"]["Command"]["rate"] / info[1]["DAQ"]["Command"]["downsampling"]
             except:
-                raise ValueError(f"Info keys for LED is missing requested DAQ.samplerate: {info[1]['DAQ'].keys()!s}")
+                raise ValueError(
+                    f"Info keys for LED is missing requested DAQ.samplerate: {info[1]['DAQ'].keys()!s}"
+                )
             self.LED_sample_rate.append(sr)
             self.LED_Raw.append(lbr.view(np.ndarray)[0])  # shutter
             self.LED_time_base.append(lbr.xvals("Time"))
         return True
-    
 
     def _getPulses(self, stimuli: dict) -> dict:
         if "PulseTrain" in stimuli.keys():
@@ -1164,9 +1155,7 @@ class acq4_reader:
             times["type"] = stimuli["Pulse"]["type"]
             times["npulses"] = [len(list(stimuli.keys()))]
             laststarttime = 0.0
-            for n, key in enumerate(
-                stimuli.keys()
-            ):  # extract each "pulse" - keys will vary...
+            for n, key in enumerate(stimuli.keys()):  # extract each "pulse" - keys will vary...
                 starttime = stimuli[key]["start"]["value"]
                 times["start"].append(stimuli[key]["start"]["value"])
                 times["duration"].append(stimuli[key]["length"]["value"])
@@ -1183,12 +1172,12 @@ class acq4_reader:
 
         elif "Pulse5" in stimuli.keys():
             # this is what it looks like:
-            # Stimuli:  OrderedDict([('Pulse5', 
-            #   OrderedDict([('start', OrderedDict([('sequence', 'off'), ('value', 0.3)])), 
-            #   ('length', OrderedDict([('sequence', 'off'),  ('value', 0.005)])), 
-            #   ('amplitude', OrderedDict([('sequence', 'off'), ('value', 5.0)])), 
+            # Stimuli:  OrderedDict([('Pulse5',
+            #   OrderedDict([('start', OrderedDict([('sequence', 'off'), ('value', 0.3)])),
+            #   ('length', OrderedDict([('sequence', 'off'),  ('value', 0.005)])),
+            #   ('amplitude', OrderedDict([('sequence', 'off'), ('value', 5.0)])),
             #   ('sum', OrderedDict([('affect', 'length'),
-            #   ('sequence', 'off'), ('value', 0.025)])), 
+            #   ('sequence', 'off'), ('value', 0.025)])),
             #  ('type', 'pulse')]))])
             times = {}
             times["start"] = [stimuli["Pulse5"]["start"]["value"]]
@@ -1197,19 +1186,19 @@ class acq4_reader:
             times["type"] = stimuli["Pulse5"]["type"]
         else:
             print("Stimuli: ", stimuli)
-            raise ValueError(
-                "need to find keys for stimulus (might be empty): " % stimuli
-            )
+            raise ValueError("need to find keys for stimulus (might be empty): " % stimuli)
 
         return times
 
     def getDeviceData(
-        self, device="Photodiode", devicename="Photodiode",
+        self,
+        device="Photodiode",
+        devicename="Photodiode",
         allow_partial=False,
     ) -> Union[dict, None]:
         """
         Get the data from a device
-        
+
         Parameters
         ----------
         device : str (default: 'Photodiode')
@@ -1220,12 +1209,12 @@ class acq4_reader:
             This might or might not be the same as the device
         allow_partial: bool (default: False)
             return true even with partial information returned.
-        
+
         Returns
         -------
         Success : dict
         failure: None
-        
+
         The results are stored data for the current protocol
         """
         # non threaded
@@ -1320,7 +1309,9 @@ class acq4_reader:
             try:
                 sr = info[1]["DAQ"]["Shutter"]["rate"]
             except:
-                raise ValueError(f"Info keys is missing requested DAQ.Shutter.rate:  {info[1]['DAQ'].keys()!s}")
+                raise ValueError(
+                    f"Info keys is missing requested DAQ.Shutter.rate:  {info[1]['DAQ'].keys()!s}"
+                )
                 exit(1)
             self.LaserBlue_sample_rate.append(sr)
         self.LaserBlue_Info = info
@@ -1357,7 +1348,7 @@ class acq4_reader:
             fn = Path(d, "Photodiode.ma")
             if not fn.is_file():
                 # print(" acq4_reader.getPhotodiode: File not found: ", fn)
-                return False # continue
+                return False  # continue
             pdr = EM.MetaArray(file=fn)
             info = pdr[0].infoCopy()
             self.Photodiode.append(pdr.view(np.ndarray)[0])
@@ -1369,18 +1360,18 @@ class acq4_reader:
         self.Photodiode_time_base = np.array(self.Photodiode_time_base)
         return True
 
-    def _getWaveGeneratorWidget(self, parent_device:str="", channels:str = None, device: str=None):
+    def _getWaveGeneratorWidget(
+        self, parent_device: str = "", channels: str = None, device: str = None
+    ):
         supindex = self._readIndex()
         if channels is not None and device is not None:
             stimuli = supindex["."]["devices"][parent_device][channels][device][
                 "waveGeneratorWidget"
-                ]["stimuli"]
+            ]["stimuli"]
         else:
             print("parent: ", parent_device)
             print(supindex["."]["devices"][parent_device])
-            stimuli = supindex["."]["devices"][parent_device][
-                "waveGeneratorWidget"
-                ]["stimuli"]
+            stimuli = supindex["."]["devices"][parent_device]["waveGeneratorWidget"]["stimuli"]
         times = []
         waveinfo = {}
         waveinfo["start"] = stimuli["Pulse"]["start"]["value"]
@@ -1389,9 +1380,9 @@ class acq4_reader:
         return waveinfo
 
     def getLaserBlueShutter(self) -> dict:
-        shutter = self._getWaveGeneratorWidget(parent_device="Laser-Blue-raw",
-            channels="channels",
-            device="Shutter")
+        shutter = self._getWaveGeneratorWidget(
+            parent_device="Laser-Blue-raw", channels="channels", device="Shutter"
+        )
         return shutter
         # supindex = self._readIndex()
         # stimuli = supindex["."]["devices"]["Laser-Blue-raw"]["channels"]["Shutter"][
@@ -1415,17 +1406,13 @@ class acq4_reader:
         rep = 0
         target = 0
         n_valid_targets = 0
-        supindex = (
-            self._readIndex()
-        )  # get protocol index (top level, dirType=ProtocolSequence)
+        supindex = self._readIndex()  # get protocol index (top level, dirType=ProtocolSequence)
         # print('supindex in getScannerPositions: ', supindex, self.protocol)
 
         if supindex is None or "sequenceParams" not in list(
             supindex["."].keys()
         ):  # should have this key, along with (scanner, targets)
-            print(
-                "no sequenceParams key in top level protocol directory; in getScannerPosition"
-            )
+            print("no sequenceParams key in top level protocol directory; in getScannerPosition")
             return False
         try:
             ntargets = len(supindex["."]["sequenceParams"][("Scanner", "targets")])
@@ -1483,12 +1470,9 @@ class acq4_reader:
             #     continue  # protocol is short...
             # #                self.scannerinfo[(rep, tar)] = {'directory': d, 'rep': rep, 'pos': self.scannerpositions[i]}
             if (
-                "Camera" in supindex["."]["devices"].keys()
-                and len(self.scanner_camera) == 0
+                "Camera" in supindex["."]["devices"].keys() and len(self.scanner_camera) == 0
             ):  # read the camera outline
-                cindex = self._readIndex(
-                    currdir=Path(self.protocol, Path(d).name, "Camera")
-                )
+                cindex = self._readIndex(currdir=Path(self.protocol, Path(d).name, "Camera"))
                 self.scanner_camera = cindex
             else:
                 pass
@@ -1520,12 +1504,11 @@ class acq4_reader:
         self.Image_filename = d
         cindex = self._readIndex(Path(filename.parent))
 
-        if "userTransform" in list(cindex[d].keys()) and cindex[d]["userTransform"][
-            "pos"
-        ] != (0.0, 0.0):
-            z = np.vstack(
-                cindex[d]["userTransform"]["pos"] + cindex[d]["transform"]["pos"]
-            ).ravel()
+        if "userTransform" in list(cindex[d].keys()) and cindex[d]["userTransform"]["pos"] != (
+            0.0,
+            0.0,
+        ):
+            z = np.vstack(cindex[d]["userTransform"]["pos"] + cindex[d]["transform"]["pos"]).ravel()
             self.Image_pos = ((z[0] + z[2]), (z[1] + z[3]), z[4])
         else:
             self.Image_pos = cindex[d]["transform"]["pos"]
@@ -1547,30 +1530,30 @@ class acq4_reader:
         """
         Average (or max or std) the images across the scanner camera files
         the images are collected into a stack prior to any operation
-        
+
         Parameters
         ----------
         dataname : str (default: 'Camera/frames.ma')
             Name of the camera data file (metaarray format)
-        
+
         mode : str (default: 'average')
             Operation to do on the collected images
             average : compute the average image
             max : compute the max projection across the stack
             std : compute the standard deviation across the stack
-        
+
         limit : maximum # of images in stack to combine (starting with first)
-        
+
         subtractFlag : boolean (default: False)
                 subtract first frame from second when there are pairs of frames
 
         firstonly : boolean (default: False)
                 return the first image only
-        
+
         filter : boolean (default: True)
                 Not implemented
-                
-        
+
+
         Returns
         -------
             a single image frame that is the result of the specified operation
@@ -1677,6 +1660,7 @@ def one_test():
     #    a.setProtocol('/Users/pbmanis/Documents/data/MRK_Pyramidal/2018.01.26_000/slice_000/cell_000/CCIV_1nA_max_000/')
     # this won't work in the wild, need appropriate data for testing.
     import matplotlib
+
     # matplotlib.use('')
     import matplotlib.pyplot as mpl
 
@@ -1693,7 +1677,7 @@ def one_test():
     maptimes = []
     mapname = []
     supindex = a.readDirIndex(currdir=cell)
-    print('supindex: ', list(supindex.keys()))
+    print("supindex: ", list(supindex.keys()))
     for k in list(supindex.keys()):
         if k.startswith("image_"):
             # print("Found Image: ", k)
@@ -1702,22 +1686,22 @@ def one_test():
         if k.startswith("Map_") or k.startswith("LSPS_" or k.startswith("LED_")):
             maptimes.append(supindex[k]["__timestamp__"])
             mapname.append(k)
-    print('maptimes: ', maptimes)
-    print('imagetimes: ', imagetimes)
+    print("maptimes: ", maptimes)
+    print("imagetimes: ", imagetimes)
     maptoimage = {}
     for im, m in enumerate(maptimes):
         u = np.argmin(maptimes[im] - np.array(imagetimes))
         maptoimage[mapname[im]] = imagename[u]
 
-    print('map to image: ', maptoimage)
-    print('datasets: ', datasets)
+    print("map to image: ", maptoimage)
+    print("datasets: ", datasets)
 
     for i, d in enumerate(datasets):
         d = str(d)
-        print('d: ', d)
+        print("d: ", d)
         pa, da = os.path.split(d)
-        print('da: ', da)
-        if "Map" not in da and 'LSPS' not in da:
+        print("da: ", da)
+        if "Map" not in da and "LSPS" not in da:
             continue
         print("d: ", d)
         a.setProtocol(os.path.join(cell, d))
@@ -1725,7 +1709,7 @@ def one_test():
         if not a.getScannerPositions():
             continue
 
-        print('scanner transform: ', a.scannerCamera["frames.ma"]["transform"])
+        print("scanner transform: ", a.scannerCamera["frames.ma"]["transform"])
         pos = a.scannerCamera["frames.ma"]["transform"]["pos"]
         scale = a.scannerCamera["frames.ma"]["transform"]["scale"]
         region = a.scannerCamera["frames.ma"]["region"]
@@ -1744,12 +1728,12 @@ def one_test():
             [pos[0] + scale[0] * region[0], pos[1] + scale[1] * region[1]],
         ]
         scannerbox = BRI.getRectangle(a.scannerpositions)
-        print('scannerbox: ', scannerbox)
-        print('scannerbox shape: ', scannerbox.shape)
+        print("scannerbox: ", scannerbox)
+        print("scannerbox shape: ", scannerbox.shape)
         fp = np.array([scannerbox[0][0], scannerbox[1][1]]).reshape(2, 1)
-        print('rehaped scanner box: ', fp.shape)
+        print("rehaped scanner box: ", fp.shape)
         scannerbox = np.append(scannerbox, fp, axis=1)
-        print('new scannerbox: ', scannerbox)
+        print("new scannerbox: ", scannerbox)
 
         boxw = np.swapaxes(np.array(camerabox), 0, 1)
         print("camera box: ", boxw)
@@ -1787,7 +1771,7 @@ def one_test():
     # print a.clampInfo
     # print a.traces[0]
     pos = mpl.ginput(-1, show_clicks=True)
-    print('pos: ', pos)
+    print("pos: ", pos)
 
     mpl.legend()
     mpl.show()
@@ -1795,15 +1779,15 @@ def one_test():
 
 if __name__ == "__main__":
     pass
-#one_test()
-    # AR = acq4_reader()
-    # datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
-    # print(Path(datapath).is_file())
-    # AR.setProtocol(datapath)
-    # d = AR.getDataInfo(datapath)
-    # print(d)
+# one_test()
+# AR = acq4_reader()
+# datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
+# print(Path(datapath).is_file())
+# AR.setProtocol(datapath)
+# d = AR.getDataInfo(datapath)
+# print(d)
 
-    # AR = acq4_reader()
-    #
-    # datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
-    # d = AR.subDirs(datapath)
+# AR = acq4_reader()
+#
+# datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
+# d = AR.subDirs(datapath)
