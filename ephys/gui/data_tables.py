@@ -106,6 +106,7 @@ from ephys.gui import table_tools
 from ephys.plotters import plot_spike_info
 from ephys.tools import process_spike_analysis
 from ephys.tools import data_summary
+from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
 import ephys.tools.configuration_manager as configuration_manager
 
@@ -232,7 +233,8 @@ class DataTables:
         self.dry_run = False
         self.exclude_unimportant = False
 
-        self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
+        self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None, pick_display=self.show_pdf_on_pick,
+                                                 pick_display_function=self.display_from_table_by_cell_id)
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
         self.table_manager = None  # get this later
@@ -633,7 +635,7 @@ class DataTables:
         i_row = index.row()  # clicked index row
 
         self.selected_index_row = i_row
-        self.display_from_table(i_row)
+        self.display_from_table_by_row(i_row)
 
     def on_single_click(self, w):
         """
@@ -646,19 +648,24 @@ class DataTables:
         # for index in selrows: self.selected_index_row = index.row()
         #     self.analyze_from_table(index.row())
 
-    # def display_from_table(self, cell_id):
-    #     """
-    #     Display the selected cell_id from the table
-    #     """
-    #     if not self.show_pdf_on_pick:
-    #         return
-    #     FUNCS.textappend(f"Displaying cell: {cell_id:s}")
+    def display_from_table_by_row(self, i_row):
+        self.table_manager.select_row_by_row(i_row)
+        self.display_from_table()
 
-    #     i_row = self.table_manager.select_row_by_cell_id(cell_id)
-    #     if i_row is not None:
-    #         self.display_from_table(i_row)
-    #     else:
-    #         FUNCS.textappend(f"Cell {cell_id:s} not found in table")
+    def display_from_table_by_cell_id(self, cell_id):
+        """
+        Display the selected cell_id from the table
+        """
+        if not self.show_pdf_on_pick:
+            print("show pdf on pick is turned off")
+            return
+        FUNCS.textappend(f"Displaying cell: {cell_id:s}")
+
+        i_row = self.table_manager.select_row_by_cell_id(cell_id)
+        if i_row is not None:
+            self.display_from_table()
+        else:
+            FUNCS.textappend(f"Cell {cell_id:s} not found in table")
 
     def handleSortIndicatorChanged(self, index, order):
         """
@@ -689,24 +696,24 @@ class DataTables:
         FUNCS.textappend(pp.pformat(self.experiment))
         self.load_assembled_data()  # try to load the assembled data
 
-    def pick_handler(self, event, picker_funcs):
-        for pf in picker_funcs.keys():
-            if event.mouseevent.inaxes == pf:
-                # print("\nDataframe index: ", event.ind)
-                cell = picker_funcs[pf].data.iloc[event.ind]
-                cell_id = cell["cell_id"].values[0]
-                print(f"\nSelected:   {cell_id!s}")  # find the matching data.
-                age = PSI_2.get_age(cell["age"])
-                print(
-                    f"     Cell: {cell['cell_type'].values[0]:s}, Age: P{age:3d}D Group: {cell['Group'].values[0]!s}"
-                )
-                print(f"     Protocols: {cell['protocols'].values[0]!s}")
-                if self.show_pdf_on_pick:
-                    i_row = self.table_manager.select_row_by_cell_id(cell_id)
-                    if i_row is not None:
-                        self.display_from_table(i_row)
-                return cell_id
-        return None
+    # def pick_handler(self, event, picker_funcs):
+    #     for pf in picker_funcs.keys():  # axis keys
+    #         if event.mouseevent.inaxes == pf: # this was our axis
+    #             # print("\nDataframe index: ", event.ind)
+    #             cell = picker_funcs[pf].data.iloc[event.ind]
+    #             cell_id = cell["cell_id"].values[0]
+    #             print(f"\nSelected:   {cell_id!s}")  # find the matching data.
+    #             age = PSI_2.get_age(cell["age"])
+    #             print(
+    #                 f"     Cell: {cell['cell_type'].values[0]:s}, Age: P{age:d}D Group: {cell['Group'].values[0]!s}"
+    #             )
+    #             print(f"     Protocols: {cell['protocols'].values[0]!s}")
+    #             if self.show_pdf_on_pick:
+    #                 i_row = self.table_manager.select_row_by_cell_id(cell_id)
+    #                 if i_row is not None:
+    #                     self.display_from_table(i_row)
+    #             return cell_id
+    #     return None
 
     def command_dispatcher(self, param, changes):
         """
@@ -895,7 +902,7 @@ class DataTables:
                             P1.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
                             picked_cellid = P1.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
                                 "pick_event",
-                                lambda event: self.pick_handler(event, picker_funcs1),
+                                lambda event: PSI.pick_handler(event, picker_funcs1),
                             )
                             header = self.get_analysis_info(fn)
                             P1.figure_handle.text(
@@ -943,7 +950,7 @@ class DataTables:
                             )
                             picked_cellid = P3.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
                                 "pick_event",
-                                lambda event: self.pick_handler(event, picker_funcs3),
+                                lambda event: PSI.pick_handler(event, picker_funcs3),
                             )
                             header = self.get_analysis_info(fn)
                             P3.figure_handle.text(
@@ -984,7 +991,7 @@ class DataTables:
                             P2.figure_handle.suptitle("Firing Rate", fontweight="bold", fontsize=18)
                             picked_cellid = P2.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
                                 "pick_event",
-                                lambda event: self.pick_handler(event, picker_funcs2),
+                                lambda event: PSI.pick_handler(event, picker_funcs2),
                             )
                             header = self.get_analysis_info(fn)
                             P2.figure_handle.text(
@@ -1005,7 +1012,7 @@ class DataTables:
                             df = self.PSI.preload(fn)
                             P4, picker_funcs4 = self.PSI.summary_plot_fi(
                                 df,
-                                mode=["individual", "mean"],
+                                mode=["mean"],  # could be ["individual", "mean"]
                                 group_by=self.ptreedata.child("Plotting").child("Group By").value(),
                                 protosel=[
                                     "CCIV_1nA_max",
@@ -1022,7 +1029,7 @@ class DataTables:
                             )
                             picked_cellid = P4.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
                                 "pick_event",
-                                lambda event: self.pick_handler(event, picker_funcs4),
+                                lambda event: PSI.pick_handler(event, picker_funcs4),
                             )
                             header = self.get_analysis_info(fn)
                             P4.figure_handle.text(
@@ -1241,6 +1248,14 @@ class DataTables:
         args.iv_flag = True
         args.map_flag = False
         args.autoout = True
+        computer_name = get_computer()
+        nworkers = self.experiment["NWORKERS"][computer_name]
+        args.nworkers = 1
+        args.noparallel = True
+        # if nworkers > 1:
+        #     args.noparallel = False
+        #     args.nworkers = nworkers
+        # print("data_table: nworkers, noparallel ", args.nworkers, args.noparallel)
         if mode == "important" or important:
             args.important_flag_check = True # only analyze the "important" ones
 
@@ -1552,13 +1567,15 @@ class DataTables:
             return
         self.PLT.plot_VC(self.selected_index_rows)
 
-    def display_from_table(self, i):
+    def display_from_table(self):
         """
         display the data in the PDF dock
         """
         self.selected_index_rows = self.table.selectionModel().selectedRows()
         if self.selected_index_rows is None:
             return
+        # print(len(self.selected_index_rows))
+        # print(self.selected_index_rows)
         index_row = self.selected_index_rows[0]
         selected = self.table_manager.get_table_data(index_row)  # table_data[index_row]
         # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
@@ -1589,7 +1606,7 @@ def main():
     (
         datasets,
         experiments,
-    ) = get_configuration()  # retrieves the confituration file from the running directory
+    ) = get_configuration()  # retrieves the configuration file from the running directory
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
