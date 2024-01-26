@@ -240,7 +240,6 @@ class IVAnalysis(Analysis):
             if results is not None:
                 for r in list(results.keys()):
                     u = results[r]
-                    print("r, u: ", r, "  :  ", u)
                     for k in u.keys():
                         if isinstance(u[k], dict):
                             for uk in u[k].keys():
@@ -376,7 +375,6 @@ class IVAnalysis(Analysis):
             riv = {}
             rsp = {}
             for f in list(results.keys()):
-                print("f: ", f)
                 if "IV" in results[f]:
                     riv[f] = _cleanup_ivdata(results[f]["IV"])
                 if "Spikes" in results[f]:
