@@ -782,12 +782,14 @@ class Functions:
         plot_fits: bool = False,
         ax: Union[mpl.Axes, None] = None,
     ):
-        CP("g", f"\n{'='*80:s}\nCell: {cell!s}")
+        CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
+
         df_cell, df_tmp = self.get_cell(experiment, df, cell)
         if df_cell is None:
             return None
         print("    df_tmp group>>: ", df_tmp.Group.values)
         print("    df_cell group>>: ", df_cell.keys())
+        print(" returned cell type: ", df_cell.cell_type)
         protocols = list(df_cell.Spikes.keys())
         spike_keys = list(df_cell.Spikes[protocols[0]].keys())
         iv_keys = list(df_cell.IV[protocols[0]].keys())
@@ -818,10 +820,13 @@ class Functions:
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = list(srs.keys())  # only count valid protocols
-        if len(protocols) > 0:
+        CP("c", f"Valid Protocols: {protocols!s}")
+        if len(protocols) > 1:
             protname = "combined"
-        else:
+        elif len(protocols) == 1:
             protname = protocols[0]
+        else:
+            return None
         # parse group correctly.
         # the first point in the Group column is likely a nan.
         # if it is, then use the next point.
@@ -970,9 +975,8 @@ class Functions:
         return datadict
 
     def get_cell(self, experiment, df: pd.DataFrame, cell: str):
-        df_tmp = df[df.cell_id == cell]
-        df_tmp = df_tmp.dropna(subset=["Date"])
-        print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].tolist(), "\n len df_tmp: ", len(df_tmp))
+        df_tmp = df[df.cell_id == cell] # df.copy() # .dropna(subset=["Date"])
+        print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
 
         if len(df_tmp) == 0:
             return None, None
@@ -983,6 +987,7 @@ class Functions:
         celltype = str(celltype).replace("\n", "")
         if celltype == " ":  # no cell type
             celltype = "unknown"
+        CP("m", f"get cell: df_tmp cell type: {celltype:s}")
         # look for original PKL file for cell in the dataset
         # if it exists, use it to get the FI curve
         # base_cellname = str(Path(cell)).split("_")
@@ -1024,6 +1029,8 @@ class Functions:
             datapath = datapath2
         else:
             CP("r", f"no file: matching: {datapath1!s}, \n   or: {datapath2!s}\n")
+            print("cell type: ", celltype)
+            raise ValueError
             return None, None
         try:
             df_cell = pd.read_pickle(datapath, compression="gzip")
@@ -1033,7 +1040,7 @@ class Functions:
             except ValueError:
                 CP("r", f"Could not read {datapath!s}")
                 raise ValueError("Failed to read compressed pickle file")
-        if df_cell.Spikes is None:
+        if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
             CP(
                 "r",
                 f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protos:",
