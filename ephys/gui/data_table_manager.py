@@ -606,4 +606,11 @@ class TableManager:
                 self.table.selectRow(i)
                 return i
         return None
+    
+    def select_row_by_row(self, irow:int):
+        try:
+            self.table.selectRow(irow)
+            return irow
+        except:
+            return None
      
