@@ -742,6 +742,7 @@ class PlotSpikeInfo(QObject):
                 hue_order=plot_order,
                 picker=enable_picking,
                 zorder=100,
+                clip_on = False
             )
         else:
             sns.stripplot(
@@ -763,6 +764,7 @@ class PlotSpikeInfo(QObject):
                 order=plot_order,
                 picker=enable_picking,
                 zorder=100,
+                clip_on=False,
             )
 
         sns.boxplot(
@@ -778,6 +780,7 @@ class PlotSpikeInfo(QObject):
             showfliers=False,
             linewidth=0.5,
             zorder=50,
+            # clip_on=False,
         )
         # except Exception as e:
         #     print("boxplot failed for ", celltype, yname)
@@ -924,6 +927,9 @@ class PlotSpikeInfo(QObject):
             df (Pandas dataframe): _description_
         """
         df = df.copy()  # make sure we don't modifiy the incoming
+  #Remove cells for which the FI Hill slope is maximal at 0 nA:
+    #    These have spont.
+        df = df[df["I_maxHillSlope"] > 1e-11] 
         ncols = len(measures)
         letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
@@ -1148,7 +1154,7 @@ class PlotSpikeInfo(QObject):
         """
         dfp = data.copy()
         print("cat plot: celltype: ", celltype, xname, len(dfp))
-        print("colors: ", colors)
+        # print("colors: ", colors)
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
@@ -1510,17 +1516,18 @@ class PlotSpikeInfo(QObject):
         # print("protocols: ", df["protocols"])
         plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         P = PH.regular_grid(
+            1, 
             len(self.experiment["celltypes"]),
-            1,
+
             order="rowsfirst",
-            figsize=(4, 2.5 * len(self.experiment["celltypes"]) + 1.0),
+            figsize=(3 * len(self.experiment["celltypes"]) + 1.0, 3),
             panel_labels=plabels,
             labelposition=(-0.05, 1.05),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
-                "leftmargin": 0.15,
-                "rightmargin": 0.15,
+                "leftmargin": 0.12,
+                "rightmargin": 0.1,
             },
             verticalspacing=0.1,
             horizontalspacing=0.1,
@@ -1576,7 +1583,7 @@ class PlotSpikeInfo(QObject):
             ax.set_title(celltype.title(), y=1.05)
             ax.set_xlabel("I$_{inj}$ (nA)")
             ax.set_ylabel("Rate (sp/s)")
-            print(df.columns)
+            # print(df.columns)
             if celltype != "all":
                 cdd = df[df["cell_type"] == celltype]
             else:
@@ -1736,6 +1743,9 @@ class PlotSpikeInfo(QObject):
     ):
         if celltype != "all":
             df_x = df[df.cell_type == celltype]
+        else:
+            df_x = df.copy()
+        
         # print(df_x.head())
         # fvalue, pvalue = scipy.stats.f_oneway(df['A'], df['B'], df['AA'], df['AAA'])
         # indent the statistical results
@@ -1769,23 +1779,28 @@ class PlotSpikeInfo(QObject):
         for i, s in enumerate(statistical_comparisons):
             s = s.replace(" ", "")  # replace spaces with nothing for tests
             statistical_comparisons[i] = s
-        df_x = df.apply(make_numeric, measure=measure, axis=1)
+        df_x = df_x.apply(make_numeric, measure=measure, axis=1)
         df_clean = df_x.dropna(subset=[measure], inplace=False)
         print("group by: ", group_by)
-        print(df_clean.Group.unique())
+        print(df_clean[measure])
+        # print("Groups found: ", df_clean.Group.unique())
+        
         groups_in_data = df_clean[group_by].unique()
-        if len(groups_in_data) == 0:
+        print ("Groups found in data: ", groups_in_data, len(groups_in_data))
+ 
+        if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
+            # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
+            df_clean = df_clean.apply(self.categorize_ages, axis=1)
+        print("2: ", df_clean[measure])
+        if len(groups_in_data) < 2:  # need 2 groups to compare
             nodatatext = "\n".join(
                 [
                     "",
-                    CP("r", f"****** No data for {celltype:s} and {measure:s}", textonly=True),
+                    CP("r", f"****** Insuffieient data for {celltype:s} and {measure:s}", textonly=True),
                 ]
             )
             FUNCS.textappend(nodatatext)
             return
-        if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
-            # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
-            df_clean = df_clean.apply(self.categorize_ages, axis=1)
         # print(df_clean[group_by].unique())
         if parametric:
             # if measure == "maxHillSlope":
@@ -1846,13 +1861,27 @@ class PlotSpikeInfo(QObject):
             msg = f"\nKW: [{measure:s}]  celltype={celltype:s}\n\n "
             stattext = "".join(["", CP("y", msg, textonly=True)])
             groups_in_data = df_clean[group_by].unique()
-            # print("Groups: ", groups_in_data)
-            data = [
-                df_clean.loc[ids, measure].values
-                for ids in df_clean.groupby("Group").groups.values()
-            ]
-
+            print("Groups in this data: ", groups_in_data)
+            print(df_clean.columns)
+            data = []
+            for group in groups_in_data:
+                dg = df_clean[df_clean[group_by] == group]
+                print("group: ", group, "measure: ", measure, "dgmeasure: ", dg[measure].values)
+                data.append(dg[measure].values)
+            #     df_clean[df_clean["Group"] == group][measure].values]
+            #     # for ids in df_clean.groupby("Group").groups.values()
+            #     for group in groups_in_data
+            # ]
+            print("# groups with data: ", len(data))
+            print("data: ", data)
+            if len(data) <2:
+                stattext = "\n".join([stattext, f"Too few groups to compuare: celltype={celltype:s}  measure={measure:s}"])
+                FUNCS.textappend(stattext)
+                return
+            print("data: ", data)
             s, p = scipy.stats.kruskal(*data)
+            print("s: ", s)
+            print("p: ", p)
             stattext = "\n".join(
                 [
                     "",
@@ -1864,8 +1893,8 @@ class PlotSpikeInfo(QObject):
                 ]
             )
             print(f"Kruskal-Wallis: H:{s:.6f}   p={p:.6f}\n")
-            posthoc = scikit_posthocs.posthoc_conover(
-                df_clean, val_col=measure, group_col="Group", p_adjust="holm"
+            posthoc = scikit_posthocs.posthoc_dunn(
+                df_clean, val_col=measure, group_col=group_by, p_adjust="holm"
             )
             # print(posthoc)
             stattext = "\n".join(
@@ -2009,6 +2038,9 @@ class PlotSpikeInfo(QObject):
             FUNCS.textbox_setup(textbox)
             FUNCS.textclear()
 
+    #Remove cells for which the FI Hill slope is maximal at 0 nA:
+    #    These have spont.
+        df = df[df["I_maxHillSlope"] > 1e-11] 
         for ctype in experiment["celltypes"]:
             CP("g", f"\n{divider:s}")
             for measure in [
@@ -2110,6 +2142,9 @@ if __name__ == "__main__":
     divider = "=" * 80 + "\n"
     if args.stats:
         PSI.do_stats(dfa, divider=divider)
+
+
+
     # porder = ["Preweaning", "Pubescent", "Young Adult", "Mature Adult"]
     # now we can do the plots:
 
