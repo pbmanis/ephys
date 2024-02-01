@@ -37,6 +37,7 @@ def def_taum():
 @dataclass
 class FilterSettings:
     RMP: List = field(default_factory=def_RMP)  # min and max RMP, V
+    SDRMP: float=0.0025  # SD of RMP, V
     Rin: List = field(default_factory=def_Rin)  # min and max Rin, Ohm
     taum: List = field(
         default_factory=def_taum
@@ -58,6 +59,11 @@ class FilterDataset:
         assert isinstance(rmplimits, list)
         assert len(rmplimits) == 2
         self.FS.RMP = sorted(rmplimits)
+    
+    def set_SDRMP(self, sdrmp: float):
+        assert isinstance(sdrmp, float)
+        assert sdrmp >= 0.0
+        self.FS.SDRMP = sdrmp
 
     def set_Rin(self, rinlimits: list):
         assert isinstance(rinlimits, list)
@@ -193,12 +199,14 @@ class FilterDataset:
         #     rowIV['taum'] = np.nan
         #     row.dataOK = False
         #     return row
-        any_rej = {"RMP": False, "Rin": False, "taum": False}
+        any_rej = {"RMP": False, "Rin": False, "taum": False, "RMP_SD": False}
         if (
             rowIV["RMP"] + self.FS.junctionpotential < self.FS.RMP[0]
             or rowIV["RMP"] + self.FS.junctionpotential > self.FS.RMP[1]
         ):
             any_rej["RMP"] = True
+        if rowIV["RMP_SD"] > self.FS.SDRMP:
+            any_rej["RMP_SD"] = True
         if rowIV["Rin"] < self.FS.Rin[0] or rowIV["Rin"] > self.FS.Rin[1]:
             any_rej["Rin"] = True
         if rowIV["taum"] < self.FS.taum[0] or rowIV["taum"] > self.FS.taum[1]:
@@ -207,7 +215,7 @@ class FilterDataset:
         row.data_OK = True
         fs = asdict(self.FS)
         icol = {"RMP": "r", "Rin": "m", "taum": "b"}
-        for rd in ["RMP", "Rin", "taum"]:
+        for rd in ["RMP", "SD_RMP", "Rin", "taum"]:
             if any_rej[rd]:
                 prots = [Path(p).name for p in rowIV["protocols"]]
                 plist = ", ".join(prots)
