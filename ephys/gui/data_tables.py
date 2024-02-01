@@ -551,7 +551,7 @@ class DataTables:
                     {"name": "Reload", "type": "action"},
                     {"name": "View IndexFile", "type": "action"},
                     {"name": "Print File Info", "type": "action"},
-                    {"name": "Delete Selected Sim", "type": "action"},
+                    {"name": "Export Brief Table", "type": "action"},
                 ],
             },
             {"name": "Quit", "type": "action"},
@@ -631,11 +631,21 @@ class DataTables:
         Double click gets the selected row and then does an analysis
         """
         index = w.selectionModel().currentIndex()
+
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+        mode="IV"
+        if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
+            mode='map'
+        # elif modifiers == QtCore.Qt.ControlModifier:
+        #     print('Control+Click')
+        # elif modifiers == (QtCore.Qt.ControlModifier |
+        #                    QtCore.Qt.ShiftModifier):
+        #     print('Control+Shift+Click')
         # handle sorted table: use cell_id to get row key
         i_row = index.row()  # clicked index row
 
         self.selected_index_row = i_row
-        self.display_from_table_by_row(i_row)
+        self.display_from_table_by_row(i_row, mode=mode)
 
     def on_single_click(self, w):
         """
@@ -648,9 +658,9 @@ class DataTables:
         # for index in selrows: self.selected_index_row = index.row()
         #     self.analyze_from_table(index.row())
 
-    def display_from_table_by_row(self, i_row):
+    def display_from_table_by_row(self, i_row, mode="IV"):
         self.table_manager.select_row_by_row(i_row)
-        self.display_from_table()
+        self.display_from_table(mode=mode)
 
     def display_from_table_by_cell_id(self, cell_id):
         """
@@ -663,7 +673,7 @@ class DataTables:
 
         i_row = self.table_manager.select_row_by_cell_id(cell_id)
         if i_row is not None:
-            self.display_from_table()
+            self.display_from_table(mode="IV")
         else:
             FUNCS.textappend(f"Cell {cell_id:s} not found in table")
 
@@ -1226,6 +1236,8 @@ class DataTables:
                             if selected is None:
                                 return
                             self.print_file_info(selected)
+                        case "Export Brief Table":
+                            self.table_manager.export_brief_table(self.textbox)
 
     def analyze_ivs(self, mode="all", important:bool=False, day: str = None, slicecell: str = None):
         """
@@ -1567,7 +1579,7 @@ class DataTables:
             return
         self.PLT.plot_VC(self.selected_index_rows)
 
-    def display_from_table(self):
+    def display_from_table(self, mode="IV"):
         """
         display the data in the PDF dock
         """
@@ -1585,15 +1597,22 @@ class DataTables:
         if cell_type == " " or len(cell_type) == 0:
             cell_type = "unknown"
         sdate = selected.date[:-4]
-        cellname_parts = selected.cell_id.split("_")
+        cell_id = str(Path(selected.cell_id).name)
+        cellname_parts = cell_id.split("_")
+        print("mode: ", mode)
+        if mode == "IV":
+            modename = "IVs"
+        elif mode == "map":
+            modename = "maps"
         pdfname = (
-            f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_IVs.pdf"
+            f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_{modename:s}.pdf"
         )
         datapath = self.experiment["databasepath"]
         direct = self.experiment["directory"]
         filename = f"{Path(datapath, direct, cell_type, pdfname)!s}"
         url = "file://" + filename
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
+        print(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
         self.PDFView.setUrl(pg.QtCore.QUrl(url))  # +"#zoom=80"))
         self.Dock_PDFView.raiseDock()
         if selected is None:
