@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Union
 
-import ephys.gui.data_table_functions as FUNCS
+from ephys.gui import data_table_functions as functions
 import ephys
 import numpy as np
 import pandas as pd
@@ -37,7 +37,7 @@ from pylibrary.tools import cprint as CP
 from ephys.tools import win_print as WP
 
 # import vcnmodel.util.fixpicklemodule as FPM
-
+FUNCS = functions.Functions() 
 
 cprint = CP.cprint
 PP = pprint.PrettyPrinter(indent=8, width=80)
@@ -49,7 +49,7 @@ PP = pprint.PrettyPrinter(indent=8, width=80)
 
 print("Current path: ", Path().absolute())
 
-git_hashes = FUNCS.get_git_hashes()
+git_hashes = functions.get_git_hashes()
 
 
 def defemptylist():
@@ -614,3 +614,16 @@ class TableManager:
         except:
             return None
      
+    def export_brief_table(self, textbox):
+        FUNCS.textbox_setup(textbox)
+        FUNCS.textclear()
+        FUNCS.textappend("cell_id\tGroup\tcell_type\tage\tsex")
+        for i in range(len(self.table_data)):
+            cell_id = self.table_data[i].cell_id
+            Group = self.table_data[i].Group
+            cell_type = self.table_data[i].cell_type
+            age = self.table_data[i].age
+            sex= self.table_data[i].sex
+            msg = f"{cell_id:s}\t{Group:s}\t{cell_type:s}\t{age:s}\t{sex:s}"
+            FUNCS.textappend(msg)
+        print("Table exported in Report")
