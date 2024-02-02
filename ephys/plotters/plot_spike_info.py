@@ -49,7 +49,14 @@ max_age = 200
 
 def set_ylims(experiment):
     if experiment is not None and "ylims" in experiment.keys():
-        ylims = experiment["ylims"]
+        ylims = {}
+        # the key may be a list of cell types all with the same limits
+        if "celltypes" in experiment["ylims"].keys():
+            CP("r", "setting ylims for cell types")
+            for ct in experiment["ylims"]["celltypes"]:  
+                ylims[ct] = experiment["ylims"]
+        else:
+            ylims['other'] = experiment["ylims"]
         return ylims
     else:
         ylims_pyr = {
@@ -184,16 +191,16 @@ def set_ylims(experiment):
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
-        ylims_all = {
+        ylims_other = {
             "dvdt_rising": [0, 1000],
             "dvdt_falling": [0, 1000],
-            "AP_HW": [0, 2.5],
+            "AP_HW": [0, 2000],
             "AP_thr_V": [-75, 0],
             "AHP_depth_V": [-85, -40],
             "AdaptRatio": [0, 5],
             "FISlope": [0, 1500],
             "maxHillSlope": [0, None],
-            "I_maxHillSlope": [0, 1.2],
+            "I_maxHillSlope": [0, 1000],
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
@@ -210,7 +217,7 @@ def set_ylims(experiment):
             "t-stellate": ylims_tstellate,
             "d-stellate": ylims_dstellate,
             "octopus": ylims_octopus,
-            "all": ylims_all,  # a default set when "all" is specified in the configuration
+            "other": ylims_other,  # a default set when "other" is specified in the configuration
         }
         return ylims
 
@@ -607,6 +614,7 @@ class PlotSpikeInfo(QObject):
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
         dfdict = {col: [] for col in cols}
+
         df_new = pd.DataFrame.from_dict(dfdict)
 
         # do each cell in the database
@@ -745,6 +753,11 @@ class PlotSpikeInfo(QObject):
                 clip_on = False
             )
         else:
+            print("hue palettte: ", hue_palette)
+            print("hue category: ", hue_category)
+            print("xname: ", xname)
+            print("yname: ", yname)
+            print(df_x[xname].unique())
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -973,6 +986,10 @@ class PlotSpikeInfo(QObject):
             print(self.ylims.keys())
             for i, celltype in enumerate(self.experiment["celltypes"]):
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                if celltype not in self.ylims.keys():
+                    ycell = "other"
+                else:
+                    ycell = celltype
                 picker_func = self.create_one_plot_categorical(
                     data=df,
                     xname=xname,
@@ -983,7 +1000,7 @@ class PlotSpikeInfo(QObject):
                     plot_order=plot_order,
                     colors=colors,
                     logx=False,
-                    ylims=self.ylims[celltype][measure],
+                    ylims=self.ylims[ycell][measure],
                     transform=tf,
                     xlims=None,
                     enable_picking=enable_picking,
@@ -1108,7 +1125,8 @@ class PlotSpikeInfo(QObject):
         # picker_funcs[celltype].setAction(handle_pick) # handle_pick is a function that takes the index of the picked point as an argument
 
     def apply_scale(self, row, measure, scale):
-        row[measure] = row[measure] * scale
+        if measure in row.keys():
+            row[measure] = row[measure] * scale
         return row
 
     def create_one_plot_categorical(
@@ -1153,8 +1171,6 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data.copy()
-        print("cat plot: celltype: ", celltype, xname, len(dfp))
-        # print("colors: ", colors)
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
@@ -1387,7 +1403,10 @@ class PlotSpikeInfo(QObject):
                 # df = df.apply(apply_scale, axis=1, measure=measure, scale=yscale)
                 print("celltype: ", celltype, "measure: ", measure)
                 axp = P.axdict[f"{let:s}{j+1:d}"]
-
+                if celltype not in self.ylims.keys():
+                    ycell = "other"
+                else:
+                    ycell = celltype
                 print("    enable picking: ", enable_picking)
                 picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
@@ -1399,7 +1418,7 @@ class PlotSpikeInfo(QObject):
                     celltype=celltype,
                     colors=colors,
                     logx=False,
-                    ylims=self.ylims[celltype][measure],
+                    ylims=self.ylims[ycell][measure],
                     xlims=None,
                     enable_picking=enable_picking,
                 )
@@ -1552,7 +1571,7 @@ class PlotSpikeInfo(QObject):
             "d-stellate": 800,
             "giant": 800,
             "octopus": 100,
-            "all": 500,
+            "other": 500,
         }
         pos = {
             "pyramidal": [0.0, 1.0],
@@ -1563,7 +1582,7 @@ class PlotSpikeInfo(QObject):
             "t-stellate": [0.6, 0.4],
             "d-stellate": [0.6, 0.4],
             "giant": [0.6, 0.4],
-            "all": [0.4, 0.15],
+            "other": [0.4, 0.15],
         }
 
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
@@ -1662,7 +1681,7 @@ class PlotSpikeInfo(QObject):
                         clip_on=False,
                     )
 
-            if celltype != "all":
+            if celltype != "other":
                 ax.set_ylim(0, ymax[celltype])
                 if "individual" in mode:
                     ax.set_ylim(0, 750)
@@ -1988,14 +2007,30 @@ class PlotSpikeInfo(QObject):
                 row.age_category = k
         return row.age_category
 
+    def clean_sex_column(self, row):
+        if row.sex not in ["F", "M"]:
+            row.sex = "U"
+        return row.sex
+
+    def get_AHP_depth(self, row):
+        # recalculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
+        # if the depth is positive, then the trough is above threshold, so set to nan.
+        row.AHP_depth_V = row.AHP_trough_V - row.AP_thr_V
+        if row.AHP_depth_V > 0:
+            row.AHP_depth_V = np.nan
+        return row.AHP_depth_V
+    
     def preload(self, fn):
         CP("g", f"    PRELOAD, {fn!s}")
         df = pd.read_pickle(fn)
-
+        df['sex'] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_Rin, axis=1)
-        df["age_category"] = df.apply(self.categorize_ages, axis=1)
+        if "age_category" in df.columns:
+            df["age_category"] = df.apply(self.categorize_ages, axis=1)
         df["FIRate"] = df.apply(self.getFIRate, axis=1)
         df["Group"] = df["Group"].astype("str")
+        print(df.columns)
+        df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
