@@ -6,6 +6,7 @@ import logging
 import pprint
 import subprocess
 from pathlib import Path
+import re
 from typing import Union
 
 import matplotlib.pyplot as mpl
@@ -1000,34 +1001,44 @@ class Functions:
         parent = Path(cell).parent
         if parent == ".":  # just cell, not path
             cell_parts = str(cell).split("_")
-            cn = int(cell_parts[-1][-3:])
-            sn = int(cell_parts[-2][-3:])
+            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            cnp = re_parse.match(cell_parts[-1]).group(2)
+            cn = int(cnp)
+            snp = re_parse.match(cell_parts[-1]).group(4)
+            sn = int(snp)
             cell_day_name = cell_parts[-3].split("_")[0]
             dir_path = None
         else:
             cell = Path(cell).name  # just get the name here
             cell_parts = cell.split("_")
-            cn = int(cell_parts[-1][-1])
-            sn = int(cell_parts[-1][-3])
+            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            # print("cell_parts: ", cell_parts[-1])
+            snp = re_parse.match(cell_parts[-1]).group(2)
+            sn = int(snp)
+            cnp = re_parse.match(cell_parts[-1]).group(4)
+            cn = int(cnp)
             cell_day_name = cell_parts[0]
             dir_path = parent
 
         # print("Cell name, slice, cell: ", cell_parts, sn, cn)
         # if cell_parts != ['2019.02.22', '000', 'S0C0']:
         #     return None, None
-        cname2 = f"{cell_day_name.replace('.', '_'):s}_S{sn:02d}C{cn:02d}_{celltype:s}_IVs.pkl"
+        cname2 = f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
         datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
-        cname1 = f"{cell_day_name.replace('.', '_'):s}_S{sn:01d}C{cn:01d}_{celltype:s}_IVs.pkl"
-        datapath1 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname1)
+ 
+        # cname2 = f"{cell_day_name.replace('.', '_'):s}_S{sn:02d}C{cn:02d}_{celltype:s}_IVs.pkl"
+        # datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
+        # cname1 = f"{cell_day_name.replace('.', '_'):s}_S{sn:01d}C{cn:01d}_{celltype:s}_IVs.pkl"
+        # datapath1 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname1)
         # print(datapath)
-        if datapath1.is_file():
-            CP("c", f"... {datapath1!s} is OK")
-            datapath = datapath1
-        elif datapath2.is_file():
+        # if datapath1.is_file():
+        #     CP("c", f"... {datapath1!s} is OK")
+        #     datapath = datapath1
+        if datapath2.is_file():
             CP("c", f"...  {datapath2!s} is OK")
             datapath = datapath2
         else:
-            CP("r", f"no file: matching: {datapath1!s}, \n   or: {datapath2!s}\n")
+            CP("r", f"no file: matching: {datapath2!s}, \n") #    or: {datapath2!s}\n")
             print("cell type: ", celltype)
             raise ValueError
             return None, None
