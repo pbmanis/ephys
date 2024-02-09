@@ -87,12 +87,13 @@ import dateutil.parser as DUP
 import MetaArray
 import numpy as np
 import pandas as pd
-from pylibrary.tools import cprint 
+from pylibrary.tools import cprint
 from ..datareaders import acq4_reader
 from . import parse_layers
 
 
 CP = cprint.cprint
+
 
 def ansi_colors(color):
     colors = {
@@ -143,8 +144,7 @@ class DataSummary:
         update=False,
         pairflag=False,
         device="MultiClamp1.ma",
-        excludedirs:list=[],
-
+        excludedirs: list = [],
     ):
         """
         Note that the init is just setup - you have to call getDay with the object to do anything
@@ -154,7 +154,7 @@ class DataSummary:
         basedir : str (required)
             base directory to be summarized
 
-        Obselete: 
+        Obselete:
         #outputMode : str (default: 'pandas')
         #    How to write the output. Current options are 'terminal', which writes to the terminal, and
         #    'pandas', which will create a pandas dataframe and pickle it to a file
@@ -216,7 +216,7 @@ class DataSummary:
         self.setups()  # build some regex and wrappers
         # gather input parameters
         self.basedir = Path(basedir)
-        self.outputMode = 'pandas' # outputMode  # terminal, tabfile, pandas
+        self.outputMode = "pandas"  # outputMode  # terminal, tabfile, pandas
         self.outFilename = outputFile
         self.daylistfile = daylistfile
         self.dryrun = dryrun
@@ -231,24 +231,16 @@ class DataSummary:
         self.pairflag = pairflag
         self.device = device
         self.append = append
-        self.all_dataset_protocols = [] # a list of ALL protocols found in the dataset
+        self.all_dataset_protocols = []  # a list of ALL protocols found in the dataset
         self.excludedirs = excludedirs
         self.daylist = None
         self.index = 0
         # flags - for debugging and verbosity
-        self.reportIncompleteProtocols = (
-            True  # do include incomplete protocol runs in print
-        )
-        self.InvestigateProtocols = (
-            inspect  # set True to check out the protocols in detail
-        )
+        self.reportIncompleteProtocols = True  # do include incomplete protocol runs in print
+        self.InvestigateProtocols = inspect  # set True to check out the protocols in detail
         if self.dryrun:
-            self.reportIncompleteProtocols = (
-                False  # do include incomplete protocol runs in print
-            )
-            self.InvestigateProtocols = (
-                False  # set True to check out the protocols in detail
-            )
+            self.reportIncompleteProtocols = False  # do include incomplete protocol runs in print
+            self.InvestigateProtocols = False  # set True to check out the protocols in detail
         self.panda_string = ""
         self.cell_id = ""
         # column definitions - may need to adjust if change data that is pasted into the output
@@ -276,7 +268,8 @@ class DataSummary:
             "slice_notes",
             "slice_location",
             "slice_orientation",
-            "important",
+            "slice_mosaic",
+            "slice_important",
         ]
         self.cell_defs = [
             "cell_cell",
@@ -285,9 +278,9 @@ class DataSummary:
             "cell_location",
             "cell_layer",
             "cell_expression",
+            "cell_mosaic",
             "cell_important",
             "cell_id",
-
         ]
         self.data_defs = [
             "data_incomplete",
@@ -322,10 +315,18 @@ class DataSummary:
             "notes",
             "location",
             "orientation",
+            "mosaic",
             "important",
             "__timestamp__",
         ]
-        self.cell_keys = ["notes", "type", "location", "important", "__timestamp__"]
+        self.cell_keys = [
+            "notes",
+            "type",
+            "location",
+            "mosaic",
+            "important",
+            "__timestamp__"
+        ]
         self.data_dkeys = [
             "incomplete",
             "complete",
@@ -353,10 +354,23 @@ class DataSummary:
             ]
         )
         self.slice_template = OrderedDict(
-            [("type", "{:>s}"), ("location", "{:>12s}"), ("orientation", "{:>5s}")]
+            [
+                ("type", "{:>s}"),
+                ("location", "{:>12s}"),
+                ("orientation", "{:>5s}"),
+                ("mosaic", "{:>s}"),
+                ("important", "{:>s}"),
+            ]
         )
         self.cell_template = OrderedDict(
-            [("type", "{:>s}"), ("location", "{:>12s}"), ("layer", "{:>10s}"), ("expression", "{:2s}"), ("important", "{:>s}")]
+            [
+                ("type", "{:>s}"),
+                ("location", "{:>12s}"),
+                ("layer", "{:>10s}"),
+                ("expression", "{:2s}"),
+                ("mosaic", "{:>s}"),
+                ("important", "{:>s}"),
+            ]
         )
         self.data_template = OrderedDict(
             [
@@ -394,9 +408,7 @@ class DataSummary:
                 dt = DUP.parse(self.after)
                 mindayx = (dt.year, dt.month, dt.day)
             except:
-                raise ValueError(
-                    "Date for AFTER cannot be parsed : {0:s}".format(self.after)
-                )
+                raise ValueError("Date for AFTER cannot be parsed : {0:s}".format(self.after))
         if self.before is None:
             maxdayx = (
                 2266,
@@ -408,9 +420,7 @@ class DataSummary:
                 dt = DUP.parse(self.before)
                 maxdayx = (dt.year, dt.month, dt.day)
             except:
-                raise ValueError(
-                    "Date for BEFORE cannot be parsed : {0:s}".format(self.before)
-                )
+                raise ValueError("Date for BEFORE cannot be parsed : {0:s}".format(self.before))
         if self.day is not None:
             dt = DUP.parse(self.day)
             mindayx = (dt.year, dt.month, dt.day)
@@ -440,29 +450,17 @@ class DataSummary:
         self.tw["day"] = textwrap.TextWrapper(
             initial_indent="", subsequent_indent=" " * 2
         )  # used to say "initial_indent ="Description: ""
-        self.tw["slice"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
-        self.tw["cell"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
-        self.tw["pair"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
+        self.tw["slice"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
+        self.tw["cell"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
+        self.tw["pair"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
 
         self.twd = {}  # for description
         self.twd["day"] = textwrap.TextWrapper(
             initial_indent="", subsequent_indent=" " * 2
         )  # used to ays initial_indent ="Notes: ""
-        self.twd["slice"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
-        self.twd["cell"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
-        self.twd["pair"] = textwrap.TextWrapper(
-            initial_indent="", subsequent_indent=" " * 2
-        )
+        self.twd["slice"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
+        self.twd["cell"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
+        self.twd["pair"] = textwrap.TextWrapper(initial_indent="", subsequent_indent=" " * 2)
 
         self.img_re = re.compile(
             r"^[Ii]mage_(\d{3,3}).tif"
@@ -539,9 +537,7 @@ class DataSummary:
                     print(day)
                     k = self.pddata.index[self.pddata["date"] == day]
                     print(k)
-                    self.pddata = self.pddata.drop(
-                        index=k
-                    )  # remove the day and update it
+                    self.pddata = self.pddata.drop(index=k)  # remove the day and update it
             else:
                 pass
                 # print('Day to do: ', day)
@@ -574,7 +570,9 @@ class DataSummary:
                 #     print(' ? k in day index: ', k)
                 if isinstance(self.day_index[k], bool):
                     self.day_index[k] = str(self.day_index[k])
-                if k in ["sex"]:  # make uppercase or maybe "U" or empty. Anything else is not valid for mice.
+                if k in [
+                    "sex"
+                ]:  # make uppercase or maybe "U" or empty. Anything else is not valid for mice.
                     self.day_index[k] = self.day_index[k].upper()
                     if self.day_index[k] not in ["M", "F", "m", "f", None, "", " ", "U"]:
                         print("? sex: <" + self.day_index[k] + ">")
@@ -586,8 +584,8 @@ class DataSummary:
                     if not isinstance(wt, str):
                         self.day_index[k] = f"{wt:d}g"
                     else:
-                        if len(wt) > 0 and wt[-1] not in ['g', 'G']:
-                            self.day_index[k] = wt+'g'
+                        if len(wt) > 0 and wt[-1] not in ["g", "G"]:
+                            self.day_index[k] = wt + "g"
 
                 self.day_index[k].replace("\n", " ")
                 if len(self.day_index[k]) == 0:
@@ -640,15 +638,26 @@ class DataSummary:
                 continue
             self.slice_index = self.slice_index["."]
             self.slice_index["slice"] = slicen
+            if "mosaic" not in self.slice_index.keys():
+                self.slice_index["mosaic"] = " "
             for k in self.slice_defs:
-                ks = k.replace("slice_", "")
-                if ks not in self.slice_index.keys():
-                    self.slice_index[ks] = " "
-                if isinstance(self.slice_index[ks], bool):
-                    self.slice_index[ks] = str(self.slice_index[ks])
-                if len(self.slice_index[ks]) == 0:
-                    self.slice_index[ks] = " "
-                self.slice_index[ks].replace("\n", " ")
+                if k == "slice_mosaic":
+                    slicepath = Path(self.basedir, day, slicen)
+                    mosaics = list(slicepath.glob("*.mosaic"))  # look for mosaic files
+                    print ("****  SLICE :", slicepath, " MOSAICS: ", mosaics)
+                    if len(mosaics) > 0:
+                        self.slice_index["mosaic"] = ", ".join(m.name for m in mosaics)
+                    else:
+                        self.slice_index["mosaic"] = " "
+                else:
+                    ks = k.replace("slice_", "")
+                    if ks not in self.slice_index.keys():
+                        self.slice_index[ks] = " "
+                    if isinstance(self.slice_index[ks], bool):
+                        self.slice_index[ks] = str(self.slice_index[ks])
+                    if len(self.slice_index[ks]) == 0:
+                        self.slice_index[ks] = " "
+                    self.slice_index[ks].replace("\n", " ")
             self._doCells(Path(self.basedir, day, slicen))
             gc.collect()
 
@@ -666,7 +675,7 @@ class DataSummary:
         -------
         Nothing
 
-        The result is stored in teh calss variable cell_index
+        The result is stored in the class variable cell_index
 
         """
         # print(clsp + 'docells')
@@ -688,13 +697,19 @@ class DataSummary:
                 # print('thisfile: ', thisfile)
                 cells.append("".join(m.groups(2)))
         for cell in cells:
-            #print("\n", clsp + "cell: ", cell)
+            # print("\n", clsp + "cell: ", cell)
             self.cstring = self.sstring + " %s" % cell
             sparts = Path(self.sstring.split(" ")[0]).parts
             Printer(self.cstring)
             bparts = Path(self.basedir).parts
-            nbase = len(bparts) # length of path components up to the actual date
-            self.cell_id = str(Path(str(Path(*sparts[nbase:])), self.cstring.split(" ")[-2], self.cstring.split(" ")[-1]))
+            nbase = len(bparts)  # length of path components up to the actual date
+            self.cell_id = str(
+                Path(
+                    str(Path(*sparts[nbase:])),
+                    self.cstring.split(" ")[-2],
+                    self.cstring.split(" ")[-1],
+                )
+            )
 
             try:
                 self.cell_index = self.AR.readDirIndex(Path(thisslice, cell))[
@@ -708,6 +723,8 @@ class DataSummary:
                 continue
             self.cell_index["cell"] = cell
             self.cell_index["id"] = self.cell_id
+            if "mosaic" not in self.cell_index.keys():
+                self.cell_index["mosaic"] = " "
             if "notes" not in self.cell_index.keys():
                 self.cell_index["notes"] = ""
             # probably better to set this manually in acq4. Too many permutations to consider.
@@ -715,6 +732,16 @@ class DataSummary:
             #     self.cell_index["cell_layer"] = self.regularize_layer(self.cell_index["notes"])
 
             for k in self.cell_defs:
+                if k == "slice_mosaic":
+                    cellpath = Path(thisslice, cell)
+                    mosaics = list(
+                        cellpath.glob("*.mosaic")
+                    )  # look for mosaic files at the cell level
+                    if len(mosaics) > 0:
+                        self.cell_index["mosaic"] = ", ".join(m.name for m in mosaics)
+                    else:
+                        self.cell_index["mosaic"] = " "
+                    continue
                 ks = k.replace("cell_", "")
                 if ks not in list(self.cell_index.keys()):
                     self.cell_index[ks] = " "
@@ -750,9 +777,7 @@ class DataSummary:
         images2p = []
         videos = []
 
-        endmatch = re.compile(
-            r"[\_(\d{3,3})]$"
-        )  # look for _lmn at end of directory name
+        endmatch = re.compile(r"[\_(\d{3,3})]$")  # look for _lmn at end of directory name
         for thisfile in allfiles:
             if Path(thiscell, thisfile).is_dir():
                 protocols.append(thisfile)
@@ -777,9 +802,7 @@ class DataSummary:
             if protocol.startswith("Patch"):
                 continue
 
-            Printer(
-                self.cstring + " Prot[%2d/%2d]: %s" % (np, len(protocols), protocol)
-            )
+            Printer(self.cstring + " Prot[%2d/%2d]: %s" % (np, len(protocols), protocol))
             self.allprotocols += protocol + ", "
             protocolpath = Path(thiscell, protocol)
             dirs = self.AR.subDirs(
@@ -788,9 +811,7 @@ class DataSummary:
             modes = []
             info = self.AR.readDirIndex(protocolpath)  # top level info dict
             if info is None:
-                print(
-                    f"Protocol is not managed (no .index file found): {str(protocolpath):s}"
-                )
+                print(f"Protocol is not managed (no .index file found): {str(protocolpath):s}")
                 continue
             info = info["."]
             if "devices" not in info.keys():  # just safety...
@@ -805,18 +826,14 @@ class DataSummary:
             mainDevice = clampDevices[0]
             modes = self.getClampDeviceMode(info, mainDevice, modes)
             #            print('modes: ', modes)
-            nexpected = len(
-                dirs
-            )  # acq4 writes dirs before, so this is the expected fill
+            nexpected = len(dirs)  # acq4 writes dirs before, so this is the expected fill
             ncomplete = 0  # count number actually done
             for i, directory_name in enumerate(
                 dirs
             ):  # dirs has the names of the runs within the protocol
                 # if self.verbose:
                 #    print('**DATA INFO: ', info)
-                datafile = Path(
-                    directory_name, mainDevice + ".ma"
-                )  # clamp device file name
+                datafile = Path(directory_name, mainDevice + ".ma")  # clamp device file name
                 if self.deep_check and i == 0:  # .index file is found, so proceed
                     clampInfo = self.AR.getDataInfo(datafile)
                     if self.verbose:
@@ -844,17 +861,13 @@ class DataSummary:
                             f"{prsp:s}WC % Comp   : {self.amp_settings['CompCorrection']:>6.1f}",
                             end="",
                         )
-                        print(
-                            f"{prsp:s}WC BW (kHz) : {1e-3*self.amp_settings['CompBW']:>6.2f}"
-                        )
+                        print(f"{prsp:s}WC BW (kHz) : {1e-3*self.amp_settings['CompBW']:>6.2f}")
                     else:
                         print(prsp + "****NO WC Compensation****")
 
                     ncomplete += 1  # count up
                 else:  # superficial check for existence of the file
-                    datafile = Path(
-                        directory_name, mainDevice + ".ma"
-                    )  # clamp device file name
+                    datafile = Path(directory_name, mainDevice + ".ma")  # clamp device file name
                     if datafile.is_file():  # only check for existence of the fle
                         ncomplete += 1  # count anyway without going "deep"
             if ncomplete == nexpected:
@@ -949,14 +962,21 @@ class DataSummary:
 
         slice_string = ""
         for k in self.slice_defs:
-            ks = k.replace("slice_", "")
-            slice_string += str(self.slice_index[ks]) + "\t"
+            if k == "mosaic":
+                slice_string += self.slice_index[k] + "\t"
+
+            else:
+                ks = k.replace("slice_", "")
+                slice_string += str(self.slice_index[ks]) + "\t"
             phdr += k + "\t"
 
         cell_string = ""
         for k in self.cell_defs:
-            kc = k.replace("cell_", "")
-            cell_string += str(self.cell_index[kc]) + "\t"
+            if k == "mosaic":
+                cell_string += self.cell_index[k] + "\t"
+            else:
+                kc = k.replace("cell_", "")
+                cell_string += str(self.cell_index[kc]) + "\t"
             phdr += k + "\t"
 
         prot_string = ""
@@ -977,9 +997,7 @@ class DataSummary:
 
         phdr = phdr.rstrip("\t\n")
         if len(self.panda_string) == 0:  # catch the header
-            self.panda_string = (
-                phdr.replace("\n", "") + "\n"
-            )  # clip the last \t and add a newline
+            self.panda_string = phdr.replace("\n", "") + "\n"  # clip the last \t and add a newline
 
         # if self.outputMode in [None, "terminal"]:
         #     print("{0:s}".format(ostring))
@@ -1001,7 +1019,6 @@ class DataSummary:
         else:
             pass
 
-
     def write_string_pandas(self):
         """
         Write an output string using pandas dataframe
@@ -1011,37 +1028,33 @@ class DataSummary:
         if len(self.panda_string) == 0:
             return
         outfile = Path(self.outFilename)
-        excelfile = Path(self.outFilename).with_suffix('.xlsx')
+        excelfile = Path(self.outFilename).with_suffix(".xlsx")
         if self.outputMode == "pandas" and not self.append:
             print("\nOUTPUTTING DIRECTLY VIA PANDAS, extension is .pkl")
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
-            if outfile.suffix != '.pkl':
-                outfile = outfile.with_suffix('.pkl')
+            if outfile.suffix != ".pkl":
+                outfile = outfile.with_suffix(".pkl")
             df.to_pickle(outfile)
             print(f"Wrote NEW pandas dataframe to pickled file: {str(outfile):s}")
             maindf = df
-            
+
         elif self.outputMode == "pandas" and self.append:
             print("\nAPPENDING to EXISTING PANDAS DATAFRAME")
             # first save the original with a date-time string appended
-            if outfile.suffix != '.pkl':
-                outfile = outfile.with_suffix('.pkl')
+            if outfile.suffix != ".pkl":
+                outfile = outfile.with_suffix(".pkl")
             ofile = Path(outfile)
             if ofile.is_file:
                 n = datetime.datetime.now()  # get current time
                 dateandtime = n.strftime(
                     "_%Y%m%d-%H%M%S"
                 )  # make a value indicating date and time for backup file
-                bkfile = Path(ofile.parent, str(ofile.stem) + dateandtime).with_suffix(
-                    ".bak"
-                )
+                bkfile = Path(ofile.parent, str(ofile.stem) + dateandtime).with_suffix(".bak")
                 print("Copied original to backup file: ", bkfile)
                 maindf = pd.read_pickle(ofile)  # read in the current file
                 ofile.rename(bkfile)
             else:
-                raise ValueError(
-                    f"Cannot append to non-existent file: {str(outfile):s}"
-                )
+                raise ValueError(f"Cannot append to non-existent file: {str(outfile):s}")
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
             maindf = pd.concat([maindf, df])
             maindf = maindf.reset_index(level=0, drop=True)
@@ -1051,8 +1064,6 @@ class DataSummary:
 
         self.make_excel(maindf, outfile=excelfile)
         print(f"Wrote excel verion of dataframe to: {str(excelfile):s}")
-
-
 
     def get_file_information(self, dh=None):
         """
@@ -1094,7 +1105,7 @@ class DataSummary:
         date = filename.parent.parent.parent.name
         p3 = str(filename.parent.parent.parent.parent)
         return (date, sliceid, cell, proto, p3)
-      
+
         # (p0, proto) = os.path.split(filename)
         # (p1, cell) = os.path.split(p0)
         # (p2, sliceid) = os.path.split(p1)
@@ -1106,48 +1117,46 @@ class DataSummary:
         # return (date, sliceid, cell, proto, p3)
 
     def highlight_by_cell_type(self, row):
-        colors = {"pyramidal": "#c5d7a5", #"darkseagreen",
-                "cartwheel": "skyblue",
-                "tuberculoventral": "lightpink",
-                "granule": "linen",
-                "golgi": "yellow",
-                "unipolar brush cell": "sienna",
-                "chestnut": "saddlebrown",
-                "giant": "sandybrown",
-                "giant?": "sandybrown",
-                "giant cell": "sandybrown",
-                "Unknown": "white",
-                "unknown": "white",
-                " ": "white",
-                "bushy": "lightslategray",
-                "t-stellate": "thistle",
-                "l-stellate": "darkcyan",
-                "d-stellate": "thistle",
-                "stellate": "thistle",
-                "octopus": "darkgoldenrod",
-                
-                # cortical (uses some of the same colors)
-                "basket": "lightpink",
-                "chandelier": "sienna",
-                "fast spiking": "darksalmon",
-                "RS": "lightgreen",
-                "LTS": "paleturquoise",
-
-                # cerebellar
-                "Purkinje": "mediumorchid",
-                "purkinje": "mediumorchid",
-                "purk": "mediumorchid",
-                
-                # not neurons
-                'glia': 'lightslategray',
-                'Glia': 'lightslategray',
+        colors = {
+            "pyramidal": "#c5d7a5",  # "darkseagreen",
+            "cartwheel": "skyblue",
+            "tuberculoventral": "lightpink",
+            "granule": "linen",
+            "golgi": "yellow",
+            "unipolar brush cell": "sienna",
+            "chestnut": "saddlebrown",
+            "giant": "sandybrown",
+            "giant?": "sandybrown",
+            "giant cell": "sandybrown",
+            "Unknown": "white",
+            "unknown": "white",
+            " ": "white",
+            "bushy": "lightslategray",
+            "t-stellate": "thistle",
+            "l-stellate": "darkcyan",
+            "d-stellate": "thistle",
+            "stellate": "thistle",
+            "octopus": "darkgoldenrod",
+            # cortical (uses some of the same colors)
+            "basket": "lightpink",
+            "chandelier": "sienna",
+            "fast spiking": "darksalmon",
+            "RS": "lightgreen",
+            "LTS": "paleturquoise",
+            # cerebellar
+            "Purkinje": "mediumorchid",
+            "purkinje": "mediumorchid",
+            "purk": "mediumorchid",
+            # not neurons
+            "glia": "lightslategray",
+            "Glia": "lightslategray",
         }
         if row.cell_type.lower() in colors.keys():
             return [f"background-color: {colors[row.cell_type.lower()]:s}" for s in range(len(row))]
         else:
             return [f"background-color: red" for s in range(len(row))]
 
-    def regularize_layer(self, noteinfo:str):
+    def regularize_layer(self, noteinfo: str):
         """Try to get layer information from the cell notes
 
         Args:
@@ -1159,19 +1168,40 @@ class DataSummary:
         else:
             return layer_text
 
-
     def organize_columns(self, df):
         return df
-        cols = ['ID', 'Group', 'Date', 'slice_slice','cell_cell', 'cell_type', 
-            'iv_name', 'holding', 'RMP', 'RMP_SD', 'Rin', 'taum',
-            'dvdt_rising', 'dvdt_falling', 'AP_thr_V', 'AP_HW', "AP15Rate", "AdaptRatio", 
-            "AP_begin_V", "AHP_trough_V", "AHP_depth_V", "tauh", "Gh", "FiringRate",
+        cols = [
+            "ID",
+            "Group",
+            "Date",
+            "slice_slice",
+            "cell_cell",
+            "cell_type",
+            "iv_name",
+            "holding",
+            "RMP",
+            "RMP_SD",
+            "Rin",
+            "taum",
+            "dvdt_rising",
+            "dvdt_falling",
+            "AP_thr_V",
+            "AP_HW",
+            "AP15Rate",
+            "AdaptRatio",
+            "AP_begin_V",
+            "AHP_trough_V",
+            "AHP_depth_V",
+            "tauh",
+            "Gh",
+            "FiringRate",
             "FI_Curve",
-            'date']
+            "date",
+        ]
         df = df[cols + [c for c in df.columns if c not in cols]]
         return df
 
-    def make_excel(self, df:pd, outfile:Path):
+    def make_excel(self, df: pd, outfile: Path):
         """cleanup: reorganize columns in spreadsheet, set column widths
         set row colors by cell type
 
@@ -1180,54 +1210,64 @@ class DataSummary:
                 Pandas dataframe object
             excelsheet (_type_): _description_
         """
-        if outfile.suffix != '.xlsx':
-            outfile = outfile.with_suffix('.xlsx')
+        if outfile.suffix != ".xlsx":
+            outfile = outfile.with_suffix(".xlsx")
 
-        writer = pd.ExcelWriter(outfile, engine='xlsxwriter')
+        writer = pd.ExcelWriter(outfile, engine="xlsxwriter")
 
-        df.to_excel(writer, sheet_name = "Sheet1")
+        df.to_excel(writer, sheet_name="Sheet1")
         df = self.organize_columns(df)
         workbook = writer.book
         worksheet = writer.sheets["Sheet1"]
-        fdot3 = workbook.add_format({'num_format': '####0.000'})
-        df.to_excel(writer, sheet_name = "Sheet1")
+        fdot3 = workbook.add_format({"num_format": "####0.000"})
+        df.to_excel(writer, sheet_name="Sheet1")
 
-        resultno:list = []
-        # resultno = ['holding', 'RMP', 'Rin', 'taum', 'dvdt_rising', 'dvdt_falling', 
+        resultno: list = []
+        # resultno = ['holding', 'RMP', 'Rin', 'taum', 'dvdt_rising', 'dvdt_falling',
         #     'AP_thr_V', 'AP_HW', "AP15Rate", "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
-        # df[resultno] = df[resultno].apply(pd.to_numeric)    
+        # df[resultno] = df[resultno].apply(pd.to_numeric)
         for i, column in enumerate(df):
             # print('column: ', column)
             if column in resultno:
-                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1,  cell_format=fdot3)
-            if column not in ['notes', 'description', 'OriginalTable', 'FI_Curve']:
+                writer.sheets["Sheet1"].set_column(
+                    first_col=i + 1, last_col=i + 1, cell_format=fdot3
+                )
+            if column not in ["notes", "description", "OriginalTable", "FI_Curve"]:
                 coltxt = df[column].astype(str)
                 coltxt = coltxt.map(str.rstrip)
                 maxcol = coltxt.map(len).max()
-                column_width = np.max([maxcol, len(column)]) # make sure the title fits
+                column_width = np.max([maxcol, len(column)])  # make sure the title fits
                 if column_width > 50:
-                    column_width = 50 # but also no super long ones
-                #column_width = max(df_new[column].astype(str).map(len).max(), len(column))
+                    column_width = 50  # but also no super long ones
+                # column_width = max(df_new[column].astype(str).map(len).max(), len(column))
             else:
                 column_width = 25
             if column_width < 8:
                 column_width = 8
             if column in resultno:
-                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, cell_format=fdot3, width=column_width) # column_dimensions[str(column.title())].width = column_width
+                writer.sheets["Sheet1"].set_column(
+                    first_col=i + 1, last_col=i + 1, cell_format=fdot3, width=column_width
+                )  # column_dimensions[str(column.title())].width = column_width
                 print(f"formatted {column:s} with {str(fdot3):s}")
             else:
-                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
+                writer.sheets["Sheet1"].set_column(
+                    first_col=i + 1, last_col=i + 1, width=column_width
+                )  # column_dimensions[str(column.title())].width = column_width
 
         df = df.style.apply(self.highlight_by_cell_type, axis=1)
-        df.to_excel(writer, sheet_name = "Sheet1")
+        df.to_excel(writer, sheet_name="Sheet1")
         writer.close()
 
 
-def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
+def dir_recurse(ds, current_dir, exclude_list: list = [], indent=0):
     print("Found current dir?: ", Path(current_dir).is_dir())
     files = sorted(list(current_dir.glob("*")))
     print("files: ", files)
-    alldatadirs = [f for f in files if f.is_dir() and str(f.name).startswith("20") and str(f.name) not in exclude_list]
+    alldatadirs = [
+        f
+        for f in files
+        if f.is_dir() and str(f.name).startswith("20") and str(f.name) not in exclude_list
+    ]
     print("# dirs: ", alldatadirs)
     sp = " " * indent
     for d in alldatadirs:
@@ -1236,8 +1276,12 @@ def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
 
     if len(alldatadirs) > 0:
         ds.write_string_pandas()
-    allsubdirs = [f for f in files if f.is_dir() and not str(f.name).startswith("20") and str(f.name) not in exclude_list]
-    indent += 2 
+    allsubdirs = [
+        f
+        for f in files
+        if f.is_dir() and not str(f.name).startswith("20") and str(f.name) not in exclude_list
+    ]
+    indent += 2
     sp = " " * indent
     for d in allsubdirs:
         Printer(f"\n{sp:s}Subdir: {str(d.name):s}\n", "yellow")
@@ -1253,9 +1297,7 @@ def dir_recurse(ds, current_dir, exclude_list:list = [], indent=0):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate Data Summaries from acq4 datasets"
-    )
+    parser = argparse.ArgumentParser(description="Generate Data Summaries from acq4 datasets")
     parser.add_argument("basedir", type=str, help="Base Directory")
     # This has been changed - the -f flag enables output to files. If specified, the -w flag is
     # also automatically set.
@@ -1356,9 +1398,7 @@ def main():
         dest="append",
         help="update new/missing entries to specified output file",
     )
-    parser.add_argument(
-        "-p", "--pairs", action="store_true", dest="pairflag", help="handle pairs"
-    )
+    parser.add_argument("-p", "--pairs", action="store_true", dest="pairflag", help="handle pairs")
     parser.add_argument(
         "--subdirs",
         action="store_true",
@@ -1396,7 +1436,7 @@ def main():
     if args.outputFilename is not None:
         print("Writing to output, recurively through directories ")
         dir_recurse(ds, ds.basedir, args.exclude)
-        
+
         exit()
         files = list(ds.basedir.glob("*"))
         alldirs = [f for f in files if f.is_dir() and str(f.name).startswith("20")]
@@ -1443,9 +1483,7 @@ def main():
             #       Otherwise, it is like a series or dict
             date = df2.iloc[day]["date"]
             u = df2.iloc[day]["data_complete"].split(", ")
-            prox = sorted(
-                list(set(u))
-            )  # adjust for duplicates (must be a better way in pandas)
+            prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
             for p in prox:
                 c = (
                     date
@@ -1518,9 +1556,7 @@ def main():
             print("INCOMPLETE PROTOCOLS")
             print("=" * 80)
             u = df2.iloc[day]["data_incomplete"].split(", ")
-            prox = sorted(
-                list(set(u))
-            )  # adjust for duplicates (must be a better way in pandas)
+            prox = sorted(list(set(u)))  # adjust for duplicates (must be a better way in pandas)
             for p in prox:
                 # print('    protocol: ', p)
 
@@ -1541,4 +1577,4 @@ def main():
 
 if __name__ == "__main__":
     pass
-    #main()
+    # main()
