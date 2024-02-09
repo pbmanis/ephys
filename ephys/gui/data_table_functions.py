@@ -385,6 +385,7 @@ class Functions:
                 selected = table_manager.get_table_data(index_row)
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
+
                 cell_df, cell_df_tmp = self.get_cell(experiment, assembleddata, cell=selected.cell_id)
                 protocols = list(cell_df["Spikes"].keys())
                 min_index = None
@@ -829,11 +830,14 @@ class Functions:
             return None
         # parse group correctly.
         # the first point in the Group column is likely a nan.
+        # except that we have probably removed that
         # if it is, then use the next point.
-        print("Group: ", df_tmp.Group, "protoname: ", protname)
-        group = df_tmp.Group.values[0]
-
-
+        print("cfif: Group: ", df_tmp.Group, "protoname: ", protname)
+        if len(df_tmp.Group.values) > 0:
+            group = df_tmp.Group.values[0]
+        else:
+            group = "nan"
+        print("ccif cellid: ", df_tmp.cell_id.values)
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
             "Subject": str(df_tmp.cell_id.values[0]),
@@ -943,10 +947,10 @@ class Functions:
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
         datadict["current"] = FI_Data_I1
         datadict["spsec"] = FI_Data_FR1
-        # datadict["Subject"] = df_tmp.cell_id.values[0]
-        # datadict["Group"] = df_tmp.Group.values[0]
-        # datadict["sex"] = df_tmp.sex.values[0]
-        # datadict["celltype"] = df_tmp.cell_type.values[0]
+        datadict["Subject"] = df_tmp.cell_id.values[0]
+        datadict["Group"] = df_tmp.Group.values[0]
+        datadict["sex"] = df_tmp.sex.values[0]
+        datadict["celltype"] = df_tmp.cell_type.values[0]
         datadict["pars"] = [FI_fits["pars"]]
         datadict["names"] = []
         datadict["fit"] = [FI_fits["fits"]]
@@ -973,10 +977,51 @@ class Functions:
             i_four = np.where(FI_Data_I4 <= 4.01e-9)[0]
             datadict["FIMax_4"] = np.nanmax(FI_Data_FR4[i_four])
         return datadict
+    
+    def compare_cell_id(self, cell_id: str, cell_ids: list):
+        """compare_cell_id
+        compare the cell_id to the list of cell_ids
+        to see if it is in the list.
+        The cellid is expected to be in the format:
+            [path/]2019.02.22_000_S0C0 (or S00C00, S000C000)
+        if there is not match, we check for an expanded name
+        by converting 2019.02.22_000_S0C0 to 2019_02_22_000/slice_000/cell_000
+
+        The first comparison is direct (exact).
+        The second matches the path (as in the datasummary file)
+        Parameters
+        ----------
+        cell_id : str
+            cell_id to compare
+        cell_ids : list
+            list of cell_ids to compare to
+
+        Returns
+        -------
+        bool
+            True if cell_id is in the list, False otherwise
+        """
+        if cell_id in cell_ids:
+            return cell_id    # return the exact match
+        else:
+            cell_parts = cell_parts = str(cell_id).split("_")
+            # print("cell_parts: ", cell_id, cell_parts)
+            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            cnp = re_parse.match(cell_parts[-1]).group(4)
+            cn = int(cnp)
+            snp = re_parse.match(cell_parts[-1]).group(2)
+            sn = int(snp)
+            cp ="_".join(cell_parts[:-1])
+            cell_id2 = f"{cp:s}/slice_{sn:03d}/cell_{cn:03d}"
+            # print("Expanded cell_id: ", cell_id2)
+            if cell_id2 in cell_ids:
+                return cell_id2
+            else:
+                raise ValueError(f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file")
 
     def get_cell(self, experiment, df: pd.DataFrame, cell: str):
         df_tmp = df[df.cell_id == cell] # df.copy() # .dropna(subset=["Date"])
-        print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
+        # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
 
         if len(df_tmp) == 0:
             return None, None
@@ -1254,7 +1299,7 @@ class Functions:
                         f"\n   or mapped in {mapper[measure]!s} to {spike_data.keys()!s}",
                     )
                     raise ValueError()
-                    exit()
+
                 prot_spike_count += 1
 
         # CP("c", f"measure: {measure!s}  : {m!s}")
