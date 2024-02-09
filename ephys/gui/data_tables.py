@@ -386,7 +386,7 @@ class DataTables:
                 "limits": [ds for ds in self.datasets],
                 "value": self.datasets[0],
             },
-            # {"name": "Reload Configuration", "type": "action"}, # probably not needed...
+            {"name": "Reload Configuration", "type": "action"}, # probably not needed...
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
@@ -755,6 +755,9 @@ class DataTables:
                     if self.experimentname not in self.datasets:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
+                    self.PSI.set_experiment(self.dataset, self.experiment)
+                    # print("New configuration: ", self.experimentname)
+                    # print(self.experiment)
 
                 case "Update DataSummary":
                     # FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
