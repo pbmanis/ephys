@@ -37,7 +37,7 @@ from pylibrary.tools import cprint as CP
 from ephys.tools import win_print as WP
 
 # import vcnmodel.util.fixpicklemodule as FPM
-FUNCS = functions.Functions() 
+FUNCS = functions.Functions()
 
 cprint = CP.cprint
 PP = pprint.PrettyPrinter(indent=8, width=80)
@@ -62,17 +62,19 @@ def defemptylist():
 #
 @dataclass
 class IndexData:
-    project_code_hash: str = git_hashes['project']  # current project
-    ephys_hash: str = git_hashes['ephys']  # ephys
+    project_code_hash: str = git_hashes["project"]  # current project
+    ephys_hash: str = git_hashes["ephys"]  # ephys
     date: str = ""
-    cell_id: str=""
-    sex: str=""
-    age: str=""
-    weight: str=""
-    temperature: str=""
-    slice_slice: str=""
-    cell_cell: str=""
+    cell_id: str = ""
+    sex: str = ""
+    age: str = ""
+    weight: str = ""
+    temperature: str = ""
+    slice_slice: str = ""
+    slice_mosaic: str = ""
+    cell_cell: str = ""
     cell_type: str = ""
+    cell_mosaic: str = ""
     data_complete: List = field(default_factory=defemptylist)
     Group: str = ""
     protocols = ""
@@ -81,11 +83,7 @@ class IndexData:
     Rin: str = ""
     taum: str = ""
     holding: str = ""
-    flag: bool=False
-
-
-
-
+    flag: bool = False
 
 
 class TableManager:
@@ -203,11 +201,9 @@ class TableManager:
             #             fh
             #         )  # , fix_imports=True) # , encoding="latin1")
             # (ModuleNotFoundError, IOError, pickle.UnpicklingError):
-                self.textappend(
-                    "SKIPPING: File is too old; re-run for new structure", color="red"
-                )
-                self.textappend(f"File: {str(datafile):s}", color="red")
-                return None
+            self.textappend("SKIPPING: File is too old; re-run for new structure", color="red")
+            self.textappend(f"File: {str(datafile):s}", color="red")
+            return None
 
         if "runInfo" not in list(d.keys()):
             self.textappend(
@@ -242,11 +238,9 @@ class TableManager:
             #     with open(filename, "rb") as fh:
             #         d = FPM.pickle_load(fh)
             # except (ModuleNotFoundError, IOError, pickle.UnpicklingError):
-                self.textappend(
-                    "SKIPPING: File is too old; re-run for new structure", color="red"
-                )
-                self.textappend(f"File: {str(filename):s}", color="red")
-                return None
+            self.textappend("SKIPPING: File is too old; re-run for new structure", color="red")
+            self.textappend(f"File: {str(filename):s}", color="red")
+            return None
         if d["runInfo"] is None:
             cprint("r", f"runinfo is None? file = {str(filename):s}")
             return None
@@ -264,25 +258,34 @@ class TableManager:
         if pd.isnull(row.cell_id):
             return None
         Index_data = IndexData()
-        Index_data.ephys_hash = git_hashes['ephys']  # save hash for the model code
-        Index_data.project_code_hash = git_hashes['project']  # this repository!
+        Index_data.ephys_hash = git_hashes["ephys"]  # save hash for the model code
+        Index_data.project_code_hash = git_hashes["project"]  # this repository!
         Index_data.cell_id = str(row.cell_id)
         Index_data.date = str(row.Date)
         Index_data.age = str(row.age)
         Index_data.cell_type = str(row.cell_type)
+        if "slice_mosaic" in row.keys():
+            Index_data.slice_mosiac = str(row.slice_mosaic)
+        else: 
+            Index_data.slice_mosiac = ""
+
+        if "cell_mosaic" in row.keys():
+            Index_data.cell_mosiac = str(row.cell_mosaic)
+        else:
+            Index_data.cell_mosiac = ""
         Index_data.sex = str(row.sex)
         Index_data.weight = str(row.weight)
         # Index_data.temperature = str(row.temperature)
 
         Index_data.Group = str(row.Group)
         Index_data.RMP = f"{row.RMP:6.2f}"
-        Index_data.RMP_SD =f"{row.RMP_SD:6.2f}"
+        Index_data.RMP_SD = f"{row.RMP_SD:6.2f}"
         Index_data.flag = False
         if row.RMP_SD > 2.0:
             Index_data.flag = True
         Index_data.Rin = f"{row.Rin:6.2f}"
-        Index_data.taum = f"{row.taum*1e3:6.2f}" # convert to ms
-        Index_data.holding = f"{row.holding*1e12:6.2f}" # convert to pA
+        Index_data.taum = f"{row.taum*1e3:6.2f}"  # convert to ms
+        Index_data.holding = f"{row.holding*1e12:6.2f}"  # convert to pA
         # print("row.cellid: ", row.cell_id)
         # print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
@@ -321,9 +324,7 @@ class TableManager:
 
     def remove_table_entry(self, indexrow):
         if len(indexrow) != 1:
-            self.parent.error_message(
-                "Selection Error: Can only delete one row at a time"
-            )
+            self.parent.error_message("Selection Error: Can only delete one row at a time")
             return
         indexrow = indexrow[0]
         data = self.get_table_data(indexrow)
@@ -424,7 +425,7 @@ class TableManager:
             force = True
         self.data = []
         self.table.setData(self.data)
-        indxs = []        
+        indxs = []
         for i, dfindex in enumerate(dataframe.index):
             index_file_data = self.make_indexdata(dataframe.loc[dfindex])
             if index_file_data is not None:
@@ -446,6 +447,8 @@ class TableManager:
                     indxs[i].Rin,
                     indxs[i].taum,
                     indxs[i].holding,
+                    indxs[i].slice_mosaic,
+                    indxs[i].cell_mosaic,
                     indxs[i].protocols,
                     indxs[i].data_complete,
                 )
@@ -464,8 +467,10 @@ class TableManager:
                 ("Rin", object),  # 9
                 ("taum", object),  # 10
                 ("holding", object),  # 11
-                ("protocols", object),  # 12
-                ("data_complete", object),  # 13
+                ("slice_mosaic", object),  # 12
+                ("cell_mosaic", object),  # 13
+                ("protocols", object),  # 14
+                ("data_complete", object),  # 15
             ],
         )
         self.update_table(self.data, QtCore=QtCore, QtGui=QtGui)
@@ -489,7 +494,7 @@ class TableManager:
                 if self.table_data[i].flag:
                     self.setColortoRow(i, QtGui.QColor(0x88, 0x00, 0x00))
                 else:
-                    self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xf00))
+                    self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xF00))
 
         self.parent.Dock_Table.raiseDock()
 
@@ -500,19 +505,16 @@ class TableManager:
         'Experiment': None, 'modelName': None, 'dendMode': None,
         "dataTable": None,}
         """
-        if not self.parent.filters[
-            "Use Filter"
-        ]:  # no filter, so update to show whole table
-            self.update_table(self.data, QtCore=QtCore, QtGui = QtGui)
+        if not self.parent.filters["Use Filter"]:  # no filter, so update to show whole table
+            self.update_table(self.data, QtCore=QtCore, QtGui=QtGui)
 
         else:
             self.filter_table(self.parent.filters, QtCore=QtCore, QtGui=QtGui)
 
     def filter_table(self, filters, QtCore=None, QtGui=None):
-
         coldict = {
             "flag": 1,
-            "cell_type": 2, 
+            "cell_type": 2,
             "age": 3,
             "sex": 5,
             "Group": 6,
@@ -534,11 +536,8 @@ class TableManager:
                     # (self.data[k][coldict[f]] == v): print("f: ", f, "
                     # v: ", v)
                     matchsets[f].add(k)
-                elif (
-                    isinstance(v, list)
-                    and (coldict.get(f, False))
-                ):
-                    v = sorted(v) # be sure order is ok for comparisions
+                elif isinstance(v, list) and (coldict.get(f, False)):
+                    v = sorted(v)  # be sure order is ok for comparisions
                     if f == "age":
                         age = ephys.tools.parse_ages.age_as_int(self.data[k][coldict[f]])
                         if age >= v[0] and age <= v[1]:
@@ -546,7 +545,7 @@ class TableManager:
                     else:
                         if self.data[k][coldict[f]] >= v[0] and self.data[k][coldict[f]] <= v[1]:
                             matchsets[f].add(k)
-        
+
         baseset = set()
         for k, v in matchsets.items():
             if len(v) > 0:
@@ -573,11 +572,10 @@ class TableManager:
                 if self.data[i][1] == value:
                     return i
             return None
-    
+
         else:
             value = index_row.row()
             return value
-        
 
     def get_table_data(self, index_row):
         """
@@ -594,7 +592,7 @@ class TableManager:
             if index_row.data() == self.table_data[i].cell_id:
                 # print("  found: ", i)
                 return self.table_data[i]
-            
+
         if ind is not None:
             return self.table_data[ind]
         else:
@@ -606,14 +604,14 @@ class TableManager:
                 self.table.selectRow(i)
                 return i
         return None
-    
-    def select_row_by_row(self, irow:int):
+
+    def select_row_by_row(self, irow: int):
         try:
             self.table.selectRow(irow)
             return irow
         except:
             return None
-     
+
     def export_brief_table(self, textbox):
         FUNCS.textbox_setup(textbox)
         FUNCS.textclear()
@@ -623,7 +621,7 @@ class TableManager:
             Group = self.table_data[i].Group
             cell_type = self.table_data[i].cell_type
             age = self.table_data[i].age
-            sex= self.table_data[i].sex
+            sex = self.table_data[i].sex
             msg = f"{cell_id:s}\t{Group:s}\t{cell_type:s}\t{age:s}\t{sex:s}"
             FUNCS.textappend(msg)
         print("Table exported in Report")
