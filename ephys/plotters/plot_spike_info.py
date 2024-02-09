@@ -625,7 +625,7 @@ class PlotSpikeInfo(QObject):
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
         dfdict = {col: [] for col in cols}
-        print("combined by cell: Unique groups: ", df.Group.unique())
+
         df_new = pd.DataFrame.from_dict(dfdict)
 
         # do each cell in the database
@@ -634,11 +634,7 @@ class PlotSpikeInfo(QObject):
                 CP.cprint("r", f"Cell # {icell:d} in the database is None")
                 continue
             # print(cell, df[df.cell_id==cell].cell_type)
-            print("cbc.df groups2: ", df.Group.unique())
-            datadict = FUNCS.compute_FI_Fits(experiment=self.experiment, 
-                                             df=df,
-                                             cell=cell, 
-                                             plot_fits=plot_fits)
+            datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
             if datadict is None:
                 print("datadict is none for cell: ", cell)
                 continue
@@ -795,8 +791,6 @@ class PlotSpikeInfo(QObject):
                 clip_on=False,
             )
 
-        # print("hue palette: ", hue_palette)
-        # print(df_x[xname].unique())
         sns.boxplot(
             data=df_x,
             x=xname,
@@ -956,7 +950,6 @@ class PlotSpikeInfo(QObject):
         Args:
             df (Pandas dataframe): _description_
         """
-        print("sumplotspikecategorical: ", hue_category)
         df = df.copy()  # make sure we don't modifiy the incoming
   #Remove cells for which the FI Hill slope is maximal at 0 nA:
     #    These have spont.
@@ -995,11 +988,6 @@ class PlotSpikeInfo(QObject):
         picker_funcs = {}
         n_celltypes = len(self.experiment["celltypes"])
         df = self.rescale_values(df)
-        # print("hue category: ", hue_category)
-        # print(df.columns)
-
-        # print(df.Group.unique())
-        # exit()
 
         for icol, measure in enumerate(measures):
             if measure in self.transforms.keys():
