@@ -59,7 +59,8 @@ def get_git_hashes():
         stdout=subprocess.PIPE,
     )
     ephys_git_hash = process.communicate()[0].strip()
-    return {"project": git_head_hash, "ephys": ephys_git_hash}
+    text = f"Git hashes: Proj={git_head_hash[-9:]!s}\n       ephys={ephys_git_hash[-9:]!s}\n"
+    return {"project": git_head_hash, "ephys": ephys_git_hash, "text": text}
 
 
 def create_logger(
@@ -222,6 +223,26 @@ class Functions:
                 return None, None
             else:
                 return self.selected_index_rows
+
+    def get_datasummary(self, experiment):
+        datasummary = Path(
+            experiment["analyzeddatapath"],
+            experiment["directory"],
+            experiment["datasummaryFilename"],
+        )
+        if not datasummary.exists():
+            raise ValueError(f"Data summary file {datasummary!s} does not exist")
+        df_summary = pd.read_pickle(datasummary)
+        return df_summary
+    
+    def rewrite_datasummary(self, experiment, df_summary):
+        datasummary = Path(
+            experiment["analyzeddatapath"],
+            experiment["directory"],
+            experiment["datasummaryFilename"],
+        )
+        df_summary.to_pickle(datasummary)
+
 
     def get_datasummary_protocols(self, datasummary):
         """
@@ -1339,7 +1360,7 @@ class Functions:
 
     def textappend(self, text, color="white"):
         if self.textbox is None:
-            raise ValueError("datatables - functions - textbox has not been set up")
+            return # raise ValueError("datatables - functions - textbox has not been set up")
 
         colormap = {
             "[31m": "red",

@@ -173,7 +173,9 @@ class ColorExcel():
             else:
                 writer.sheets[sheetname].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
 
-        df = df.style.apply(self._highlight_by_cell_type, axis=1)
+        if "cell_type" in df.columns:
+            df = df.style.apply(self._highlight_by_cell_type, axis=1)
+        
         try:
             df.to_excel(writer, sheet_name = sheetname, columns=columns)  # organize columns at the end
             writer.close()

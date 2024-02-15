@@ -121,8 +121,8 @@ class MAP_Analysis(Analysis):
                 if self.exclusions is None or (str(p) not in self.exclusions):
                     validmaps.append(p)
         allprots["maps"] = validmaps
-
-        computername = get_computer()
+        from ephys.tools import get_computer
+        computername = get_computer.get_computer()
         nworkers = self.experiment["NWORKERS"][computername]  # number of cores/threads to use
         tasks = range(len(allprots["maps"]))  # number of tasks that will be needed
         results = dict()  # storage for results

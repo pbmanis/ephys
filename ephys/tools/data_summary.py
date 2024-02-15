@@ -27,7 +27,7 @@ Major surgery - to output Pandas (pickled) files as well. UGH.
 
 Nov 2022:
 Change writing to generate a  pandas database and a corresponding excel file. 
-Change output to 
+
 ----------------
 usage: dataSummary [-h]
                    [-f OUTPUTFILENAME] [-r] [-u] [-D] [--daylist DAYLIST]
@@ -127,7 +127,7 @@ prsp = "             "  # protocol within cell leading indent
 class DataSummary:
     def __init__(
         self,
-        basedir,
+        basedir=None,
         outputMode="pandas",
         outputFile=None,
         daylistfile=None,
@@ -215,7 +215,10 @@ class DataSummary:
 
         self.setups()  # build some regex and wrappers
         # gather input parameters
-        self.basedir = Path(basedir)
+        if basedir is not None:
+            self.basedir = Path(basedir)
+        else:
+            self.basedir = None
         self.outputMode = "pandas"  # outputMode  # terminal, tabfile, pandas
         self.outFilename = outputFile
         self.daylistfile = daylistfile
