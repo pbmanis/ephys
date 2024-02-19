@@ -1,17 +1,17 @@
 """Plot summaries of spike and basic electrophys properties of cells.
 Does stats at the end.
 """
+
 import datetime
 import pprint
 from pathlib import Path
 import re
-from typing import List, Union
+from typing import List, Union, Optional
 import textwrap
 import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
-import pingouin as ping
 import pylibrary.plotting.plothelpers as PH
 import scikit_posthocs
 import seaborn as sns
@@ -54,10 +54,10 @@ def set_ylims(experiment):
         # the key may be a list of cell types all with the same limits
         if "celltypes" in experiment["ylims"].keys():
             CP("r", "setting ylims for cell types")
-            for ct in experiment["ylims"]["celltypes"]:  
+            for ct in experiment["ylims"]["celltypes"]:
                 ylims[ct] = experiment["ylims"]
         else:
-            ylims['other'] = experiment["ylims"]
+            ylims["other"] = experiment["ylims"]
         return ylims
     else:
         ylims_pyr = {
@@ -306,8 +306,8 @@ def rename_groups(row, experiment):
     return row.groupname
 
 
-printflag = False
 pd.set_option("display.max_columns", 40)
+
 
 def get_datasummary(experiment):
     datasummary = Path(
@@ -319,6 +319,7 @@ def get_datasummary(experiment):
         raise ValueError(f"Data summary file {datasummary!s} does not exist")
     df_summary = pd.read_pickle(datasummary)
     return df_summary
+
 
 def setup(experiment):
     excelsheet = Path(
@@ -388,16 +389,21 @@ datacols = [
 
 """
 Each protocol has:
-"Spikes: ", dict_keys(['FI_Growth', 'AdaptRatio', 'FI_Curve', 'FiringRate', 'AP1_Latency', 'AP1_HalfWidth', 
-'AP1_HalfWidth_interpolated', 'AP2_Latency', 'AP2_HalfWidth', 'AP2_HalfWidth_interpolated',
+"Spikes: ", dict_keys(['FI_Growth', 'AdaptRatio', 'FI_Curve', 
+    'FiringRate', 'AP1_Latency', 'AP1_HalfWidth', 
+'AP1_HalfWidth_interpolated', 'AP2_Latency', 'AP2_HalfWidth', 
+    'AP2_HalfWidth_interpolated',
     'FiringRate_1p5T', 'AHP_depth_V', 'AHP_Trough', 'spikes', 'iHold', 
     'pulseDuration', 'baseline_spikes', 'poststimulus_spikes'])
 
-"IV": dict_keys(['holding', 'WCComp', 'CCComp', 'BridgeAdjust', 'RMP', 'RMP_SD', 'RMPs',
-'Irmp', 'taum', 'taupars', 'taufunc', 'Rin', 'Rin_peak', 'tauh_tau', 'tauh_bovera', 'tauh_Gh', 'tauh_vss'])
+"IV": dict_keys(['holding', 'WCComp', 'CCComp', 'BridgeAdjust',
+     'RMP', 'RMP_SD', 'RMPs',
+'Irmp', 'taum', 'taupars', 'taufunc', 'Rin', 'Rin_peak', 
+    'tauh_tau', 'tauh_bovera', 'tauh_Gh', 'tauh_vss'])
 
 individual spike data:
-spike data:  dict_keys(['trace', 'AP_number', 'dvdt', 'V', 'Vtime', 'pulseDuration', 'tstart', 'tend', 
+spike data:  dict_keys(['trace', 'AP_number', 'dvdt', 'V', 'Vtime',
+     'pulseDuration', 'tstart', 'tend', 
 'AP_beginIndex', 'AP_peakIndex', 'AP_endIndex', 'peak_T', 'peak_V', 'AP_latency', 'AP_begin_V', 
 'halfwidth', 'halfwidth_V', 'halfwidth_up', 'halfwidth_down', 'halfwidth_interpolated', 
 'left_halfwidth_T', 'left_halfwidth_V', 'right_halfwidth_T', 'right_halfwidth_V', 
@@ -453,7 +459,7 @@ def make_datetime_date(row, colname="Date"):
         return row.shortdate
 
     date = str(Path(row[colname]).name)
-    date = date.split("_")[0]
+    date = date.split("_", maxsplit=1)[0]
     shortdate = datetime.datetime.strptime(date, "%Y.%m.%d")
     shortdate = datetime.datetime.timestamp(shortdate)
     st = datetime.datetime.timestamp(
@@ -631,7 +637,7 @@ class PlotSpikeInfo(QObject):
         # do each cell in the database
         for icell, cell in enumerate(cell_list):
             if cell is None:
-                CP.cprint("r", f"Cell # {icell:d} in the database is None")
+                CP("r", f"Cell # {icell:d} in the database is None")
                 continue
             # print(cell, df[df.cell_id==cell].cell_type)
             datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
@@ -647,8 +653,8 @@ class PlotSpikeInfo(QObject):
 
     def to_1D(self, series):
         return pd.Series([x for _list in series for x in _list])
- 
-    def clean_alt_list(lself, ist_):
+
+    def clean_alt_list(self, list_):
         list_ = list_.replace(", ", '","')
         list_ = list_.replace("[", '["')
         list_ = list_.replace("]", '"]')
@@ -691,12 +697,12 @@ class PlotSpikeInfo(QObject):
         xname: str,  # x
         yname: str,  # variable
         celltype: str = "pyramidal",
-        hue_category: str = None,
+        hue_category: Optional[str] = None,
         sign: float = 1.0,
-        scale=1.0,
+        scale:float = 1.0,
         ax: mpl.axes = None,
-        plot_order=None,
-        colors: Union[dict, None] = None,
+        plot_order: Optional[list] = None,
+        colors: Optional[dict] = None,
         enable_picking=True,
     ):
         """Graph a bar pot and a strip plot on top of each other
@@ -745,7 +751,7 @@ class PlotSpikeInfo(QObject):
         else:
             hue_category = xname
             hue_palette = colors
-            dodge = False
+            # dodge = False
         # print("plotting bar plot for ", celltype, yname, hue_category)
         # must use scatterplot if you want to use picking.
         if enable_picking:
@@ -766,7 +772,7 @@ class PlotSpikeInfo(QObject):
                 hue_order=plot_order,
                 picker=enable_picking,
                 zorder=100,
-                clip_on = False
+                clip_on=False,
             )
         else:
             sns.stripplot(
@@ -940,8 +946,8 @@ class PlotSpikeInfo(QObject):
         df,
         xname: str,
         hue_category=None,
-        plot_order: Union[None, list] = None,
-        measures: Union[None, list] = None,
+        plot_order: Optional[list] = None,
+        measures: Optional[list] = None,
         colors=None,
         enable_picking=False,
     ):
@@ -951,9 +957,9 @@ class PlotSpikeInfo(QObject):
             df (Pandas dataframe): _description_
         """
         df = df.copy()  # make sure we don't modifiy the incoming
-  #Remove cells for which the FI Hill slope is maximal at 0 nA:
-    #    These have spont.
-        df = df[df["I_maxHillSlope"] > 1e-11] 
+        # Remove cells for which the FI Hill slope is maximal at 0 nA:
+        #    These have spont.
+        df = df[df["I_maxHillSlope"] > 1e-11]
         ncols = len(measures)
         letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
@@ -1207,7 +1213,7 @@ class PlotSpikeInfo(QObject):
 
         return picker_func
 
-    def clean_Rin(self, row):
+    def clean_rin(self, row):
         if row.Rin < 6.0:
             row.Rin = np.nan
         return row.Rin
@@ -1378,7 +1384,7 @@ class PlotSpikeInfo(QObject):
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         measures = ["RMP", "Rin", "taum"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))]
-        # df["Rin"] = df.apply(self.clean_Rin, axis=1)
+        # df["Rin"] = df.apply(self.clean_rin, axis=1)
         self.rescale_values(df)
         picker_funcs = {}
         figure_width = len(measures) * 2.75
@@ -1514,10 +1520,10 @@ class PlotSpikeInfo(QObject):
             # "CCIV_4nA_max",
             "CCIV_long",
         ],  # , "CCIV_"],
-        mode=["individual"],
+        mode:list=["individual"],
         group_by: str = "Group",
-        colors: Union[dict, None] = None,
-        plot_order: Union[None, list] = None,
+        colors: Optional[dict] = None,
+        plot_order: Optional[list] = None,
         enable_picking: bool = False,
     ):
         """summary_plot_fi Plots all of the FI curves for the selected cell types,
@@ -1545,9 +1551,8 @@ class PlotSpikeInfo(QObject):
         # print("protocols: ", df["protocols"])
         plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         P = PH.regular_grid(
-            1, 
+            1,
             len(self.experiment["celltypes"]),
-
             order="rowsfirst",
             figsize=(3 * len(self.experiment["celltypes"]) + 1.0, 3),
             panel_labels=plabels,
@@ -1622,7 +1627,6 @@ class PlotSpikeInfo(QObject):
             else:
                 cdd = df.copy()
 
-
             N = self.experiment["group_map"]
 
             if "mean" in mode:  # set up arrays to compute mean
@@ -1653,8 +1657,8 @@ class PlotSpikeInfo(QObject):
                 if FI_data.shape == (2, 0):  # no fi data from the excel table....
                     continue
 
-                if 'max_FI' in self.experiment.keys():
-                    max_fi = self.experiment["max_FI"]*1e-9
+                if "max_FI" in self.experiment.keys():
+                    max_fi = self.experiment["max_FI"] * 1e-9
                 else:
                     max_fi = 1.05e-9
                 FI_data = self.limit_to_max_rate_and_current(
@@ -1690,7 +1694,7 @@ class PlotSpikeInfo(QObject):
                     if len(fx) == 0:
                         continue
                     if "max_FI" in self.experiment.keys():
-                        max_FI = self.experiment["max_FI"]*1e-3
+                        max_FI = self.experiment["max_FI"] * 1e-3
                     ax.errorbar(
                         fx[fx <= max_FI],
                         fy[fx <= max_FI],
@@ -1787,9 +1791,9 @@ class PlotSpikeInfo(QObject):
         statistical_comparisons: list = None,
         parametric: bool = False,
         nonparametric: bool = True,
-    )->pd.DataFrame:
+    ) -> pd.DataFrame:
         """stats Compute either or both parametric or nonparametric statistics on
-        the incoming datasets. 
+        the incoming datasets.
 
         Parameters
         ----------
@@ -1819,7 +1823,7 @@ class PlotSpikeInfo(QObject):
             df_x = df[df.cell_type == celltype]
         else:
             df_x = df.copy()
-        
+
         # print(df_x.head())
         # fvalue, pvalue = scipy.stats.f_oneway(df['A'], df['B'], df['AA'], df['AAA'])
         # indent the statistical results
@@ -1858,10 +1862,10 @@ class PlotSpikeInfo(QObject):
         print("group by: ", group_by)
         # print(df_clean[measure])
         # print("Groups found: ", df_clean.Group.unique())
-        
+
         groups_in_data = df_clean[group_by].unique()
         print("Groups found in data: ", groups_in_data, len(groups_in_data))
- 
+
         if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
             # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
             df_clean = df_clean.apply(self.categorize_ages, axis=1)
@@ -1870,7 +1874,11 @@ class PlotSpikeInfo(QObject):
             nodatatext = "\n".join(
                 [
                     "",
-                    CP("r", f"****** Insuffieient data for {celltype:s} and {measure:s}", textonly=True),
+                    CP(
+                        "r",
+                        f"****** Insuffieient data for {celltype:s} and {measure:s}",
+                        textonly=True,
+                    ),
                 ]
             )
             FUNCS.textappend(nodatatext)
@@ -1937,7 +1945,7 @@ class PlotSpikeInfo(QObject):
             groups_in_data = df_clean[group_by].unique()
 
             print("Groups in this data: ", groups_in_data)
- 
+
             data = []
             for group in groups_in_data:
                 dg = df_clean[df_clean[group_by] == group]
@@ -1949,8 +1957,13 @@ class PlotSpikeInfo(QObject):
             # ]
             print("# groups with data: ", len(data))
             # print("data: ", data)
-            if len(data) <2:
-                stattext = "\n".join([stattext, f"Too few groups to compuare: celltype={celltype:s}  measure={measure:s}"])
+            if len(data) < 2:
+                stattext = "\n".join(
+                    [
+                        stattext,
+                        f"Too few groups to compuare: celltype={celltype:s}  measure={measure:s}",
+                    ]
+                )
                 FUNCS.textappend(stattext)
                 return df_clean
             print("data: ", data)
@@ -2028,9 +2041,9 @@ class PlotSpikeInfo(QObject):
     def assemble_datasets(
         self,
         excelsheet: Union[Path, str],
-        adddata: Union[str, None] = None,
-        coding_file: Union[str, None] = None,
-        coding_sheet: Union[str, None] = None,
+        adddata: Optional[str] = None,
+        coding_file: Optional[str] = None,
+        coding_sheet: Optional[str] = None,
         exclude_unimportant: bool = False,
         fn: str = "",
         plot_fits: bool = False,
@@ -2076,21 +2089,23 @@ class PlotSpikeInfo(QObject):
         if row.AHP_depth_V > 0:
             row.AHP_depth_V = np.nan
         return row.AHP_depth_V
-    
+
     def get_cell_layer(self, row, df_summary):
         cell_id = row.cell_id
         # print("this cell id: ", cell_id)
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
         if cell_id_match is not None:
-            row.cell_layer = df_summary.loc[df_summary.cell_id == cell_id_match].cell_layer.values[0]
+            row.cell_layer = df_summary.loc[df_summary.cell_id == cell_id_match].cell_layer.values[
+                0
+            ]
             if row.cell_layer in [" ", "nan"]:
                 row.cell_layer = "unknown"
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
-            raise ValueError(f"Cell id {cell_id} not found in summary")    
+            raise ValueError(f"Cell id {cell_id} not found in summary")
         return row.cell_layer
-    
+
     def preload(self, fn):
         """preload Load the assembled data from a .pkl file
         Does some clean up of designators and data,
@@ -2113,14 +2128,14 @@ class PlotSpikeInfo(QObject):
         if "cell_layer" not in df.columns:
             df_summary = get_datasummary(self.experiment)
             layers = df_summary.cell_layer.unique()
-            if len(layers) == 1 and layers == [' ']: # no layer designations
+            if len(layers) == 1 and layers == [" "]:  # no layer designations
                 df["cell_layer"] = "unknown"
             else:
-                df['cell_layer'] = ""
+                df["cell_layer"] = ""
                 df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
             print("cell layers: ", df.cell_layer.unique())
-        df['sex'] = df.apply(self.clean_sex_column, axis=1)
-        df["Rin"] = df.apply(self.clean_Rin, axis=1)
+        df["sex"] = df.apply(self.clean_sex_column, axis=1)
+        df["Rin"] = df.apply(self.clean_rin, axis=1)
         if "age_category" not in df.columns:
             df["age_category"] = ""
         df["age_category"] = df.apply(self.categorize_ages, axis=1)
@@ -2162,19 +2177,23 @@ class PlotSpikeInfo(QObject):
             reason = key["reason"]
             re_day = re.compile("(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
             re_slice = re.compile("(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})$")
-            re_slicecell = re.compile("(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$")
+            re_slicecell = re.compile(
+                "(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$"
+            )
             # get slice and cell nubmers
-            re_slicecell2 = re.compile("^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$")
+            re_slicecell2 = re.compile(
+                "^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
+            )
 
             print("checking exclude for: ", fn)
-            if  re_day.match(fn) is not None:  # specified a day, not a cell:
+            if re_day.match(fn) is not None:  # specified a day, not a cell:
                 df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
                 CP("r", f"dropped DAY {fn:s} from analysis, reason = {reason:s}")
             elif re_slice.match(fn) is not None:  # specified day and slice
                 fnsm = re_slice.match(fn)
                 df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
                 CP("r", f"dropped SLICE {fn:s} from analysis, reason = {reason:s}")
-            elif re_slicecell.match(fn) is not None:   # specified day, slice and cell
+            elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
                 fnc = re_slicecell2.match(fn)
                 # generate an id with 1 number for the slice and 1 for the cell,
                 # also test 2 n for slice and 2n for cell
@@ -2187,8 +2206,8 @@ class PlotSpikeInfo(QObject):
                 CP("r", f"dropped CELL {fn:s} from analysis, reason = {reason:s}")
 
         # now apply any external filters that might be specified in the configuratoin file
-        if 'filters' in self.experiment.keys():
-            for key, values in self.experiment['filters'].items():
+        if "filters" in self.experiment.keys():
+            for key, values in self.experiment["filters"].items():
                 print("filtering for: ", key, values)
                 df = df[df[key].isin(values)]
 
@@ -2201,9 +2220,9 @@ class PlotSpikeInfo(QObject):
             FUNCS.textbox_setup(textbox)
             FUNCS.textclear()
 
-    #Remove cells for which the FI Hill slope is maximal at 0 nA:
-    #    These have spont.
-        df = df[df["I_maxHillSlope"] > 1e-11] 
+        # Remove cells for which the FI Hill slope is maximal at 0 nA:
+        #    These have spont.
+        df = df[df["I_maxHillSlope"] > 1e-11]
         for ctype in experiment["celltypes"]:
             CP("g", f"\n{divider:s}")
             for measure in [
@@ -2223,15 +2242,17 @@ class PlotSpikeInfo(QObject):
                 "Rin",
                 "taum",
             ]:
-                df_clean = self.stats(
-                    df,
-                    celltype=ctype,
-                    measure=measure,
-                    group_by=group_by,
-                    second_group_by=second_group_by,
-                    statistical_comparisons=experiment["statistical_comparisons"],
-                ),
-            FUNCS.textappend("="*80)
+                df_clean = (
+                    self.stats(
+                        df,
+                        celltype=ctype,
+                        measure=measure,
+                        group_by=group_by,
+                        second_group_by=second_group_by,
+                        statistical_comparisons=experiment["statistical_comparisons"],
+                    ),
+                )
+            FUNCS.textappend("=" * 80)
             subjects = df["Date"].unique()
             FUNCS.textappend(f"Subjects in this data: (N={len(subjects):d})")
             # print("Subjects in this data: ")
@@ -2241,7 +2262,7 @@ class PlotSpikeInfo(QObject):
             cellsindata = df["cell_id"].unique()
             for c in cellsindata:
                 FUNCS.textappend(f"    {c:s}")
-            FUNCS.textappend("="*80)
+            FUNCS.textappend("=" * 80)
         return
 
 
@@ -2314,11 +2335,9 @@ if __name__ == "__main__":
     # print(
     #     "Code:\nB  : Control\nA  : 106 dBSPL 2H, 14D\nAA : 115 dBSPL 2H 14D\nAAA: 115 dBSPL 2H  3D\n"
     # )
-    divider = "=" * 80 + "\n"
+    DIVIDER = "=" * 80 + "\n"
     if args.stats:
-        PSI.do_stats(dfa, divider=divider)
-
-
+        PSI.do_stats(dfa, divider=DIVIDER)
 
     # porder = ["Preweaning", "Pubescent", "Young Adult", "Mature Adult"]
     # now we can do the plots:
