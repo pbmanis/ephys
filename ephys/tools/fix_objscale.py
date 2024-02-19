@@ -21,7 +21,7 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pylibrary.tools import fileselector as FS
 from pylibrary.tools.utility import seqparse as SQP
 from pyqtgraph.parametertree import Parameter, ParameterTree
-import toml
+import tomllib as toml
 
 import pylibrary.tools.cprint as CP
 

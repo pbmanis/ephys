@@ -13,7 +13,7 @@ def build_layers_re():
     """
     lab_text = r"(?P<text>layer)[\s]*"
     layers = "IV|V?I{0,3}"
-    layers_n = "\d{1}"
+    layers_n = r"\d{1}"
     sep = r"([\/-]{0,1})"
     lab_layer1 = f"(?P<layer>{layers:s})"
     lab_layer2 = f"(?P<layer2>{layers:s})"

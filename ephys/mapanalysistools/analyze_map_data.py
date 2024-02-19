@@ -68,7 +68,6 @@ class AnalyzeMap(object):
         self.lbr_command = False  # laser blue raw waveform (command)
 
         # set some defaults - these will be overwritten with readProtocol
-
         self.methodname = "aj"  # default event detector
         self.set_methodname(self.methodname)
         self.reset_filters()

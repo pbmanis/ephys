@@ -909,8 +909,9 @@ class IVAnalysis(Analysis):
             taum = r"$\tau_m$"
             tauh = r"$\tau_h$"
             tstr = f"RMP: {self.RM.analysis_summary['RMP']:.1f} mV\n"
+            omega = r"$\Omega$"
             tstr += (
-                f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} ${{M\Omega}}$\n"
+                f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} M{omega:s}\n"
             )
 
             tstr += (f"${{Pip Cap}}$: {self.RM.analysis_summary['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n")
@@ -920,8 +921,8 @@ class IVAnalysis(Analysis):
             tstr += (
                 f"Holding: {np.mean(self.RM.analysis_summary['Irmp']) * 1e12:.1f} pA\n"
             )
-            tstr += f"Bridge [{enable:3s}]: {ccbridge:.1f} ${{M\Omega}}$\n"
-            tstr += f"Bridge Adjust: {self.RM.analysis_summary['BridgeAdjust']:.1f} ${{M\Omega}}$\n"
+            tstr += f"Bridge [{enable:3s}]: {ccbridge:.1f} M{omega:s}\n"
+            tstr += f"Bridge Adjust: {self.RM.analysis_summary['BridgeAdjust']:.1f} m{omega:s}\n"
             tstr += f"Pipette: {cccomp:.1f} mV\n"
 
             P.axdict["C"].text(

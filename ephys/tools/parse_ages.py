@@ -39,7 +39,7 @@ def ISO8601_age(agestr):
     return agestr
 
 def age_as_int(agestr):
-    astr = re.sub('\D', '', agestr)
+    astr = re.sub(r'\D', '', agestr)
     return(int(astr))
 
 # old version

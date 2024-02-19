@@ -27,9 +27,8 @@ import scipy.ndimage
 import scipy.ndimage as SND
 import scipy.signal
 import seaborn as sns
-import shapely as SH
-import shapely.geometry as SG
-import toml
+import sympy
+import tomllib as toml
 from matplotlib.widgets import RectangleSelector
 from pylibrary.plotting import picker
 from pylibrary.plotting import plothelpers as PH
@@ -772,52 +771,54 @@ class MapTraces(object):
         else:
             self.update_tbar(event)
             
-    def _getAngle(self, pt1, pt2):
+    def _getAngle(self, pt1:sympy.geometry.point, pt2:sympy.geometry.point):
         """
-        Pt1 and 2 must be shapely Point objects"""
+        Pt1 and 2 must be sympy Point objects"""
         x_diff = pt2.x - pt1.x
         y_diff = pt2.y - pt1.y
 
         return np.arctan2(y_diff, x_diff)
     
     def update_tbar(self, event):
-        center = SH.geometry.Point(self.cellpos[0], self.cellpos[1])  # center (flip y axis)
-        # first time through, just draw the bar
-        if self.tbar_coords is None:
-            cx = self.cellpos[0]  # center (cell pos)
-            cy = self.cellpos[1]
+        raise ValueError('Updating the tbar is Not implemented')
+        # center = sympy.geometry.point.Point(self.cellpos[0], self.cellpos[1])  # center (flip y axis)
+        # # first time through, just draw the bar
+        # if self.tbar_coords is None:
+        #     cx = self.cellpos[0]  # center (cell pos)
+        #     cy = self.cellpos[1]
 
-            tlinex = [cx,      cx, cx,      cx-1e-4, cx+1e-4]  # draw the T bar
-            tliney = [cy-1e-4, cy, cy+1e-4, cy+1e-4, cy+1e-4]
-            self.tbar_coords = SH.geometry.LineString([(tlinex[i], tliney[i]) for i in range(len(tlinex))])
-            self.tbar = self.ax.plot(self.tbar_coords.xy[0], self.tbar_coords.xy[1], 'ko-', linewidth=1, markersize=2.5)
-        elif event is not None and event.xdata is not None:
-            e = SH.geometry.Point([event.xdata, event.ydata])  # point in direction for top of T bar
-            t = SH.geometry.Point([self.tbar_coords.xy[0][2], self.tbar_coords.xy[1][2]])
-            angle1 = self._getAngle(center, e)
-            angle2 = self._getAngle(center, t)
-            self.tbar_angle = -(angle2-angle1)
-            print('angle: ', self.tbar_angle)
-        else:
-            pass
-        newT = SH.affinity.rotate(self.tbar_coords, self.tbar_angle, origin=center, use_radians=True)
-        self.tbar[0].set_xdata(newT.xy[0])
-        self.tbar[0].set_ydata(newT.xy[1])
-        self.tbar[0].set_alpha(1)
-        self.tbar_visible = True
-        self.compute_sector_distance_map()
-        self.plot_scholl()
+        #     tlinex = [cx,      cx, cx,      cx-1e-4, cx+1e-4]  # draw the T bar
+        #     tliney = [cy-1e-4, cy, cy+1e-4, cy+1e-4, cy+1e-4]
+        #     self.tbar_coords = [(tlinex[i], tliney[i]) for i in range(len(tlinex))]
+        #     self.tbar = self.ax.plot(self.tbar_coords.xy[0], self.tbar_coords.xy[1], 'ko-', linewidth=1, markersize=2.5)
+        # elif event is not None and event.xdata is not None:
+        #     e = sympy.geometry.point.Point([event.xdata, event.ydata])  # point in direction for top of T bar
+        #     t = sympy.geometry.point.Point([self.tbar_coords.xy[0][2], self.tbar_coords.xy[1][2]])
+        #     angle1 = self._getAngle(center, e)
+        #     angle2 = self._getAngle(center, t)
+        #     self.tbar_angle = -(angle2-angle1)
+        #     print('angle: ', self.tbar_angle)
+        # else:
+        #     pass
+        # newT = SH.affinity.rotate(self.tbar_coords, self.tbar_angle, origin=center, use_radians=True)
+        # self.tbar[0].set_xdata(newT.xy[0])
+        # self.tbar[0].set_ydata(newT.xy[1])
+        # self.tbar[0].set_alpha(1)
+        # self.tbar_visible = True
+        # self.compute_sector_distance_map()
+        # self.plot_scholl()
 
     def _plot_coords(self, ax, ob, c='#999999', **kwds):
         """
-        Plot the data in a shapely object
+        Plot a line from the data in list of
+        sympy points
         
         Parameters
         ----------
         ax : matplotlib axis object
             target axis to plot data into
         
-        ob : shapely object with a .xy list of values
+        ob : list with sympy points as .x, .y list of values
         
         c : matplotlib color value
             RGBA, string, etc
@@ -826,9 +827,9 @@ class MapTraces(object):
         -------
         Nothing
         """
-        
-        x, y = ob.xy
-        ax.plot(x, y, '-', color=c, **kwds)
+        xl = [x for x in ob.x]
+        yl = [y for y in ob.y]
+        ax.plot(xl, yl, '-', color=c, **kwds)
         
     def compute_sector_distance_map(self):
         """

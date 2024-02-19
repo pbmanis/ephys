@@ -1027,7 +1027,7 @@ class Functions:
         else:
             cell_parts = cell_parts = str(cell_id).split("_")
             # print("cell_parts: ", cell_id, cell_parts)
-            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
             cnp = re_parse.match(cell_parts[-1]).group(4)
             cn = int(cnp)
             snp = re_parse.match(cell_parts[-1]).group(2)
@@ -1067,7 +1067,7 @@ class Functions:
         parent = Path(cell).parent
         if parent == ".":  # just cell, not path
             cell_parts = str(cell).split("_")
-            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
             cnp = re_parse.match(cell_parts[-1]).group(2)
             cn = int(cnp)
             snp = re_parse.match(cell_parts[-1]).group(4)
@@ -1077,7 +1077,7 @@ class Functions:
         else:
             cell = Path(cell).name  # just get the name here
             cell_parts = cell.split("_")
-            re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
             # print("cell_parts: ", cell_parts[-1])
             snp = re_parse.match(cell_parts[-1]).group(2)
             sn = int(snp)

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-import toml
+import tomllib as toml
 from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree

@@ -21,7 +21,7 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.signal
 import seaborn
-import shapely
+import sympy
 
 UR = pint.UnitRegistry()
 
@@ -1630,7 +1630,7 @@ class PlotMapData:
                     markers_complete = False
                     continue
             if len(pcoors) > 0 and markers_complete:
-                self.marker_poly = shapely.geometry.Polygon(np.array(pcoors))
+                self.marker_poly = sympy.geometry.polygon.Polygon(np.array(pcoors))
                 # patch = descartes.PolygonPatch(self.marker_poly, fc=None, ec='red', alpha=0.5, zorder=2)
                 pcoors.append(pcoors[0])
                 pcoors_x = [x[0] for x in pcoors]
@@ -1640,13 +1640,13 @@ class PlotMapData:
                 xx, yy = scipy.interpolate.splev(np.linspace(0, 1, 100), tck, der = 0)
                 axp.plot(xx, yy, 'g-', lw=0.75, zorder=2)
                 smoothed_poly = [(xx[i], yy[i]) for i in range(len(xx))]
-                self.smoothed_poly = shapely.geometry.Polygon(smoothed_poly)
-                medialpt = shapely.geometry.Point(markers["medialborder"])
-                lateralpt = shapely.geometry.Point(markers["surface"])
+                self.smoothed_poly = sympy.geometry.polygon.Polygon(smoothed_poly)
+                medialpt = sympy.geometry.point.Point(markers["medialborder"])
+                lateralpt = sympy.geometry.point.Point(markers["surface"])
                 self.medial_lateral_distance = medialpt.distance(lateralpt)*UR.m
                 area = self.smoothed_poly.area*UR.m*UR.m
-                rostralpt = shapely.geometry.Point(markers["rostralborder"])
-                caudalpt = shapely.geometry.Point(markers["caudalborder"])
+                rostralpt = sympy.geometry.point.Point(markers["rostralborder"])
+                caudalpt = sympy.geometry.point.Point(markers["caudalborder"])
                 self.rostral_caudal_distance = rostralpt.distance(caudalpt)*UR.m
                 UR.define("mm = 1e-3 * m")
                 UR.define("um = 1e-6 * m")

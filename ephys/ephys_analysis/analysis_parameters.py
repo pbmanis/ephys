@@ -2,7 +2,7 @@ import argparse
 import json
 from dataclasses import dataclass, field
 
-import toml
+import tomllib as toml
 
 
 def build_parser(experiments):
