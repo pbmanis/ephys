@@ -11,7 +11,7 @@ else
     echo "No previous environment - ok to proceed"
 fi
 
-python3.11 -m venv $ENVNAME
+python3.12 -m venv $ENVNAME
 source $ENVNAME/bin/activate
 pip3 install --upgrade pip  # be sure pip is up to date in the new env.
 pip3 install wheel  # seems to be missing (note singular)
