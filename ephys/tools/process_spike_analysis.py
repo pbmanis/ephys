@@ -108,7 +108,7 @@ class ProcessSpikeAnalysis:
 
     def set_workers(self, nworkers: int = 10, computer: str = "Unknown"):
         self.nworkers = nworkers
-        CP("m", f"Using {nworkers:d} workers for parallel processing on {computer:s}")
+        CP("c", f"Using {nworkers:d} workers for parallel processing on {computer:s}")
 
     def get_rec_date(self, filename: Union[Path, str]):
         """get the recording date of record from the filename as listed n the excel sheet
@@ -147,7 +147,6 @@ class ProcessSpikeAnalysis:
             if dvdts[min_current].halfwidth_interpolated is not None:
                 row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
             row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
-            print("row: ", row)
             CP(
                 "y",
                 f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f}, dvdtFall={row.dvdt_falling:6.1f}, APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
@@ -318,9 +317,8 @@ class ProcessSpikeAnalysis:
         # Logger.info(f"\n**** Running analysis for :  {row.date!s}, {row.ID!s}, {row.age!s}, {row.Group!s}")
 
         msg = f"\nRetrieved metadata for: {row.date!s}\n    Type: {row.cell_type:s}  Age={row.age!s}, T={row.temperature!s}, Internal Sol={row.internal:s}"
-        CP("g", msg)
+        CP("m", msg)
         Logger.info(msg)
-
         fullpatha = Path(
             self.experiment["rawdatapath"],
             self.experiment["directory"],
@@ -330,12 +328,12 @@ class ProcessSpikeAnalysis:
             row.protocol,
         )
         day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
-        print("day_slice_cell: ", day_slice_cell)
+        CP("m", f"day_slice_cell: {day_slice_cell:s}")
         if (day_slice_cell in self.experiment["excludeIVs"]) and (
             (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
             or row.protocol in ["all", ["all"]]
         ):
-            CP("y", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
+            CP("m", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
             Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
             gc.collect()
             return row
@@ -347,26 +345,26 @@ class ProcessSpikeAnalysis:
                 fullpath = fullpatha
         if fullpath is None:
             msg = f"protocol did not match our list: {day_slice_cell:s}, {row.protocol:s}"
-            CP("y", msg)
+            CP("m", msg)
             gc.collect()
             raise ValueError(msg)
             return row
         
         CP(
-            "c",
+            "m",
             f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)",
         )
         if fullpath.exists():
-            CP("g", f"OK: {fullpath!s}")
+            CP("m", f"OK: {fullpath!s}")
             Logger.info(f"OK: {fullpath!s}")
         else:
-            CP("r", f"File not found: {fullpath!s}")
+            CP("m", f"File not found: {fullpath!s}")
             Logger.error(f"File not found: {fullpath!s}")
         with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
             try:
                 if AR.getData():
                     supindex = AR.readDirIndex(currdir=Path(fullpath.parent))
-                    CP("g", f"    Protocol read OK: {fullpath.name!s}")
+                    CP("m", f"    Protocol read OK: {fullpath.name!s}")
                     Logger.info(f"    Protocol read OK: {fullpath.name!s}")
                     dataok = True
                 else:
@@ -377,7 +375,7 @@ class ProcessSpikeAnalysis:
                         row  # failed to get data, error will be indicated by acq4read
                     )
             except ValueError as exc:
-                CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
+                CP("m", f"Acq4Read failed to read data file: {str(fullpath):s}")
                 Logger.critical(f"Acq4Read failed to read data file: {str(fullpath):s}")
                 gc.collect()
                 return row
@@ -407,7 +405,7 @@ class ProcessSpikeAnalysis:
             IVA = EP.iv_analysis.IVAnalysis(args)
             IVA.configure(datapath=fullpatha, reader=AR, plot=True, pdf_pages=pdf_pages)
             if IVA.AR.sample_rate[0] < 10000.0:
-                CP("r", "    Sample Rate too low")
+                CP("m", "    Sample Rate too low")
                 Logger.info("    Sample Rate for this protocol is too low")
                 return row
             IVA.iv_check(duration=0.1)
@@ -416,7 +414,7 @@ class ProcessSpikeAnalysis:
             try:
                 IVA.AR.tstart
             except:
-                CP("r", f"Failed to correctly read file: \n        {str(fullpath):s}")
+                CP("m", f"Failed to correctly read file: \n        {str(fullpath):s}")
                 Logger.critical(
                     f"Failed to correctly read file: \n        {str(fullpath):s}"
                 )
@@ -439,7 +437,7 @@ class ProcessSpikeAnalysis:
                 return row
 
             row = self.get_lowest_current_spike(row, IVA.SP)
-            print("DVDT CURRENT: ", row.dvdt_current)
+            # print("DVDT CURRENT: ", row.dvdt_current)
             row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
             row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
             row.RMP = IVA.RM.analysis_summary["RMP"]
@@ -555,7 +553,10 @@ class ProcessSpikeAnalysis:
                 protostrings
             )
         ]
-        
+        df = df.drop(["cell_cell_y", "slice_slice_y"], axis=1)
+        df.rename(columns={"cell_cell_x": "cell_cell", "slice_slice_x": "slice_slice"}, inplace=True)
+        df = df.drop(["reporters_y", "animal identifier_y", "strain_y"], axis=1)
+        df.rename(columns={"reporters_x": "reporters", "animal identifier_x": "animal identifier", "strain_x": "strain"}, inplace=True)
         print("# of protocols of right type: ", len(df))
         print(df["protocol"].unique())
         Logger.info(f"Number of protocols of right type for analysis: {len(df):d}")
