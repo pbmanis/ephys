@@ -845,6 +845,7 @@ class DataTables:
                                 adddata=adddata,
                                 coding_file=coding_file,
                                 coding_sheet=self.experiment["coding_sheet"],
+                                coding_level=self.experiment["coding_level"],
                                 exclude_unimportant=self.exclude_unimportant,
                                 fn=fn,
                             )
@@ -1027,16 +1028,16 @@ class DataTables:
                                 df,
                                 mode=["mean"],  # could be ["individual", "mean"]
                                 group_by=self.ptreedata.child("Plotting").child("Group By").value(),
-                                protosel=[
-                                    "CCIV_1nA_max",
-                                    # "CCIV_4nA_max",
-                                    "CCIV_long",
-                                    "CCIV_short",
-                                    "CCIV_1nA_Posonly",
-                                    # "CCIV_4nA_max_1s_pulse_posonly",
-                                    "CCIV_1nA_max_1s_pulse",
-                                    # "CCIV_4nA_max_1s_pulse",
-                                ],
+                                # protosel=[
+                                #     "CCIV_1nA_max",
+                                #     # "CCIV_4nA_max",
+                                #     "CCIV_long",
+                                #     "CCIV_short",
+                                #     "CCIV_1nA_Posonly",
+                                #     # "CCIV_4nA_max_1s_pulse_posonly",
+                                #     "CCIV_1nA_max_1s_pulse",
+                                #     # "CCIV_4nA_max_1s_pulse",
+                                # ],
                                 colors=self.experiment["plot_colors"],
                                 enable_picking=self.picker_active,
                             )
