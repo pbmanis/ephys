@@ -806,12 +806,16 @@ class Functions:
         ax: Union[mpl.Axes, None] = None,
     ):
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
-
+        CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
+        cell_group = df[df.cell_id==cell].Group.values[0]
+        if pd.isnull(cell_group) and len(df[df.cell_id==cell].Group.values) > 1:  # incase first value is nan
+            cell_group = df[df.cell_id==cell].Group.values[1]
         df_cell, df_tmp = self.get_cell(experiment, df, cell)
         if df_cell is None:
             return None
-        print("    df_tmp group>>: ", df_tmp.Group.values)
-        print("    df_cell group>>: ", df_cell.keys())
+        # print("    df_tmp group>>: ", df_tmp.Group.values)
+        # print("    df_cell group>>: ", df_cell.keys())
+
         protocols = list(df_cell.Spikes.keys())
         spike_keys = list(df_cell.Spikes[protocols[0]].keys())
         iv_keys = list(df_cell.IV[protocols[0]].keys())
@@ -825,8 +829,8 @@ class Functions:
                 continue
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
-            if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
-                continue
+            # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
+            #     continue
             fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
@@ -849,21 +853,12 @@ class Functions:
             protname = protocols[0]
         else:
             return None
-        # parse group correctly.
-        # the first point in the Group column is likely a nan.
-        # except that we have probably removed that
-        # if it is, then use the next point.
-        print("cfif: Group: ", df_tmp.Group, "protoname: ", protname)
-        if len(df_tmp.Group.values) > 0:
-            group = df_tmp.Group.values[0]
-        else:
-            group = "nan"
-        print("ccif cellid: ", df_tmp.cell_id.values)
+        # CP("r", f"ccif cellid: {df_tmp.cell_id.values!s} ccif group: {group!s}")
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
             "Subject": str(df_tmp.cell_id.values[0]),
             "cell_id": cell,
-            "Group": group,
+            "Group": cell_group,
             "Date": str(df_tmp.Date.values[0]),
             "age": str(df_tmp.age.values[0]),
             "weight": str(df_tmp.weight.values[0]),
@@ -969,7 +964,7 @@ class Functions:
         datadict["current"] = FI_Data_I1
         datadict["spsec"] = FI_Data_FR1
         datadict["Subject"] = df_tmp.cell_id.values[0]
-        datadict["Group"] = df_tmp.Group.values[0]
+        # datadict["Group"] = df_tmp.Group.values[0]
         datadict["sex"] = df_tmp.sex.values[0]
         datadict["celltype"] = df_tmp.cell_type.values[0]
         datadict["pars"] = [FI_fits["pars"]]
@@ -1022,12 +1017,22 @@ class Functions:
         bool
             True if cell_id is in the list, False otherwise
         """
+       
+        if pd.isnull(cell_id):
+            return None # raise ValueError(f"Cell_id: {cell_id!s} is Null, which is a strange error")
         if cell_id in cell_ids:
             return cell_id    # return the exact match
         else:
+
             cell_parts = cell_parts = str(cell_id).split("_")
             # print("cell_parts: ", cell_id, cell_parts)
             re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+            if re_parse is None:
+                raise ValueError(f"Cell_id: {cell_id:s} not found in list of cell_ids in the datasummary file")
+
+            # print("cell id: ", cell_id)
+            # print("cell_parts: ", cell_parts[-1])
+            # print("re   match: ", re_parse.match(cell_parts[-1]))
             cnp = re_parse.match(cell_parts[-1]).group(4)
             cn = int(cnp)
             snp = re_parse.match(cell_parts[-1]).group(2)
