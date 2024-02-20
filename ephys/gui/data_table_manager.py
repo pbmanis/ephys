@@ -47,7 +47,7 @@ PP = pprint.PrettyPrinter(indent=8, width=80)
 # but we also want to get the hash from the project repository.
 # (assumed the repo was updated and committed ahead of the run)
 
-print("Current path: ", Path().absolute())
+# print("Current path: ", Path().absolute())
 
 git_hashes = functions.get_git_hashes()
 
