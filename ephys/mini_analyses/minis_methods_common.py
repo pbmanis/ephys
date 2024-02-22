@@ -20,7 +20,7 @@ import itertools
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import lmfit
 import matplotlib.colors
@@ -480,7 +480,7 @@ class MiniAnalyses:
 
                 return np.dot(x, sinc_)
 
-    def prepare_data(self, data: np.ndarray, pars:MEDC.AnalysisPars):
+    def prepare_data(self, data: np.ndarray, pars:Optional[MEDC.AnalysisPars]=None):
         """
         This function prepares the incoming data for the mini analyses.
         0. Remove obtrusive artifacts with "sample-and-hold" method
@@ -503,6 +503,7 @@ class MiniAnalyses:
             return
         if data.ndim != 2:
             raise ValueError
+        assert pars is not None
 
         CP.cprint("c", f"Preparing Data: Filters Enabled = {str(self.filters.enabled):s}")
         if not self.filters.enabled:

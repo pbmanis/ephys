@@ -57,7 +57,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.ampdataname = "MultiClamp1.ma"
 
         self.tb = None
-        self.notch_60HzHarmonics = np.arange(60., 4000., 60.)
+        self.notch_60HzHarmonics = np.arange(60.0, 4000.0, 60.0)
         self.notch_60HzHarmonics_4K = [
             60.0,
             120.0,
@@ -92,13 +92,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
             3061.2,
             4000.0,
         ]
-       
-        self.filters = MEDC.Filtering() # create filter class
+
+        self.filters = MEDC.Filtering()  # create filter class
         # modify some defaults
         self.filters.Notch_frequencies = None
         self.filters.Notch_Q = 90.0
         self.filters.HPF_frequency = None
-        self.filters.LPF_frequency = 2500.
+        self.filters.LPF_frequency = 2500.0
         self.filters.enabled = True
 
         self.curves = []
@@ -116,7 +116,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.tau2 = 0.004  # value in the spinbox
         self.minis_risetau = self.tau1  # will be value returned from analysis
         self.minis_falltau = self.tau2
-        self.risepower=2
+        self.risepower = 2
         self.event_post_time = 0.015
         self.method = None
         self.Order = 7
@@ -149,7 +149,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             "AJ": self.MINC.AJ,
             "ZC": self.MINC.ZC,
             "RS": self.MINC.RS,
-        } 
+        }
 
     def getProtocolDir(self, reload_last=False):
         current_filename = None
@@ -180,7 +180,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.win.setWindowTitle(wt)
         self.w1.slider.setValue(0)
         print("# clamp files (traces): ", len(self.clampfiles))
-        self.w1.slider.setRange(0, len(self.clampfiles)-1)
+        self.w1.slider.setRange(0, len(self.clampfiles) - 1)
         self.w1.slider.setTickInterval(10)
         self.protocolPath = self.fileName
         self.compare_data = False  # new prototocol; trigger new comparision if needed
@@ -214,21 +214,16 @@ class MiniViewer(pg.QtWidgets.QWidget):
         if isinstance(cellno, int):
             self.cell = "cell_{0:03d}".format(cellno)
         self.protocolName = protocolName
-        self.protocolPath = Path(
-            self.datadir, self.date, self.slice, self.cell, self.protocolName
-        )
+        self.protocolPath = Path(self.datadir, self.date, self.slice, self.cell, self.protocolName)
         self.protocolKey = Path(self.date, self.slice, self.cell, self.protocolName)
         if not self.protocolPath.is_dir():
             print("dir not found: ", str(self.protocolPath))
             return
 
     def load_data(self):
-        self.AR.setProtocol(
-            self.protocolPath
-        )  # define the protocol path where the data is
+        self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
         # self.info = self.AR.getDataInfo(Path(mapdir))  # copy out the info
 
-        
         if self.AR.getData():  # get that data.
             self.filters_applied = False
             # trim time window if needed
@@ -243,26 +238,25 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.AR.data_array = self.AR.data_array[:, istart:iend]
             self.mod_data = self.AR.data_array.copy()
             self.trace_end_index = self.mod_data.shape[1]
-            self.maxT = self.AR.sample_rate[0] * self.trace_end_index       
+            self.maxT = self.AR.sample_rate[0] * self.trace_end_index
             self.w1.slider.setValue(0)
-            # load depends on the analysis... 
-
+            # load depends on the analysis...
 
             self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
 
-
-            self.MA.setup(datasource="MiniAnalyses",
+            self.MA.setup(
+                datasource="MiniAnalyses",
                 ntraces=self.mod_data.shape[0],
-                tau1 = self.tau1,
-                tau2 = self.tau2,
-                dt_seconds = self.AR.sample_interval,
-                template_tmax= 0.05, # sec
-                template_pre_time= 0.001, # sec
+                tau1=self.tau1,
+                tau2=self.tau2,
+                dt_seconds=self.AR.sample_interval,
+                template_tmax=0.05,  # sec
+                template_pre_time=0.001,  # sec
                 event_post_time=self.event_post_time,
-                sign = self.sign,
-                risepower = self.risepower,
-                threshold = self.thresh_reSD,
-                filters = self.filters,
+                sign=self.sign,
+                risepower=self.risepower,
+                threshold=self.thresh_reSD,
+                filters=self.filters,
             )
             self.MA.set_timebase(self.AR.time_base)
             self.MA.verbose = self.verbose
@@ -274,9 +268,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.update_traces()
 
     def apply_filtering(self):
-        """Apply filtering all at once to all traxes upon reading
-
-        """
+        """Apply filtering all at once to all traxes upon reading"""
 
         if self.filters_applied:
             print("Filtering already applied")
@@ -330,7 +322,6 @@ class MiniViewer(pg.QtWidgets.QWidget):
         CP.cprint("y", f"Applied filtering to {itrace:d} traces")
         self.filters_applied = True
 
-
     def _getpars(self):
         signdict = {"-": -1, "+": 1}
         # self.tau1 = 1e-3 * self.minis_risetau  # .value()*1e-3
@@ -341,10 +332,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def update_threshold(self):
         self.threshold_line.setPos(self.thresh_reSD)
-  
+
         self.method_update[self.last_method]()  # threshold/scroll, just update
 
-    def update_traces(self, trace:int=None):
+    def update_traces(self, trace: int = None):
 
         if len(self.AR.traces) == 0:
             return
@@ -365,30 +356,27 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.lines = []
         self.curve_set = False
         if self.current_trace >= self.AR.data_array.shape[0]:
-            self.dataplot.setTitle(
-                f"Trace > Max traces: {self.AR.data_array.shape[0]:d}"
-            )
+            self.dataplot.setTitle(f"Trace > Max traces: {self.AR.data_array.shape[0]:d}")
             return
         self.curves.append(
             self.dataplot.plot(
-                self.AR.time_base[:self.trace_end_index],
-                self.mod_data[self.current_trace][:self.trace_end_index],
+                self.AR.time_base[: self.trace_end_index],
+                self.mod_data[self.current_trace][: self.trace_end_index],
                 pen=pg.intColor(1),
             )
         )
         self.current_data = self.mod_data[self.current_trace]
-        self.tb = self.AR.time_base[:self.trace_end_index]
+        self.tb = self.AR.time_base[: self.trace_end_index]
         self.curve_set = True
         if self.method is not None:
             self.MINC.decorate(self.method)
         return
-    
+
     def update_analysis(self):
         print("self.method: ", self.method)
         self.MA.set_filters(self.filters)
         self.MINC = minicalcs.MiniCalcs(parent=self)
 
- 
         self.method_mapper[self.last_method]()  # recompute from scratch
         if self.method is not None:
             self.MINC.decorate(self.method)
@@ -420,9 +408,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         ].tolist()
         if len(thisdata) > 1:
             raise ValueError("Search for data resulted in more than one entry!")
-        ivprots = self.df.iloc[thisdata]["IV"].values[
-            0
-        ]  # all the protocols in the dict
+        ivprots = self.df.iloc[thisdata]["IV"].values[0]  # all the protocols in the dict
         return thisdata, ivprots
 
     def getProtocol(self, protocolName):
@@ -681,9 +667,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
             {"name": "Quit", "type": "action"},
         ]
         self.ptree = ParameterTree()
-        self.ptreedata = Parameter.create(
-            name="Commands", type="group", children=self.params
-        )
+        self.ptreedata = Parameter.create(name="Commands", type="group", children=self.params)
         self.ptree.setParameters(self.ptreedata)
         self.ptree.setMaximumWidth(300)
         self.ptree.setMinimumWidth(250)
@@ -757,7 +741,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 else:
                     print("argument: ", path[1], "is not handled in: ", path[0])
                     raise ValueError()
-                
+
             elif path[0] == "Mini Analysis":
                 if path[1] == "Rise Tau":
                     self.tau1 = data
@@ -775,10 +759,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     self.update_threshold()
                 elif path[1] == "Method":
                     self.last_method = data
-                elif path[1] == "Analyze Events": # call the analysis function
+                elif path[1] == "Analyze Events":  # call the analysis function
                     self.update_analysis()
 
-                else: 
+                else:
                     print("argument: ", path[1], "is not handled in: ", path[0])
                     raise ValueError()
 
@@ -891,9 +875,7 @@ class Slider(pg.QtWidgets.QWidget):
         super(Slider, self).__init__(parent=parent)
         self.verticalLayout = pg.Qt.QtWidgets.QVBoxLayout(self)
         self.label = pg.Qt.QtWidgets.QLabel(self)
-        self.verticalLayout.addWidget(
-            self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter
-        )
+        self.verticalLayout.addWidget(self.label, alignment=pg.QtCore.Qt.AlignmentFlag.AlignHCenter)
         self.horizontalLayout = pg.Qt.QtWidgets.QHBoxLayout()
         # spacerItem = pg.QtGui.QSpacerItem(
         #     0, 20, pg.QtWidgets.QSizePolicy.PolicyFlag.ExpandFlag # , pg.QtWidgets.QSizePolicy.Minimum
@@ -919,9 +901,7 @@ class Slider(pg.QtWidgets.QWidget):
         self.setLabelValue(self.slider.value())
 
     def setLabelValue(self, value):
-        self.x = int(
-            value
-        )  # int((self.minimum + (float(value) / (self.slider.maximum()
+        self.x = int(value)  # int((self.minimum + (float(value) / (self.slider.maximum()
         # - self.slider.minimum())) * (
         # self.maximum - self.minimum)) /self.scalar)
         # print(self.minimum, self.slider.minimum(),

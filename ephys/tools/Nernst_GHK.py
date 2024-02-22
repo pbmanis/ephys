@@ -1,3 +1,5 @@
+""" Compute some basic Nernst and GHK potentials
+"""
 import numpy as np
 
 def Nernst(z, c1, c2, T):
@@ -9,7 +11,13 @@ def Nernst(z, c1, c2, T):
 def GHK(T, Ko, Ki, Pk, Nao, Nai, PNa, Clo, Cli, PCl):
     Tk = T + 273.15
     R = 8.314
-    F = 96500
+    """GHK Compute GHK for a given set of parameters
+
+    Returns
+    -------
+    float
+        Vm in volts
+    """    F = 96500
     RTF = R*Tk/F
     num = Pk * Ko + PNa * Nao + PCl * Cli
     den = Pk * Ki + PNa * Nai + PCl * Clo
