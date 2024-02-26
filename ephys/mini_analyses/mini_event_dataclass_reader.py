@@ -10,7 +10,7 @@ class Reader():
         make analysis and subsequent plotting easier.
 
         The Mini_Event_Summary class has the following structure:
-             dt_seconds: float = 2e-5  # seconds
+            dt_seconds: float = 2e-5  # seconds
             filtering: object = field(default_factory=Filtering)
 
             spont_dur: float = 0.1  # seconds
