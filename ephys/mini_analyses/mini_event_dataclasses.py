@@ -60,6 +60,12 @@ class AverageEvent:
     avgevent: Union[List, np.ndarray] = field(  # the event
         default_factory=def_empty_list
     )
+    stdevent: Union[List, np.ndarray] = field(  # the event
+        default_factory=def_empty_list
+    )
+    varevent: Union[List, np.ndarray] = field(  # the event
+        default_factory=def_empty_list
+    )
     Nevents: int = 0  # number of events that were averaged
     avgnpts: int = 0  # number of points in the array
     fitted: bool = False  # Set True if data has been fitted
@@ -148,6 +154,7 @@ class Mini_Event_Summary:
     )
     individual_events: bool = False
     average: AverageEvent = field(default_factory=AverageEvent)  # average
+
     average25: AverageEvent = field(
         default_factory=AverageEvent
     )  # average of lower 25th percentile
@@ -175,6 +182,11 @@ class Mini_Event_Summary:
     isolated_event_trace_list: Union[
         List, None
     ] = field(  
+        default_factory=def_empty_list
+    )
+    clean_event_onsets_list: Union[
+        List, None
+    ] = field(
         default_factory=def_empty_list
     )
     spontaneous_event_trace_list: Union[
