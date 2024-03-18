@@ -831,7 +831,11 @@ class Functions:
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
             # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
             #     continue
-            fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
+            # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
+            if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
+                fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
+            else:
+                fullpath = Path(experiment["rawdatapath"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
                     AR.getData(fullpath)
