@@ -1263,6 +1263,8 @@ class DataSummary:
 
 
 def dir_recurse(ds, current_dir, exclude_list: list = [], indent=0):
+    if exclude_list is None:
+        exclude_list = []
     print("Found current dir?: ", Path(current_dir).is_dir())
     files = sorted(list(current_dir.glob("*")))
     print("files: ", files)
@@ -1275,10 +1277,10 @@ def dir_recurse(ds, current_dir, exclude_list: list = [], indent=0):
     sp = " " * indent
     for d in alldatadirs:
         Printer(f"{sp:s}Data: {str(d.name):s}", "green")
-    ds.getDay(alldatadirs)
-
     if len(alldatadirs) > 0:
+        ds.getDay(alldatadirs)
         ds.write_string_pandas()
+    print("files 2: ", files)
     allsubdirs = [
         f
         for f in files
@@ -1438,6 +1440,8 @@ def main():
 
     if args.outputFilename is not None:
         print("Writing to output, recurively through directories ")
+        if args.exclude == None:
+            args.exclude = []
         dir_recurse(ds, ds.basedir, args.exclude)
 
         exit()
