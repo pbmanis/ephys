@@ -43,7 +43,7 @@ def set_ylims(experiment):
     if experiment is not None and "ylims" in experiment.keys():
         ylims = {}
         # the key may be a list of cell types all with the same limits
-        CP("r", "setting ylims for cell types")
+        # CP("r", "setting ylims for cell types")
         for limit_group in experiment["ylims"].keys():
 
             for ct in experiment["ylims"][limit_group]['celltypes']:
@@ -505,11 +505,13 @@ class PlotSpikeInfo(QObject):
                 coding_name = "Group"
             if row.date in df3.date.values:
                 if "sex" in df3.columns:  # update sex? Should be in main table.
-                    df.loc[index, "sex"] = df3[df3.date == row.date].sex.astype(str)
+                    df.loc[index, "sex"] = df3[df3.date == row.date].sex.astype(str).values[0]
                     CP(
                         "m",
                         f"Setting sex in assembled table: {df.loc[index, 'sex']!s}",
                     )
+                if "cell_expression" in df3.columns:
+                    df.loc[index, "cell_expressoin"] = df3[df3.date == row.date].cell_expression.astype(str).values[0]
                 if level == "date":
                     df.loc[index, "Group"] = df3[df3.date == row.date][coding_name].astype(str).values[0]
                 elif level == "slice":
@@ -753,34 +755,41 @@ class PlotSpikeInfo(QObject):
         # print("      X values: ", xname)
 
         dodge = True
-        if hue_category == "sex":
-            hue_palette = {
-                "F": "#FF000088",
-                "M": "#0000ff88",
-                " ": "k",
-                "AIE": "#444488FF",
-                "CON": "#9999ddFF",
-            }
-        elif hue_category == "temperature":
-            hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
+        if 'hue_palette' in self.experiment.keys() and hue_category in self.experiment['hue_palette'].keys():
+            hue_palette = self.experiment['hue_palette'][hue_category]
+        # if hue_category == "sex":
+        #     hue_palette = {
+        #         "F": "#FF000088",
+        #         "M": "#0000ff88",
+        #         " ": "k",
+        #         "AIE": "#444488FF",
+        #         "CON": "#9999ddFF",
+        #     }
+        # elif hue_category == "temperature":
+        #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
         else:
             hue_category = xname
             hue_palette = colors
             # dodge = False
-        # print("plotting bar plot for ", celltype, yname, hue_category)
+
+        if hue_category != xname:
+            dodge = True
+            hue_order = self.experiment['plot_order'][hue_category]
+        else:
+            dodge = False
+            hue_order = plot_order        # print("plotting bar plot for ", celltype, yname, hue_category)
         # must use scatterplot if you want to use picking.
         if enable_picking:
             sns.scatterplot(
                 x=xname,
                 y=yname,
+                hue=hue_category,
+                style=hue_category,
                 data=df_x,
-                # dodge=dodge,
-                # jitter=True, # only for scatterplot
                 size=3.5,
                 # fliersize=None,
                 alpha=1.0,
                 ax=ax,
-                hue=hue_category,
                 palette=hue_palette,
                 edgecolor="k",
                 linewidth=0.5,
@@ -790,23 +799,24 @@ class PlotSpikeInfo(QObject):
                 clip_on=False,
             )
         else:
+
             sns.stripplot(
                 x=xname,
                 y=yname,
+                hue=hue_category,
                 data=df_x,
-                # dodge=dodge,
-                # jitter=True, # only for scatterplot
+                order=plot_order,
+                hue_order=hue_order,
+                dodge=dodge,
                 size=3.5,
                 # fliersize=None,
                 jitter=0.25,
                 alpha=1.0,
                 ax=ax,
-                hue=hue_category,
                 palette=hue_palette,
                 edgecolor="k",
                 linewidth=0.5,
-                hue_order=plot_order,
-                order=plot_order,
+
                 picker=enable_picking,
                 zorder=100,
                 clip_on=False,
@@ -817,6 +827,7 @@ class PlotSpikeInfo(QObject):
             x=xname,
             y=yname,
             hue=hue_category,
+            hue_order=hue_order,
             palette=hue_palette,
             ax=ax,
             order=plot_order,
@@ -956,6 +967,25 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
 
+    def export_r(self, df:pd.DataFrame, xname:str, measures:str, hue_category:str, filename:str):
+        """export_r _summary_
+        Export just the relevant data to a csv file to read in R for further analysis.
+        """
+        # print("Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
+        if hue_category is None:
+            columns = [xname]
+        else:
+            columns = [xname, hue_category]
+        columns.extend(measures)
+        ensure_cols = ["animal identifier", "Group", "age", 'sex', "cell_type", "Subject"]
+        for c in ensure_cols:
+            if c not in columns:
+                columns.append(c)
+        print('df: ', df.columns)
+    
+        df_R = df[columns]
+        df_R.to_csv(filename, index=False)
+
     def summary_plot_spike_parameters_categorical(
         self,
         df,
@@ -985,12 +1015,12 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"]) + 1.0),
             panel_labels=plabels,
-            labelposition=(-0.05, 1.05),
+            labelposition=(0.01, 0.95),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.1,
-                "rightmargin": 0.05,
+                "rightmargin": 0.15,
             },
             verticalspacing=0.04,
             horizontalspacing=0.07,
@@ -1008,12 +1038,13 @@ class PlotSpikeInfo(QObject):
             else:
                 tf = None
             # print(self.ylims.keys())
-            print(df.columns)
-            print("Groups: ", df.Group.unique())
-            print("xnames: ", df[xname].unique())
-            print("ynames: ", df[measure].unique())
-            print("Plot order: ", plot_order)
-            print("colors: ", colors)
+            # print("dataframe columns: ", df.columns)
+            # print("Groups: ", df.Group.unique())
+            # print("xnames: ", df[xname].unique())
+            # print("ynames: ", df[measure].unique())
+            # print("Plot order: ", plot_order)
+            # print("colors: ", colors)
+            # print("hue category: ", hue_category)
 
             for i, celltype in enumerate(self.experiment["celltypes"]):
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
@@ -1038,8 +1069,8 @@ class PlotSpikeInfo(QObject):
                         enable_picking=enable_picking,
                     )
                 except Exception as e:
-                    print("ylims: ", self.ylims.keys(), ycell)
-                    raise KeyError(f"ylims: {self.ylims.keys()} {ycell}\n{e!s}")
+                    # print("ylims: ", self.ylims.keys(), ycell)
+                    raise KeyError(f"\n{e!s}")
                 picker_funcs[axp] = picker_func  # each axis has different data...
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
@@ -1066,7 +1097,15 @@ class PlotSpikeInfo(QObject):
                     ax
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
         # place_legend(P)
-
+        i = 0
+        icol = 0
+        axp = P.axdict[f"{plabels[i]:s}"]
+        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
+        if "dvdt_rising" in measures:
+            fn = "spike_shapes.csv"
+        else:
+            fn = "firing_parameters.csv"
+        self.export_r(df, xname, measures, hue_category, filename=fn)
         return P, picker_funcs
 
     def pick_handler(self, event, picker_funcs):
@@ -1234,7 +1273,10 @@ class PlotSpikeInfo(QObject):
     def clean_rin(self, row):
         min_Rin = 6.0
         if "data_inclusion_criteria" in self.experiment.keys():
-            min_Rin = self.experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
+            if row.cell_type in self.experiment["data_inclusion_criteria"].keys():
+                min_Rin = self.experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
+            else:
+                min_Rin = self.experiment["data_inclusion_criteria"]["default"]["Rin_min"]
         if row.Rin < min_Rin:
             row.Rin = np.nan
         return row.Rin
@@ -1242,7 +1284,10 @@ class PlotSpikeInfo(QObject):
     def clean_rmp(self, row):
         min_RMP = -55.0
         if "data_inclusion_criteria" in self.experiment.keys():
-            min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
+            if row.cell_type in self.experiment["data_inclusion_criteria"].keys():
+                min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
+            else:
+                min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
         if row.RMP > min_RMP:
             row.RMP = np.nan
         return row.RMP
@@ -1290,7 +1335,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(16, 9),
             panel_labels=plabels,
-            labelposition=(-0.05, 1.05),
+            labelposition=(0.01, 0.95),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -1423,12 +1468,12 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
-            labelposition=(-0.05, 1.05),
+            labelposition=(0.01, 0.95),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.12,
-                "rightmargin": 0.05,
+                "rightmargin": 0.15,
             },
             verticalspacing=0.04,
             horizontalspacing=0.07,
@@ -1448,10 +1493,6 @@ class PlotSpikeInfo(QObject):
 
                 # df = df.apply(apply_scale, axis=1, measure=measure, scale=yscale)
                 axp = P.axdict[f"{let:s}{j+1:d}"]
-                if celltype not in self.ylims.keys():
-                    ycell = "default"
-                else:
-                    ycell = celltype
                 # print("    enable picking: ", enable_picking)
                 picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
@@ -1463,7 +1504,7 @@ class PlotSpikeInfo(QObject):
                     celltype=celltype,
                     colors=colors,
                     logx=False,
-                    ylims=self.ylims[ycell][measure],
+                    ylims=self.ylims[celltype][measure],
                     xlims=None,
                     enable_picking=enable_picking,
                 )
@@ -1484,8 +1525,12 @@ class PlotSpikeInfo(QObject):
                 P.axdict[
                     ax
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
-        # place_legend(P)
-
+        # self.place_legend(P)
+        i = 0
+        icol = 0
+        axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
+        self.export_r(df, xname, measures, hue_category, "rmtau.csv")
         return P, picker_funcs
 
     def limit_to_max_rate_and_current(self, fi_data, imax=None, id="", limit=0.9):
@@ -1576,12 +1621,12 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(3 * len(self.experiment["celltypes"]) + 1.0, 3),
             panel_labels=plabels,
-            labelposition=(-0.05, 1.05),
+            labelposition=(0.01, 0.95),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.12,
-                "rightmargin": 0.1,
+                "rightmargin": 0.15,
             },
             verticalspacing=0.1,
             horizontalspacing=0.1,
@@ -1767,7 +1812,10 @@ class PlotSpikeInfo(QObject):
                                 "N": NCells[(celltype, group)],
                             }
                         )
-
+        i = 0
+        icol = 0
+        axp = P.axdict["A"]
+        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
         return P, picker_funcs
 
     def rename_group(self, row, group_by: str):
@@ -2090,6 +2138,21 @@ class PlotSpikeInfo(QObject):
             row.AHP_depth_V = np.nan
         return row.AHP_depth_V
 
+    def get_animal_id(self, row, df_summary):
+        cell_id = row.cell_id
+        cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
+        if cell_id_match is None:
+            return ""
+        if cell_id_match is not None:
+            row["animal identifier"] = df_summary.loc[
+                df_summary.cell_id == cell_id_match
+            ]["animal identifier"].values[0]
+        else:
+            print("cell id not found: ", cell_id)
+            print("values: ", df_summary.cell_id.values.tolist())
+            raise ValueError(f"Cell id {cell_id} not found in summary")
+        return row["animal identifier"]
+
     def get_cell_layer(self, row, df_summary):
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
@@ -2106,6 +2169,43 @@ class PlotSpikeInfo(QObject):
             print("values: ", df_summary.cell_id.values.tolist())
             raise ValueError(f"Cell id {cell_id} not found in summary")
         return row.cell_layer
+
+    def get_cell_expression(self, row, df_summary):
+        """get_cell_expression from the main datasummary dataframe
+
+        Parameters
+        ----------
+        row : pandas dataframe row
+            row associated with a cell
+        df_summary : pandas dataframe
+            main dataframe from the datasummary program
+
+        Returns
+        -------
+        pandas row
+            updated row
+
+        Raises
+        ------
+        ValueError
+            error if cannot match the cell id in the current row with the summary.
+        """
+        cell_id = row.cell_id
+        cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
+        if cell_id_match is None:
+            return ""
+        if cell_id_match is not None:
+            row.cell_expression = df_summary.loc[df_summary.cell_id == cell_id_match].cell_expression.values[
+                0
+            ]
+            if row.cell_expression in [" ", "nan"]:
+                row.cell_expression = "ND"
+        else:
+            print("cell id not found: ", cell_id)
+            print("values: ", df_summary.cell_id.values.tolist())
+            raise ValueError(f"Cell id {cell_id} not found in summary")
+        return row.cell_expression
+
 
     def preload(self, fn):
         """preload Load the assembled data from a .pkl file
@@ -2128,15 +2228,30 @@ class PlotSpikeInfo(QObject):
         # print("fn: ", fn)
         # print(df.Group.unique())
         # exit()
+        df_summary = get_datasummary(self.experiment)
+        # print("summary columns: ", df_summary.columns)
+        # print(df_summary["animal identifier"].unique())
+
+        df["animal identifier"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
+        # print(df["animal identifier"].unique())
+
         if "cell_layer" not in df.columns:
-            df_summary = get_datasummary(self.experiment)
             layers = df_summary.cell_layer.unique()
             if len(layers) == 1 and layers == [" "]:  # no layer designations
                 df["cell_layer"] = "unknown"
             else:
                 df["cell_layer"] = ""
                 df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
-            print("cell layers: ", df.cell_layer.unique())
+            # print("cell layers: ", df.cell_layer.unique())
+
+        if "cell_expression" not in df.columns:
+            expression = df_summary.cell_expression.unique()
+            if len(expression) == 1 and expression == [" "]:  # no layer designations
+                df["cell_expression"] = "ND"
+            else:
+                df["cell_expression"] = ""
+                df["cell_expression"] = df.apply(self.get_cell_expression, df_summary=df_summary, axis=1)
+            print("cell expression values: ", df.cell_expression.unique())
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
         df["RMP"] = df.apply(self.clean_rmp, axis=1)
