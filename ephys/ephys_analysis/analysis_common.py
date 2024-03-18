@@ -645,7 +645,7 @@ class Analysis:
         if isinstance(celltype, str):
             celltype = celltype.strip()
         if celltype in [None, "", "?", " ", "  ", "\t"]:
-            print(f"Changing Cell type to unknown from {celltype:s}")
+            print(f"Changing Cell type to unknown from <{celltype:s}>")
             celltype = "unknown"
         return celltype
 
@@ -694,6 +694,7 @@ class Analysis:
         """
         celltype = self.check_celltype(celltype)
         if slicecell is None:
+            return
             raise ValueError(
                 f"iv_analysis:merge_pdfs:: Slicecell is None: should always have a value set. celltype was: {celltype!s} "
             )
@@ -1242,6 +1243,8 @@ class Analysis:
         celltype = self.check_celltype(celltype)
         self.prots_done = []
         fullfile = Path(self.rawdatapath, self.df.iloc[icell].cell_id)
+        # print("**Fullfile: ", fullfile)
+
 
         self.get_markers(fullfile, verbose=True)
 
@@ -1264,8 +1267,10 @@ class Analysis:
                 # self.experiment["directory"],
                 self.make_cellstr(self.df, icell, shortpath=True),
             )
+        else:
+            CP.cprint("g", f"Data found: {str(fullfile):s}")
 
-        if self.extra_subdirectories is not None and not fullfile.is_dir():
+        if not fullfile.is_dir() and self.extra_subdirectories is not None:
             # try extra sub directories
             pathparts = fullfile.parts
             day = None
@@ -1278,16 +1283,17 @@ class Analysis:
                     "r", f"do_cell: Day <None> found in fileparts: {str(pathparts):s}"
                 )
                 exit()
-            for subdir in self.extra_subdirectories:
-                fullfile = Path(self.experiment['rawdatapath'], self.experiment["directory"], subdir, day)
-                print("checking for fullfile: ", str(fullfile))
-                if fullfile.is_dir():
-                    break
 
-            if not fullfile.is_dir():
-                CP.cprint("r", f"Unable to get the file: {str(fullfile):s}")
-                return False
-
+            for subdir in self.extra_subdirectories:  # check to see if this is in the valid list of extra subdirs
+                if str(fullfile).find(subdir) == -1:
+                    return False
+                # print("checking for file: ", str(fullfile))
+                # if fullfile.is_dir():
+                #     CP.cprint("g", f"Found : {str(fullfile):s}")
+                # else:
+                #     CP.cprint("r", f"Failed to find: {str(fullfile):s}")
+                #     return False
+ 
         prots = self.df.iloc[icell]["data_complete"]
         allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
 
