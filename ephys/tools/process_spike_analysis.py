@@ -321,7 +321,7 @@ class ProcessSpikeAnalysis:
         Logger.info(msg)
         fullpatha = Path(
             self.experiment["rawdatapath"],
-            self.experiment["directory"],
+            # self.experiment["directory"],
             row.date,
             row.slice_slice,
             row.cell_cell,
@@ -329,7 +329,7 @@ class ProcessSpikeAnalysis:
         )
         day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
         CP("m", f"day_slice_cell: {day_slice_cell:s}")
-        if (day_slice_cell in self.experiment["excludeIVs"]) and (
+        if self.experiment["excludeIVs"] is not None and (day_slice_cell in self.experiment["excludeIVs"]) and (
             (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
             or row.protocol in ["all", ["all"]]
         ):
@@ -553,10 +553,12 @@ class ProcessSpikeAnalysis:
                 protostrings
             )
         ]
-        df = df.drop(["cell_cell_y", "slice_slice_y"], axis=1)
-        df.rename(columns={"cell_cell_x": "cell_cell", "slice_slice_x": "slice_slice"}, inplace=True)
-        df = df.drop(["reporters_y", "animal identifier_y", "strain_y"], axis=1)
-        df.rename(columns={"reporters_x": "reporters", "animal identifier_x": "animal identifier", "strain_x": "strain"}, inplace=True)
+        if "cell_cell_y"  in df.columns:
+            df = df.drop(["cell_cell_y", "slice_slice_y"], axis=1)
+            df.rename(columns={"cell_cell_x": "cell_cell", "slice_slice_x": "slice_slice"}, inplace=True)
+        if "reporters_y" in df.columns:
+            df = df.drop(["reporters_y", "animal identifier_y", "strain_y"], axis=1)
+            df.rename(columns={"reporters_x": "reporters", "animal identifier_x": "animal identifier", "strain_x": "strain"}, inplace=True)
         print("# of protocols of right type: ", len(df))
         print(df["protocol"].unique())
         Logger.info(f"Number of protocols of right type for analysis: {len(df):d}")
