@@ -742,7 +742,8 @@ class DataTables:
                 case "Quit":
                     exit()
                 case "Create New DataSet":
-                    data = table_tools.create_new_dataset()
+
+                    data = table_tools.TableTools().create_new_dataset()
                     if data is not None and data.experimentname is not None:
                         self.experimentname = data.experimentname
                         self.set_experiment(self.experimentname)
@@ -941,8 +942,9 @@ class DataTables:
                             )
                             if hue_category == "None":
                                 hue_category = None
+                                # hue_category = self.experiment["plot_order"][group_by]
                             plot_order = self.experiment["plot_order"][group_by]
-                            hue_category = self.experiment["plot_order"][group_by]
+
                             print("    plot order: ", plot_order)
                             # if not isinstance(group_by, list):
                             #     group_by = [group_by]
