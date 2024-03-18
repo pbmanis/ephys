@@ -707,7 +707,7 @@ class IVAnalysis(Analysis):
                 "noaxes": False,
             },
             "B": {"pos": [0.62, 0.30, 0.74, 0.17], "labelpos": (x, y), "noaxes": False},
-            "C": {"pos": [0.62, 0.30, 0.52, 0.17], "labelpos": (x, y)},
+            "C": {"pos": [0.70, 0.22, 0.52, 0.17], "labelpos": (x, y)},
             "D": {"pos": [0.62, 0.30, 0.30, 0.17], "labelpos": (x, y)},
             "E": {"pos": [0.62, 0.30, 0.08, 0.17], "labelpos": (x, y)},
         }
@@ -913,7 +913,8 @@ class IVAnalysis(Analysis):
             tstr += (
                 f"${{R_{{in}}}}$: {self.RM.analysis_summary['Rin']:.1f} M{omega:s}\n"
             )
-
+            tstr += (f"SR: {self.AR.sample_rate[0] / 1e3:.1f} kHz\n")
+            tstr += (f"Downsample: {self.downsample:d}\n")
             tstr += (f"${{Pip Cap}}$: {self.RM.analysis_summary['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n")
             tstr += f"{taum:s}: {self.RM.analysis_summary['taum']*1e3:.2f} ms\n"
             tstr += f"{tauh:s}: {self.RM.analysis_summary['tauh_tau']*1e3:.3f} ms\n"
@@ -926,8 +927,8 @@ class IVAnalysis(Analysis):
             tstr += f"Pipette: {cccomp:.1f} mV\n"
 
             P.axdict["C"].text(
-                -0.05,
-                0.80,
+                -0.60,
+                0.85,
                 tstr,
                 transform=P.axdict["C"].transAxes,
                 horizontalalignment="left",
