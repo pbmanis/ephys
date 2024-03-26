@@ -6,7 +6,7 @@ __version__ = "%d.%d.%d%s" % version_info
 
 from ..tools import data_plan
 from . import analysis_common
-
+from . import iv_plotter
 from . import rm_tau_analysis
 from . import spike_analysis
 from . import iv_analysis
