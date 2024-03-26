@@ -181,7 +181,7 @@ class FilterDataset:
             print("   # days: ", len(list(set(df.date))))
             print("   # selected: ", len(df))
 
-        print("Unique protocols: ", list(set(df.protocol)))
+        # print("Unique protocols: ", list(set(df.protocol)))
         print("Unique groups: ", list(set(df.Group)))
         return df
 
