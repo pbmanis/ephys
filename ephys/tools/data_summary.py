@@ -1189,11 +1189,13 @@ class DataSummary:
             "dvdt_rising",
             "dvdt_falling",
             "AP_thr_V",
+            "AP_thr_T",
             "AP_HW",
             "AP15Rate",
             "AdaptRatio",
             "AP_begin_V",
             "AHP_trough_V",
+            "AHP_trough_T",
             "AHP_depth_V",
             "tauh",
             "Gh",
@@ -1226,9 +1228,7 @@ class DataSummary:
         df.to_excel(writer, sheet_name="Sheet1")
 
         resultno: list = []
-        # resultno = ['holding', 'RMP', 'Rin', 'taum', 'dvdt_rising', 'dvdt_falling',
-        #     'AP_thr_V', 'AP_HW', "AP15Rate", "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
-        # df[resultno] = df[resultno].apply(pd.to_numeric)
+
         for i, column in enumerate(df):
             # print('column: ', column)
             if column in resultno:
