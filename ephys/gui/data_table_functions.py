@@ -19,6 +19,7 @@ from pyqtgraph.Qt import QtGui
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools import utilities
+from ephys.tools import filename_tools
 import ephys
 
 UTIL = utilities.Utility()
@@ -106,6 +107,7 @@ datacols = [
     "dvdt_falling",
     "current",
     "AP_thr_V",
+    "AP_thr_T",
     "AP_HW",
     "AP15Rate",
     "AdaptRatio",
@@ -162,10 +164,11 @@ mapper: dict = {
     "AP1_HalfWidth": "halfwidth",
     "AP1_HalfWidth_interpolated": "halfwidth_interpolated",
     "AHP_trough_V": "trough_V",
-    "AHP_Trough": "trough_T",
+    "AHP_trough_T": "trough_T",
     "AHP_depth_V": "trough_V",
     "AP1_Latency": "AP_latency",
     "AP_thr_V": "AP_begin_V",
+    "AP_thr_T": "AP_begin_T",
     "AP_HW": "halfwidth",
     "dvdt_rising": "dvdt_rising",
     "dvdt_falling": "dvdt_falling",
@@ -219,10 +222,16 @@ class Functions:
             return a list of indexs from the selected rows.
             """
             self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
+            print("get multiple row selection: ", self.selected_index_rows)
             if self.selected_index_rows is None:
                 return None, None
             else:
-                return self.selected_index_rows
+                index_row = self.selected_index_rows[0]
+                selected = table_manager.get_table_data(index_row)  # table_data[index_row]
+                if selected is None:
+                    return None, None
+                else:
+                    return index_row, selected
 
     def get_datasummary(self, experiment):
         datasummary = Path(
@@ -407,7 +416,7 @@ class Functions:
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
 
-                cell_df, cell_df_tmp = self.get_cell(experiment, assembleddata, cell=selected.cell_id)
+                cell_df, cell_df_tmp = filename_tools.get_cell(experiment, assembleddata, cell_id=selected.cell_id)
                 protocols = list(cell_df["Spikes"].keys())
                 min_index = None
                 min_current = 1
@@ -426,29 +435,31 @@ class Functions:
                         min_current = current
                         spike = cell_df["Spikes"][protocol]
                 pp = PrettyPrinter(indent=4)
-                print("spike keys: ", spike["spikes"].keys())
-                print(
-                    "min I : ",
-                    I,
-                    "min V: ",
-                    V,
-                    "min index: ",
-                    min_index,
-                    "min_current: ",
-                    min_current,
-                )
-                pp.pprint(spike["spikes"][V][min_index])
+                # print("spike keys: ", spike["spikes"].keys())
+                # print(
+                #     "min I : ",
+                #     I,
+                #     "min V: ",
+                #     V,
+                #     "min index: ",
+                #     min_index,
+                #     "min_current: ",
+                #     min_current,
+                # )
+                # print("Spike info: \n")
+                # pp.pprint(spike["spikes"][V][min_index])
                 low_spike = spike["spikes"][V][min_index]
                 if nplots == 0:
                     import matplotlib.pyplot as mpl
 
                     f, ax = mpl.subplots(1, 2, figsize=(10, 5))
                 vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
-                ax[0].plot(vtime, low_spike.V * 1e3)
-                ax[1].plot(low_spike.V * 1e3, low_spike.dvdt)
+                ax[0].plot(vtime, low_spike.V * 1e3, 'k', linewidth=1.25)
+                ax[1].plot(low_spike.V[:low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
                 dvdt_ticks = np.arange(-4, 2.01, 0.1)
                 t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
                 thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
+                # print("low spike:\n", low_spike)
                 # Create a colormap
                 cmap = mpl.get_cmap("tab10")
                 # Create an array of colors based on the index of each point
@@ -485,6 +496,7 @@ class Functions:
                 #     color=colors,
                 #     zorder = 10
                 # )
+                # indicate the threshold on the phase plot
                 ax[1].scatter(
                     low_spike.V[thr_index] * 1e3,
                     low_spike.dvdt[thr_index],
@@ -493,8 +505,34 @@ class Functions:
                     color="r",
                     zorder=12,
                 )
-
+                # indicate the AHP nadir on the phase plot
+                ahp_index = np.abs(vtime - (low_spike.trough_T - low_spike.peak_T) * 1e3).argmin()
+                ax[1].scatter(
+                    low_spike.V[ahp_index] * 1e3,
+                    low_spike.dvdt[ahp_index],
+                    s=12,
+                    marker="o",
+                    color="orange",
+                    zorder=12,
+                )
+                # indicate the AHP on the voltage trace
+                spike_pk_to_trough_T = low_spike.trough_T - low_spike.peak_T
+                AHP_t = spike_pk_to_trough_T * 1e3  # in msec, time from peak
                 latency = (low_spike.AP_latency - low_spike.peak_T) * 1e3  # in msec
+                ax[0].scatter(
+                    AHP_t,
+                    low_spike.trough_V * 1e3,
+                    s=3.0,
+                    color='orange',
+                    marker='o',
+                    zorder=10,
+                )
+                x_line = [latency, AHP_t]
+                ax[0].plot(x_line, low_spike.V[thr_index]*np.ones(2)*1e3, 'k--', linewidth=0.3, )
+                ax[0].plot(x_line, low_spike.V[ahp_index]*np.ones(2)*1e3, 'm--', linewidth=0.3, )
+                
+                # indicate the threshold on the voltage plot
+
                 ax[0].plot(
                     latency,
                     low_spike.AP_begin_V * 1e3,
@@ -548,8 +586,8 @@ class Functions:
                 selected = table_manager.get_table_data(index_row)
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
-                # cell_df, _ = self.get_cell(
-                #     experiment, assembleddata, cell=selected.cell_id
+                # cell_df, _ = filename_tools.get_cell(
+                #     experiment, assembleddata, cell_id=selected.cell_id
                 # )
                 fig, ax = mpl.subplots(1, 1)
                 self.compute_FI_Fits(
@@ -810,7 +848,7 @@ class Functions:
         cell_group = df[df.cell_id==cell].Group.values[0]
         if pd.isnull(cell_group) and len(df[df.cell_id==cell].Group.values) > 1:  # incase first value is nan
             cell_group = df[df.cell_id==cell].Group.values[1]
-        df_cell, df_tmp = self.get_cell(experiment, df, cell)
+        df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         if df_cell is None:
             return None
         # print("    df_tmp group>>: ", df_tmp.Group.values)
@@ -963,7 +1001,7 @@ class Functions:
             )
 
         # save the results
-        datadict["FI_Curve"] = [FI_Data_I1, FI_Data_FR1]
+        datadict["FI_Curve1"] = [FI_Data_I1, FI_Data_FR1]
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
         datadict["current"] = FI_Data_I1
         datadict["spsec"] = FI_Data_FR1
@@ -1049,98 +1087,6 @@ class Functions:
             else:
                 raise ValueError(f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file")
 
-    def get_cell(self, experiment, df: pd.DataFrame, cell: str):
-        df_tmp = df[df.cell_id == cell] # df.copy() # .dropna(subset=["Date"])
-        # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
-
-        if len(df_tmp) == 0:
-            return None, None
-        try:
-            celltype = df_tmp.cell_type.values[0]
-        except ValueError:
-            celltype = df_tmp.cell_type
-        celltype = str(celltype).replace("\n", "")
-        if celltype == " ":  # no cell type
-            celltype = "unknown"
-        CP("m", f"get cell: df_tmp cell type: {celltype:s}")
-        # look for original PKL file for cell in the dataset
-        # if it exists, use it to get the FI curve
-        # base_cellname = str(Path(cell)).split("_")
-        # print("base_cellname: ", base_cellname)
-        # sn = int(base_cellname[-1][1])
-        # cn = int(base_cellname[-1][3])
-        # different way from cell_id:
-        # The cell name may be a path, or just the cell name.
-        # we have to handle both cases.
-
-        parent = Path(cell).parent
-        if parent == ".":  # just cell, not path
-            cell_parts = str(cell).split("_")
-            re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
-            cnp = re_parse.match(cell_parts[-1]).group(2)
-            cn = int(cnp)
-            snp = re_parse.match(cell_parts[-1]).group(4)
-            sn = int(snp)
-            cell_day_name = cell_parts[-3].split("_")[0]
-            dir_path = None
-        else:
-            cell = Path(cell).name  # just get the name here
-            cell_parts = cell.split("_")
-            re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
-            # print("cell_parts: ", cell_parts[-1])
-            snp = re_parse.match(cell_parts[-1]).group(2)
-            sn = int(snp)
-            cnp = re_parse.match(cell_parts[-1]).group(4)
-            cn = int(cnp)
-            cell_day_name = cell_parts[0]
-            dir_path = parent
-
-        # print("Cell name, slice, cell: ", cell_parts, sn, cn)
-        # if cell_parts != ['2019.02.22', '000', 'S0C0']:
-        #     return None, None
-        cname2 = f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
-        datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
- 
-        # cname2 = f"{cell_day_name.replace('.', '_'):s}_S{sn:02d}C{cn:02d}_{celltype:s}_IVs.pkl"
-        # datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
-        # cname1 = f"{cell_day_name.replace('.', '_'):s}_S{sn:01d}C{cn:01d}_{celltype:s}_IVs.pkl"
-        # datapath1 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname1)
-        # print(datapath)
-        # if datapath1.is_file():
-        #     CP("c", f"... {datapath1!s} is OK")
-        #     datapath = datapath1
-        if datapath2.is_file():
-            CP("c", f"...  {datapath2!s} is OK")
-            datapath = datapath2
-        else:
-            CP("r", f"no file: matching: {datapath2!s}, \n") #    or: {datapath2!s}\n")
-            print("cell type: ", celltype)
-            raise ValueError
-            return None, None
-        try:
-            df_cell = pd.read_pickle(datapath, compression="gzip")
-        except ValueError:
-            try:
-                df_cell = pd.read_pickle(datapath)  # try with no compression
-            except ValueError:
-                CP("r", f"Could not read {datapath!s}")
-                raise ValueError("Failed to read compressed pickle file")
-        if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
-            CP(
-                "r",
-                f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protos:",
-            )
-            return None, None
-        # print(
-        #     "df_cell: ",
-        #     df_cell.age,
-        #     df_cell.cell_type,
-        #     "N spike protos: ",
-        #     len(df_cell.Spikes),
-        #     "\n",
-        #     df_tmp['Group'],
-        # )
-        return df_cell, df_tmp
 
     def get_lowest_current_spike(self, row, SP):
         measured_first_spike = False
@@ -1210,7 +1156,7 @@ class Functions:
         return FI_data
 
     def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope:float=20.0):
-        """get_measure : for the giveen cell, get the measure from the protocols
+        """get_measure : for the given cell, get the measure from the protocols
 
         Parameters
         ----------
@@ -1282,6 +1228,9 @@ class Functions:
                     "dvdt_rising",
                     "dvdt_falling",
                     "AP_HW",
+                    "AP_begin_V",
+                    "AP_peak_V",
+                    "AP_peak_T",
                     "AHP_trough_V",
                     "AHP_depth_V",
                 ]:  # use lowest current spike
@@ -1296,22 +1245,37 @@ class Functions:
                         m.append(np.nan)
                     # print("spike data: ", spike_data.keys())
 
-                elif measure == "AP_thr_V":  # have to try two variants. Note that threshold slope is defined in config file
-                    min_current_index, current, trace = self.find_lowest_current_trace(
-                        df_cell.Spikes[protocol]
-                    )
-                    if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                        # CP("c", "Check AP_thr_V")
-
-                        Vthr, Vthr_time = UTIL.find_threshold(
-                            spike_data["V"],
-                            np.mean(np.diff(spike_data["Vtime"])),
-                            threshold_slope=threshold_slope,
-                        )
+                elif "LowestCurrentSpike" in df_cell.Spikes[protocol].keys() and df_cell.Spikes[protocol]['LowestCurrentSpike'] is None:
+                    CP("r", "Lowest Current spike is None")
+                elif measure in ["AP_thr_V"]:
+                    if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
+                        Vthr = df_cell.Spikes[protocol]['LowestCurrentSpike']['AP_thr_V']
                         m.append(Vthr)
                     else:
-                        m.append(np.nan)
+                        print(df_cell.Spikes[protocol].keys())
+                        raise
+                elif measure in ["AP_thr_T"]:
+                    if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
+                        Vthr_time = df_cell.Spikes[protocol]['LowestCurrentSpike']['AP_thr_T']
+                        m.append(Vthr_time)
+                    else:
+                        print(df_cell.Spikes[protocol].keys())
+                    # min_current_index, current, trace = self.find_lowest_current_trace(
+                    #     df_cell.Spikes[protocol]
+                    # )
+
+                    # if not np.isnan(min_current_index):
+                    #     spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
+                    #     # CP("c", "Check AP_thr_V")
+
+                    #     Vthr, Vthr_time = UTIL.find_threshold(
+                    #         spike_data["V"],
+                    #         np.mean(np.diff(spike_data["Vtime"])),
+                    #         threshold_slope=threshold_slope,
+                    #     )
+                    #     m.append(Vthr)
+                    # else:
+                    #     m.append(np.nan)
 
                 elif (
                     measure in mapper.keys() and mapper[measure] in spike_data.keys()

@@ -130,7 +130,7 @@ class TableManager:
         Index_data.cell_type = str(row.cell_type)
         Index_data.cell_location = str(row.cell_location)
         Index_data.cell_layer = str(row.cell_layer)
-        Index_data.data_complete = textwrap.fill(str(row.data_complete), width=40)
+        Index_data.data_complete = str(row.data_complete) # textwrap.fill(str(row.data_complete), width=40)
         Index_data.data_directory = str(row.data_directory)
         return Index_data
 
@@ -208,6 +208,8 @@ class TableManager:
 
     def update_table(self, data):
         cprint("g", "Updating data table")
+        # print("data for update: ", data)
+        # print("data complete: ", data[:]['data_complete'])
         self.table.setData(data)
         style = "section:: {font-size: 4pt; color:black; font:TimesRoman;}"
         self.table.setStyleSheet(style)
@@ -249,7 +251,9 @@ class TableManager:
         # print(index_row.data())
         ind = self.get_table_data_index(index_row)
         # print("  ind: ", ind)
+        # print("self.data: ", self.table_data)
         for i in range(len(self.table_data)):
+            # print("data[i]: ", i, self.table_data[i])
             if index_row.data() == self.table_data[i].cell_id:
                 # print("  found: ", i)
                 return self.table_data[i]

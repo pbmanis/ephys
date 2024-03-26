@@ -87,6 +87,7 @@ import importlib
 import pprint
 import sys
 from pathlib import Path
+import platform, multiprocessing
 
 import pandas as pd
 import pyqtgraph as pg
@@ -109,12 +110,14 @@ from ephys.tools import data_summary
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
 import ephys.tools.configuration_manager as configuration_manager
+from ephys.tools import filename_tools
 
 from ephys.ephys_analysis import (
     analysis_common,
     iv_analysis,
     map_analysis,
     summarize_ivs,
+    iv_plotter,
 )
 
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
@@ -233,8 +236,12 @@ class DataTables:
         self.dry_run = False
         self.exclude_unimportant = False
 
-        self.PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None, pick_display=self.show_pdf_on_pick,
-                                                 pick_display_function=self.display_from_table_by_cell_id)
+        self.PSI = plot_spike_info.PlotSpikeInfo(
+            dataset=None,
+            experiment=None,
+            pick_display=self.show_pdf_on_pick,
+            pick_display_function=self.display_from_table_by_cell_id,
+        )
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
         self.table_manager = None  # get this later
@@ -386,7 +393,7 @@ class DataTables:
                 "limits": [ds for ds in self.datasets],
                 "value": self.datasets[0],
             },
-            {"name": "Reload Configuration", "type": "action"}, # probably not needed...
+            {"name": "Reload Configuration", "type": "action"},  # probably not needed...
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
@@ -396,6 +403,7 @@ class DataTables:
                 "expanded": False,
                 "children": [
                     {"name": "Analyze Selected IVs", "type": "action"},
+                    {"name": "Plot from Selected IVs", "type": "action"},
                     {"name": "Analyze Selected IVs m/Important", "type": "action"},
                     {"name": "Dry run (test)", "type": "bool", "value": False},
                     {"name": "Analyze ALL IVs", "type": "action"},
@@ -558,6 +566,25 @@ class DataTables:
         ]
         self.ptree = ParameterTree()
         self.ptreedata = Parameter.create(name="Models", type="group", children=self.params)
+        self.ptree.setStyleSheet(
+            """
+            QTreeView {
+                background-color: '#282828';
+                alternate-background-color: '#646464';   
+                color: rgb(238, 238, 238);
+            }
+            QLabel {
+                color: rgb(238, 238, 238);
+            }
+            QTreeView::item:has-children {
+                background-color: '#212627';
+                color: '#00d4d4';
+            }
+            QTreeView::item:selected {
+                background-color: '##c1c3ff';
+            }
+                """
+        )
         self.ptree.setParameters(self.ptreedata)
 
         self.ptree.setMaximumWidth(ptreewidth + 50)
@@ -616,26 +643,27 @@ class DataTables:
             pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.DS_table.setSelectionBehavior(QtWidgets.QTableView.SelectionBehavior.SelectRows)
+        if self.datasummary is None:
+            self.load_data_summary()
+            # self.Dock_DataSummary.raiseDock()
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
+        self.table_manager.update_table(self.table_manager.data, QtCore=QtCore, QtGui=QtGui)
 
-        # test PDF viewer:
-        # self.PDFView.setUrl(pg.QtCore.QUrl(f"file://{self.datapaths['databasepath']}/NF107Ai32_NIHL/pyramidal/2018_06_20_S04C00_pyramidal_IVs.pdf#zoom=80"))
-        # self.PDFView.setZoomFactor(80.0) # broken?
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
         # through the CommandDispatcher.
 
     def on_double_click(self, w):
         """
-        Double click gets the selected row and then does an analysis
+        Double click gets the selected row and then displays the associated PDF (IV or Map)
         """
         index = w.selectionModel().currentIndex()
 
         modifiers = QtWidgets.QApplication.keyboardModifiers()
-        mode="IV"
+        mode = "IV"
         if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
-            mode='map'
+            mode = "map"
         # elif modifiers == QtCore.Qt.ControlModifier:
         #     print('Control+Click')
         # elif modifiers == (QtCore.Qt.ControlModifier |
@@ -775,7 +803,7 @@ class DataTables:
                     match path[1]:
                         case "Dry run (test)":
                             self.dry_run = data
-                        
+
                         case "Exclude unimportant in assembly":
                             self.exclude_unimportant = data
 
@@ -786,32 +814,80 @@ class DataTables:
                             self.analyze_ivs("important")
 
                         case "Analyze Selected IVs":  # work from the *datasummary* table.
-                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
-                            if index_rows is None:
+                            if self.selected_index_rows is None:
                                 return
 
                             FUNCS.textappend(
-                                f"Analyze IVs from selected cell(s) at rows: {len(index_rows)!s}"
+                                f"Analyze all IVs from selected cell(s) at rows: {len(self.selected_index_rows)!s}"
                             )
                             self.Dock_Report.raiseDock()  # so we can monitor progress
-                            for index_row in index_rows:
-                                selected = self.DS_table_manager.get_table_data(index_row)
+                            for index_row in self.selected_index_rows:
+                                selected = self.table_manager.get_table_data(index_row)
                                 FUNCS.textappend(f"    Selected: {selected!s}")
+                                # print("selected: ", selected)
                                 pathparts = Path(selected.cell_id).parts
-                                day = pathparts[0]
-                                slicecell = f"S{pathparts[1][-1]:s}C{pathparts[2][-1:]:s}"
-                                FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                                # print("path parts: ", pathparts)
+                                sc = pathparts[-1].split(
+                                    "_"
+                                )  # splitting 20xx.mm.dd_000_S0C0 to get the slice and cell
+                                slicecell = f"S{sc[-1][1]:s}C{sc[-1][3]:s}"
+                                date = sc[0:-1]  # everything except slicecell
+                                date = f"{date[0]:s}_{date[1]:s}"
+                                # print("date: ", date)
+
+                                day = str(
+                                    Path(*pathparts[0:-1], date)
+                                )  # full day path - everything except slicecell
+
+                                print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
+                                FUNCS.textappend(f"    Day: {day!s}  slice_cell: {slicecell!s}")
                                 self.analyze_ivs(mode="selected", day=day, slicecell=slicecell)
                                 self.iv_finished_message()
-                            self.Dock_DataSummary.raiseDock()  # back to the original one
+                            self.Dock_Table.raiseDock()  # back to the original one
 
-                        case "Analyze Selected IVs m/Important":  # work from the *datasummary* table.
+                        case "Plot from Selected IVs":
+                            if self.selected_index_rows is None:
+                                return
+
+                            FUNCS.textappend(
+                                f"Plot from selected cell(s) at rows: {len(self.selected_index_rows)!s}"
+                            )
+                            self.Dock_Report.raiseDock()  # so we can monitor progress
+                            dspath = Path(
+                                self.experiment["analyzeddatapath"], self.experiment["directory"]
+                            )
+                            for index_row in self.selected_index_rows:
+                                selected = self.table_manager.get_table_data(index_row)
+                                FUNCS.textappend(f"    Selected: {selected!s}")
+                                pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
+ 
+                                print("Reading from pkl_file: ", pkl_file)
+                                FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
+                                tempdir = Path(dspath, "temppdfs")
+                                self.pdfFilename = Path(
+                                    dspath, self.experiment["pdfFilename"]
+                                ).with_suffix(".pdf")
+                                with open(pkl_file, "rb") as fh:
+                                    df_selected = pd.read_pickle(fh, compression="gzip")
+                                    plotter = iv_plotter.IVPlotter(
+                                        experiment=self.experiment,
+                                        df_summary=self.datasummary,
+                                        file_out_path=dspath,
+                                        decorate=True,
+                                    )
+                                    plotter.plot_ivs(df_selected)
+
+                            self.Dock_Table.raiseDock()  # back to the original one
+
+                        case (
+                            "Analyze Selected IVs m/Important"
+                        ):  # work from the *datasummary* table.
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             if index_rows is None:
                                 return
 
                             FUNCS.textappend(
-                                f"Analyze IVs from selected cell(s) at rows: {len(index_rows)!s}"
+                                f"Analyze IVs with Important flag set from selected cell(s) at rows: {len(index_rows)!s}"
                             )
                             self.Dock_Report.raiseDock()  # so we can monitor progress
                             for index_row in index_rows:
@@ -821,9 +897,11 @@ class DataTables:
                                 day = pathparts[0]
                                 slicecell = f"S{pathparts[1][-1]:s}C{pathparts[2][-1:]:s}"
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
-                                self.analyze_ivs(mode="selected", important=True, day=day, slicecell=slicecell)
+                                self.analyze_ivs(
+                                    mode="selected", important=True, day=day, slicecell=slicecell
+                                )
                                 self.iv_finished_message()
-                            self.Dock_DataSummary.raiseDock()  # back to the original one
+                            self.Dock_Table.raiseDock()  # back to the original one
 
                         case "Assemble IV datasets":
                             (
@@ -834,16 +912,18 @@ class DataTables:
                             print("adddata: ", adddata)
                             print(self.experiment["coding_file"])
                             if self.experiment["coding_file"] is not None:
-                                coding_file = Path(self.experiment["analyzeddatapath"], 
-                                            self.experiment["directory"], 
-                                            self.experiment["coding_file"])
+                                      coding_file = Path(
+                                    self.experiment["analyzeddatapath"],
+                                    self.experiment["directory"],
+                                    self.experiment["coding_file"],
+                                )
                             else:
                                 coding_file = None
                             fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("adddata: ", adddata)
                             self.PSI.assemble_datasets(
-                                excelsheet=excelsheet,
-                                adddata=adddata,
+                                # excelsheet=excelsheet,
+                                # adddata=adddata,
+                                df_summary=self.datasummary,
                                 coding_file=coding_file,
                                 coding_sheet=self.experiment["coding_sheet"],
                                 coding_level=self.experiment["coding_level"],
@@ -851,8 +931,8 @@ class DataTables:
                                 fn=fn,
                             )
 
-                        case "Process Spike Data":
-                            PSA.process_spikes()
+                        # case "Process Spike Data":
+                        #     PSA.process_spikes()
 
                 case "Plotting":
                     match path[1]:
@@ -864,8 +944,8 @@ class DataTables:
                                 print("selected: ", selected)
                                 day = selected.date[:-4]
                                 slicecell = selected.cell_id[-4:]
-                                cell_df, _ = FUNCS.get_cell(
-                                    self.experiment, self.assembleddata, cell=selected.cell_id
+                                cell_df, _ = filename_tools.get_cell(
+                                    self.experiment, self.assembleddata, cell_id=selected.cell_id
                                 )
                                 pp = pprint.PrettyPrinter(indent=4)
                                 pp.pprint(cell_df.__dict__)
@@ -879,6 +959,10 @@ class DataTables:
                                     pp.pprint(
                                         f"   prot Spike data keys: {cell_df['Spikes'][prot].keys()!s}"
                                     )
+                                    if "LowestCurrentSpike" in cell_df['Spikes'][prot].keys():
+                                        pp.pprint(
+                                            f"   prot LowestCurrentSpike: {cell_df['Spikes'][prot]['LowestCurrentSpike']!s}"
+                                        )
                                     print(
                                         f"   CC Comp: , {1e-6*cell_df['IV'][prot]['CCComp']['CCBridgeResistance']:7.3f}  MOhm"
                                     )
@@ -1245,7 +1329,9 @@ class DataTables:
                         case "Export Brief Table":
                             self.table_manager.export_brief_table(self.textbox)
 
-    def analyze_ivs(self, mode="all", important:bool=False, day: str = None, slicecell: str = None):
+    def analyze_ivs(
+        self, mode="all", important: bool = False, day: str = None, slicecell: str = None
+    ):
         """
         Analyze the IVs for the selected cell
         Parameters
@@ -1254,7 +1340,7 @@ class DataTables:
         if selected, only the selected protocols are analyzed for the day/slicecell
         if important, only the "important" protocols are analyzed for the day/slicecell
 
-        important: bool 
+        important: bool
             if True, we pay attention to the "Important" flag in the data.
             Otherwise, we just analyze everything.
 
@@ -1268,17 +1354,19 @@ class DataTables:
         args.autoout = True
         computer_name = get_computer()
         nworkers = self.experiment["NWORKERS"][computer_name]
-        args.nworkers = 1
-        args.noparallel = True
-        # if nworkers > 1:
-        #     args.noparallel = False
-        #     args.nworkers = nworkers
-        # print("data_table: nworkers, noparallel ", args.nworkers, args.noparallel)
+
+        if nworkers > 1:
+            args.noparallel = False
+            args.nworkers = nworkers
+        print("data_table: nworkers, noparallel ", args.nworkers, args.noparallel)
         if mode == "important" or important:
-            args.important_flag_check = True # only analyze the "important" ones
+            args.important_flag_check = True  # only analyze the "important" ones
+        else:
+            args.important_flag_check = False
 
         args.verbose = False
-        args.spike_threshold = self.experiment['AP_threshold_V']  # always in Volts
+        args.spike_threshold = self.experiment["AP_threshold_V"]  # always in Volts
+        print("Mode: ", mode)
         if mode == "selected":
             args.day = day
             args.slicecell = slicecell
@@ -1310,6 +1398,7 @@ class DataTables:
         CP.cprint("r", "=" * 80)
         IV = iv_analysis.IVAnalysis(args)
         IV.set_experiment(self.experiment)
+
         # IV.set_exclusions(exclusions)
         IV.setup()
         IV.run()
@@ -1323,16 +1412,14 @@ class DataTables:
             CP.cprint(
                 "cyan",
                 f"Finished IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
-                )
+            )
             if mode == "all":
                 self.iv_finished_message()
 
     def iv_finished_message(self):
         CP.cprint("r", "=" * 80)
-        CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
-        CP.cprint(
-            "r", f"Then run 'assemble datasets' to plot summaries and get statistical results"
-        )
+        # CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
+        CP.cprint("r", f"Now run 'assemble datasets' to combine the FI curves")
         CP.cprint(
             "r", f"Then try the plotting functions to plot summaries and get statistical results"
         )
@@ -1368,7 +1455,7 @@ class DataTables:
                 self.table.item(rowIndex, j).setBackground(color)
 
     def altColors(
-        self, table, colors=[QtGui.QColor(0x00, 0x00, 0x00), QtGui.QColor(0x22, 0x22, 0x22)]
+        self, table, colors=[QtGui.QColor(0x22, 0x22, 0x22), QtGui.QColor(0x44, 0x44, 0x44)]
     ):
         """
         Paint alternating table rows with different colors
@@ -1425,7 +1512,7 @@ class DataTables:
         configuration_manager.verify_paths(self.experiment)
 
         ds = data_summary.DataSummary(
-            basedir=Path(self.experiment["rawdatapath"], self.experiment['directory']),
+            basedir=Path(self.experiment["rawdatapath"], self.experiment["directory"]),
             outputFile=Path(
                 self.experiment["analyzeddatapath"],
                 self.experiment["directory"],
@@ -1438,7 +1525,9 @@ class DataTables:
         )
         print("Writing to output, recurively through directories ")
         data_summary.dir_recurse(
-            ds, Path(self.experiment["rawdatapath"], self.experiment['directory']), self.experiment["excludeIVs"]
+            ds,
+            Path(self.experiment["rawdatapath"], self.experiment["directory"]),
+            self.experiment["excludeIVs"],
         )
         # after creation, load it
         self.load_data_summary()
@@ -1450,9 +1539,7 @@ class DataTables:
         """
         if self.datasummary is None:
             raise ValueError("Please load the datasummary file first")
-        FUNCS.get_datasummary_protocols(self.datasummary )
-        
-
+        FUNCS.get_datasummary_protocols(self.datasummary)
 
     def load_data_summary(self):
         self.datasummaryfile = Path(
@@ -1592,8 +1679,6 @@ class DataTables:
         self.selected_index_rows = self.table.selectionModel().selectedRows()
         if self.selected_index_rows is None:
             return
-        # print(len(self.selected_index_rows))
-        # print(self.selected_index_rows)
         index_row = self.selected_index_rows[0]
         selected = self.table_manager.get_table_data(index_row)  # table_data[index_row]
         # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
@@ -1610,9 +1695,7 @@ class DataTables:
             modename = "IVs"
         elif mode == "map":
             modename = "maps"
-        pdfname = (
-            f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_{modename:s}.pdf"
-        )
+        pdfname = f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_{modename:s}.pdf"
         datapath = self.experiment["databasepath"]
         direct = self.experiment["directory"]
         filename = f"{Path(datapath, direct, cell_type, pdfname)!s}"
@@ -1638,4 +1721,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if plotform.system() == "Darwin":
+        multiprocessing.set_start_method("spawn")
     main()
