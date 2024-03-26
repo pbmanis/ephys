@@ -6,7 +6,7 @@ import datetime
 import pprint
 from pathlib import Path
 import re
-from typing import List, Union, Optional
+from typing import Optional
 import textwrap
 import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
@@ -40,17 +40,36 @@ after = "2000.01.01"
 after_parsed = datetime.datetime.timestamp(DUP.parse(after))
 
 def set_ylims(experiment):
+    """set_ylims adjust the ylimits for a plot
+
+    Parameters
+    ----------
+    experiment : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    Raises
+    ------
+    ValueError
+        _description_
+    """
     if experiment is not None and "ylims" in experiment.keys():
         ylims = {}
         # the key may be a list of cell types all with the same limits
         # CP("r", "setting ylims for cell types")
         for limit_group in experiment["ylims"].keys():
 
-            for ct in experiment["ylims"][limit_group]['celltypes']:
+            for ct in experiment["ylims"][limit_group]["celltypes"]:
                 if ct not in ylims.keys():
                     ylims[ct] = experiment["ylims"][limit_group]
                 else:
-                    raise ValueError(f"Cell type {ct!s} already in ylims - check the configuration file 'ylims' entry")
+                    raise ValueError(
+                        f"Cell type {ct!s} already in ylims - check the configuration file 'ylims' entry"
+                    )
         return ylims
     else:
         ylims_pyr = {
@@ -347,11 +366,16 @@ cols = [
     "taum",
     "dvdt_rising",
     "dvdt_falling",
+    "AP1_Latency",
+    "AP_peak_V",
+    "AP_peak_T",
     "AP_thr_V",
+    "AP_thr_T",
     "AP_HW",
     "AP15Rate",
     "AdaptRatio",
     "AHP_trough_V",
+    "AHP_trough_T",
     "AHP_depth_V",
     "tauh",
     "Gh",
@@ -369,10 +393,12 @@ datacols = [
     "dvdt_falling",
     "current",
     "AP_thr_V",
+    "AP_thr_T",
     "AP_HW",
     "AP15Rate",
     "AdaptRatio",
     "AHP_trough_V",
+    "AHP_trough_T",
     "AHP_depth_V",
     "tauh",
     "Gh",
@@ -387,7 +413,8 @@ Each protocol has:
 'AP1_HalfWidth_interpolated', 'AP2_Latency', 'AP2_HalfWidth', 
     'AP2_HalfWidth_interpolated',
     'FiringRate_1p5T', 'AHP_depth_V', 'AHP_Trough', 'spikes', 'iHold', 
-    'pulseDuration', 'baseline_spikes', 'poststimulus_spikes'])
+    'pulseDuration', 'baseline_spikes', 'poststimulus_spikes',
+    "LowestCurrentSpike])
 
 "IV": dict_keys(['holding', 'WCComp', 'CCComp', 'BridgeAdjust',
      'RMP', 'RMP_SD', 'RMPs',
@@ -506,22 +533,23 @@ class PlotSpikeInfo(QObject):
             if row.date in df3.date.values:
                 if "sex" in df3.columns:  # update sex? Should be in main table.
                     df.loc[index, "sex"] = df3[df3.date == row.date].sex.astype(str).values[0]
-                    CP(
-                        "m",
-                        f"Setting sex in assembled table: {df.loc[index, 'sex']!s}",
-                    )
                 if "cell_expression" in df3.columns:
-                    df.loc[index, "cell_expressoin"] = df3[df3.date == row.date].cell_expression.astype(str).values[0]
+                    df.loc[index, "cell_expressoin"] = (
+                        df3[df3.date == row.date].cell_expression.astype(str).values[0]
+                    )
                 if level == "date":
-                    df.loc[index, "Group"] = df3[df3.date == row.date][coding_name].astype(str).values[0]
+                    df.loc[index, "Group"] = (
+                        df3[df3.date == row.date][coding_name].astype(str).values[0]
+                    )
                 elif level == "slice":
-                    mask = ((df3.date == row.date)
-                         & (df3.slice_slice == row.slice_slice))
+                    mask = (df3.date == row.date) & (df3.slice_slice == row.slice_slice)
                     df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
                 elif level == "cell":
-                    mask = ((df3.date == row.date)
-                         & (df3.slice_slice == row.slice_slice)
-                         & (df3.cell_cell == row.cell_cell))
+                    mask = (
+                        (df3.date == row.date)
+                        & (df3.slice_slice == row.slice_slice)
+                        & (df3.cell_cell == row.cell_cell)
+                    )
                     df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
             else:
                 # print("Assigning nan to : ", df.loc[index].cell_id)
@@ -535,16 +563,17 @@ class PlotSpikeInfo(QObject):
         # exit()
         return df
 
-    def read_intermediate_result_files(
+    def combine_summary_and_coding(
         self,
-        excelsheet,
-        adddata=None,
-        coding_file:Optional[str] = None,
-        coding_sheet:Optional[str]="Sheet1",
-        coding_level:Optional[str]="date",
+        # excelsheet,
+        # adddata=None,
+        df_summary: pd.DataFrame,
+        coding_file: Optional[str] = None,
+        coding_sheet: Optional[str] = "Sheet1",
+        coding_level: Optional[str] = "date",
         exclude_unimportant=False,
     ):
-        """read_intermediate_result_files _summary_
+        """combine_summary_and_coding: combine the summary data with the coding file
 
         Parameters
         ----------
@@ -567,34 +596,18 @@ class PlotSpikeInfo(QObject):
         """
         CP("r", "\nReading intermediate result files")
 
-        if Path(excelsheet).suffix == ".pkl":  # need to respecify as excel sheet
-            excelsheet = Path(excelsheet).with_suffix(".xlsx")
-        print(f"    Excelsheet (from process_spike_info): {excelsheet!s}")
+        # if Path(excelsheet).suffix == ".pkl":  # need to respecify as excel sheet
+        #     excelsheet = Path(excelsheet).with_suffix(".xlsx")
+        # print(f"    Excelsheet (from process_spike_info): {excelsheet!s}")
         print("     coding_level: ", coding_level)
-        df = pd.read_excel(excelsheet)
-        print("    # entries in excel sheet: ", len(df))
-        if "cell_id" not in list(df.columns):
-            df.apply(make_cell_id, axis=1)
+        # df = pd.read_excel(excelsheet)
+        print("    # entries in summary sheet: ", len(df_summary))
+        if "cell_id" not in list(df_summary.columns):
+            df_summary.apply(make_cell_id, axis=1)
 
-        print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
+        # print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
         if coding_file is not None:  # add coding from the coding file
-            df = self.read_coding_file(df, coding_file, coding_sheet, coding_level)
-
-        if adddata is not None:
-            ages = [f"P{i:2d}D" for i in range(12, 170)]
-            df2 = pd.read_excel(adddata)
-            if self.experiment["celltypes"] != ["all"]:
-                df2 = df2[
-                    df2["cell_type"].isin(self.experiment["celltypes"])
-                ]  # limit to cell types
-            df2 = df2[df2["age"].isin(ages)]  # limit ages
-            df2["Date"] = df2["date"]
-            df2 = df2.apply(make_cell_id, axis=1)
-            df = pd.concat([df, df2], ignore_index=True)
-        else:
-            print("    No data to add")
-
-        # print(df['Date'])
+            df = self.read_coding_file(df_summary, coding_file, coding_sheet, coding_level)
 
         FD = filter_data.FilterDataset(df)
         df = FD.filter_data_entries(
@@ -607,10 +620,7 @@ class PlotSpikeInfo(QObject):
             verbose=True,
         )
 
-        df["dvdt_falling"] = -df["dvdt_falling"]
         CP("m", "Finished reading files\n")
-        # print("Protocols: ", df.protocol.unique())
-
         return df
 
     def combine_by_cell(self, df, plot_fits=False, valid_protocols=None):
@@ -620,7 +630,8 @@ class PlotSpikeInfo(QObject):
         2. Check the cell name and whether it fits the S00C00 or S1C1 format.
         3. When getting spike parameters, use a logical set of restrictions:
             a. Use only the first spike at the lowest current level that evoke spikes
-                for AP HW, AP_thr_V, AP15Rate, AdaptRatio, AHP_trough_V, AHP_depth_V
+                for AP HW, AP_thr_V, AP15Rate, AdaptRatio, AHP_trough_V, AHP_depth_V, AHP_trough_T
+                This is in ['spikes']["LowestCurrentSpike"]
             b. Do not use traces that are above the spike firing rate turnover point (non-monotonic)
 
         """
@@ -656,12 +667,13 @@ class PlotSpikeInfo(QObject):
             if cell is None:
                 CP("r", f"Cell # {icell:d} in the database is None")
                 continue
-            # print(cell, df[df.cell_id==cell].cell_type)
+            CP("c", f"Computing FI_Fits for cell: {cell:s}") # df[df.cell_id==cell].cell_type)
             datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
             if datadict is None:
                 print("datadict is none for cell: ", cell)
                 continue
             print("cbc.cell: ", cell)
+            print("Datadict:\n", datadict)
             # print("cbc.datadict keys: ", datadict.keys())
             print("cbc.Group: ", datadict["Group"])
             df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
@@ -722,7 +734,7 @@ class PlotSpikeInfo(QObject):
         colors: Optional[dict] = None,
         enable_picking=True,
     ):
-        """Graph a bar pot and a strip plot on top of each other
+        """Graph a bar plot and a strip plot on top of each other
 
         Args:
             df (Pandas data frome): _description_
@@ -755,8 +767,11 @@ class PlotSpikeInfo(QObject):
         # print("      X values: ", xname)
 
         dodge = True
-        if 'hue_palette' in self.experiment.keys() and hue_category in self.experiment['hue_palette'].keys():
-            hue_palette = self.experiment['hue_palette'][hue_category]
+        if (
+            "hue_palette" in self.experiment.keys()
+            and hue_category in self.experiment["hue_palette"].keys()
+        ):
+            hue_palette = self.experiment["hue_palette"][hue_category]
         # if hue_category == "sex":
         #     hue_palette = {
         #         "F": "#FF000088",
@@ -774,10 +789,10 @@ class PlotSpikeInfo(QObject):
 
         if hue_category != xname:
             dodge = True
-            hue_order = self.experiment['plot_order'][hue_category]
+            hue_order = self.experiment["plot_order"][hue_category]
         else:
             dodge = False
-            hue_order = plot_order        # print("plotting bar plot for ", celltype, yname, hue_category)
+            hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
         # must use scatterplot if you want to use picking.
         if enable_picking:
             sns.scatterplot(
@@ -816,7 +831,6 @@ class PlotSpikeInfo(QObject):
                 palette=hue_palette,
                 edgecolor="k",
                 linewidth=0.5,
-
                 picker=enable_picking,
                 zorder=100,
                 clip_on=False,
@@ -842,11 +856,6 @@ class PlotSpikeInfo(QObject):
         #     print("boxplot failed for ", celltype, yname)
         #     raise e  # re-raise the exception
 
-        # print("bar pts picking enabled: ", enable_picking)
-        # if not enable_picking:
-        #     raise ValueError("Picking not enabled")
-        # if enable_picking:
-        #     ax.scatter(data = df_x, x=xname, y=yname, c="k", s=30, picker=True)
         ax.set_xticks(ax.get_xticks(), ax.get_xticklabels(), rotation=45, ha="right")
         # remove extra legend handles
         handles, labels = ax.get_legend_handles_labels()
@@ -930,9 +939,10 @@ class PlotSpikeInfo(QObject):
     def rescale_values(self, df):
         rescaling = {
             "AP_HW": 1e6,  # convert to usec
-            "AP_thr_V": 1e3,
-            "AHP_depth_V": 1e3,
+            "AP_thr_V": 1,
+            "AHP_depth_V": 1,
             "AHP_trough_V": 1e3,
+            "AHP_trough_T": 1e3,
             "FISlope": 1e-9,
             "maxHillSlope": 1,
             "I_maxHillSlope": 1e-3,
@@ -967,7 +977,9 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
 
-    def export_r(self, df:pd.DataFrame, xname:str, measures:str, hue_category:str, filename:str):
+    def export_r(
+        self, df: pd.DataFrame, xname: str, measures: str, hue_category: str, filename: str
+    ):
         """export_r _summary_
         Export just the relevant data to a csv file to read in R for further analysis.
         """
@@ -977,12 +989,11 @@ class PlotSpikeInfo(QObject):
         else:
             columns = [xname, hue_category]
         columns.extend(measures)
-        ensure_cols = ["animal identifier", "Group", "age", 'sex', "cell_type", "Subject"]
+        ensure_cols = ["animal identifier", "Group", "age", "sex", "cell_type", "Subject"]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
-        print('df: ', df.columns)
-    
+
         df_R = df[columns]
         df_R.to_csv(filename, index=False)
 
@@ -1000,6 +1011,12 @@ class PlotSpikeInfo(QObject):
 
         Args:
             df (Pandas dataframe): _description_
+            xname: str: name to use for x category
+            hue_category: str: name to use for hue category
+            plot_order: list, optional: order to plot the categories
+            measures: list, optional: list of measures to plot
+            colors: dict, optional: dictionary of colors to use for the categories
+            enable_picking: bool, optional: enable picking of data points
         """
         df = df.copy()  # make sure we don't modifiy the incoming
         # Remove cells for which the FI Hill slope is maximal at 0 nA:
@@ -1033,18 +1050,15 @@ class PlotSpikeInfo(QObject):
         df = self.rescale_values(df)
 
         for icol, measure in enumerate(measures):
+            print("measure: ", measure)
+            if measure in ["AP_thr_V", "AHP_depth_V"]:
+                CP("y", f"{measure:s}: {df[measure]!s}")
+
+
             if measure in self.transforms.keys():
                 tf = self.transforms[measure]
             else:
                 tf = None
-            # print(self.ylims.keys())
-            # print("dataframe columns: ", df.columns)
-            # print("Groups: ", df.Group.unique())
-            # print("xnames: ", df[xname].unique())
-            # print("ynames: ", df[measure].unique())
-            # print("Plot order: ", plot_order)
-            # print("colors: ", colors)
-            # print("hue category: ", hue_category)
 
             for i, celltype in enumerate(self.experiment["celltypes"]):
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
@@ -1100,7 +1114,9 @@ class PlotSpikeInfo(QObject):
         i = 0
         icol = 0
         axp = P.axdict[f"{plabels[i]:s}"]
-        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
+        axp.legend(
+            fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
+        )
         if "dvdt_rising" in measures:
             fn = "spike_shapes.csv"
         else:
@@ -1293,7 +1309,12 @@ class PlotSpikeInfo(QObject):
         return row.RMP
 
     def summary_plot_spike_parameters_continuous(
-        self, df, groups, measures, logx=False, xlims=[0, 1200],
+        self,
+        df,
+        groups,
+        measures,
+        logx=False,
+        xlims=[0, 1200],
     ):
         """Make a summary plot of spike parameters for selected cell types.
 
@@ -1529,7 +1550,9 @@ class PlotSpikeInfo(QObject):
         i = 0
         icol = 0
         axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
+        axp.legend(
+            fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
+        )
         self.export_r(df, xname, measures, hue_category, "rmtau.csv")
         return P, picker_funcs
 
@@ -1709,7 +1732,6 @@ class PlotSpikeInfo(QObject):
                     FI_data, imax=max_fi, id=cdd["cell_id"][index]
                 )
                 NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                print("found groups: ", found_groups, group)
                 if group not in found_groups:
                     found_groups.append(group)
 
@@ -1765,7 +1787,6 @@ class PlotSpikeInfo(QObject):
             #     else:
             #         xo2 = -0.45
             for i, group in enumerate(self.experiment["group_legend_map"].keys()):
-                print("Group, Found Groups: ", group, found_groups)
                 if group not in found_groups:
                     continue
                 if celltype == "pyramidal":  # more legend - name of group
@@ -1815,7 +1836,9 @@ class PlotSpikeInfo(QObject):
         i = 0
         icol = 0
         axp = P.axdict["A"]
-        axp.legend(fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure)
+        axp.legend(
+            fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
+        )
         return P, picker_funcs
 
     def rename_group(self, row, group_by: str):
@@ -2050,6 +2073,8 @@ class PlotSpikeInfo(QObject):
         print(
             f"APthr: {row.AP_thr_V:15.5f}, ID: {Path(row.cell_id).name!s}, Type: {row.cell_type:16s}, Group: {row.Group:5s}"
         )
+        if "LowestCurrentSPike" in row.keys():
+            print("LowestCurrentSpike: ", row.LowestCurrentSpike)
 
     def check_Group(self, row):
         print(
@@ -2069,7 +2094,27 @@ class PlotSpikeInfo(QObject):
                 row.Group = "Mature Adult"
         return row
 
+    def _data_complete_to_series(self, row):
+        dc = row.data_complete.split(",")
+        dc = [p.strip(" ") for p in dc if p != "nan" and "CCIV".casefold() in p.casefold()]
+        # print("\ndc: ", dc)
+        row.protocol = pd.Series(dc)
+        # print(row.date, row.data_complete.values)
+        return row
+
     def get_assembled_filename(self, experiment):
+        """get_assembled_filename Create the filename for the assembled FI data.
+
+        Parameters
+        ----------
+        experiment : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
         assembled_fn = Path(
             Path(
                 experiment["analyzeddatapath"],
@@ -2081,38 +2126,66 @@ class PlotSpikeInfo(QObject):
 
     def assemble_datasets(
         self,
-        excelsheet: Union[Path, str],
-        adddata: Optional[str] = None,
+        df_summary: pd.DataFrame,
+        fn: str = "",
         coding_file: Optional[str] = None,
         coding_sheet: Optional[str] = None,
         coding_level: Optional[str] = None,
         exclude_unimportant: bool = False,
-        fn: str = "",
         plot_fits: bool = False,
     ):
-        print(
-            f"Assembling:\n  Excel: {excelsheet!s}\n    Added: {adddata!s}\n    {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
-        )
+        """assemble_datasets : Assemble the datasets from the summary and coding files,
+        then combine FI curves (selected) in IV protocols for each cell.
 
-        df = self.read_intermediate_result_files(
-            excelsheet,
-            adddata,
+        Parameters
+        ----------
+        df_summary : pd.DataFrame
+            _description_
+        coding_file : Optional[str], optional
+            _description_, by default None
+        coding_sheet : Optional[str], optional
+            _description_, by default None
+        coding_level : Optional[str], optional
+            _description_, by default None
+        exclude_unimportant : bool, optional
+            _description_, by default False
+        fn : str, optional
+            _description_, by default ""
+        plot_fits : bool, optional
+            _description_, by default False
+        """
+        print(
+            f"Assembling:\n  coding file: {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
+        )
+        df = self.combine_summary_and_coding(
+            df_summary=df_summary,
             coding_file=coding_file,
             coding_sheet=coding_sheet,
             coding_level=coding_level,
             exclude_unimportant=exclude_unimportant,
         )
-        # print("# entries in dataset to assemble: ", len(df))
-        # print(len(df.Group[df.Group == "nan"]))
-        # print(len(df.Group[df.Group == "ECIC"]))
-        # print(len(df.Group[df.Group == "CNIC"]))
+        if 'protocol' not in df.columns:
+            df['protocol'] = ""
+        df = df.apply(self._data_complete_to_series, axis=1)
+        print(len(df), " rows after data complete to series")
+
+        # now make a new dataframe that has a separate row for each protocol
+        df = df.explode(["protocol"], ignore_index=True)
+        print("Number of protocols after explode", len(df))
+        df = df.dropna(subset=["protocol"])
+        print("Number of protocols after dropna", len(df))
+
+        df_null = df[df["cell_id"].isnull()]
+        print("Null columns: ", df_null)
+        df = df.dropna(subset=["cell_id"])
+        print("# of protocols with ID: ", len(df))
+        protostrings = "|".join(list(self.experiment["protocols"]["CCIV"].keys()))
+        print("protostrings: ", protostrings)
+        print("Protocols: ", df["protocol"].unique())
 
         df = self.combine_by_cell(df, plot_fits=plot_fits)
-        # print(len(df.Group[df.Group == "nan"]))
-        # print(len(df.Group[df.Group == "ECIC"]))
-        # print(len(df.Group[df.Group == "CNIC"]))
         print("Writing assembled data to : ", fn)
-        print("assembled groups: DF groups: ", df.Group.unique())
+        print("Assembled groups: DF groups: ", df.Group.unique())
         df.to_pickle(fn)
 
     def categorize_ages(self, row):
@@ -2133,10 +2206,22 @@ class PlotSpikeInfo(QObject):
     def get_AHP_depth(self, row):
         # recalculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
-        row.AHP_depth_V = row.AHP_trough_V - row.AP_thr_V
-        if row.AHP_depth_V > 0:
-            row.AHP_depth_V = np.nan
-        return row.AHP_depth_V
+        if "LowestCurrentSpike" not in row.keys():
+            row.AHP_depth_V = row.AHP_trough_V*1e3 - row.AP_thr_V
+            if row.AHP_depth_V > 0:
+                row.AHP_depth_V = np.nan
+            return row.AHP_depth_V
+        else:
+            CP("c", "LowestCurrentSpike in row keys")
+
+
+    def get_AHP_trough_time(self, row):
+        # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
+        # if the depth is positive, then the trough is above threshold, so set to nan.
+        row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T
+        if row.AHP_trough_T < 0:
+            row.AHP_trough_T = np.nan
+        return row.AHP_trough_T
 
     def get_animal_id(self, row, df_summary):
         cell_id = row.cell_id
@@ -2144,9 +2229,9 @@ class PlotSpikeInfo(QObject):
         if cell_id_match is None:
             return ""
         if cell_id_match is not None:
-            row["animal identifier"] = df_summary.loc[
-                df_summary.cell_id == cell_id_match
-            ]["animal identifier"].values[0]
+            row["animal identifier"] = df_summary.loc[df_summary.cell_id == cell_id_match][
+                "animal identifier"
+            ].values[0]
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
@@ -2195,9 +2280,9 @@ class PlotSpikeInfo(QObject):
         if cell_id_match is None:
             return ""
         if cell_id_match is not None:
-            row.cell_expression = df_summary.loc[df_summary.cell_id == cell_id_match].cell_expression.values[
-                0
-            ]
+            row.cell_expression = df_summary.loc[
+                df_summary.cell_id == cell_id_match
+            ].cell_expression.values[0]
             if row.cell_expression in [" ", "nan"]:
                 row.cell_expression = "ND"
         else:
@@ -2205,7 +2290,6 @@ class PlotSpikeInfo(QObject):
             print("values: ", df_summary.cell_id.values.tolist())
             raise ValueError(f"Cell id {cell_id} not found in summary")
         return row.cell_expression
-
 
     def preload(self, fn):
         """preload Load the assembled data from a .pkl file
@@ -2250,7 +2334,9 @@ class PlotSpikeInfo(QObject):
                 df["cell_expression"] = "ND"
             else:
                 df["cell_expression"] = ""
-                df["cell_expression"] = df.apply(self.get_cell_expression, df_summary=df_summary, axis=1)
+                df["cell_expression"] = df.apply(
+                    self.get_cell_expression, df_summary=df_summary, axis=1
+                )
             print("cell expression values: ", df.cell_expression.unique())
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
@@ -2264,6 +2350,7 @@ class PlotSpikeInfo(QObject):
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
         df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
+        df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
         # print(df["Group"].unique())
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
@@ -2309,7 +2396,7 @@ class PlotSpikeInfo(QObject):
                 df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
                 CP("r", f"dropped DAY {fn:s} from analysis, reason = {reason:s}")
             elif re_slice.match(fn) is not None:  # specified day and slice
-                fnsm = re_slice.match(fn)
+                fns = re_slice.match(fn)
                 df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
                 CP("r", f"dropped SLICE {fn:s} from analysis, reason = {reason:s}")
             elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
@@ -2350,6 +2437,7 @@ class PlotSpikeInfo(QObject):
                 "AP_thr_V",
                 "AP_HW",
                 "AHP_depth_V",
+                "AHP_trough_T",
                 # "AP15Rate",
                 "AdaptRatio",
                 # "FISlope",
@@ -2430,12 +2518,12 @@ if __name__ == "__main__":
     PSI = PlotSpikeInfo()
     fn = PSI.get_assembled_filename(args.experiment)
 
-    # Do this AFTER running process_spike_analysis
+    # Do this AFTER running the main analysis
 
     if args.assemble_dataset:
         PSI.assemble_datasets(
-            excelsheet=excelsheet,
-            adddata=adddata,
+            # excelsheet=excelsheet,
+            # adddata=adddata,
             fn=fn,
             plot_fits=args.confirm,
         )
@@ -2471,7 +2559,7 @@ if __name__ == "__main__":
             porder=PSI.experiment["plot_order"]["age"],
             colors=PSI.experiment["plot_colors"],
             enable_picking=enable_picking,
-            measures=["dvdt_rising", "dvdt_falling", "AP_thr_V", "AP_HW"],
+            measures=["dvdt_rising", "dvdt_falling", "AP_thr_V", "AP_HW", "AP_Latency"],
         )
         P1.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
 
