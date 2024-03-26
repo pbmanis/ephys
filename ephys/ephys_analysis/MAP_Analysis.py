@@ -39,12 +39,13 @@ log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(fi
 
 logging_fh.setFormatter(log_formatter)
 logging_ch.setFormatter(log_formatter)
-Logger.info("Starting map_analysis")
+
 
 class MAP_Analysis(Analysis):
     def __init__(self, args):
         super().__init__(args)
         # print(self._testing_counter)
+        Logger.info("Instantiating map_analysis class")
 
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         # print("icell: ", icell)
