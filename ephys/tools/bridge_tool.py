@@ -38,9 +38,7 @@ def save_excel(df, outfile):
         df.to_excel(writer, sheet_name = "Sheet1")
 
         resultno = []
-        # resultno = ['holding', 'RMP', 'Rin', 'taum', 'dvdt_rising', 'dvdt_falling', 
-        #     'AP_thr_V', 'AP_HW', "AP15Rate", "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
-        # df[resultno] = df[resultno].apply(pd.to_numeric)    
+
         for i, column in enumerate(df):
             # print('column: ', column)
             if column in resultno:
