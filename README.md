@@ -1,3 +1,17 @@
+Version 0.7.0a
+
+New in this version:
+* Simplified process for analysis of IV/spike data (current clamp IVs).
+All analyzed data is stored in Python pkl files in cell-specific subdirectories
+in a "dataset" directory.
+* A text-formatted configuration file provides project-specific parameters, colors, lists,
+directories, etc. This serves both to expose some parameters in the analysis,
+and to make sure that parameters that get changed are not hidden in the code.
+
+Note that this is "alpha" code, meaning that it works for me, but also that
+errors may occur that have to be identified and solved. 
+
+
 Ephys
 =====
 
@@ -10,10 +24,13 @@ parts non-functional. The base package is set up to analyze data in the "acq4"
 format, but also has routines that translate from an older set of matlab and
 C-based formats specific to our lab. 
 
-The package is broken up into 3 parts: ephysanalysis, minianalysis, and
+The analysis part of the package is broken up into 4 parts: ephysanalysis, 
+minianalysis, psc_analysis and
 mapanalysis, plus a set of tools that make use of these packages.
 
-Requirements: Python3.8+, and modules specified in requirements_local.txt
+A GUI is available to help with the ephys analysis.
+
+Requirements: Python3.11+, and modules specified in requirements_local.txt
 
 ephysanalysis
 -------------
