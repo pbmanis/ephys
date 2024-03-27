@@ -293,23 +293,25 @@ class IVPlotter(object):
         if n > 0:
             P.axdict["B"].legend(fontsize=6)
         if "ivss_cmd" not in ivs.keys():
+            print("\nNo ivss_cmd found in the iv keys")
             print(self.plot_df["cell_id"], protocol)
             print("\n", ivs, "\n")
             print(ivs.keys())
 
-        P.axdict["C"].plot(
-            np.array(ivs["ivss_cmd"]) * 1e9,
-            np.array(ivs["ivss_v"]) * 1e3,
-            "grey",
-            # markersize=4,
-            linewidth=1.0,
-        )
-        P.axdict["C"].scatter(
-            np.array(ivs["ivss_cmd"]) * 1e9,
-            np.array(ivs["ivss_v"]) * 1e3,
-            c=trace_colors[0 : len(ivs["ivss_cmd"])],
-            s=16,
-        )
+        else:
+            P.axdict["C"].plot(
+                np.array(ivs["ivss_cmd"]) * 1e9,
+                np.array(ivs["ivss_v"]) * 1e3,
+                "grey",
+                # markersize=4,
+                linewidth=1.0,
+            )
+            P.axdict["C"].scatter(
+                np.array(ivs["ivss_cmd"]) * 1e9,
+                np.array(ivs["ivss_v"]) * 1e3,
+                c=trace_colors[0 : len(ivs["ivss_cmd"])],
+                s=16,
+            )
         if not pubmode:
             if isinstance(ivs["CCComp"], float):
                 enable = "Off"
@@ -358,13 +360,14 @@ class IVPlotter(object):
         P.axdict["B"].set_ylabel("Spikes/s")
         PH.talbotTicks(P.axdict["B"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 2, "y": 0})
         maxv = 0.0
-        if len(ivs["ivss_v"]) > 0:
-            maxv = np.max(ivs["ivss_v"] * 1e3)
+        if "ivss_v" in ivs.keys():
+            if len(ivs["ivss_v"]) > 0:
+                maxv = np.max(ivs["ivss_v"] * 1e3)
 
-        ycross = np.around(maxv / 5.0, decimals=0) * 5.0
-        if ycross > maxv:
-            ycross = maxv
-        PH.crossAxes(P.axdict["C"], xyzero=(0.0, ycross))
+            ycross = np.around(maxv / 5.0, decimals=0) * 5.0
+            if ycross > maxv:
+                ycross = maxv
+            PH.crossAxes(P.axdict["C"], xyzero=(0.0, ycross))
         PH.talbotTicks(P.axdict["C"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 2, "y": 0})
         P.axdict["C"].set_xlabel("I (nA)")
         P.axdict["C"].set_ylabel("V (mV)")
