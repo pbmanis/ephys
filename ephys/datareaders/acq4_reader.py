@@ -986,6 +986,7 @@ class acq4_reader:
         self.time_base = np.array(self.time_base[0])
         protoreps = ("protocol", "repetitions")
         mclamppulses = (self.shortdname, "Pulse_amplitude")
+        mclamppulses2 = (self.shortdname, "Pulse2_amplitude")
 
         # set some defaults in case there is no .index file
         self.repetitions = 1
@@ -1004,14 +1005,26 @@ class acq4_reader:
                 self.tstart = 0.0
                 self.tend = np.max(self.time_base)
             seqkeys = list(seqparams.keys())
+            if mclamppulses not in seqkeys and mclamppulses2 not in seqkeys:
+                print("seqkeys cannot handle the standard mclamppulse names ", seqkeys)
+                print(mclampulses, mclampulses2)
+                print("you probably need to add this to acq4_reader near line 1008")
+                raise ValueError("Cannot parse the protocol sequence information")
             if mclamppulses in seqkeys:
                 if protoreps in list(seqparams.keys()):
                     self.repetitions = len(seqparams[protoreps])
                 self.commandLevels = np.repeat(
                     np.array(seqparams[mclamppulses]), self.repetitions
                 ).ravel()
-
                 function = index["."]["devices"][self.shortdname]["waveGeneratorWidget"]["function"]
+            elif mclamppulses2 in seqkeys:
+                if protoreps in list(seqparams.keys()):
+                    self.repetitions = len(seqparams[protoreps])
+                self.commandLevels = np.repeat(
+                    np.array(seqparams[mclamppulses2]), self.repetitions
+                ).ravel()
+                function = index["."]["devices"][self.shortdname]["waveGeneratorWidget"]["function"]
+            
             elif protoreps in seqkeys:
                 self.repetitions = len(seqparams[protoreps])
                 # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
