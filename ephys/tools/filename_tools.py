@@ -15,7 +15,7 @@ def check_celltype(celltype: Union[str, None] = None):
     return celltype
 
 
-def make_cellstr(sdf: pd.DataFrame, icell: int, shortpath: bool = False):
+def make_cellstr(df: pd.DataFrame, icell: int, shortpath: bool = False):
     """
     Make a day string including slice and cell from the icell index in the pandas dataframe df
     Example result:
@@ -292,7 +292,8 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
-    df_tmp = df[df.cell_id == cell_id]  # df.copy() # .dropna(subset=["Date"])
+    df_tmp = df[df.cell_id == cell_id]  # df.copy() # .dropna(subset=["date"])
+    # print("get_cell: df_tmp: ", df_tmp.keys())
     # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
     # print("filename tools: get_cell: cell_id: ", cell_id)
     if len(df_tmp) == 0:
@@ -355,7 +356,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         CP.cprint("c", f"...  {datapath2!s} is OK")
         datapath = datapath2
     else:
-        CP.cprint("r", f"no file: matching: {datapath2!s}, \n") #    or: {datapath2!s}\n")
+        CP.cprint("r", f"no file: matching: {datapath2!s}") 
         print("cell type: ", celltype)
         raise ValueError
         return None, None
