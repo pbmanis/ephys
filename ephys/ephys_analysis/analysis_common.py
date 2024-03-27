@@ -508,6 +508,7 @@ class Analysis:
                 CP.cprint("r", f"Date not found: {day:s}")
                 # for dx in self.df.date.values:
                 #     CP.cprint("r", f"    day: {dx:s}")
+                raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
                 return None
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
             cellprots = []
