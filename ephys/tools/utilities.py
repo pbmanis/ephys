@@ -1147,7 +1147,7 @@ class Utility:
             u = self.box_spike_find(
                 x=x, y=v, dt=dt, thr=thresh, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
             )
-            st = np.array([x for x in u if (x >= t0)and (x <= t1)])  # limit to those in the window
+            st = np.array([x for x in u if (x >= t0) and (x <= t1)])  # limit to those in the window
             # if len(st) > 0:
             #     print('min st, max st, min dtst: ', min(st), max(st), min(np.diff(st)))
             #     print("refract: ", refract)
