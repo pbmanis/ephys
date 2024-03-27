@@ -19,12 +19,13 @@ import statsmodels.api as sa
 import statsmodels.formula.api as sfa
 import statsmodels.formula.api as smf
 import scipy.stats
-
+import pyqtgraph.multiprocess as MP
 from pylibrary.tools import cprint
 from pyqtgraph.Qt.QtCore import QObject
 from statsmodels.stats.multitest import multipletests
 
 from ephys.ephys_analysis import spike_analysis
+from ephys.tools.get_computer import get_computer
 from ephys.gui import data_table_functions
 from ephys.tools import filter_data, fitting, utilities
 
@@ -659,24 +660,48 @@ class PlotSpikeInfo(QObject):
         # print("# Dates in specified time range: ", len(df))
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
-        dfdict = {col: [] for col in cols}
+        dfdict = {} # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
+        computer_name = get_computer()
+        nworkers = self.experiment["NWORKERS"][computer_name]
+        cells_to_do = [cell for cell in cell_list if cell is not None]
+        # here we should check to see if cell has been done in the current file,
+        # and remove it from the list. 
+        already_done = pd.read_pickle(Path(self.experiment["analyzeddatapath"], self.experiment["directory"], self.experiment["assembled_filename"]))
+        already_done = already_done.cell_id.unique()
+        # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
+        # print("Cells to do: ", cells_to_do)
+        tasks = range(len(cells_to_do))
+        result = [None] * len(tasks)
+        results = dfdict
+        parallel = False
+        if parallel:
+            with MP.Parallelize(
+                enumerate(tasks), results=results, workers=nworkers) as tasker:
+                for i, x in tasker:
+                    result = FUNCS.compute_FI_Fits(self.experiment, df, cell_list[i], plot_fits=False)
+                    tasker.results[cell_list[i]] = result
+            # print("results: ", results)
+
+            for r in results:
+                # print("\nr: ", results[r])
+                df_new = pd.concat([df_new, pd.Series(results[r]).to_frame().T], ignore_index=True)
+        else:
 
         # do each cell in the database
-        for icell, cell in enumerate(cell_list):
-            if cell is None:
-                CP("r", f"Cell # {icell:d} in the database is None")
-                continue
-            CP("c", f"Computing FI_Fits for cell: {cell:s}") # df[df.cell_id==cell].cell_type)
-            datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
-            if datadict is None:
-                print("datadict is none for cell: ", cell)
-                continue
-            print("cbc.cell: ", cell)
-            print("Datadict:\n", datadict)
-            # print("cbc.datadict keys: ", datadict.keys())
-            print("cbc.Group: ", datadict["Group"])
-            df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
+            for icell, cell in enumerate(cell_list):
+                if cell is None:
+                    CP("r", f"Cell # {icell:d} in the database is None")
+                    continue
+                CP("c", f"Computing FI_Fits for cell: {cell:s}") # df[df.cell_id==cell].cell_type)
+                datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
+                if datadict is None:
+                    print("datadict is none for cell: ", cell)
+                    continue
+                print("cbc.cell: ", cell)
+                # print("cbc.datadict keys: ", datadict.keys())
+                print("cbc.Group: ", datadict["Group"])
+                df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
         print("cbc.after compute FI fits: ", df_new.Group.unique())
         return df_new
 
@@ -1714,7 +1739,8 @@ class PlotSpikeInfo(QObject):
                 if pd.isnull(cdd["cell_id"][index]):
                     print("No cell ids")
                     continue
-                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve"][index])
+                print(cdd.keys())
+                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
                 if len(FI_data[0]) == 0:
                     print("FI data is empty")
                     continue
@@ -2186,6 +2212,7 @@ class PlotSpikeInfo(QObject):
         df = self.combine_by_cell(df, plot_fits=plot_fits)
         print("Writing assembled data to : ", fn)
         print("Assembled groups: DF groups: ", df.Group.unique())
+        print(df.cell_id.unique())
         df.to_pickle(fn)
 
     def categorize_ages(self, row):
@@ -2218,6 +2245,7 @@ class PlotSpikeInfo(QObject):
     def get_AHP_trough_time(self, row):
         # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
+        print(row)
         row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T
         if row.AHP_trough_T < 0:
             row.AHP_trough_T = np.nan
@@ -2350,7 +2378,7 @@ class PlotSpikeInfo(QObject):
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
         df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
-        df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
+        # df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
         # print(df["Group"].unique())
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
