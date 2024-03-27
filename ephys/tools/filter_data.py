@@ -137,14 +137,30 @@ class FilterDataset:
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
         if excludeIVs is None:
             excludeIVs = []
+        CP.cprint("y", f"Excluding some cells or specific IVs")
         for fns in excludeIVs:
             fn = fns.split(":")[0]  # remove the comment
-            if fn in list(df.cell_id2.values):
-                df.drop(df.loc[df.cell_id2 == fn].index, inplace=True)
-                CP.cprint(
-                    "r",
-                    f"Excluding {fn:s} from analysis, reason = {fns.split(':')[1]:s}",
-                )
+            if df.loc[df.cell_id == fn].empty:  # not in the database (maybe should flag this?)
+                continue
+            prots = excludeIVs[fns]['protocols']  # get the protocols in the exclusion list
+            if prots == None:
+                continue
+            CP.cprint("y", f"    cell id: {fn!s}")
+            if prots == ['all']:
+                CP.cprint("y", f"        Excluding ALL of {fn:s} from analysis, reason = {excludeIVs[fns]['reason']:s}")
+                df.drop(df.loc[df.cell_id == fn].index, inplace=True)
+                continue
+            else:  # specified protocols; need to rewrite the data_complete list by removing the protocol
+                data_prots = df.loc[df.cell_id == fn].data_complete.values[0]
+                for prot in prots:
+                    data_prots = data_prots.replace(prot, '')
+                    data_prots = data_prots.replace(", , ", ", ")
+                    CP.cprint(
+                        "y",
+                        f"        Excluding {fn:s}/{prot:s} from analysis, reason = {excludeIVs[fns]['reason']:s}",
+                    )
+                df.loc[df.cell_id == fn, "data_complete"] = data_prots
+
         # exclude certain internal solutions
         if exclude_internals is not None:
             CP.cprint("y", f"    Starting with Internal Solutions: {df['internal'].unique()!s}")
