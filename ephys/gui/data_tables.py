@@ -287,31 +287,34 @@ class DataTables:
         self.win.resize(1600, 1024)
         # Initial Dock Arrangment
         self.Dock_Params = PGD.Dock("Params", size=(ptreewidth, 1024))
-        self.Dock_Table = PGD.Dock("Dataset Table", size=(right_docks_width, right_docks_height))
-        self.Dock_Traces = PGD.Dock("Traces", size=(right_docks_width, right_docks_height))
         self.Dock_DataSummary = PGD.Dock(
             "DataSummary", size=(right_docks_width, right_docks_height)
         )
+        self.Dock_Table = PGD.Dock("Dataset Table", size=(right_docks_width, right_docks_height))
+        self.Dock_Traces = PGD.Dock("Traces", size=(right_docks_width, right_docks_height))
+
         self.Dock_PDFView = PGD.Dock("PDFs", size=(right_docks_width, right_docks_height))
         self.Dock_Report = PGD.Dock("Reporting", size=(right_docks_width, right_docks_height))
 
         self.dockArea.addDock(self.Dock_Params, "left")
-        self.dockArea.addDock(self.Dock_Table, "right", self.Dock_Params)
-        self.dockArea.addDock(self.Dock_PDFView, "below", self.Dock_Table)
-        self.dockArea.addDock(self.Dock_DataSummary, "below", self.Dock_PDFView)
-        self.dockArea.addDock(self.Dock_Traces, "below", self.Dock_DataSummary)
+        self.dockArea.addDock(self.Dock_DataSummary, "right", self.Dock_Params)
+        self.dockArea.addDock(self.Dock_Table, "below", self.Dock_DataSummary)
         self.dockArea.addDock(self.Dock_Report, "below", self.Dock_Table)
+        self.dockArea.addDock(self.Dock_PDFView, "below", self.Dock_Report)
+        self.dockArea.addDock(self.Dock_Traces, "below", self.Dock_PDFView)
+
         # self.dockArea.addDock(self.Dock_Traces_Slider, 'below',
         # self.Dock_Traces)
 
         # self.Dock_Traces.addContainer(type=pg.QtGui.QGridLayout,
         # obj=self.trace_layout)
         self.table = pg.TableWidget(sortable=True)
-        self.Dock_Table.addWidget(self.table)
-        self.Dock_Table.raiseDock()
+        self.Dock_Table.addWidget(self.table)  # don't raise yet
+
 
         self.DS_table = pg.TableWidget(sortable=True)
-        self.Dock_DataSummary.addWidget(self.DS_table)  # don't raise yet
+        self.Dock_DataSummary.addWidget(self.DS_table)  
+        self.Dock_DataSummary.raiseDock()
 
         self.PDFView = QWebEngineView()
         self.PDFView.settings().setAttribute(
@@ -408,7 +411,7 @@ class DataTables:
                     {"name": "Dry run (test)", "type": "bool", "value": False},
                     {"name": "Analyze ALL IVs", "type": "action"},
                     {"name": "Analyze ALL IVs m/Important", "type": "action"},
-                    {"name": "Process Spike Data", "type": "action"},
+                    # {"name": "Process Spike Data", "type": "action"},
                     {"name": "Assemble IV datasets", "type": "action"},
                     {"name": "Exclude unimportant in assembly", "type": "bool", "value": False},
                 ],
@@ -813,52 +816,44 @@ class DataTables:
                         case "Analyze ALL IVs m/Important":
                             self.analyze_ivs("important")
 
-                        case "Analyze Selected IVs":  # work from the *datasummary* table.
-                            if self.selected_index_rows is None:
-                                return
-
+                        case "Analyze Selected IVs":  # work from the *datasummary* table, not the Assembled table.
+                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
-                                f"Analyze all IVs from selected cell(s) at rows: {len(self.selected_index_rows)!s}"
+                                f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
-                            self.Dock_Report.raiseDock()  # so we can monitor progress
-                            for index_row in self.selected_index_rows:
-                                selected = self.table_manager.get_table_data(index_row)
-                                FUNCS.textappend(f"    Selected: {selected!s}")
-                                # print("selected: ", selected)
+ 
+                            for selected in index_rows:
+                                if selected is None:
+                                    print("selected was None")
+                                    break
+                                FUNCS.textappend(selected.cell_id)
                                 pathparts = Path(selected.cell_id).parts
-                                # print("path parts: ", pathparts)
-                                sc = pathparts[-1].split(
-                                    "_"
-                                )  # splitting 20xx.mm.dd_000_S0C0 to get the slice and cell
-                                slicecell = f"S{sc[-1][1]:s}C{sc[-1][3]:s}"
-                                date = sc[0:-1]  # everything except slicecell
-                                date = f"{date[0]:s}_{date[1]:s}"
-                                # print("date: ", date)
-
-                                day = str(
-                                    Path(*pathparts[0:-1], date)
-                                )  # full day path - everything except slicecell
-
+                                print("len pathparts: ", len(pathparts))
+                                slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
+                                day = str(Path(*pathparts[0:-2]))
+                                
+                                FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
                                 print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
-                                FUNCS.textappend(f"    Day: {day!s}  slice_cell: {slicecell!s}")
                                 self.analyze_ivs(mode="selected", day=day, slicecell=slicecell)
-                                self.iv_finished_message()
-                            self.Dock_Table.raiseDock()  # back to the original one
+                            self.iv_finished_message()
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Plot from Selected IVs":
-                            if self.selected_index_rows is None:
-                                return
-
+                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
-                                f"Plot from selected cell(s) at rows: {len(self.selected_index_rows)!s}"
+                                f"Plot from selected cell(s) at rows: {len(index_rows)!s}"
                             )
-                            self.Dock_Report.raiseDock()  # so we can monitor progress
+                            print(f"Plot from selected cell(s) at rows: {len(index_rows)!s}")
+                            # self.Dock_Report.raiseDock()  # so we can monitor progress
                             dspath = Path(
                                 self.experiment["analyzeddatapath"], self.experiment["directory"]
                             )
-                            for index_row in self.selected_index_rows:
-                                selected = self.table_manager.get_table_data(index_row)
-                                FUNCS.textappend(f"    Selected: {selected!s}")
+                            for selected in index_rows:
+                                if selected is None:
+                                    print("Selection was None!")
+                                    break
+                                # selected = self.table_manager.get_table_data(index_row)
+                                FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
                                 pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
  
                                 print("Reading from pkl_file: ", pkl_file)
@@ -876,8 +871,8 @@ class DataTables:
                                         decorate=True,
                                     )
                                     plotter.plot_ivs(df_selected)
-
-                            self.Dock_Table.raiseDock()  # back to the original one
+                            CP.cprint("g", "Finished plotting IVs")
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case (
                             "Analyze Selected IVs m/Important"
@@ -901,7 +896,7 @@ class DataTables:
                                     mode="selected", important=True, day=day, slicecell=slicecell
                                 )
                                 self.iv_finished_message()
-                            self.Dock_Table.raiseDock()  # back to the original one
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Assemble IV datasets":
                             (
@@ -921,8 +916,6 @@ class DataTables:
                                 coding_file = None
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             self.PSI.assemble_datasets(
-                                # excelsheet=excelsheet,
-                                # adddata=adddata,
                                 df_summary=self.datasummary,
                                 coding_file=coding_file,
                                 coding_sheet=self.experiment["coding_sheet"],
@@ -1310,7 +1303,7 @@ class DataTables:
                                 )
                             except AttributeError:
                                 pass
-                            self.Dock_Table.raiseDock()
+                            self.Dock_DataSummary.raiseDock()
 
                             FUNCS.textappend("Reload OK", color="g")
                             self.doing_reload = False
@@ -1372,7 +1365,8 @@ class DataTables:
             args.slicecell = slicecell
 
         # args.after= "2021.07.01"
-
+        # this is to handle an old config file structure that related to 
+            # specific cell types etc. Pretty sure it does not work anymore
         if args.configfile is not None:
             config = None
             if args.configfile is not None:

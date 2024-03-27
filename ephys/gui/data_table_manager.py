@@ -495,7 +495,7 @@ class TableManager:
                 else:
                     self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xF00))
 
-        self.parent.Dock_Table.raiseDock()
+        # self.parent.Dock_Table.raiseDock()
 
     def apply_filter(self, QtCore=None, QtGui=None):
         """

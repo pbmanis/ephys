@@ -227,7 +227,7 @@ class TableManager:
         # else:
         #     self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xf00))
 
-    def get_table_data_index(self, index_row, use_sibling=False):
+    def get_table_data_index(self, index_row, use_sibling=False) -> int:
         if use_sibling:
             value = index_row.sibling(index_row.row(), 1).data()
             for i, d in enumerate(self.data):
@@ -235,33 +235,35 @@ class TableManager:
                     return i
             return None
     
+        elif isinstance(index_row, IndexData):
+            value = index_row
         else:
             value = index_row.row()
             return value
         
 
-    def get_table_data(self, index_row):
+    def get_table_data(self, selected_row):
         """
         Regardless of the sort, read the current index row and map it back to
         the data in the table.
+        This is because the table might be sorted, but the data itself is not.
+
         """
         # print("get_table_data")
         # print("  index row: ", index_row)
-        # print(dir(index_row))
-        # print(index_row.data())
-        ind = self.get_table_data_index(index_row)
+
+        ind = self.get_table_data_index(selected_row)
         # print("  ind: ", ind)
-        # print("self.data: ", self.table_data)
         for i in range(len(self.table_data)):
-            # print("data[i]: ", i, self.table_data[i])
-            if index_row.data() == self.table_data[i].cell_id:
-                # print("  found: ", i)
-                return self.table_data[i]
-            
-        if ind is not None:
-            return self.table_data[ind]
-        else:
-            return None
+            if self.table_data[ind].cell_id == self.table_data[i].cell_id:
+                # print("  found: ", i, self.table_data[i].cell_id)
+                return self.table_data[ind]
+        return None
+        
+        # if ind is not None:
+        #     return self.table_data[ind]
+        # else:
+        #     return None
 
     def select_row_by_cell_id(self, cell_id):
         for i in range(len(self.table_data)):

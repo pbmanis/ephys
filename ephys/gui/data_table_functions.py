@@ -217,21 +217,24 @@ class Functions:
                 return index_row, selected
 
     def get_multiple_row_selection(self, table_manager):
-            """
-            Find the selected rows in the currently managed table, and if there is a valid selection,
-            return a list of indexs from the selected rows.
-            """
-            self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
-            print("get multiple row selection: ", self.selected_index_rows)
-            if self.selected_index_rows is None:
-                return None, None
-            else:
-                index_row = self.selected_index_rows[0]
-                selected = table_manager.get_table_data(index_row)  # table_data[index_row]
+        """
+        Find the selected rows in the currently managed table, and if there is a valid selection,
+        return a list of indexs from the selected rows.
+        """
+        self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
+        print("get multiple row selection: ", self.selected_index_rows)
+        if self.selected_index_rows is None:
+            return None
+        else:
+            rows = []
+            for row in self.selected_index_rows:
+                # index_row = self.selected_index_rows[0]
+                selected = table_manager.get_table_data(row)  # table_data[index_row]
                 if selected is None:
-                    return None, None
+                    return None
                 else:
-                    return index_row, selected
+                    rows.append(selected)
+            return rows
 
     def get_datasummary(self, experiment):
         datasummary = Path(
@@ -243,7 +246,7 @@ class Functions:
             raise ValueError(f"Data summary file {datasummary!s} does not exist")
         df_summary = pd.read_pickle(datasummary)
         return df_summary
-    
+
     def rewrite_datasummary(self, experiment, df_summary):
         datasummary = Path(
             experiment["analyzeddatapath"],
@@ -251,7 +254,6 @@ class Functions:
             experiment["datasummaryFilename"],
         )
         df_summary.to_pickle(datasummary)
-
 
     def get_datasummary_protocols(self, datasummary):
         """
@@ -416,7 +418,9 @@ class Functions:
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
 
-                cell_df, cell_df_tmp = filename_tools.get_cell(experiment, assembleddata, cell_id=selected.cell_id)
+                cell_df, cell_df_tmp = filename_tools.get_cell(
+                    experiment, assembleddata, cell_id=selected.cell_id
+                )
                 protocols = list(cell_df["Spikes"].keys())
                 min_index = None
                 min_current = 1
@@ -454,8 +458,8 @@ class Functions:
 
                     f, ax = mpl.subplots(1, 2, figsize=(10, 5))
                 vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
-                ax[0].plot(vtime, low_spike.V * 1e3, 'k', linewidth=1.25)
-                ax[1].plot(low_spike.V[:low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
+                ax[0].plot(vtime, low_spike.V * 1e3, "k", linewidth=1.25)
+                ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
                 dvdt_ticks = np.arange(-4, 2.01, 0.1)
                 t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
                 thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
@@ -523,14 +527,24 @@ class Functions:
                     AHP_t,
                     low_spike.trough_V * 1e3,
                     s=3.0,
-                    color='orange',
-                    marker='o',
+                    color="orange",
+                    marker="o",
                     zorder=10,
                 )
                 x_line = [latency, AHP_t]
-                ax[0].plot(x_line, low_spike.V[thr_index]*np.ones(2)*1e3, 'k--', linewidth=0.3, )
-                ax[0].plot(x_line, low_spike.V[ahp_index]*np.ones(2)*1e3, 'm--', linewidth=0.3, )
-                
+                ax[0].plot(
+                    x_line,
+                    low_spike.V[thr_index] * np.ones(2) * 1e3,
+                    "k--",
+                    linewidth=0.3,
+                )
+                ax[0].plot(
+                    x_line,
+                    low_spike.V[ahp_index] * np.ones(2) * 1e3,
+                    "m--",
+                    linewidth=0.3,
+                )
+
                 # indicate the threshold on the voltage plot
 
                 ax[0].plot(
@@ -845,18 +859,20 @@ class Functions:
     ):
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
-        cell_group = df[df.cell_id==cell].Group.values[0]
-        if pd.isnull(cell_group) and len(df[df.cell_id==cell].Group.values) > 1:  # incase first value is nan
-            cell_group = df[df.cell_id==cell].Group.values[1]
+        cell_group = df[df.cell_id == cell].Group.values[0]
+        if (
+            pd.isnull(cell_group) and len(df[df.cell_id == cell].Group.values) > 1
+        ):  # incase first value is nan
+            cell_group = df[df.cell_id == cell].Group.values[1]
         df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         if df_cell is None:
             return None
         # print("    df_tmp group>>: ", df_tmp.Group.values)
         # print("    df_cell group>>: ", df_cell.keys())
-
+        # print("compute_FI_Fits: ", df_tmp.keys())
         protocols = list(df_cell.Spikes.keys())
-        spike_keys = list(df_cell.Spikes[protocols[0]].keys())
-        iv_keys = list(df_cell.IV[protocols[0]].keys())
+        # spike_keys = list(df_cell.Spikes[protocols[0]].keys())
+        # iv_keys = list(df_cell.IV[protocols[0]].keys())
 
         srs = {}
         dur = {}
@@ -896,12 +912,14 @@ class Functions:
         else:
             return None
         # CP("r", f"ccif cellid: {df_tmp.cell_id.values!s} ccif group: {group!s}")
+        if 'Date' in df_tmp.keys():  # solve poor programming practice from earlier versions.
+            df_tmp.rename(columns={'Date': 'date'}, inplace=True)
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
             "Subject": str(df_tmp.cell_id.values[0]),
             "cell_id": cell,
             "Group": cell_group,
-            "Date": str(df_tmp.Date.values[0]),
+            "date": str(df_tmp.date.values[0]),
             "age": str(df_tmp.age.values[0]),
             "weight": str(df_tmp.weight.values[0]),
             "sex": str(df_tmp.sex.values[0]),
@@ -915,16 +933,22 @@ class Functions:
 
         # get the measures for the fixed values from the measure list
         for measure in datacols:
-            datadict = self.get_measure(df_cell, measure, datadict, protocols, threshold_slope=experiment["AP_threshold_dvdt"])
+            datadict = self.get_measure(
+                df_cell,
+                measure,
+                datadict,
+                protocols,
+                threshold_slope=experiment["AP_threshold_dvdt"],
+            )
         # now combine the FI data across protocols for this cell
-        FI_Data_I1_:list_ = []
-        FI_Data_FR1_:list_ = []  # firing rate
-        FI_Data_I4_:list_ = []
-        FI_Data_FR4_:list_ = []  # firing rate
-        FI_fits:dict = {"fits": [], "pars": [], "names": []}
-        linfits:list = []
-        hill_max_derivs:list = []
-        hill_i_max_derivs:list = []
+        FI_Data_I1_: list_ = []
+        FI_Data_FR1_: list_ = []  # firing rate
+        FI_Data_I4_: list_ = []
+        FI_Data_FR4_: list_ = []  # firing rate
+        FI_fits: dict = {"fits": [], "pars": [], "names": []}
+        linfits: list = []
+        hill_max_derivs: list = []
+        hill_i_max_derivs: list = []
         protofails = 0
         for protocol in protocols:
             if protocol.endswith("0000"):  # bad protocol name
@@ -940,7 +964,10 @@ class Functions:
                     CP("y", f"               This is not in accepted limits of: {protodurs!s}")
                     continue
                 else:
-                    CP("g", f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[protocol]:e}")
+                    CP(
+                        "g",
+                        f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[protocol]:e}",
+                    )
             # print("protocol: ", protocol, "spikes: ", df_cell.Spikes[protocol]['spikes'])
             if len(df_cell.Spikes[protocol]["spikes"]) == 0:
                 CP("y", f"    >>>> Skipping protocol with no spikes:  {protocol:s}")
@@ -1035,7 +1062,7 @@ class Functions:
             i_four = np.where(FI_Data_I4 <= 4.01e-9)[0]
             datadict["FIMax_4"] = np.nanmax(FI_Data_FR4[i_four])
         return datadict
-    
+
     def compare_cell_id(self, cell_id: str, cell_ids: list):
         """compare_cell_id
         compare the cell_id to the list of cell_ids
@@ -1059,18 +1086,22 @@ class Functions:
         bool
             True if cell_id is in the list, False otherwise
         """
-       
+
         if pd.isnull(cell_id):
-            return None # raise ValueError(f"Cell_id: {cell_id!s} is Null, which is a strange error")
+            return (
+                None  # raise ValueError(f"Cell_id: {cell_id!s} is Null, which is a strange error")
+            )
         if cell_id in cell_ids:
-            return cell_id    # return the exact match
+            return cell_id  # return the exact match
         else:
 
             cell_parts = cell_parts = str(cell_id).split("_")
             # print("cell_parts: ", cell_id, cell_parts)
             re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
             if re_parse is None:
-                raise ValueError(f"Cell_id: {cell_id:s} not found in list of cell_ids in the datasummary file")
+                raise ValueError(
+                    f"Cell_id: {cell_id:s} not found in list of cell_ids in the datasummary file"
+                )
 
             # print("cell id: ", cell_id)
             # print("cell_parts: ", cell_parts[-1])
@@ -1079,14 +1110,15 @@ class Functions:
             cn = int(cnp)
             snp = re_parse.match(cell_parts[-1]).group(2)
             sn = int(snp)
-            cp ="_".join(cell_parts[:-1])
+            cp = "_".join(cell_parts[:-1])
             cell_id2 = f"{cp:s}/slice_{sn:03d}/cell_{cn:03d}"
             # print("Expanded cell_id: ", cell_id2)
             if cell_id2 in cell_ids:
                 return cell_id2
             else:
-                raise ValueError(f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file")
-
+                raise ValueError(
+                    f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file"
+                )
 
     def get_lowest_current_spike(self, row, SP):
         measured_first_spike = False
@@ -1155,7 +1187,7 @@ class Functions:
         FI_data = np.array(FI_data)
         return FI_data
 
-    def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope:float=20.0):
+    def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope: float = 20.0):
         """get_measure : for the given cell, get the measure from the protocols
 
         Parameters
@@ -1245,18 +1277,21 @@ class Functions:
                         m.append(np.nan)
                     # print("spike data: ", spike_data.keys())
 
-                elif "LowestCurrentSpike" in df_cell.Spikes[protocol].keys() and df_cell.Spikes[protocol]['LowestCurrentSpike'] is None:
+                elif (
+                    "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
+                    and df_cell.Spikes[protocol]["LowestCurrentSpike"] is None
+                ):
                     CP("r", "Lowest Current spike is None")
                 elif measure in ["AP_thr_V"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
-                        Vthr = df_cell.Spikes[protocol]['LowestCurrentSpike']['AP_thr_V']
+                        Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
                         m.append(Vthr)
                     else:
                         print(df_cell.Spikes[protocol].keys())
                         raise
                 elif measure in ["AP_thr_T"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
-                        Vthr_time = df_cell.Spikes[protocol]['LowestCurrentSpike']['AP_thr_T']
+                        Vthr_time = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_T"]
                         m.append(Vthr_time)
                     else:
                         print(df_cell.Spikes[protocol].keys())
@@ -1333,7 +1368,7 @@ class Functions:
 
     def textappend(self, text, color="white"):
         if self.textbox is None:
-            return # raise ValueError("datatables - functions - textbox has not been set up")
+            return  # raise ValueError("datatables - functions - textbox has not been set up")
 
         colormap = {
             "[31m": "red",
