@@ -1739,8 +1739,7 @@ class PlotSpikeInfo(QObject):
                 if pd.isnull(cdd["cell_id"][index]):
                     print("No cell ids")
                     continue
-                print(cdd.keys())
-                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
+                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve"][index])
                 if len(FI_data[0]) == 0:
                     print("FI data is empty")
                     continue
@@ -2212,7 +2211,6 @@ class PlotSpikeInfo(QObject):
         df = self.combine_by_cell(df, plot_fits=plot_fits)
         print("Writing assembled data to : ", fn)
         print("Assembled groups: DF groups: ", df.Group.unique())
-        print(df.cell_id.unique())
         df.to_pickle(fn)
 
     def categorize_ages(self, row):
@@ -2245,7 +2243,6 @@ class PlotSpikeInfo(QObject):
     def get_AHP_trough_time(self, row):
         # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
-        print(row)
         row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T
         if row.AHP_trough_T < 0:
             row.AHP_trough_T = np.nan
