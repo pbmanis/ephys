@@ -29,7 +29,7 @@ def make_cell_ID(dfs, iday):
     str
         a cell name as a string, including the date, slice and cell.
     """
-    # print("make cell: ", iday, self.dfs.iloc[iday])
+
     datestr = dfs.at[iday, "date"]
     if "slice_slice" in dfs.columns:
         slicestr = dfs.at[iday, "slice_slice"]
