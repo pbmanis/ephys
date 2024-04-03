@@ -91,6 +91,7 @@ import platform, multiprocessing
 
 import pandas as pd
 import pyqtgraph as pg
+import pyqtgraph.reload as reload
 import pyqtgraph.dockarea as PGD
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint as CP
@@ -99,25 +100,29 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-import ephys
+# import ephys
 from ephys.gui import data_summary_table
 from ephys.gui import data_table_functions as functions
 from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
 from ephys.plotters import plot_spike_info
-from ephys.tools import process_spike_analysis
-from ephys.tools import data_summary
+# from ephys.tools import process_spike_analysis
+# from ephys.tools import data_summary
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
-import ephys.tools.configuration_manager as configuration_manager
-from ephys.tools import filename_tools
+# import ephys.tools.configuration_manager as configuration_manager
+# from ephys.tools import filename_tools
 
 from ephys.ephys_analysis import (
     analysis_common,
     iv_analysis,
-    map_analysis,
-    summarize_ivs,
     iv_plotter,
+)
+from ephys.tools import (
+    process_spike_analysis,
+    data_summary,
+    configuration_manager as configuration_manager,
+    filename_tools,
 )
 
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
@@ -126,21 +131,6 @@ PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
 
 FUNCS = functions.Functions()  # get the functions class
 cprint = CP.cprint
-
-# List reloadable modules
-all_modules = [
-    table_manager,
-    data_summary_table,
-    plot_spike_info,
-    process_spike_analysis,
-    functions,
-    ephys.ephys_analysis.spike_analysis,
-    ephys.ephys_analysis.rm_tau_analysis,
-    ephys.tools.utilities,
-    ephys.ephys_analysis.make_clamps,
-    PH,
-]
-
 
 runtypes = [
     "IV",
@@ -381,6 +371,7 @@ class DataTables:
         self.target_figure = (None,)
         self.deselect_flag = False
         self.deselect_threshold = 180.0  # um2
+        self.bspline_s = 1.0
         self.revcorr_window = [-2.7, -0.5]
 
         # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
@@ -439,6 +430,8 @@ class DataTables:
                     {"name": "Plot Rmtau Data", "type": "action"},
                     {"name": "Plot FIData Data", "type": "action"},
                     {"name": "Plot FICurves", "type": "action"},
+                    {"name": "Set BSpline S", "type": "float", "value": 1.0,
+                     "limits": [0., 100.0]},
                     {"name": "Plot Selected Spike", "type": "action"},
                     {"name": "Plot Selected FI Fitting", "type": "action"},
                     {"name": "Print Stats on IVs and Spikes", "type": "action"},
@@ -1136,12 +1129,13 @@ class DataTables:
                                 },
                             )
                             P4.figure_handle.show()
-
+                        case "Set BSpline S":
+                            self.bspline_s = data
                         case "Plot Selected Spike":
                             if self.assembleddata is None:
                                 raise ValueError("Must load assembled data file first")
                             FUNCS.get_selected_cell_data_spikes(
-                                self.experiment, self.table_manager, self.assembleddata
+                                self.experiment, self.table_manager, self.assembleddata, self.bspline_s
                             )
 
                         case "Plot Selected FI Fitting":
@@ -1259,51 +1253,51 @@ class DataTables:
                             )  # by date
                             selected_rows = self.table.selectionModel().selectedRows()
                             selection_model = self.table.selectionModel()
-                            for module in all_modules:
-                                print("reloading: ", module)
-                                importlib.reload(module)
-                            # self.PLT = plot_sims.PlotSims(parent=self)
-                            self.table_manager = table_manager.TableManager(
-                                parent=self,
-                                table=self.table,
-                                experiment=self.experiment,
-                                selvals=self.selvals,
-                                altcolormethod=self.altColors,
-                            )
+                            
+                            reload.reloadAll(debug=True)
+                            
+                            # self.table_manager = table_manager.TableManager(
+                            #     parent=self,
+                            #     table=self.table,
+                            #     experiment=self.experiment,
+                            #     selvals=self.selvals,
+                            #     altcolormethod=self.altColors,
+                            # )
 
                             print("   reload ok")
                             print("-" * 80)
 
-                            if self.assembleddata is not None:
-                                self.table_manager.build_table(
-                                    self.assembleddata,
-                                    mode="scan",
-                                    QtCore=QtCore,
-                                    QtGui=QtGui,
-                                )
-                                self.table.setSortingEnabled(True)
-                                self.table.horizontalHeader().sortIndicatorChanged.connect(
-                                    self.handleSortIndicatorChanged
-                                )
-                                self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
-                                self.table.sortByColumn(
-                                    0, QtCore.Qt.SortOrder.AscendingOrder
-                                )  # by date
-                                self.altColors(self.table)  # reset the color list.
-                                # now reapply the original selection
-                                mode = (
-                                    QtCore.QItemSelectionModel.SelectionFlag.Select
-                                    | QtCore.QItemSelectionModel.SelectionFlag.Rows
-                                )
-                                for row in selected_rows:
-                                    selection_model.select(row, mode)  # for row in selected_rows:
-                            try:
-                                self.table_manager.update_table(
-                                    self.table_manager.data, QtCore=QtCore, QtGui=QtGui
-                                )
-                            except AttributeError:
-                                pass
-                            self.Dock_DataSummary.raiseDock()
+                            # if self.assembleddata is not None:
+                            #     self.table_manager.build_table(
+                            #         self.assembleddata,
+                            #         mode="scan",
+                            #         QtCore=QtCore,
+                            #         QtGui=QtGui,
+                            #     )
+                            #     self.table.setSortingEnabled(True)
+                            #     self.table.horizontalHeader().sortIndicatorChanged.connect(
+                            #         self.handleSortIndicatorChanged
+                            #     )
+                            #     self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
+                            #     self.table.sortByColumn(
+                            #         0, QtCore.Qt.SortOrder.AscendingOrder
+                            #     )  # by date
+                            #     self.altColors(self.table)  # reset the color list.
+                            #     # now reapply the original selection
+                            mode = (
+                                QtCore.QItemSelectionModel.SelectionFlag.Select
+                                | QtCore.QItemSelectionModel.SelectionFlag.Rows
+                            )
+                            for row in selected_rows:
+                                selection_model.select(row, mode)  # for row in selected_rows:
+                            # try:
+                            #     self.table_manager.update_table(
+                            #         self.table_manager.data, QtCore=QtCore, QtGui=QtGui
+                            #     )
+                            # except AttributeError:
+                            #     pass
+                            # leave current dock up
+                            # self.Dock_DataSummary.raiseDock()
 
                             FUNCS.textappend("Reload OK", color="g")
                             self.doing_reload = False
