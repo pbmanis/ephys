@@ -474,7 +474,7 @@ def numeric_age(row):
     return float(row.age)
 
 
-def make_datetime_date(row, colname="Date"):
+def make_datetime_date(row, colname="date"):
     if pd.isnull(row[colname]) or row[colname] == "nan":
         row.shortdate = 0
         return row.shortdate
@@ -624,7 +624,7 @@ class PlotSpikeInfo(QObject):
         CP("m", "Finished reading files\n")
         return df
 
-    def combine_by_cell(self, df, plot_fits=False, valid_protocols=None):
+    def combine_by_cell(self, df, valid_protocols=None):
         """
         Rules for combining cells and pulling the data from the original analysis:
         1. Combine data from cells with the same ID
@@ -674,12 +674,12 @@ class PlotSpikeInfo(QObject):
         tasks = range(len(cells_to_do))
         result = [None] * len(tasks)
         results = dfdict
-        parallel = False
+        parallel = True
         if parallel:
             with MP.Parallelize(
                 enumerate(tasks), results=results, workers=nworkers) as tasker:
                 for i, x in tasker:
-                    result = FUNCS.compute_FI_Fits(self.experiment, df, cell_list[i], plot_fits=False)
+                    result = FUNCS.compute_FI_Fits(self.experiment, df, cell_list[i])
                     tasker.results[cell_list[i]] = result
             # print("results: ", results)
 
@@ -694,7 +694,7 @@ class PlotSpikeInfo(QObject):
                     CP("r", f"Cell # {icell:d} in the database is None")
                     continue
                 CP("c", f"Computing FI_Fits for cell: {cell:s}") # df[df.cell_id==cell].cell_type)
-                datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell, plot_fits=plot_fits)
+                datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell)
                 if datadict is None:
                     print("datadict is none for cell: ", cell)
                     continue
@@ -1075,9 +1075,9 @@ class PlotSpikeInfo(QObject):
         df = self.rescale_values(df)
 
         for icol, measure in enumerate(measures):
-            print("measure: ", measure)
-            if measure in ["AP_thr_V", "AHP_depth_V"]:
-                CP("y", f"{measure:s}: {df[measure]!s}")
+        #     print("measure: ", measure)
+            # if measure in ["AP_thr_V", "AHP_depth_V"]:
+            #     CP("y", f"{measure:s}: {df[measure]!s}")
 
 
             if measure in self.transforms.keys():
@@ -1739,7 +1739,7 @@ class PlotSpikeInfo(QObject):
                 if pd.isnull(cdd["cell_id"][index]):
                     print("No cell ids")
                     continue
-                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve"][index])
+                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
                 if len(FI_data[0]) == 0:
                     print("FI data is empty")
                     continue
@@ -2157,7 +2157,6 @@ class PlotSpikeInfo(QObject):
         coding_sheet: Optional[str] = None,
         coding_level: Optional[str] = None,
         exclude_unimportant: bool = False,
-        plot_fits: bool = False,
     ):
         """assemble_datasets : Assemble the datasets from the summary and coding files,
         then combine FI curves (selected) in IV protocols for each cell.
@@ -2176,8 +2175,6 @@ class PlotSpikeInfo(QObject):
             _description_, by default False
         fn : str, optional
             _description_, by default ""
-        plot_fits : bool, optional
-            _description_, by default False
         """
         print(
             f"Assembling:\n  coding file: {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
@@ -2208,7 +2205,7 @@ class PlotSpikeInfo(QObject):
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
 
-        df = self.combine_by_cell(df, plot_fits=plot_fits)
+        df = self.combine_by_cell(df)
         print("Writing assembled data to : ", fn)
         print("Assembled groups: DF groups: ", df.Group.unique())
         df.to_pickle(fn)
@@ -2243,7 +2240,7 @@ class PlotSpikeInfo(QObject):
     def get_AHP_trough_time(self, row):
         # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
-        row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T
+        row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T*1e-3
         if row.AHP_trough_T < 0:
             row.AHP_trough_T = np.nan
         return row.AHP_trough_T
@@ -2375,7 +2372,7 @@ class PlotSpikeInfo(QObject):
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
         df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
-        # df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
+        df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
         # print(df["Group"].unique())
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
@@ -2550,7 +2547,6 @@ if __name__ == "__main__":
             # excelsheet=excelsheet,
             # adddata=adddata,
             fn=fn,
-            plot_fits=args.confirm,
         )
         exit()
 
