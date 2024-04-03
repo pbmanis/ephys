@@ -261,7 +261,10 @@ class TableManager:
         Index_data.ephys_hash = git_hashes["ephys"]  # save hash for the model code
         Index_data.project_code_hash = git_hashes["project"]  # this repository!
         Index_data.cell_id = str(row.cell_id)
-        Index_data.date = str(row.Date)
+        try:
+            Index_data.date = str(row.date)
+        except:
+            Index_data.date = str(row.Date)
         Index_data.age = str(row.age)
         Index_data.cell_type = str(row.cell_type)
         if "slice_mosaic" in row.keys():
