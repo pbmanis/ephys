@@ -549,6 +549,7 @@ class SpikeAnalysis:
             i_min_current = np.argmin(currents)  # find spike elicited by the minimum current
             min_current = currents[i_min_current]
             sp = self.spikeShapes[itr[i_min_current]][0]
+
             LCS['dvdt_rising'] = sp.dvdt_rising
             LCS['dvdt_falling'] = sp.dvdt_falling
             LCS['dvdt_current'] = min_current * 1e12  # put in pA
@@ -563,6 +564,7 @@ class SpikeAnalysis:
             LCS['AP_begin_V'] = 1e3 * sp.AP_begin_V
             LCS['AHP_depth'] = 1e3 * (sp.AP_begin_V - sp.trough_V)
             LCS['AHP_trough_T'] = sp.trough_T
+            LCS['current'] = min_current
             LCS['trace'] = itr[i_min_current]
             LCS['dt'] = sp.dt
         return LCS
