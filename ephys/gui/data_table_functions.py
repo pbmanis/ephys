@@ -15,7 +15,7 @@ import pandas as pd
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtGui
-
+from scipy.interpolate import splrep, splev, spalde
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools import utilities
@@ -113,6 +113,7 @@ datacols = [
     "AdaptRatio",
     "AHP_trough_V",
     "AHP_depth_V",
+    "AHP_trough_T",
     "tauh",
     "Gh",
     "FiringRate",
@@ -397,6 +398,44 @@ class Functions:
             dx = x_smooth[index + 1] - x_smooth[index - 1]
             return dy / dx
 
+    def spline_fits(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        region: list,
+        k: int = 5,  # order of bspline( 1, 3, 5)
+        s: int = None,  # s parameter
+        npts: int = 256,
+        label: str=""
+    ):
+        # fit the spline
+        if s is None:
+            s = 2 # int(len(x[region]) / 8)
+        # if s > len(x[region]) / 32:
+        #     s = int(len(x[region]) / 32)+1
+        print(f"Len region {label:s}: {len(x[region]):d}, s: {s:.1f}")
+        tck = splrep(x[region], y[region], k=k, s=s,) # t=[x[region][2], x[region][-(k+1)]])
+        xfit = np.linspace(x[region[0]], x[region[-1]], npts)
+        yfit = splev(xfit, tck)  # , der=0)
+
+        # calculate curvature on the spline
+        derivs = spalde(xfit, tck)
+        derivs = np.array(derivs).T
+        num = derivs[2]
+        den = 1.0 + (derivs[1] ** 2)
+        den = np.power(den, 1.5)
+        kappa = num / den
+        return tck, xfit, yfit, kappa
+
+    def curvature(self, x, y):
+
+        dx = np.gradient(x)
+        dy = np.gradient(y)
+        ddx = np.gradient(dx)
+        ddy = np.gradient(dy)
+        curvature = (ddx * ddy - dx * ddy) / (dx ** 2 + dy ** 2) ** 1.5
+        return curvature
+    
     def draw_orthogonal_line(self, x, y, index, slope, length, color, ax):
         # Calculate the slope of the orthogonal line
         orthogonal_slope = -1.0 / slope
@@ -410,205 +449,320 @@ class Functions:
         # Plot the orthogonal line
         ax.plot([x_start, x_end], [y_start, y_end], color=color)
 
-    def get_selected_cell_data_spikes(self, experiment, table_manager, assembleddata):
+    def get_selected_cell_data_spikes(self, experiment, table_manager, assembleddata, bspline_s):
         self.get_row_selection(table_manager)
-        if self.selected_index_rows is not None:
-            for nplots, index_row in enumerate(self.selected_index_rows):
-                selected = table_manager.get_table_data(index_row)
-                day = selected.date[:-4]
-                slicecell = selected.cell_id[-4:]
-
-                cell_df, cell_df_tmp = filename_tools.get_cell(
-                    experiment, assembleddata, cell_id=selected.cell_id
-                )
-                protocols = list(cell_df["Spikes"].keys())
-                min_index = None
-                min_current = 1
-                V = None
-                min_protocol = None
-                spike = None
-                for ip, protocol in enumerate(protocols):
-                    min_current_index, current, trace = self.find_lowest_current_trace(
-                        cell_df["Spikes"][protocol]
-                    )
-                    if current < min_current:
-                        I = current
-                        V = trace
-                        min_index = min_current_index
-                        min_protocol = ip
-                        min_current = current
-                        spike = cell_df["Spikes"][protocol]
-                pp = PrettyPrinter(indent=4)
-                # print("spike keys: ", spike["spikes"].keys())
-                # print(
-                #     "min I : ",
-                #     I,
-                #     "min V: ",
-                #     V,
-                #     "min index: ",
-                #     min_index,
-                #     "min_current: ",
-                #     min_current,
-                # )
-                # print("Spike info: \n")
-                # pp.pprint(spike["spikes"][V][min_index])
-                low_spike = spike["spikes"][V][min_index]
-                if nplots == 0:
-                    import matplotlib.pyplot as mpl
-
-                    f, ax = mpl.subplots(1, 2, figsize=(10, 5))
-                vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
-                ax[0].plot(vtime, low_spike.V * 1e3, "k", linewidth=1.25)
-                ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
-                dvdt_ticks = np.arange(-4, 2.01, 0.1)
-                t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
-                thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
-                # print("low spike:\n", low_spike)
-                # Create a colormap
-                cmap = mpl.get_cmap("tab10")
-                # Create an array of colors based on the index of each point
-                colors = cmap(np.linspace(0, 1, len(t_indices)))
-                # for i in range(len(t_indices)):
-                #     local_slope = self.get_slope(
-                #         low_spike.V * 1e3, low_spike.dvdt, t_indices[i], 7,
-                #     )
-                #     if local_slope is not None:
-                #         self.draw_orthogonal_line(
-                #             low_spike.V * 1e3,
-                #             low_spike.dvdt,
-                #             index=t_indices[i],
-                #             slope=local_slope,
-                #             length=5.0,
-                #             color=colors[i],
-                #             ax=ax[1],
-                #         )
-
-                #     ax[1].scatter(
-                #     low_spike.V[t_indices[i]] * 1e3,
-                #     low_spike.dvdt[t_indices[i]],
-                #     s=12,
-                #     marker='|',
-                #     color=colors[i],
-                #     zorder = 10
-                # )
-                # Plot each point with a different color
-                # ax[1].scatter(
-                #     low_spike.V[t_indices] * 1e3,
-                #     low_spike.dvdt[t_indices],
-                #     s=12,
-                #     marker='|',
-                #     color=colors,
-                #     zorder = 10
-                # )
-                # indicate the threshold on the phase plot
-                ax[1].scatter(
-                    low_spike.V[thr_index] * 1e3,
-                    low_spike.dvdt[thr_index],
-                    s=12,
-                    marker="o",
-                    color="r",
-                    zorder=12,
-                )
-                # indicate the AHP nadir on the phase plot
-                ahp_index = np.abs(vtime - (low_spike.trough_T - low_spike.peak_T) * 1e3).argmin()
-                ax[1].scatter(
-                    low_spike.V[ahp_index] * 1e3,
-                    low_spike.dvdt[ahp_index],
-                    s=12,
-                    marker="o",
-                    color="orange",
-                    zorder=12,
-                )
-                # indicate the AHP on the voltage trace
-                spike_pk_to_trough_T = low_spike.trough_T - low_spike.peak_T
-                AHP_t = spike_pk_to_trough_T * 1e3  # in msec, time from peak
-                latency = (low_spike.AP_latency - low_spike.peak_T) * 1e3  # in msec
-                ax[0].scatter(
-                    AHP_t,
-                    low_spike.trough_V * 1e3,
-                    s=3.0,
-                    color="orange",
-                    marker="o",
-                    zorder=10,
-                )
-                x_line = [latency, AHP_t]
-                ax[0].plot(
-                    x_line,
-                    low_spike.V[thr_index] * np.ones(2) * 1e3,
-                    "k--",
-                    linewidth=0.3,
-                )
-                ax[0].plot(
-                    x_line,
-                    low_spike.V[ahp_index] * np.ones(2) * 1e3,
-                    "m--",
-                    linewidth=0.3,
-                )
-
-                # indicate the threshold on the voltage plot
-
-                ax[0].plot(
-                    latency,
-                    low_spike.AP_begin_V * 1e3,
-                    "ro",
-                    markersize=2.5,
-                    zorder=10,
-                )
-                ax[0].plot(
-                    [
-                        (low_spike.left_halfwidth_T - low_spike.peak_T - 0.0001) * 1e3,
-                        (low_spike.right_halfwidth_T - low_spike.peak_T + 0.0001) * 1e3,
-                    ],
-                    [  # in msec
-                        low_spike.halfwidth_V * 1e3,
-                        low_spike.halfwidth_V * 1e3,
-                    ],
-                    "g-",
-                    zorder=10,
-                )
-                # ax[0].plot(
-                #     (low_spike.right_halfwidth_T - low_spike.peak_T)
-                #     * 1e3,  # in msec
-                #     low_spike.halfwidth_V * 1e3,
-                #     "co",
-                # )
-
-                if nplots == 0:  # annotate
-                    ax[0].set_xlabel("Time (msec), re Peak")
-                    ax[0].set_ylabel("V (mV)")
-                    ax[1].set_xlabel("V (mV)")
-                    ax[1].set_ylabel("dV/dt (mV/ms)")
-                    PH.nice_plot(ax[0])
-                    PH.nice_plot(ax[1])
-                    PH.talbotTicks(ax[0])
-                    PH.talbotTicks(ax[1])
-
-                nplots += 1
-
-            if nplots > 0:
-                mpl.show()
-
-            return cell_df
-        else:
+        if self.selected_index_rows is None:
             return None
+        for nplots, index_row in enumerate(self.selected_index_rows):
+            selected = table_manager.get_table_data(index_row)
+            day = selected.date[:-4]
+            slicecell = selected.cell_id[-4:]
 
+            cell_df, cell_df_tmp = filename_tools.get_cell(
+                experiment, assembleddata, cell_id=selected.cell_id
+            )
+            protocols = list(cell_df["Spikes"].keys())
+            min_index = None
+            min_current = 1
+            V = None
+            min_protocol = None
+            spike = None
+            for ip, protocol in enumerate(protocols):
+                print(cell_df["Spikes"][protocol]["LowestCurrentSpike"])
+                min_current_index, current, trace = self.find_lowest_current_trace(
+                    cell_df["Spikes"][protocol]
+                )
+                if current < min_current:
+                    I = current
+                    V = trace
+                    min_index = min_current_index
+                    min_protocol = ip
+                    min_current = current
+                    spike = cell_df["Spikes"][protocol]
+            pp = PrettyPrinter(indent=4)
+
+            try:
+                low_spike = spike["spikes"][V][min_index]
+            except KeyError:
+                print("Min index: ", min_index)
+                print("len spikes: ", len(spike["spikes"][V]))
+                return None
+            
+            if nplots == 0:
+                import matplotlib.pyplot as mpl
+                f, ax = mpl.subplots(1, 3, figsize=(12, 5))
+
+            vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
+            vtrace_color = "black"
+            ax[0].plot(vtime, low_spike.V * 1e3, color=vtrace_color, linewidth=1.25)
+            ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
+            dvdt_ticks = np.arange(-4, 2.01, 0.1)
+            t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
+            thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
+            thr_t = vtime[thr_index]
+            peak_index = np.abs(vtime - 0).argmin()
+            peak_t = vtime[peak_index]
+            # Create a colormap
+            cmap = mpl.get_cmap("tab10")
+            # Create an array of colors based on the index of each point
+            colors = cmap(np.linspace(0, 1, len(t_indices)))
+            # for i in range(len(t_indices)):
+            #     local_slope = self.get_slope(
+            #         low_spike.V * 1e3, low_spike.dvdt, t_indices[i], 7,
+            #     )
+            #     if local_slope is not None:
+            #         self.draw_orthogonal_line(
+            #             low_spike.V * 1e3,
+            #             low_spike.dvdt,
+            #             index=t_indices[i],
+            #             slope=local_slope,
+            #             length=5.0,
+            #             color=colors[i],
+            #             ax=ax[1],
+            #         )
+
+            #     ax[1].scatter(
+            #     low_spike.V[t_indices[i]] * 1e3,
+            #     low_spike.dvdt[t_indices[i]],
+            #     s=12,
+            #     marker='|',
+            #     color=colors[i],
+            #     zorder = 10
+            # )
+            # Plot each point with a different color
+            # ax[1].scatter(
+            #     low_spike.V[t_indices] * 1e3,
+            #     low_spike.dvdt[t_indices],
+            #     s=12,
+            #     marker='|',
+            #     color=colors,
+            #     zorder = 10
+            # )
+            # indicate the threshold on the phase plot
+            ax[1].scatter(
+                low_spike.V[thr_index] * 1e3,
+                low_spike.dvdt[thr_index],
+                s=12,
+                marker="o",
+                color="r",
+                zorder=12,
+            )
+            maxdvdt = np.argmax(low_spike.dvdt)+1
+            rising_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[thr_index])
+                & (low_spike.Vtime <= low_spike.Vtime[maxdvdt])  # [peak_index])
+            )[0]
+            falling_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[peak_index])
+                & (low_spike.V >= low_spike.V[thr_index])
+            )[0]
+            ahp_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[peak_index])
+                & (low_spike.V < low_spike.V[thr_index])
+            )[0]
+
+            # indicate the AHP nadir on the phase plot
+            ahp_index = np.abs(vtime - (low_spike.trough_T - low_spike.peak_T) * 1e3).argmin()
+            ax[1].scatter(
+                low_spike.V[ahp_index] * 1e3,
+                low_spike.dvdt[ahp_index],
+                s=12,
+                marker="o",
+                color="orange",
+                zorder=12,
+            )
+            # indicate the AHP on the voltage trace
+            spike_pk_to_trough_T = low_spike.trough_T - low_spike.peak_T
+            AHP_t = spike_pk_to_trough_T * 1e3  # in msec, time from peak
+            latency = (low_spike.AP_latency - low_spike.peak_T) * 1e3  # in msec
+            ax[0].scatter(
+                AHP_t,
+                low_spike.trough_V * 1e3,
+                s=3.0,
+                color="orange",
+                marker="o",
+                zorder=10,
+            )
+            x_line = [latency, AHP_t]
+            ax[0].plot(
+                x_line,
+                low_spike.V[thr_index] * np.ones(2) * 1e3,
+                "k--",
+                linewidth=0.3,
+            )
+            ax[0].plot(
+                x_line,
+                low_spike.V[ahp_index] * np.ones(2) * 1e3,
+                "m--",
+                linewidth=0.3,
+            )
+
+            # indicate the threshold on the voltage plot
+            ax[0].plot(
+                latency,
+                low_spike.AP_begin_V * 1e3,
+                "ro",
+                markersize=2.5,
+                zorder=10,
+            )
+            ax[0].plot(
+                [
+                    (low_spike.left_halfwidth_T - low_spike.peak_T - 0.0001) * 1e3,
+                    (low_spike.right_halfwidth_T - low_spike.peak_T + 0.0001) * 1e3,
+                ],
+                [  # in msec
+                    low_spike.halfwidth_V * 1e3,
+                    low_spike.halfwidth_V * 1e3,
+                ],
+                "g-",
+                zorder=10,
+            )
+            # ax[0].plot(
+            #     (low_spike.right_halfwidth_T - low_spike.peak_T)
+            #     * 1e3,  # in msec
+            #     low_spike.halfwidth_V * 1e3,
+            #     "co",
+            # )
+            savgol= True
+            bspline = False
+            if bspline:  # fit with a bspline
+                # rising phase of AP from threshold to peak dvdt
+                tck_r, xfit_r, yfit_r, kappa_r = self.spline_fits(
+                    vtime, low_spike.V, rising_phase_indices[:-2], k=5, s=bspline_s, label="rising"
+                )
+                # ax[0].plot(vtime[rising_phase_indices]-peak_t, low_spike.V[rising_phase_indices]*1e3,
+                #            color="b", linestyle="--", linewidth=2)
+
+            
+                # falling phase of AP from peak to spike threshold
+                tck_f, xfit_f, yfit_f, kappa_f = self.spline_fits(
+                    vtime, low_spike.V, falling_phase_indices, label="falling"
+                )
+                    # ahp phase of AP from threshold time on out
+                tck_a, xfit_a, yfit_a, kappa_a = self.spline_fits(
+                    vtime, low_spike.V, ahp_phase_indices, k=5, s=bspline_s, label="ahp"
+                )
+            
+            if savgol:
+                from scipy.signal import savgol_filter
+                window_length = int(bspline_s)
+                if window_length > 5:
+                    polyorder = 5
+                else:
+                    polyorder = 3
+                    window_length = 5
+                yfit_r = savgol_filter(low_spike.V[rising_phase_indices], window_length=window_length, polyorder=polyorder)
+                yfit_f = savgol_filter(low_spike.V[falling_phase_indices], window_length=window_length, polyorder=polyorder)
+                yfit_a = savgol_filter(low_spike.V[ahp_phase_indices], window_length=window_length, polyorder=polyorder)
+                xfit_r = vtime[rising_phase_indices]
+                xfit_f = vtime[falling_phase_indices]
+                xfit_a = vtime[ahp_phase_indices]
+                kappa_r = self.curvature(xfit_r, yfit_r)
+                kappa_f = self.curvature(xfit_f, yfit_f)
+                kappa_a = self.curvature(xfit_a, yfit_a)
+
+
+            if bspline or savgol:
+                ax[0].plot(xfit_f, yfit_f * 1e3, color="cyan", linestyle="--", linewidth=0.5)
+                ax[1].plot(
+                    yfit_f[:-1] * 1e3,
+                    np.diff(yfit_f * 1e3) / np.diff(xfit_f),
+                    color="cyan",
+                    linestyle="--",
+                    linewidth=0.5,
+                )
+                
+                ax[0].plot(xfit_r, yfit_r * 1e3, color="orange", linestyle="--", linewidth=0.5)
+                ax[1].plot(
+                    yfit_r[:-1] * 1e3,
+                    np.diff(yfit_r * 1e3) / (np.diff(xfit_r)),
+                    color="orange",
+                    linestyle="--",
+                    linewidth=0.5,
+                )
+                ax[2].plot(
+                    yfit_r[1:] * 1e3, kappa_r[1:], color="orange", linestyle="--", linewidth=0.5
+                )
+                ax[0].plot(xfit_a, yfit_a * 1e3, color="m", linestyle="--", linewidth=0.5)
+                ax[1].plot(
+                    yfit_a[:-1] * 1e3,
+                    np.diff(yfit_a * 1e3) / np.diff(xfit_a),
+                    color="m",
+                    linestyle="--",
+                    linewidth=0.5,
+                )
+                ax[2].plot(
+                    yfit_a[1:] * 1e3, kappa_a[1:], color="m", linestyle="--", linewidth=0.5
+                )
+
+                ax[2].plot(
+                    yfit_f[1:] * 1e3, kappa_f[1:], color="cyan", linestyle="--", linewidth=0.5
+                )
+                # horizontal line at 0 curvature
+                ax[2].plot([-60, 20], [0, 0], color="black", linestyle="--", linewidth=0.25)
+
+                # m = int(len(low_spike.V[rising_phase_indices]) / 4)
+                # if m > len(low_spike.V[rising_phase_indices]) / 4:
+                #     m = int(len(low_spike.V[rising_phase_indices]) / 2)
+                # print(f"Len ahp: {len(low_spike.V[rising_phase_indices]):d}, m: {m:d}")
+                # if m == 0:
+                #     break
+                # # interpolation in V and dvdt to get a uniform distribution of points in V space
+                # # yv = np.interp(xv, low_spike.V[rising_phase_indices], low_spike.dvdt[rising_phase_indices])
+                # tck_p = splrep(
+                #     low_spike.V[rising_phase_indices],
+                #     low_spike.dvdt[rising_phase_indices],
+                #     k=5,
+                #     s=64,
+                # )
+                # print("xv: ", xv)
+                # print("tck: ", tck_p)
+                # yfit_p = splev(xv, tck_p)  # , der=0)
+            # ax[0].plot(xfit_r, yfit_r, color="orange", linestyle="--", linewidth=0.5)
+
+            if nplots == 0:  # annotate
+                ax[0].set_xlabel("Time (msec), re Peak")
+                ax[0].set_ylabel("V (mV)")
+                ax[1].set_xlabel("V (mV)")
+                ax[1].set_ylabel("dV/dt (mV/ms)")
+                ax[2].set_xlabel("V (mV)")
+                ax[2].set_ylabel("Curvature (1/mV)")
+                for i in range(2):
+                    PH.nice_plot(ax[i])
+                    PH.talbotTicks(ax[i])
+
+            nplots += 1
+
+        if nplots > 0:
+            mpl.show()
+        return cell_df
+        
     def get_selected_cell_data_FI(self, experiment, table_manager, assembleddata):
         self.get_row_selection(table_manager)
         pp = PrettyPrinter(indent=4, width=120)
         if self.selected_index_rows is not None:
+            fig, ax = mpl.subplots(1, 1)
+            iplot = 0
             for nplots, index_row in enumerate(self.selected_index_rows):
                 selected = table_manager.get_table_data(index_row)
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
-                # cell_df, _ = filename_tools.get_cell(
-                #     experiment, assembleddata, cell_id=selected.cell_id
-                # )
-                fig, ax = mpl.subplots(1, 1)
-                self.compute_FI_Fits(
-                    experiment, assembleddata, selected.cell_id, plot_fits=True, ax=ax
+                cell_df, _ = filename_tools.get_cell(
+                    experiment, assembleddata, cell_id=selected.cell_id
                 )
-
-            if nplots > 0:
+                # print(cell_df['IV'].keys())
+                datadict = self.compute_FI_Fits(
+                    experiment, assembleddata, selected.cell_id
+                )
+                if datadict is not None:
+                    try:
+                        fit = datadict['fit'][0][0]
+                    except:
+                        pass
+                    ax.plot(np.array(datadict["FI_Curve1"][0])*1e12, datadict["FI_Curve1"][1], "o")
+                    ax.plot(np.array(fit[0][0])*1e12, fit[1][0], "b--")
+                    iplot += 1
+            if iplot > 0:
                 mpl.show()
             return self.selected_index_rows
         else:
@@ -693,8 +847,8 @@ class Functions:
         linfits,
         cell: str,
         celltype: str,
-        plot_fits=False,
-        ax: Union[mpl.Axes, None] = None,
+        # plot_fits=False,
+        # ax: Union[mpl.Axes, None] = None,
     ):
         plot_raw = False  # only to plot the unaveraged points.
         spanalyzer = spike_analysis.SpikeAnalysis()
@@ -753,78 +907,78 @@ class Functions:
         linx = np.arange(0, 300e-12, 10e-12)
         liny = linfit.slope * linx + linfit.intercept
 
-        if plot_fits:
-            if ax is None:
-                fig, ax = mpl.subplots(1, 1)
-                fig.suptitle(f"{celltype:s} {cell:s}")
+        # if plot_fits:
+        #     if ax is None:
+        #         fig, ax = mpl.subplots(1, 1)
+        #         fig.suptitle(f"{celltype:s} {cell:s}")
 
-            line_FI = ax.errorbar(
-                np.array(FI_Data_I) * 1e9,
-                FI_Data_FR,
-                yerr=FI_Data_FR_Std,
-                marker="o",
-                color="k",
-                linestyle=None,
-            )
-            # ax[1].plot(FI_Data_I * 1e12, FI_Data_N, marker="s")
-            if plot_raw:
-                for i, d in enumerate(FI_Data_I_):  # plot the raw points before combining
-                    ax.plot(np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k")
-            # print("fit x * 1e9: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][0]*1e9)
-            # print("fit y * 1: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][1])
+        #     line_FI = ax.errorbar(
+        #         np.array(FI_Data_I) * 1e9,
+        #         FI_Data_FR,
+        #         yerr=FI_Data_FR_Std,
+        #         marker="o",
+        #         color="k",
+        #         linestyle=None,
+        #     )
+        #     # ax[1].plot(FI_Data_I * 1e12, FI_Data_N, marker="s")
+        #     if plot_raw:
+        #         for i, d in enumerate(FI_Data_I_):  # plot the raw points before combining
+        #             ax.plot(np.array(FI_Data_I_[i]) * 1e9, FI_Data_FR_[i], "x", color="k")
+        #     # print("fit x * 1e9: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][0]*1e9)
+        #     # print("fit y * 1: ", spanalyzer.analysis_summary['FI_Growth'][0]['fit'][1])
 
-            # ax[0].plot(linx * 1e12, liny, color="c", linestyle="dashdot")
-            celln = Path(cell).name
+        #     # ax[0].plot(linx * 1e12, liny, color="c", linestyle="dashdot")
+        #     celln = Path(cell).name
 
-            if len(spanalyzer.analysis_summary["FI_Growth"]) >= 0:
-                line_fit = ax.plot(
-                    spanalyzer.analysis_summary["FI_Growth"][0]["fit"][0][0] * 1e9,
-                    spanalyzer.analysis_summary["FI_Growth"][0]["fit"][1][0],
-                    color="r",
-                    linestyle="-",
-                    zorder=100,
-                )
-                # derivative (in blue)
-                line_deriv = ax.plot(
-                    i_range * 1e9, deriv_hill, color="b", linestyle="--", zorder=100
-                )
-                d_max = np.argmax(deriv_hill)
-                ax2 = ax.twinx()
-                ax2.set_ylim(0, 500)
-                ax2.set_ylabel("Firing Rate Slope (sp/s/nA)")
-                line_drop = ax2.plot(
-                    [i_range[d_max] * 1e9, i_range[d_max] * 1e9],
-                    [0, 1.1 * deriv_hill[d_max]],
-                    color="b",
-                    zorder=100,
-                )
-                ax.set_xlabel("Current (nA)")
-                ax.set_ylabel("Firing Rate (sp/s)")
-                # turn off top box
-                for loc, spine in ax.spines.items():
-                    if loc in ["left", "bottom"]:
-                        spine.set_visible(True)
-                    elif loc in ["right", "top"]:
-                        spine.set_visible(False)
-                for loc, spine in ax2.spines.items():
-                    if loc in ["right", "bottom"]:
-                        spine.set_visible(True)
-                    elif loc in ["left", "top"]:
-                        spine.set_visible(False)
-                # spine.set_color('none')
-                # do not draw the spine
-                # spine.set_color('none')
-                # do not draw the spine
-                PH.talbotTicks(ax, density=[2.0, 2.0])
-                PH.talbotTicks(ax2, density=[2.0, 2.0])
-                ax.legend(
-                    [line_FI, line_fit[0], line_deriv[0], line_drop[0]],
-                    ["Firing Rate", "Hill Fit", "Derivative", "Max Derivative"],
-                    loc="best",
-                    frameon=False,
-                )
+        #     if len(spanalyzer.analysis_summary["FI_Growth"]) >= 0:
+        #         line_fit = ax.plot(
+        #             spanalyzer.analysis_summary["FI_Growth"][0]["fit"][0][0] * 1e9,
+        #             spanalyzer.analysis_summary["FI_Growth"][0]["fit"][1][0],
+        #             color="r",
+        #             linestyle="-",
+        #             zorder=100,
+        #         )
+        #         # derivative (in blue)
+        #         line_deriv = ax.plot(
+        #             i_range * 1e9, deriv_hill, color="b", linestyle="--", zorder=100
+        #         )
+        #         d_max = np.argmax(deriv_hill)
+        #         ax2 = ax.twinx()
+        #         ax2.set_ylim(0, 500)
+        #         ax2.set_ylabel("Firing Rate Slope (sp/s/nA)")
+        #         line_drop = ax2.plot(
+        #             [i_range[d_max] * 1e9, i_range[d_max] * 1e9],
+        #             [0, 1.1 * deriv_hill[d_max]],
+        #             color="b",
+        #             zorder=100,
+        #         )
+        #         ax.set_xlabel("Current (nA)")
+        #         ax.set_ylabel("Firing Rate (sp/s)")
+        #         # turn off top box
+        #         for loc, spine in ax.spines.items():
+        #             if loc in ["left", "bottom"]:
+        #                 spine.set_visible(True)
+        #             elif loc in ["right", "top"]:
+        #                 spine.set_visible(False)
+        #         for loc, spine in ax2.spines.items():
+        #             if loc in ["right", "bottom"]:
+        #                 spine.set_visible(True)
+        #             elif loc in ["left", "top"]:
+        #                 spine.set_visible(False)
+        #         # spine.set_color('none')
+        #         # do not draw the spine
+        #         # spine.set_color('none')
+        #         # do not draw the spine
+        #         PH.talbotTicks(ax, density=[2.0, 2.0])
+        #         PH.talbotTicks(ax2, density=[2.0, 2.0])
+        #         ax.legend(
+        #             [line_FI, line_fit[0], line_deriv[0], line_drop[0]],
+        #             ["Firing Rate", "Hill Fit", "Derivative", "Max Derivative"],
+        #             loc="best",
+        #             frameon=False,
+        #         )
 
-            mpl.show()
+        #     mpl.show()
 
         return hill_max_derivs, hill_i_max_derivs, FI_fits, linfits
 
@@ -854,8 +1008,6 @@ class Functions:
         df: pd.DataFrame,
         cell: str,
         protodurs: list = [1.0],
-        plot_fits: bool = False,
-        ax: Union[mpl.Axes, None] = None,
     ):
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
@@ -912,8 +1064,8 @@ class Functions:
         else:
             return None
         # CP("r", f"ccif cellid: {df_tmp.cell_id.values!s} ccif group: {group!s}")
-        if 'Date' in df_tmp.keys():  # solve poor programming practice from earlier versions.
-            df_tmp.rename(columns={'Date': 'date'}, inplace=True)
+        if "Date" in df_tmp.keys():  # solve poor programming practice from earlier versions.
+            df_tmp.rename(columns={"Date": "date"}, inplace=True)
         datadict = {
             "ID": str(df_tmp.cell_id.values[0]),
             "Subject": str(df_tmp.cell_id.values[0]),
@@ -1023,8 +1175,6 @@ class Functions:
                 linfits=linfits,
                 cell=cell,
                 celltype=df_tmp.cell_type.values[0],
-                plot_fits=plot_fits,
-                ax=ax,
             )
 
         # save the results
@@ -1264,7 +1414,9 @@ class Functions:
                     "AP_peak_V",
                     "AP_peak_T",
                     "AHP_trough_V",
+                    "AHP_trough_T",
                     "AHP_depth_V",
+                    "AHP_depth_T",
                 ]:  # use lowest current spike
                     min_current_index, current, trace = self.find_lowest_current_trace(
                         df_cell.Spikes[protocol]
@@ -1321,7 +1473,7 @@ class Functions:
                     # print(spike_data.keys())
                     CP(
                         "r",
-                        f"measure not found in spike_data, either: <{measure:s}>, {mapper.keys()!s}",
+                        f"measure <{measure:s}> not found in spike_data keys:, {mapper.keys()!s}",
                     )
                     CP(
                         "r",
