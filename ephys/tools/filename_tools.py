@@ -148,7 +148,11 @@ def make_pickle_filename(dpath: Union[str, Path], thisday:str, celltype: str, sl
 
 def make_cell(icell: int, df: pd.DataFrame):
     assert df is not None
-    datestr = Path(df.iloc[icell]["date"]).name
+    try:
+        datestr = Path(df.iloc[icell]["date"]).name
+    except:
+        CP("r", f"Failed to get date string from dataframe with icell={icell:d}")
+        return None, None, None
     slicestr = str(Path(df.iloc[icell]["slice_slice"]).parts[-1])
     cellstr = str(Path(df.iloc[icell]["cell_cell"]).parts[-1])
     return (datestr, slicestr, cellstr)
@@ -181,7 +185,6 @@ def make_cell_filename(
     thisday: str, celltype: str, slicecell: str, analysistype: str=None, extras: dict = None, flags: dict = None
 ):
     celltype = check_celltype(celltype)
-    print("make cell filename thisday: ", thisday)
     file_name = thisday.replace(".", "_")
     file_name += f"_{slicecell:s}"
     if extras is not None:
