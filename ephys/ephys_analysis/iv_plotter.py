@@ -60,12 +60,23 @@ class IVPlotter(object):
 
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
+        # check to see if this one is in the exclusion list:
+        if (df_selected.cell_id in self.experiment["excludeIVs"] 
+            and self.experiment["excludeIVs"][df_selected.cell_id]['protocols'] == ["all"]):
+            CP("y", f"Excluding {df_selected.cell_id} from the plotting")
+            return
 
-        index = self.df_summary.index[self.df_summary["cell_id"] == df_selected.cell_id].values[
+        try:
+            index = self.df_summary.index[self.df_summary["cell_id"] == df_selected.cell_id].values[
             0
         ]  # find the cell in the main index
-        # print("index: ", index)
+        except IndexError:
+            CP("r", f"Could not find cell: {df_selected.cell_id} in the summary table")
+            raise IndexError(f"Could not find cell: {df_selected.cell_id} in the summary table")
+        
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
+        if datestring is None:
+            return False
         slicecell = filename_tools.make_slicecell(slicestr, cellstr)
         matchcell, slicecell3, slicecell2, slicecell1 = filename_tools.compare_slice_cell(
             slicecell=slicecell, datestr=datestr, slicestr=slicestr, cellstr=cellstr
@@ -83,8 +94,6 @@ class IVPlotter(object):
             return
         
         self.nfiles = 0
-        print("self.file_out_path: ", self.file_out_path)
-        print("now calling make_pdf_filename")
         pdffile = filename_tools.make_pdf_filename(
             self.file_out_path,
             thisday=thisday,
@@ -222,7 +231,7 @@ class IVPlotter(object):
                         )
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
-                print(ivs.keys())
+                print("taum fitted is not in the ivs: ", ivs.keys())
             if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
                 for k in ivs["taum_fitted"].keys():
                     # CP('g', f"tau fitted keys: {str(k):s}")
@@ -294,9 +303,9 @@ class IVPlotter(object):
             P.axdict["B"].legend(fontsize=6)
         if "ivss_cmd" not in ivs.keys():
             print("\nNo ivss_cmd found in the iv keys")
-            print(self.plot_df["cell_id"], protocol)
-            print("\n", ivs, "\n")
-            print(ivs.keys())
+            print("cell, protocol: ", self.plot_df["cell_id"], protocol)
+            print("\nIvs: ", ivs, "\n")
+            print("Keys in the ivs: ", ivs.keys())
 
         else:
             P.axdict["C"].plot(
