@@ -83,6 +83,7 @@ class IndexData:
     cell_layer: str=""
     data_complete: List = field(default_factory=defemptylist)
     data_directory: str=""
+    flag: bool = False
 
 
 
@@ -132,6 +133,7 @@ class TableManager:
         Index_data.cell_layer = str(row.cell_layer)
         Index_data.data_complete = str(row.data_complete) # textwrap.fill(str(row.data_complete), width=40)
         Index_data.data_directory = str(row.data_directory)
+        Index_data.flag = False
         return Index_data
 
     def build_table(self, dataframe, mode="scan"):
@@ -174,6 +176,7 @@ class TableManager:
                 indxs[i].cell_layer,
                 indxs[i].data_complete,
                 indxs[i].data_directory,
+                indxs[i].flag,
                     
                 )
 
@@ -201,9 +204,23 @@ class TableManager:
                 ("cell_layer", object),  # 17
                 ("data_complete", object),  # 18
                 ("data_directory", object),  # 19
+                ("flag", bool),  # 20
             ],
         )
         self.update_table(self.data)
+        self.altColors(self.table)  # reset the coloring for alternate lines
+        if QtGui is None:
+            return
+        for i in range(self.table.rowCount()):
+            if self.table_data[i].flag:
+                self.setColortoRow(i, QtGui.QColor(0xff, 0xef, 0x00, 0xee))
+                self.setColortoRowText(i, QtGui.QColor(0x00, 0x00, 0x00))
+            else:
+                if i % 2:
+                    self.setColortoRow(i, QtGui.QColor(0xCA, 0xFB, 0xF4, 0x66))
+                else:
+                    self.setColortoRow(i, QtGui.QColor(0x33, 0x33, 0x33))
+                self.setColortoRowText(i, QtGui.QColor(0xff, 0xff, 0xff))
         cprint("g", "Finished updating index files")
 
     def update_table(self, data):
@@ -226,6 +243,17 @@ class TableManager:
         #     self.setColortoRow(i, QtGui.QColor(0x88, 0x00, 0x00))
         # else:
         #     self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xf00))
+
+
+    def setColortoRow(self, rowIndex, color):
+        for j in range(self.table.columnCount()):
+            if self.table.item(rowIndex, j) is not None:
+                self.table.item(rowIndex, j).setBackground(color)
+    
+    def setColortoRowText(self, rowIndex, color):
+        for j in range(self.table.columnCount()):
+            if self.table.item(rowIndex, j) is not None:
+                self.table.item(rowIndex, j).setForeground(color)
 
     def get_table_data_index(self, index_row, use_sibling=False) -> int:
         if use_sibling:

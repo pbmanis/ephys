@@ -491,12 +491,18 @@ class TableManager:
         self.table.resizeColumnsToContents()
         self.current_table_data = data
         self.altColors(self.table)  # reset the coloring for alternate lines
-        if QtGui is not None:
-            for i in range(self.table.rowCount()):
-                if self.table_data[i].flag:
-                    self.setColortoRow(i, QtGui.QColor(0x88, 0x00, 0x00))
+        if QtGui is None:
+            return
+        for i in range(self.table.rowCount()):
+            if self.table_data[i].flag:
+                self.setColortoRow(i, QtGui.QColor(0xff, 0xef, 0x00, 0xee))
+                self.setColortoRowText(i, QtGui.QColor(0x00, 0x00, 0x00))
+            else:
+                if i % 2:
+                    self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0x00))
                 else:
-                    self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xF00))
+                    self.setColortoRow(i, QtGui.QColor(0x33, 0x33, 0x33))
+                self.setColortoRowText(i, QtGui.QColor(0xff, 0xff, 0xff))
 
         # self.parent.Dock_Table.raiseDock()
 
@@ -566,6 +572,12 @@ class TableManager:
         for j in range(self.table.columnCount()):
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setBackground(color)
+    
+    def setColortoRowText(self, rowIndex, color):
+        for j in range(self.table.columnCount()):
+            if self.table.item(rowIndex, j) is not None:
+                self.table.item(rowIndex, j).setForeground(color)
+
 
     def get_table_data_index(self, index_row, use_sibling=False):
         if use_sibling:
