@@ -10,8 +10,11 @@ import re
 from typing import Union
 
 import matplotlib.pyplot as mpl
+import matplotlib
 import numpy as np
 import pandas as pd
+import scipy
+import colormaps
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtGui
@@ -406,15 +409,20 @@ class Functions:
         k: int = 5,  # order of bspline( 1, 3, 5)
         s: int = None,  # s parameter
         npts: int = 256,
-        label: str=""
+        label: str = "",
     ):
         # fit the spline
         if s is None:
-            s = 2 # int(len(x[region]) / 8)
+            s = 2  # int(len(x[region]) / 8)
         # if s > len(x[region]) / 32:
         #     s = int(len(x[region]) / 32)+1
         print(f"Len region {label:s}: {len(x[region]):d}, s: {s:.1f}")
-        tck = splrep(x[region], y[region], k=k, s=s,) # t=[x[region][2], x[region][-(k+1)]])
+        tck = splrep(
+            x[region],
+            y[region],
+            k=k,
+            s=s,
+        )  # t=[x[region][2], x[region][-(k+1)]])
         xfit = np.linspace(x[region[0]], x[region[-1]], npts)
         yfit = splev(xfit, tck)  # , der=0)
 
@@ -433,9 +441,9 @@ class Functions:
         dy = np.gradient(y)
         ddx = np.gradient(dx)
         ddy = np.gradient(dy)
-        curvature = (ddx * ddy - dx * ddy) / (dx ** 2 + dy ** 2) ** 1.5
+        curvature = (ddx * ddy - dx * ddy) / (dx**2 + dy**2) ** 1.5
         return curvature
-    
+
     def draw_orthogonal_line(self, x, y, index, slope, length, color, ax):
         # Calculate the slope of the orthogonal line
         orthogonal_slope = -1.0 / slope
@@ -453,11 +461,13 @@ class Functions:
         self.get_row_selection(table_manager)
         if self.selected_index_rows is None:
             return None
+        N = len(self.selected_index_rows)
+        colors = colormaps.sinebow_dark.discrete(N)
         for nplots, index_row in enumerate(self.selected_index_rows):
             selected = table_manager.get_table_data(index_row)
             day = selected.date[:-4]
             slicecell = selected.cell_id[-4:]
-
+            pcolor = colors[nplots].colors
             cell_df, cell_df_tmp = filename_tools.get_cell(
                 experiment, assembleddata, cell_id=selected.cell_id
             )
@@ -481,31 +491,34 @@ class Functions:
                     spike = cell_df["Spikes"][protocol]
             pp = PrettyPrinter(indent=4)
 
+            if spike is None:
+                continue
             try:
                 low_spike = spike["spikes"][V][min_index]
             except KeyError:
                 print("Min index: ", min_index)
                 print("len spikes: ", len(spike["spikes"][V]))
                 return None
-            
+
             if nplots == 0:
                 import matplotlib.pyplot as mpl
-                f, ax = mpl.subplots(1, 3, figsize=(12, 5))
 
+                P = PH.regular_grid(1, 4, order="rowsfirst", figsize=(12, 4))
+                # f, ax = mpl.subplots(1, 4, figsize=(12, 4), gridspec_kw={'hspace': 0.2})
+                f = P.figure_handle
+                ax = P.axarr[0]
+                print(ax)
             vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
             vtrace_color = "black"
-            ax[0].plot(vtime, low_spike.V * 1e3, color=vtrace_color, linewidth=1.25)
-            ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt)
+            ax[0].plot(vtime, low_spike.V * 1e3, color=pcolor, linewidth=1.25)
+            ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt, color=pcolor)
             dvdt_ticks = np.arange(-4, 2.01, 0.1)
             t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
             thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
             thr_t = vtime[thr_index]
             peak_index = np.abs(vtime - 0).argmin()
             peak_t = vtime[peak_index]
-            # Create a colormap
-            cmap = mpl.get_cmap("tab10")
-            # Create an array of colors based on the index of each point
-            colors = cmap(np.linspace(0, 1, len(t_indices)))
+
             # for i in range(len(t_indices)):
             #     local_slope = self.get_slope(
             #         low_spike.V * 1e3, low_spike.dvdt, t_indices[i], 7,
@@ -547,7 +560,7 @@ class Functions:
                 color="r",
                 zorder=12,
             )
-            maxdvdt = np.argmax(low_spike.dvdt)+1
+            maxdvdt = np.argmax(low_spike.dvdt) + 1
             rising_phase_indices = np.nonzero(
                 (low_spike.Vtime >= low_spike.Vtime[thr_index])
                 & (low_spike.Vtime <= low_spike.Vtime[maxdvdt])  # [peak_index])
@@ -584,12 +597,14 @@ class Functions:
                 zorder=10,
             )
             x_line = [latency, AHP_t]
+            # draw dashed line at threshold
             ax[0].plot(
                 x_line,
                 low_spike.V[thr_index] * np.ones(2) * 1e3,
                 "k--",
                 linewidth=0.3,
             )
+            # draw dashed line at nadir of AHP
             ax[0].plot(
                 x_line,
                 low_spike.V[ahp_index] * np.ones(2) * 1e3,
@@ -623,7 +638,7 @@ class Functions:
             #     low_spike.halfwidth_V * 1e3,
             #     "co",
             # )
-            savgol= True
+            savgol = True
             bspline = False
             if bspline:  # fit with a bspline
                 # rising phase of AP from threshold to peak dvdt
@@ -633,27 +648,37 @@ class Functions:
                 # ax[0].plot(vtime[rising_phase_indices]-peak_t, low_spike.V[rising_phase_indices]*1e3,
                 #            color="b", linestyle="--", linewidth=2)
 
-            
                 # falling phase of AP from peak to spike threshold
                 tck_f, xfit_f, yfit_f, kappa_f = self.spline_fits(
                     vtime, low_spike.V, falling_phase_indices, label="falling"
                 )
-                    # ahp phase of AP from threshold time on out
+                # ahp phase of AP from threshold time on out
                 tck_a, xfit_a, yfit_a, kappa_a = self.spline_fits(
                     vtime, low_spike.V, ahp_phase_indices, k=5, s=bspline_s, label="ahp"
                 )
-            
+
             if savgol:
                 from scipy.signal import savgol_filter
+
                 window_length = int(bspline_s)
                 if window_length > 5:
                     polyorder = 5
                 else:
                     polyorder = 3
                     window_length = 5
-                yfit_r = savgol_filter(low_spike.V[rising_phase_indices], window_length=window_length, polyorder=polyorder)
-                yfit_f = savgol_filter(low_spike.V[falling_phase_indices], window_length=window_length, polyorder=polyorder)
-                yfit_a = savgol_filter(low_spike.V[ahp_phase_indices], window_length=window_length, polyorder=polyorder)
+                yfit_r = savgol_filter(
+                    low_spike.V[rising_phase_indices],
+                    window_length=window_length,
+                    polyorder=polyorder,
+                )
+                yfit_f = savgol_filter(
+                    low_spike.V[falling_phase_indices],
+                    window_length=window_length,
+                    polyorder=polyorder,
+                )
+                yfit_a = savgol_filter(
+                    low_spike.V[ahp_phase_indices], window_length=window_length, polyorder=polyorder
+                )
                 xfit_r = vtime[rising_phase_indices]
                 xfit_f = vtime[falling_phase_indices]
                 xfit_a = vtime[ahp_phase_indices]
@@ -661,7 +686,9 @@ class Functions:
                 kappa_f = self.curvature(xfit_f, yfit_f)
                 kappa_a = self.curvature(xfit_a, yfit_a)
 
-
+            ax[3].plot(
+                xfit_r, 1e3 * np.gradient(yfit_r, xfit_r), color=pcolor, linestyle="-", linewidth=1
+            )
             if bspline or savgol:
                 ax[0].plot(xfit_f, yfit_f * 1e3, color="cyan", linestyle="--", linewidth=0.5)
                 ax[1].plot(
@@ -671,7 +698,7 @@ class Functions:
                     linestyle="--",
                     linewidth=0.5,
                 )
-                
+
                 ax[0].plot(xfit_r, yfit_r * 1e3, color="orange", linestyle="--", linewidth=0.5)
                 ax[1].plot(
                     yfit_r[:-1] * 1e3,
@@ -681,7 +708,7 @@ class Functions:
                     linewidth=0.5,
                 )
                 ax[2].plot(
-                    yfit_r[1:] * 1e3, kappa_r[1:], color="orange", linestyle="--", linewidth=0.5
+                    yfit_r[1:] * 1e3, kappa_r[1:], color=pcolor, linestyle="--", linewidth=0.5
                 )
                 ax[0].plot(xfit_a, yfit_a * 1e3, color="m", linestyle="--", linewidth=0.5)
                 ax[1].plot(
@@ -691,15 +718,13 @@ class Functions:
                     linestyle="--",
                     linewidth=0.5,
                 )
-                ax[2].plot(
-                    yfit_a[1:] * 1e3, kappa_a[1:], color="m", linestyle="--", linewidth=0.5
-                )
+                ax[2].plot(yfit_a[1:] * 1e3, kappa_a[1:], color="m", linestyle="--", linewidth=0.25)
 
                 ax[2].plot(
-                    yfit_f[1:] * 1e3, kappa_f[1:], color="cyan", linestyle="--", linewidth=0.5
+                    yfit_f[1:] * 1e3, kappa_f[1:], color="cyan", linestyle="--", linewidth=0.25
                 )
                 # horizontal line at 0 curvature
-                ax[2].plot([-60, 20], [0, 0], color="black", linestyle="--", linewidth=0.25)
+                ax[2].plot([-60, 20], [0, 0], color="black", linestyle="--", linewidth=0.33)
 
                 # m = int(len(low_spike.V[rising_phase_indices]) / 4)
                 # if m > len(low_spike.V[rising_phase_indices]) / 4:
@@ -727,6 +752,8 @@ class Functions:
                 ax[1].set_ylabel("dV/dt (mV/ms)")
                 ax[2].set_xlabel("V (mV)")
                 ax[2].set_ylabel("Curvature (1/mV)")
+                ax[3].set_xlabel("Time (msec)")
+                ax[3].set_ylabel("Rising dV/dt (mV/ms)")
                 for i in range(2):
                     PH.nice_plot(ax[i])
                     PH.talbotTicks(ax[i])
@@ -736,33 +763,135 @@ class Functions:
         if nplots > 0:
             mpl.show()
         return cell_df
-        
+
     def get_selected_cell_data_FI(self, experiment, table_manager, assembleddata):
         self.get_row_selection(table_manager)
         pp = PrettyPrinter(indent=4, width=120)
         if self.selected_index_rows is not None:
-            fig, ax = mpl.subplots(1, 1)
+            P = PH.regular_grid(
+                2,
+                2,
+                margins={
+                    "bottommargin": 0.08,
+                    "leftmargin": 0.1,
+                    "rightmargin": 0.05,
+                    "topmargin": 0.1,
+                },
+            )
+            fig = P.figure_handle
+            ax = P.axarr
             iplot = 0
+            dropout_threshold = 0.8  # seconds
+            N = len(self.selected_index_rows)
+            dropout = np.zeros((2, len(self.selected_index_rows)))
+            cellids = ["None"] * len(self.selected_index_rows)
+            # cmap = mpl.cm.get_cmap("tab20", N)
+            # colors = [matplotlib.colors.to_hex(cmap(i)) for i in range(N)]
+            colors = colormaps.sinebow_dark.discrete(N)
             for nplots, index_row in enumerate(self.selected_index_rows):
                 selected = table_manager.get_table_data(index_row)
+                pcolor = colors[nplots].colors
+
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
                 cell_df, _ = filename_tools.get_cell(
                     experiment, assembleddata, cell_id=selected.cell_id
                 )
+                # print(cell_df.keys())
+                # print(cell_df.cell_expression)
                 # print(cell_df['IV'].keys())
                 datadict = self.compute_FI_Fits(
-                    experiment, assembleddata, selected.cell_id
+                    experiment,
+                    assembleddata,
+                    selected.cell_id,
+                    protodurs=experiment["FI_protocols"],
                 )
+                sym1 = "o"
+                if cell_df.cell_expression in ["+", "GFP+", "EYFP", "EYFP+"]:
+                    sym1 = "s"
+                sym = sym1 + "-"
                 if datadict is not None:
                     try:
-                        fit = datadict['fit'][0][0]
+                        fit = datadict["fit"][0][0]
                     except:
-                        pass
-                    ax.plot(np.array(datadict["FI_Curve1"][0])*1e12, datadict["FI_Curve1"][1], "o")
-                    ax.plot(np.array(fit[0][0])*1e12, fit[1][0], "b--")
+                        print("datadict keys: ", datadict.keys())
+                        print("fit keys: ", datadict["fit"])
+                    ax[0, 0].plot(
+                        np.array(datadict["FI_Curve1"][0]) * 1e12,
+                        datadict["FI_Curve1"][1],
+                        sym1,
+                        markersize=4,
+                        color=pcolor,
+                    )
+                    ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
+
+                    if datadict["firing_currents"] is not None:
+                        ax[1, 0].plot(
+                            np.array(datadict["firing_currents"]) * 1e12,
+                            datadict["firing_rates"],
+                            sym,
+                            markersize=4,
+                            color=pcolor,
+                        )
+                        ax[0, 1].plot(
+                            np.array(datadict["firing_currents"]) * 1e12,
+                            datadict["last_spikes"],
+                            sym,
+                            markersize=4,
+                            color=pcolor,
+                        )
+                    # compute "dropout" time
+                    if datadict["last_spikes"] is not None:
+                        # find the largest current that is above the dropuout threshold
+                        for ils in range(len(datadict["last_spikes"])):
+                            print(ils, datadict["last_spikes"][ils] * 1e3)
+                        do_pts = np.nonzero(np.array(datadict["last_spikes"]) >= dropout_threshold)[
+                            0
+                        ]
+                        # print("do_pts: ", do_pts)
+                        idrop = np.argmax(datadict["firing_currents"][do_pts]) + do_pts[0]
+                        # print("idrop: ", idrop)
+                        # print(datadict["last_spikes"][idrop] * 1e3)
+                        # print(datadict["firing_currents"][idrop] * 1e12)
+                        if len(do_pts) > 0:
+                            dropout[1, nplots] = datadict["firing_currents"][idrop] * 1e12
+                            dropout[0, nplots] = datadict["last_spikes"][idrop] * 1e3
+                        else:
+                            dropout[1, nplots] = datadict["firing_currents"][0] * 1e12
+                            dropout[0, nplots] = 0
+                        cellids[nplots] = selected.cell_id
+                        print(selected.cell_id, dropout[0, nplots], dropout[1, nplots])
+                        ax[1, 1].plot(
+                            [0, 1000],
+                            [dropout_threshold, dropout_threshold],
+                            color="gray",
+                            linestyle="--",
+                            linewidth=0.33,
+                        )
+                        ax[1, 1].plot(
+                            dropout[1, nplots],
+                            dropout[0, nplots],
+                            sym1,
+                            color=pcolor,
+                            clip_on=False,
+                        )
                     iplot += 1
+            print("dropout current levels: ")
+            print("-" * 20)
+            for i in np.argsort(dropout[1]):
+                print(i, cellids[i], dropout[1, i])
+            print("-" * 20)
             if iplot > 0:
+                ax[1, 0].set_xlabel("Current (pA)")
+                ax[1, 1].set_xlabel("Current (pA)")
+                ax[0, 0].set_ylabel("Firing Rate (Hz) (1 sec)")
+                ax[1, 0].set_ylabel("Firing Rate (Hz) (1st to last spike)")
+                ax[0, 1].set_ylabel("Time of last spike (sec)")
+                ax[1, 1].set_ylabel("Time of last spike < 0.8 sec (sec)")
+                ax[1, 1].set_xlim(0, 1000)
+                ax[1, 1].set_ylim(0, 1000)
+
+                fig.suptitle(f"Firing analysis for {cell_df.cell_expression:s}")
                 mpl.show()
             return self.selected_index_rows
         else:
@@ -1007,7 +1136,7 @@ class Functions:
         experiment,
         df: pd.DataFrame,
         cell: str,
-        protodurs: list = [1.0],
+        protodurs: dict=None,
     ):
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
@@ -1081,6 +1210,9 @@ class Functions:
             "protocols": list(df_cell.IV),
             "sample_rate": srs,
             "duration": dur,
+            "currents": None,
+            "firing_rates": None,
+            "last_spikes": None,
         }
 
         # get the measures for the fixed values from the measure list
@@ -1098,18 +1230,33 @@ class Functions:
         FI_Data_I4_: list_ = []
         FI_Data_FR4_: list_ = []  # firing rate
         FI_fits: dict = {"fits": [], "pars": [], "names": []}
+
         linfits: list = []
         hill_max_derivs: list = []
         hill_i_max_derivs: list = []
+
+        firing_currents: list = []
+        firing_rates: list = []
+        firing_last_spikes: list = []
+        latencies: list = []
         protofails = 0
+        # check the protocols
         for protocol in protocols:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
-            # check if duration is acceptable:
-            if protodurs is not None:
-                durflag = False
-                for d in protodurs:
-                    if not np.isclose(dur[protocol], d):
+            short_proto_name = Path(protocol).name[:-4]
+            # check if duration is acceptable: protodurs is a dictionary from the configuration file.
+            # Keys are acceptable protocols
+            # values are a list of their acceptable durations
+            if protodurs is not None:  # see if we can match what is in the protocol durations dict
+                durflag = False  # with the actual protocol duration in dur[protocol]
+                if short_proto_name not in protodurs.keys():
+                    continue  # prototol will not be considered for this analysis
+                if isinstance(protodurs[short_proto_name], float):
+                    protodurs[short_proto_name] = [protodurs[short_proto_name]] # make it a list
+                for duration in protodurs[short_proto_name]:  # check if the duration is within the acceptable limits
+                    # print("    >>>> Protocol: ", protocol, "duration of proto: ", dur[protocol],  "dur to test: ", duration)
+                    if not np.isclose(dur[protocol], duration):
                         durflag = True
                 if durflag:
                     CP("y", f"    >>>> Protocol {protocol:s} has duration of {dur[protocol]:e}")
@@ -1125,7 +1272,7 @@ class Functions:
                 CP("y", f"    >>>> Skipping protocol with no spikes:  {protocol:s}")
                 continue
             else:
-                CP("g", f"   >>>> Analyzing FI for protocol: {protocol:s}")
+                CP("g", f"    >>>> Analyzing FI for protocol: {protocol:s}")
             try:
                 fidata = df_cell.Spikes[protocol]["FI_Curve"]
             except KeyError:
@@ -1141,12 +1288,45 @@ class Functions:
                     )
                 else:
                     continue
+            # get mean rate from second to last spike
+            current = []
+            rate = []
+            last_spike = []
+
+            for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
+                if len(spikes) == 0:
+                    continue
+                latencies = np.sort(
+                    [spikes[spike].AP_latency - spikes[spike].tstart for spike in spikes]
+                )
+                # for spike in spikes:
+                #     latencies.append(spikes[spike].AP_latency-spikes[spike].tstart)
+                current.append(
+                    spikes[0].current
+                )  # current is the same for all spikes in this trace
+                if len(latencies) >= 3:
+                    rate.append(1.0 / np.mean(np.diff(latencies)))
+                    last_spike.append(latencies[-1])
+                else:  # keep arrays the same length
+                    rate.append(np.nan)
+                    last_spike.append(np.nan)
+
+            # firing_pars = {'current': current, 'rate': rate, 'last_spike': last_spike}
+            # print(f"    Currents: {current!s}")
+            # print(f"    Rates: {rate!s}")
+            # print(f"    Last Spikes: {last_spike!s}")
+
+            # exit()
             if np.max(fidata[0]) > 1.01e-9:  # accumulate high-current protocols
                 FI_Data_I4_.extend(fidata[0])
                 FI_Data_FR4_.extend(fidata[1] / dur[protocol])
             else:  # accumulate other protocols <= 1 nA
                 FI_Data_I1_.extend(fidata[0])
                 FI_Data_FR1_.extend(fidata[1] / dur[protocol])
+                # accumulate this other information as well.
+                firing_currents.extend(current)
+                firing_rates.extend(rate)
+                firing_last_spikes.extend(last_spike)
 
         FI_Data_I1 = []
         FI_Data_FR1 = []
@@ -1196,6 +1376,9 @@ class Functions:
         datadict["maxHillSlope_SD"] = np.nan
         datadict["I_maxHillSlope"] = np.nan
         datadict["I_maxHillSlope_SD"] = np.nan
+        datadict["firing_currents"] = None
+        datadict["firing_rates"] = None
+        datadict["last_spikes"] = None
         if len(linfits) > 0:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
         else:
@@ -1211,6 +1394,26 @@ class Functions:
         if len(FI_Data_I4) > 0:
             i_four = np.where(FI_Data_I4 <= 4.01e-9)[0]
             datadict["FIMax_4"] = np.nanmax(FI_Data_FR4[i_four])
+        i_curr = np.argsort(firing_currents)
+        fc = np.array(firing_currents)[i_curr]
+        fr = np.array(firing_rates)[i_curr]
+        fs = np.array(firing_last_spikes)[i_curr]
+        bins = b = np.linspace(
+            -25e-12, 1025e-12, 22, endpoint=True
+        )  # 50 pA bins centered on 0, 50, 100, etc.
+        # print("fc len: ", len(fc), "fr: ", len(fr), "fs: ", len(fs))
+        # for i in range(len(fc)):
+        #     print(fc[i], fr[i], fs[i])
+        if len(fc) > 0:
+            datadict["firing_currents"] = scipy.stats.binned_statistic(
+                fc, fc, bins=bins, statistic=np.nanmean
+            ).statistic
+            datadict["firing_rates"] = scipy.stats.binned_statistic(
+                fc, fr, bins=bins, statistic=np.nanmean
+            ).statistic
+            datadict["last_spikes"] = scipy.stats.binned_statistic(
+                fc, fs, bins=bins, statistic=np.nanmean
+            ).statistic
         return datadict
 
     def compare_cell_id(self, cell_id: str, cell_ids: list):
