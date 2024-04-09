@@ -61,8 +61,10 @@ class IVPlotter(object):
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
         # check to see if this one is in the exclusion list:
-        if (df_selected.cell_id in self.experiment["excludeIVs"] 
-            and self.experiment["excludeIVs"][df_selected.cell_id]['protocols'] == ["all"]):
+        print(df_selected.cell_id, self.experiment["excludeIVs"])
+        if ((self.experiment["excludeIVs"] is not None) 
+            and (df_selected.cell_id in self.experiment["excludeIVs"] )
+            and (self.experiment["excludeIVs"][df_selected.cell_id]['protocols'] == ["all"])):
             CP("y", f"Excluding {df_selected.cell_id} from the plotting")
             return
 
@@ -75,7 +77,7 @@ class IVPlotter(object):
             raise IndexError(f"Could not find cell: {df_selected.cell_id} in the summary table")
         
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
-        if datestring is None:
+        if datestr is None:
             return False
         slicecell = filename_tools.make_slicecell(slicestr, cellstr)
         matchcell, slicecell3, slicecell2, slicecell1 = filename_tools.compare_slice_cell(
@@ -208,27 +210,27 @@ class IVPlotter(object):
 
             # mark spikes outside the stimlulus window if we ask for them
             if self.decorate:
-                ptps = np.array([])
-                paps = np.array([])
+
                 clist = ["g", "b"]
-                windows = ["baseline_spikes", "poststimulus_spikes"]  #
-                #    : [0.0, self.AR.tstart],
-                #            'poststimulus': [self.AR.tend, np.max(self.AR.time_base)]}
+                windows = ["baseline_spikes", "poststimulus_spikes"] 
                 for k, window in enumerate(windows):
                     ptps = spike_dict[window]
-                    # print("ptps: ", ptps)
-                    for ispt, spt in enumerate(ptps):
-                        if len(spt) == 0:
-                            continue
-                        uindx = [int(u / self.AR.sample_interval) + 1 for u in spt]
-                        paps = np.array(self.AR.traces[ispt, uindx])
-                        P.axdict["A"].plot(
-                            np.array(spt) * 1e3,
-                            idv + paps * 1e3,
-                            "o",
-                            color=clist[k],
-                            markersize=0.5,
-                        )
+                    print("ptps: ", ptps)
+                    if len(ptps[i]) == 0:
+                        continue
+                    uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[i]]
+                    spike_times = ptps[i] # np.array(self.AR.time_base[uindx])
+                    peak_aps = np.array(self.AR.traces[i, uindx])
+                    print("uindx: ", uindx)
+                    print("paps: ", peak_aps)
+                    print("spike_times: ", spike_times)
+                    P.axdict["A"].plot(
+                        spike_times * 1e3,
+                        idv + peak_aps * 1e3,
+                        "o",
+                        color=clist[k],
+                        markersize=0.5,
+                    )
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
                 print("taum fitted is not in the ivs: ", ivs.keys())
@@ -388,7 +390,9 @@ class IVPlotter(object):
         """
 
         for i, spike_tr in enumerate(spikes):  # this is the trace number
-            spike_train = spikes[spike_tr]  # get teh spike train, then get just the latency
+            spike_train = spikes[spike_tr]  # get the spike train, then get just the latency
+            # for sp in spike_train.keys():
+            #     print("sp: ", sp, spike_train[sp].AP_latency)
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
 
             if len(spk_tr) == 0:
