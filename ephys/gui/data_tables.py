@@ -165,8 +165,10 @@ def make_rundates():
 
 Age_Values = [  # this is just for selecting age ranges in the GUI
     "None",
-    [10, 14],
-    [15, 19],
+    [7, 20],
+    [21, 49],
+    [50, 179],
+    [180, 1200],
     [0, 21],
     [21, 28],
     [28, 60],
@@ -475,9 +477,9 @@ class DataTables:
                         "value": "None",
                     },
                     {
-                        "name": "group",
+                        "name": "Group",
                         "type": "list",
-                        "limits": ["None", "Control", "NIHL", "A", "AA", "AAA", "B"],
+                        "limits": ["None", "-/-", "+/+", "+/-"],
                         "value": "None",
                     },
                     {
@@ -1216,7 +1218,7 @@ class DataTables:
                         case "Use Filter":  # currently not an option
                             # print(data)
                             self.filters["Use Filter"] = data
-                        case "cell_type" | "age" | "sex" | "group":
+                        case "cell_type" | "age" | "sex" | "Group":
                             if data != None:
                                 self.filters[path[1]] = data
 
@@ -1253,9 +1255,8 @@ class DataTables:
                             )  # by date
                             selected_rows = self.table.selectionModel().selectedRows()
                             selection_model = self.table.selectionModel()
-                            
                             reload.reloadAll(debug=True)
-                            
+                            print("\033[1000B")
                             # self.table_manager = table_manager.TableManager(
                             #     parent=self,
                             #     table=self.table,
@@ -1361,23 +1362,23 @@ class DataTables:
         # args.after= "2021.07.01"
         # this is to handle an old config file structure that related to 
             # specific cell types etc. Pretty sure it does not work anymore
-        if args.configfile is not None:
-            config = None
-            if args.configfile is not None:
-                if ".json" in args.configfile:
-                    # The escaping of "\t" in the config file is necesarry as
-                    # otherwise Python will try to treat is as the string escape
-                    # sequence for ASCII Horizontal Tab when it encounters it
-                    # during json.load
-                    config = json.load(open(args.configfile))
-                elif ".toml" in args.configfile:
-                    config = toml.load(open(args.configfile))
+        # if args.configfile is not None:
+        #     config = None
+        #     if args.configfile is not None:
+        #         if ".json" in args.configfile:
+        #             # The escaping of "\t" in the config file is necesarry as
+        #             # otherwise Python will try to treat is as the string escape
+        #             # sequence for ASCII Horizontal Tab when it encounters it
+        #             # during json.load
+        #             config = json.load(open(args.configfile))
+        #         elif ".toml" in args.configfile:
+        #             config = toml.load(open(args.configfile))
 
-            vargs = vars(args)  # reach into the dict to change values in namespace
-            for c in config:
-                if c in args:
-                    # print("c: ", c)
-                    vargs[c] = config[c]
+        #     vargs = vars(args)  # reach into the dict to change values in namespace
+        #     for c in config:
+        #         if c in args:
+        #             # print("c: ", c)
+        #             vargs[c] = config[c]
         CP.cprint(
             "g",
             f"Starting IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
@@ -1386,11 +1387,12 @@ class DataTables:
         CP.cprint("r", "=" * 80)
         IV = iv_analysis.IVAnalysis(args)
         IV.set_experiment(self.experiment)
-
+        CP.cprint("r", "analyze_ivs datatables: experiment set")
         # IV.set_exclusions(exclusions)
         IV.setup()
+        CP.cprint("r", "analyze_ivs datatables: setup completed")
         IV.run()
-
+        CP.cprint("r", "analyze_ivs datatables: run completed")
         if self.dry_run:
             CP.cprint(
                 "cyan",
