@@ -7,10 +7,23 @@ import re
 
 
 def check_celltype(celltype: Union[str, None] = None):
+    """check_celltype: convert cell type to "unknown" if it is None, empty, or whitespace or '?
+
+    Parameters
+    ----------
+    celltype : Union[str, None], original cell type
+        string from table celltype, by default None
+
+    Returns
+    -------
+    str
+        updated cell type. Specifically 
+    """
+
     if isinstance(celltype, str):
         celltype = celltype.strip()
     if celltype in [None, "", "?", " ", "  ", "\t"]:
-        print(f"Changing Cell type to unknown from <{celltype:s}>")
+        CP.cprint("y", f"Changing Cell type to unknown from <{celltype:s}>")
         celltype = "unknown"
     return celltype
 
@@ -153,6 +166,7 @@ def make_cell(icell: int, df: pd.DataFrame):
     except:
         CP("r", f"Failed to get date string from dataframe with icell={icell:d}")
         return None, None, None
+    # print("make_cell: datestr = ", datestr, "icell: ", icell)
     slicestr = str(Path(df.iloc[icell]["slice_slice"]).parts[-1])
     cellstr = str(Path(df.iloc[icell]["cell_cell"]).parts[-1])
     return (datestr, slicestr, cellstr)
