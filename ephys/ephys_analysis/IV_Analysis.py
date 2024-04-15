@@ -3,27 +3,29 @@ Compute IV Information
 
 
 """
+
 import datetime
 import gc
 import logging
-from collections import OrderedDict
 from pathlib import Path
 from typing import List, Literal, Union
 
 import numpy as np
 import pandas as pd
-import pyqtgraph.multiprocess as MP
-import pylibrary.tools.cprint as CP
+from pyqtgraph import multiprocess as MP
+from pylibrary.tools import cprint as CP
 
 import ephys.tools.build_info_string as BIS
 import ephys.tools.functions as functions
 from ephys.ephys_analysis.analysis_common import Analysis
-import ephys.datareaders.acq4_reader as acq4_reader
-import ephys.ephys_analysis.spike_analysis as spike_analysis
-import ephys.ephys_analysis.rm_tau_analysis as rm_tau_analysis
+from ephys.datareaders.acq4_reader import acq4_reader
+from ephys.ephys_analysis.rm_tau_analysis import RmTauAnalysis
+from ephys.ephys_analysis.spike_analysis import SpikeAnalysis
+import ephys.tools.filename_tools as filename_tools
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
+
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
@@ -39,13 +41,14 @@ class CustomFormatter(logging.Formatter):
         logging.INFO: white + lineformat + reset,
         logging.WARNING: yellow + lineformat + reset,
         logging.ERROR: red + lineformat + reset,
-        logging.CRITICAL: bold_red + lineformat + reset
+        logging.CRITICAL: bold_red + lineformat + reset,
     }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+
 
 logging.getLogger("fontTools.subset").disabled = True
 Logger = logging.getLogger("AnalysisLogger")
@@ -56,9 +59,11 @@ logging_fh = logging.FileHandler(filename="iv_analysis.log")
 logging_fh.setLevel(level)
 logging_sh = logging.StreamHandler()
 logging_sh.setLevel(level)
-log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s ")
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s "
+)
 logging_fh.setFormatter(log_formatter)
-logging_sh.setFormatter(CustomFormatter()) # log_formatter)
+logging_sh.setFormatter(CustomFormatter())  # log_formatter)
 Logger.addHandler(logging_fh)
 # Logger.addHandler(logging_sh)
 # setFileConfig(filename="iv_analysis.log", encoding='utf=8')
@@ -67,14 +72,15 @@ Logger.addHandler(logging_fh)
 class IVAnalysis(Analysis):
 
     Logger = logging.getLogger("AnalysisLogger")
+
     def __init__(self, args):
         super().__init__(args)
         self.IVFigure = None
         self.mode = "acq4"
-        self.AR: acq4_reader = acq4_reader.acq4_reader()
-        self.RM: rm_tau_analysis = rm_tau_analysis.RmTauAnalysis()
-        self.SP: spike_analysis = spike_analysis.SpikeAnalysis()
-    
+        self.AR: object = acq4_reader()
+        self.RM: rm_tau_analysis = RmTauAnalysis()
+        self.SP: spike_analysis = SpikeAnalysis()
+
         Logger.info("Instantiating IVAnalysis class")
 
     def __enter__(self):
@@ -156,9 +162,7 @@ class IVAnalysis(Analysis):
             bool: True if RMP is stable, False otherwise.
         """
         if self.mode == "acq4":
-            self.AR.setProtocol(
-                self.datapath
-            )  # define the protocol path where the data is
+            self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
             self.RM.setup(self.AR, self.SP, bridge_offset=0.0)
         self.RM.rmp_analysis(time_window=rmpregion)
@@ -196,24 +200,26 @@ class IVAnalysis(Analysis):
         Logger.info("Starting iv_analysis")
         msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
         msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
-        CP.cprint(
-            "c", msg
-        )
+        CP.cprint("c", msg)
         Logger.info(msg)
         cell_directory = Path(
             # self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
-            self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id
+            self.df.iloc[icell].data_directory,
+            self.df.iloc[icell].cell_id,
         )
         CP.cprint("m", f"File: {str(cell_directory):s}")
-        CP.cprint("m", f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}")
+        CP.cprint(
+            "m",
+            f"   Cell id: {str(self.df.iloc[icell].cell_id):s},  cell_type: {str(self.df.iloc[icell].cell_type):s}",
+        )
 
         cell_index = self.AR.getIndex(cell_directory)
         if "important" in cell_index.keys():
             important = cell_index["important"]
             CP.cprint("m", f"   Important: {important!s}")
         else:
-            CP.cprint("r", f"   Important flag: flag was not found")   
-            important = False 
+            CP.cprint("r", f"   Important flag: flag was not found")
+            important = False
         if self.important_flag_check and not important:  # cell not marked important, so skip
             print("Not important? ")
             return
@@ -244,9 +250,7 @@ class IVAnalysis(Analysis):
                     for k in u.keys():
                         if isinstance(u[k], dict):
                             for uk in u[k].keys():
-                                if isinstance(u[k][uk], bool) or isinstance(
-                                    u[k][uk], int
-                                ):
+                                if isinstance(u[k][uk], bool) or isinstance(u[k][uk], int):
                                     u[k][uk] = int(u[k][uk])
                         if k in ["taupars", "RMPs", "Irmp"]:
                             # if isinstance(u[k], Iterable) and not isinstance(u[k], (dict, list, float, str, nfloat)):
@@ -303,21 +307,23 @@ class IVAnalysis(Analysis):
         nfiles = 0
         allivs = []
         print("allprots: ", allprots["CCIV"])
-        cciv_protocols = list(self.experiment['protocols']["CCIV"].keys())
+        cciv_protocols = list(self.experiment["protocols"]["CCIV"].keys())
         for protoname in allprots["CCIV"]:  # check all the protocols
             protocol_type = str(Path(protoname).name)[:-4]
             print(" protocol type: ", protocol_type, end="")
-            if protocol_type in cciv_protocols: # ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
+            if (
+                protocol_type in cciv_protocols
+            ):  # ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
                 allivs.append(protoname)  # combine into a new list
                 print("     appended")
             else:
                 print("     not appended")
 
-        validivs = allivs 
+        validivs = allivs
         # build a list of all exclusions
         exclude_ivs = []
         for ex_cell in self.exclusions.keys():
-            for ex_proto in self.exclusions[ex_cell]['protocols']:
+            for ex_proto in self.exclusions[ex_cell]["protocols"]:
                 exclude_ivs.append(str(Path(ex_cell, ex_proto)))
         print("Excluded IVs: ", exclude_ivs)
         # the exclusion list is shorter (we hope), so let's iterate over it for removal
@@ -333,7 +339,7 @@ class IVAnalysis(Analysis):
         results: dict = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
-
+        self.noparallel = True
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
@@ -343,7 +349,7 @@ class IVAnalysis(Analysis):
                     cell_directory=cell_directory,
                     allivs=validivs,
                     nfiles=nfiles,
-                    pdf=pdf,
+                    # pdf=pdf,
                 )
                 if self.dry_run:
                     continue
@@ -363,13 +369,9 @@ class IVAnalysis(Analysis):
         #            print(self.df.at[icell, 'IV'])
         else:
             result = [None] * len(tasks)  # likewise
-            with MP.Parallelize(
-                enumerate(tasks), results=results, workers=nworkers
-            ) as tasker:
+            with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
                 for i, x in tasker:
-                    result, nfiles = self.analyze_iv(
-                        icell, i, x, cell_directory, validivs, nfiles
-                    )
+                    result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
                     tasker.results[validivs[i]] = result
             # reform the results for our database
             if self.dry_run:
@@ -384,15 +386,11 @@ class IVAnalysis(Analysis):
             #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
             #            print('riv: ', riv)
 
-            self.df.at[
-                icell, "IV"
-            ] = riv  # everything in the RM analysis_summary structure
-            self.df.at[
-                icell, "Spikes"
-            ] = rsp  # everything in the SP analysus_summary structure
-
+            self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
+            self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
 
         self.df["annotated"] = self.df["annotated"].astype(int)
+
         def clean_exp_unit(row):
             if pd.isnull(row.expUnit):
                 return 0
@@ -401,6 +399,7 @@ class IVAnalysis(Analysis):
                     return 1
                 else:
                     return 0
+
         self.df["expUnit"] = self.df.apply(clean_exp_unit, axis=1)
         # self.df["expUnit"] = self.df["expUnit"].astype(int)
 
@@ -416,23 +415,16 @@ class IVAnalysis(Analysis):
             )
             Logger.info(msg)
             # with hdf5:
-            # Note, reading this will be slow - it seems to be rather a large file.
-            day, slice, cell = self.make_cell(icell=icell)
-            keystring = str(
-                Path(Path(day).name, slice, cell)
-            )  # the keystring is the cell.
+            day, slice, cell = filename_tools.make_cell(icell=icell)
+            keystring = str(Path(Path(day).name, slice, cell))  # the keystring is the cell.
             # pytables does not like the keystring starting with a number, or '.' in the string
             # so put "d_" at start, and then replace '.' with '_'
             # what a pain.
             keystring = "d_" + keystring.replace(".", "_")
             if self.n_analyzed == 0:
-                self.df.iloc[icell].to_hdf(
-                    self.iv_analysisFilename, key=keystring, mode="w"
-                )
+                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
-                self.df.iloc[icell].to_hdf(
-                    self.iv_analysisFilename, key=keystring, mode="a"
-                )
+                self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
             # self.df.at[icell, "IV"] = None
             # self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
@@ -455,7 +447,6 @@ class IVAnalysis(Analysis):
             Logger.info(msg)
             with open(self.iv_analysisFilename, "wb") as fh:
                 self.df.to_feather(fh)
-
 
     def analyze_iv(
         self,
@@ -485,21 +476,19 @@ class IVAnalysis(Analysis):
             number for file...
 
         """
-
         protocol = Path(allivs[i]).name
         result = {}
         iv_result = {}
         sp_result = {}
         print("cell directory: ", cell_directory)
         print("protocol: ", protocol)
-
         protocol_directory = Path(cell_directory, protocol)
-
         if not protocol_directory.is_dir():
             msg = f"Protocol directory not found (A): {str(protocol_directory):s}"
             CP.cprint(
                 "r",
-                msg,   )
+                msg,
+            )
             Logger.error(msg)
             exit()
         if self.important_flag_check:
@@ -535,29 +524,27 @@ class IVAnalysis(Analysis):
                 and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
             ):
                 msg = "Bridge: {0:.2f} Mohm".format(
-                        self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
-                    )
+                    self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
+                )
                 print(msg)
                 Logger.info(msg)
 
             ctype = self.df.at[icell, "cell_type"].lower()
-            tgap = 0.0015
-            tinit = True
-            if ctype in [
-                "bushy",
-                "d-stellate",
-                "octopus",
-            ]:
-                tgap = 0.0005  # shorten gap for measures for fast cell types
-                tinit = False
+            if ctype in self.experiment["fit_gap"].keys():
+                fit_gap = self.experiment["fit_gap"][ctype]
+            elif "default" in self.experiment["fit_gap"].keys():
+                fit_gap = self.experiment["fit_gap"]["default"]
+            else:
+                raise ValueError("No 'default' fit_gap in experiment.cfg file")
+
             self.plot_mode(mode=self.IV_pubmode)
-            plot_handle = self.compute_iv(
+            self.compute_iv(
                 threshold=self.spike_threshold,
                 refractory=self.refractory,
                 bridge_offset=br_offset,
-                tgap=tgap,
+                fit_gap=fit_gap,
                 max_spikeshape=self.max_spikeshape,
-                max_spike_look = self.max_spike_look,
+                max_spike_look=self.max_spike_look,
                 plotiv=True,
                 full_spike_analysis=True,
             )
@@ -566,14 +553,10 @@ class IVAnalysis(Analysis):
             result["IV"] = iv_result
             result["Spikes"] = sp_result
             ctype = self.df.at[icell, "cell_type"]
-            annot = self.df.at[icell, "annotated"]
-            if annot:
-                ctwhen = "[revisited]"
-            else:
-                ctwhen = "[original]"
+            # annot = self.df.at[icell, "annotated"]
             nfiles += 1
             # print("Checking for figure, plothandle is: ", plot_handle)
-            
+
             del iv_result
             del sp_result
             gc.collect()
@@ -582,7 +565,6 @@ class IVAnalysis(Analysis):
         else:
             print(f"Dry Run: would analyze {str(protocol_directory):s}")
             br_offset = 0
-
             if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):
                 print("   current database has no IV data set for this file")
             elif protocol not in list(self.df.at[icell, "IV"].keys()):
@@ -599,13 +581,12 @@ class IVAnalysis(Analysis):
             gc.collect()
             return None, 0
 
-
     def compute_iv(
         self,
         threshold: float = -0.010,
         refractory=0.0007,
         bridge_offset: float = 0.0,
-        tgap: float = 0.0005,
+        fit_gap: float = 0.0005,  # should be set from configuration file
         plotiv: bool = False,
         full_spike_analysis: bool = True,
         max_spikeshape: int = 2,
@@ -617,9 +598,7 @@ class IVAnalysis(Analysis):
 
         """
         if self.mode == "acq4":
-            self.AR.setProtocol(
-                self.datapath
-            )  # define the protocol path where the data is
+            self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
             if self.important_flag_check:
                 if not self.AR.protocol_important:
@@ -629,7 +608,9 @@ class IVAnalysis(Analysis):
                 print("Decimating with: ", self.decimate)
                 self.AR.traces = functions.downsample(self.AR.traces, n=self.downsample, axis=1)
                 self.AR.cmd_wave = functions.downsample(self.AR.cmd_wave, n=self.downsample, axis=1)
-                self.AR.time_base = functions.downsample(self.AR.time_base, n=self.downsample, axis=0)
+                self.AR.time_base = functions.downsample(
+                    self.AR.time_base, n=self.downsample, axis=0
+                )
             self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
             self.SP.setup(
                 clamps=self.AR,
@@ -639,7 +620,7 @@ class IVAnalysis(Analysis):
                 interpolate=True,
                 verify=False,
                 mode="schmitt",
-                max_spike_look = max_spike_look,
+                max_spike_look=max_spike_look,
             )
             self.SP.analyzeSpikes()
             if full_spike_analysis:
@@ -655,14 +636,14 @@ class IVAnalysis(Analysis):
                     self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0,
                 ],
                 to_peak=to_peak,
-                tgap=tgap,
+                tgap=fit_gap,
             )
             return True
 
         else:
-            msg = f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
+            msg = (
+                f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
+            )
             print(msg)
             Logger.error(msg)
         return None
-
-    
