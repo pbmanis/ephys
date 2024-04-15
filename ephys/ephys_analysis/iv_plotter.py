@@ -61,7 +61,7 @@ class IVPlotter(object):
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
         # check to see if this one is in the exclusion list:
-        print(df_selected.cell_id, self.experiment["excludeIVs"])
+        # print(df_selected.cell_id, self.experiment["excludeIVs"])
         if ((self.experiment["excludeIVs"] is not None) 
             and (df_selected.cell_id in self.experiment["excludeIVs"] )
             and (self.experiment["excludeIVs"][df_selected.cell_id]['protocols'] == ["all"])):
@@ -69,9 +69,8 @@ class IVPlotter(object):
             return
 
         try:
-            index = self.df_summary.index[self.df_summary["cell_id"] == df_selected.cell_id].values[
-            0
-        ]  # find the cell in the main index
+            # find the cell in the main index
+            index = self.df_summary.index[self.df_summary["cell_id"] == df_selected.cell_id].values[0]
         except IndexError:
             CP("r", f"Could not find cell: {df_selected.cell_id} in the summary table")
             raise IndexError(f"Could not find cell: {df_selected.cell_id} in the summary table")
@@ -88,7 +87,8 @@ class IVPlotter(object):
         # print("datestr, clicecel, slice, cell, celltype: ", datestr, slicecell, slicestr, cellstr, df_selected['cell_type'])
         thisday = datestr.replace(".", "_").split("_")
         thisday = "_".join(thisday[:-1])
-
+        # print("df_summary in plot ivs:\n", self.df_summary.columns)
+        # print("df_selected in plot ivs:\n", df_selected.keys())
         self.plot_df, _tmp = filename_tools.get_cell(
             experiment=self.experiment, df=self.df_summary, cell_id=df_selected.cell_id
         )
@@ -130,7 +130,7 @@ class IVPlotter(object):
                 "noaxes": False,
             },
             "B": {"pos": [0.62, 0.30, 0.74, 0.17], "labelpos": (x, y), "noaxes": False},
-            "C": {"pos": [0.70, 0.22, 0.52, 0.17], "labelpos": (x, y)},
+            "C": {"pos": [0.75, 0.17, 0.50, 0.17], "labelpos": (x, y)},
             "D": {"pos": [0.62, 0.30, 0.30, 0.17], "labelpos": (x, y)},
             "E": {"pos": [0.62, 0.30, 0.08, 0.17], "labelpos": (x, y)},
         }
@@ -173,38 +173,38 @@ class IVPlotter(object):
             cmap(float(i) / self.AR.traces.shape[0]) for i in range(self.AR.traces.shape[0])
         ]
 
-        for i in range(self.AR.traces.shape[0]):
+        for trace_number in range(self.AR.traces.shape[0]):
             if self.plotting_alternation > 1:
                 if i % self.plotting_alternation != 0:
                     continue
 
-            if i in list(spikes.keys()):
+            if trace_number in list(spikes.keys()):
                 idv = float(jsp) * dv
                 jsp += 1
             else:
                 idv = 0.0
             P.axdict["A"].plot(
                 self.AR.time_base * 1e3,
-                idv + self.AR.traces[i, :].view(np.ndarray) * 1e3,
+                idv + self.AR.traces[trace_number, :].view(np.ndarray) * 1e3,
                 "-",
-                color=trace_colors[i],
+                color=trace_colors[trace_number],
                 linewidth=0.35,
             )
             P.axdict["A1"].plot(
                 self.AR.time_base * 1e3,
-                self.AR.cmd_wave[i, :].view(np.ndarray) * 1e9,
+                self.AR.cmd_wave[trace_number, :].view(np.ndarray) * 1e9,
                 "-",
-                color=trace_colors[i],
+                color=trace_colors[trace_number],
                 linewidth=0.35,
             )
 
             # mark spikes inside the stimulus window
             ptps = np.array([])
             paps = np.array([])
-            if i in list(spikes.keys()) and self.decorate:
-                for j in list(spikes[i].keys()):
-                    paps = np.append(paps, spikes[i][j].peak_V * 1e3)
-                    ptps = np.append(ptps, spikes[i][j].peak_T * 1e3)
+            if trace_number in list(spikes.keys()) and self.decorate:
+                for j in list(spikes[trace_number].keys()):
+                    paps = np.append(paps, spikes[trace_number][j].peak_V * 1e3)
+                    ptps = np.append(ptps, spikes[trace_number][j].peak_T * 1e3)
                     # print("spikes ij ", i, j, spikes[i][j])
                 P.axdict["A"].plot(ptps, idv + paps, "ro", markersize=0.5)
 
@@ -213,42 +213,38 @@ class IVPlotter(object):
 
                 clist = ["g", "b"]
                 windows = ["baseline_spikes", "poststimulus_spikes"] 
-                for k, window in enumerate(windows):
+                for window_number, window in enumerate(windows):
                     ptps = spike_dict[window]
-                    print("ptps: ", ptps)
-                    if len(ptps[i]) == 0:
+                    if len(ptps[trace_number]) == 0:
                         continue
-                    uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[i]]
-                    spike_times = ptps[i] # np.array(self.AR.time_base[uindx])
-                    peak_aps = np.array(self.AR.traces[i, uindx])
-                    print("uindx: ", uindx)
-                    print("paps: ", peak_aps)
-                    print("spike_times: ", spike_times)
+                    uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[trace_number]]
+                    spike_times = ptps[trace_number] # np.array(self.AR.time_base[uindx])
+                    peak_aps = np.array(self.AR.traces[trace_number, uindx])
                     P.axdict["A"].plot(
                         spike_times * 1e3,
                         idv + peak_aps * 1e3,
                         "o",
-                        color=clist[k],
+                        color=clist[window_number],
                         markersize=0.5,
                     )
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
-                print("taum fitted is not in the ivs: ", ivs.keys())
+                CP('y', f"taum fitted is not in the ivs: {ivs.keys()!s}")
             if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
-                for k in ivs["taum_fitted"].keys():
+                for fit_number in ivs["taum_fitted"].keys():
                     # CP('g', f"tau fitted keys: {str(k):s}")
                     P.axdict["A"].plot(
-                        ivs["taum_fitted"][k][0] * 1e3,  # ms
-                        ivs["taum_fitted"][k][1] * 1e3,  # mV
+                        ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
+                        ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
                         "--g",
                         linewidth=1.0,
                     )
             if ivs["tauh_tau"] != np.nan and "tauh_fitted" in ivs.keys():
-                for k in ivs["tauh_fitted"].keys():
+                for fit_number in ivs["tauh_fitted"].keys():
                     # CP('r', f"tau fitted keys: {str(k):s}")
                     P.axdict["A"].plot(
-                        ivs["tauh_fitted"][k][0] * 1e3,
-                        ivs["tauh_fitted"][k][1] * 1e3,
+                        ivs["tauh_fitted"][fit_number][0] * 1e3,
+                        ivs["tauh_fitted"][fit_number][1] * 1e3,
                         "--r",
                         linewidth=0.75,
                     )
@@ -336,30 +332,34 @@ class IVPlotter(object):
                 enable = "Off"
                 cccomp = 0.0
                 ccbridge = 0.0
+            # Build a text table of parameters.
             taum = r"$\tau_m$"
             tauh = r"$\tau_h$"
-            tstr = f"RMP: {ivs['RMP']:.1f} mV\n"
             omega = r"$\Omega$"
-            tstr += f"${{R_{{in}}}}$: {ivs['Rin']:.1f} M{omega:s}\n"
-            tstr += f"SR: {self.AR.sample_rate[0] / 1e3:.1f} kHz\n"
-            tstr += f"Downsample: {self.downsample:d}\n"
-            tstr += f"${{Pip Cap}}$: {ivs['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n"
-            tstr += f"{taum:s}: {ivs['taum']*1e3:.2f} ms\n"
-            tstr += f"{tauh:s}: {ivs['tauh_tau']*1e3:.3f} ms\n"
-            tstr += f"${{G_h}}$: {ivs['tauh_Gh'] *1e9:.3f} nS\n"
-            tstr += f"Holding: {np.mean(ivs['Irmp']) * 1e12:.1f} pA\n"
-            tstr += f"Bridge [{enable:3s}]: {ccbridge:.1f} M{omega:s}\n"
-            tstr += f"Bridge Adjust: {ivs['BridgeAdjust']:.1f} m{omega:s}\n"
-            tstr += f"Pipette: {cccomp:.1f} mV\n"
+            tstr = "Recording:"
+            tstr += f"  SR: {self.AR.sample_rate[0] / 1e3:.1f} kHz\n"
+            tstr += f"  Downsample: {self.downsample:d}\n"
+            tstr += f"  ${{Pip Cap}}$: {ivs['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n"            
+            tstr += f"  Bridge [{enable:3s}]: {ccbridge:.1f} M{omega:s}\n"
+            tstr += f"  Bridge Adjust: {ivs['BridgeAdjust']:.1f} m{omega:s}\n"
+            tstr += f"  Pipette Offset: {cccomp:.1f} mV\n"          
+            tstr += "Measures:"
+            tstr += f"  RMP: {ivs['RMP']:.1f} mV\n"
+            tstr += f"  ${{R_{{in}}}}$: {ivs['Rin']:.1f} M{omega:s}\n"
+            tstr += f"  {taum:s}: {ivs['taum']*1e3:.2f} ms\n"
+            tstr += f"  {tauh:s}: {ivs['tauh_tau']*1e3:.3f} ms\n"
+            tstr += f"  ${{G_h}}$: {ivs['tauh_Gh'] *1e9:.3f} nS\n"
+            tstr += f"  Holding: {np.mean(ivs['Irmp']) * 1e12:.1f} pA\n"
 
             P.axdict["C"].text(
-                -0.60,
-                0.85,
+                0.54,
+                0.68,
                 tstr,
-                transform=P.axdict["C"].transAxes,
+                transform=P.figure_handle.transFigure,
                 horizontalalignment="left",
                 verticalalignment="top",
                 fontsize=7,
+                bbox=dict(facecolor='blue', alpha=0.15)
             )
         #   P.axdict['C'].xyzero=([0., -0.060])
         PH.talbotTicks(P.axdict["A"], tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0})
@@ -383,24 +383,16 @@ class IVPlotter(object):
         P.axdict["C"].set_xlabel("I (nA)")
         P.axdict["C"].set_ylabel("V (mV)")
 
-        """
-        Plot the spike intervals as a function of time
-        into the stimulus
-
-        """
-
+        # Plot the spike intervals as a function of time into the stimulus
         for i, spike_tr in enumerate(spikes):  # this is the trace number
             spike_train = spikes[spike_tr]  # get the spike train, then get just the latency
-            # for sp in spike_train.keys():
-            #     print("sp: ", sp, spike_train[sp].AP_latency)
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
-
             if len(spk_tr) == 0:
                 continue
             spx = np.argwhere(  # get the spikes that are in the stimulus window
                 (spk_tr > self.AR.tstart) & (spk_tr <= self.AR.tend)
             ).ravel()
-            spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # just shorten...
+            spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
             if len(spkl) == 1:
                 P.axdict["D"].plot(spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4)
             else:
