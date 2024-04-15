@@ -132,6 +132,8 @@ def validate_configuration(experiments, datasets):
         "spike_measures",
         "rmtau_measures",
         "FI_measures",
+        "spike_detector",
+        "fit_gap",
         
         "group_by",
         "group_map",
