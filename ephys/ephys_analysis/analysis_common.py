@@ -120,6 +120,7 @@ class cmdargs:
     verbose: bool = False
     autoout: bool = False
     excel: bool = False
+    decimate: int = 1  # decimate the data by this factor
 
     # graphics controls
     plotmode: str = "document"
@@ -141,7 +142,9 @@ class cmdargs:
     signflip: bool = False
     alternate_fit1: bool = False
     alternate_fit2: bool = False  # second alternate
+    fit_gap: float = 0.002  # gap in fit for time constants
     measuretype: str = "ZScore"  # display measure for spot plot in maps
+    spike_detector: str = "Kalluri"  # see Utilities find_spikes for method
     spike_threshold: float = -0.035
     zscore_threshold: float = 1.96
     artifact_suppression: bool = False
@@ -218,6 +221,7 @@ class Analysis:
         self.verbose = args.verbose
         self.autoout = args.autoout
         self.excel = args.excel
+        self.decimate = args.decimate
         # graphics controls
         self.plotmode = args.plotmode
         self.IV_pubmode = args.IV_pubmode
@@ -241,6 +245,8 @@ class Analysis:
         )  # use alterate time constants in template for event
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
+        self.fit_gap = args.fit_gap  # gap in fit for time constants
+        self.spike_detector = args.spike_detector  # see Utilities find_spikes for method
         self.spike_threshold = args.spike_threshold
         self.zscore_threshold = args.zscore_threshold
         self.artifactFilename = args.artifact_filename
@@ -287,7 +293,7 @@ class Analysis:
             raise ValueError("Detector ZC is not recommended at this time")
         else:
             raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc]")
-
+        # print("args: ", args)
         super().__init__()
 
     def set_exclusions(self, exclusions: dict):
@@ -477,6 +483,7 @@ class Analysis:
         Returns:
             nothing
         """
+        CP.cprint("r", "starting IV ranalysis run")
         self.n_analyzed = 0
         self.prots_done = (
             []
@@ -511,13 +518,16 @@ class Analysis:
                 raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
                 return None
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
+            print("Cells in day: ", cells_in_day.index)
             cellprots = []
+            
             for (
                 icell
             ) in (
                 cells_in_day.index
             ):  # for all the cells in the day (but will check for slice_cell too)
                 cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
+                print("Cell ok: ", cell_ok)
                 # now generate pdf files from the pkl files
                 # if cell_ok:
                 #     self.plot_data(icell)
@@ -1088,7 +1098,9 @@ class Analysis:
         success: bool
 
         """
+        CP.cprint("y", "Entering do_cell")
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
+        print("icell, slice cell, etc: ", icell, self.slicecell, datestr, slicestr, cellstr)
         matchcell, slicecell3, slicecell2, slicecell1 = filenametools.compare_slice_cell(
             self.slicecell,
             datestr=datestr,
@@ -1097,14 +1109,15 @@ class Analysis:
             after_dt=self.after,
             before_dt=self.before,
         )
+        # CP.cprint("y", f"Match cell: {matchcell!s}")
         if not matchcell:
             return False
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
         celltype = filenametools.check_celltype(celltype)
         self.prots_done = []
-        fullfile = Path(self.rawdatapath, self.df.iloc[icell].cell_id)
-        # print("**Fullfile: ", fullfile)
+        fullfile = Path(self.rawdatapath, self.directory, self.df.iloc[icell].cell_id)
+        print("**Fullfile: ", fullfile)
 
         self.get_markers(fullfile, verbose=True)
 
@@ -1127,10 +1140,12 @@ class Analysis:
                 # self.experiment["directory"],
                 filenametools.make_cellstr(self.df, icell, shortpath=True),
             )
+            CP.cprint("c", f"fullfile was not dir, trying to make another path: {str(fullfile):s}")
         else:
             CP.cprint("g", f"Data found: {str(fullfile):s}")
 
         if not fullfile.is_dir() and self.extra_subdirectories is not None:
+            CP.cprint("y", "Fullfile is not dir, trying extra subdirectories")
             # try extra sub directories
             pathparts = fullfile.parts
             day = None
