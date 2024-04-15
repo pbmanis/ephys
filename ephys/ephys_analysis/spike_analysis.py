@@ -232,7 +232,7 @@ class SpikeAnalysis:
         """
         if reset:
             self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
-
+        # CP.cprint("r", "AnalyzeSpikes: 1")
         maxspkrate = 50  # max rate to count in adaptation is 50 spikes/second
         minspk = 4
         ntr = len(self.Clamps.traces)
@@ -249,6 +249,7 @@ class SpikeAnalysis:
         maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
         U = utilities.Utility()
         for i in range(ntr):  # this is where we should parallelize the analysis for spikes
+            # CP.cprint("r", f"AnalyzeSpikes: 2: trace: {i:d}")
             spikes = U.findspikes(
                 self.Clamps.time_base,
                 np.array(self.Clamps.traces[i]),
@@ -420,17 +421,20 @@ class SpikeAnalysis:
             self.Clamps.tstart,
         )
         trspikes = OrderedDict()
-        if max_spikeshape is None:
-            jmax = len(self.spikes[i])
-        else:
-            jmax = max_spikeshape
-        for j in range(jmax):
+        # if max_spikeshape is None:
+        #     jmax = len(self.spikes[i])
+        # else:
+        #     jmax = max_spikeshape
+        # print("# in train: ", i, len(self.spikes[i]))
+        for j in range(len(self.spikes[i])):
             # if max_spikeshape is not None and j > max_spikeshape:
             #     continue
+            # print("j, len spikes: ", j, len(self.spikeIndices[i]))
             if j >= len(self.spikeIndices[i]):
                 continue
             # print('i,j,etc: ', i, j, begin_dV)
-            thisspike = self.analyze_one_spike(i, j, begin_dV)
+            thisspike = self.analyze_one_spike(i, j, begin_dV, max_spikeshape=max_spikeshape)
+            # print("thisspike: ", i, j, thisspike)
             if thisspike is not None:
                 trspikes[j] = thisspike
         self.spikeShapes[i] = trspikes
@@ -449,10 +453,10 @@ class SpikeAnalysis:
         each trace with a dict of values)
 
         Every spike is measured, and a number of points on the waveform
-            are defined for each spike, including the peak, the half-width
-            on the rising phase, half-width on the falling phase, the
-            peak of the AHP, the peak-trough time (AP peak to AHP peak),
-            and a beginning, based on the slope (set in begin_dV)
+        are defined for each spike, including the peak, the half-width
+        on the rising phase, half-width on the falling phase, the
+        peak of the AHP, the peak-trough time (AP peak to AHP peak),
+        and a beginning, based on the slope (set in begin_dV)
 
         Parameters
         ----------
@@ -564,12 +568,11 @@ class SpikeAnalysis:
             LCS['AP_begin_V'] = 1e3 * sp.AP_begin_V
             LCS['AHP_depth'] = 1e3 * (sp.AP_begin_V - sp.trough_V)
             LCS['AHP_trough_T'] = sp.trough_T
-            LCS['current'] = min_current
             LCS['trace'] = itr[i_min_current]
             LCS['dt'] = sp.dt
         return LCS
     
-    def analyze_one_spike(self, i, j, begin_dV):
+    def analyze_one_spike(self, i, j, begin_dV, max_spikeshape: Union[int, None] = None):
         thisspike = OneSpike(trace=i, AP_number=j)
         thisspike.current = self.Clamps.values[i] - self.iHold_i[i]
         thisspike.iHold = self.iHold_i[i]
@@ -580,36 +583,12 @@ class SpikeAnalysis:
         thisspike.tstart = self.Clamps.tstart
         thisspike.tend = self.Clamps.tend
 
-        # find the minimum going forward - that is AHP min
         dt = self.Clamps.time_base[1] - self.Clamps.time_base[0]
         thisspike.dt = dt
+
+        # find spike onset (latency) based on dv/dt
         dvdt = np.diff(self.Clamps.traces[i]) / dt
-
-        # find end of spike (either top of next spike, or end of trace)
-        k = self.spikeIndices[i][j] + 1  # point to next spike
-        if j < self.spikecount[i] - 1:  #
-            kend = self.spikeIndices[i][j + 1]
-        else:
-            kend = int(self.spikeIndices[i][j] + self.max_spike_look / dt)
-        if kend >= dvdt.shape[0]:
-            # raise ValueError()
-            return thisspike  # end of spike would be past end of trace
-        else:
-            if kend < k:
-                kend = k + 1
-            km = np.argmin(dvdt[k:kend]) + k
-
-        # Find trough after spike and calculate peak to trough
-        kmin = np.argmin(self.Clamps.traces[i][km:kend]) + km
-        thisspike.AP_endIndex = kmin
-        thisspike.trough_T = self.Clamps.time_base[thisspike.AP_endIndex]
-        thisspike.trough_V = self.Clamps.traces[i][kmin]
-
-        if thisspike.AP_endIndex is not None:
-            thisspike.peaktotrough = thisspike.trough_T - thisspike.peak_T
-
-        # find points on spike waveform
-        # because index is to peak, we look for previous spike
+       # because index is to peak, we look for previous spike
         k = self.spikeIndices[i][j]
         if j > 0:
             kbegin = self.spikeIndices[i][j - 1]  # index to previous spike start
@@ -638,6 +617,32 @@ class SpikeAnalysis:
         thisspike.AP_latency = self.Clamps.time_base[kthresh]
         thisspike.AP_beginIndex = kthresh
         thisspike.AP_begin_V = self.Clamps.traces[i][thisspike.AP_beginIndex]
+        if j > max_spikeshape:  # no shape measurements on the rest of the spikes for speed
+            return thisspike 
+
+        # find end of spike (either top of next spike, or end of trace)
+        k = self.spikeIndices[i][j] + 1  # point to next spike
+        if j < self.spikecount[i] - 1:  #
+            kend = self.spikeIndices[i][j + 1]
+        else:
+            kend = int(self.spikeIndices[i][j] + self.max_spike_look / dt)
+        if kend >= dvdt.shape[0]:
+            # raise ValueError()
+            return thisspike  # end of spike would be past end of trace
+        else:
+            if kend < k:
+                kend = k + 1
+            km = np.argmin(dvdt[k:kend]) + k
+
+        # Find trough after spike and calculate peak to trough
+        kmin = np.argmin(self.Clamps.traces[i][km:kend]) + km
+        thisspike.AP_endIndex = kmin
+        thisspike.trough_T = self.Clamps.time_base[thisspike.AP_endIndex]
+        thisspike.trough_V = self.Clamps.traces[i][kmin]
+
+        if thisspike.AP_endIndex is not None:
+            thisspike.peaktotrough = thisspike.trough_T - thisspike.peak_T
+
 
         # compute rising and falling max dv/dt
         five_ms = int(5e-3 / dt)

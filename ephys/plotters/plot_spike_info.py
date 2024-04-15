@@ -679,7 +679,8 @@ class PlotSpikeInfo(QObject):
             with MP.Parallelize(
                 enumerate(tasks), results=results, workers=nworkers) as tasker:
                 for i, x in tasker:
-                    result = FUNCS.compute_FI_Fits(self.experiment, df, cell_list[i])
+                    result = FUNCS.compute_FI_Fits(self.experiment, df, cell_list[i],
+                                                   protodurs=self.experiment["FI_protocols"])
                     tasker.results[cell_list[i]] = result
             # print("results: ", results)
 
@@ -694,7 +695,8 @@ class PlotSpikeInfo(QObject):
                     CP("r", f"Cell # {icell:d} in the database is None")
                     continue
                 CP("c", f"Computing FI_Fits for cell: {cell:s}") # df[df.cell_id==cell].cell_type)
-                datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell)
+                datadict = FUNCS.compute_FI_Fits(self.experiment, df, cell,
+                                                 protodurs=self.experiment["FI_protocols"])
                 if datadict is None:
                     print("datadict is none for cell: ", cell)
                     continue
