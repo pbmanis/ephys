@@ -1,11 +1,11 @@
 from typing import Union, Tuple
 import datetime
-import pylibrary.tools.cprint
+import pylibrary.tools.cprint as cprint
 from pathlib import Path
 import pandas as pd
 import re
 
-CP = crpint.cprint
+CP = cprint.cprint
 
 def check_celltype(celltype: Union[str, None] = None):
     """check_celltype: convert cell type to "unknown" if it is None, empty, or whitespace or '?
@@ -24,7 +24,7 @@ def check_celltype(celltype: Union[str, None] = None):
     if isinstance(celltype, str):
         celltype = celltype.strip()
     if celltype in [None, "", "?", " ", "  ", "\t"]:
-        CP.cprint("y", f"Changing Cell type to unknown from <{celltype:s}>")
+        CP("y", f"Changing Cell type to unknown from <{celltype:s}>")
         celltype = "unknown"
     return celltype
 
@@ -335,7 +335,7 @@ def compare_slice_cell(
     thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
     if (after_dt is not None) and (before_dt is not None):
         if thisday < after_dt or thisday > before_dt:
-            CP.cprint(
+            CP(
                 "y",
                 f"Day {datestr:s} is not in range {after_dt!s} to {before_dt!s}",
             )
@@ -404,7 +404,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
     # print("filename tools: get_cell: cell_id: ", cell_id)
     if len(df_tmp) == 0:
-        CP.cprint(
+        CP(
             "r", f"filename_tools:get_cell:: Cell ID not found in summary dataframe: {cell_id:s}"
         )
         return None, None
@@ -415,7 +415,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     celltype = str(celltype).replace("\n", "")
     if celltype == " ":  # no cell type
         celltype = "unknown"
-    CP.cprint("m", f"get cell: df_tmp cell type: {celltype:s}")
+    CP("m", f"get cell: df_tmp cell type: {celltype:s}")
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
@@ -456,10 +456,10 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
 
     if datapath2.is_file():
-        CP.cprint("c", f"...  {datapath2!s} is OK")
+        CP("c", f"...  {datapath2!s} is OK")
         datapath = datapath2
     else:
-        CP.cprint("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
+        CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         raise ValueError
         return None, None
     try:
@@ -468,10 +468,10 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         try:
             df_cell = pd.read_pickle(datapath)  # try with no compression
         except ValueError:
-            CP.cprint("r", f"Could not read {datapath!s}")
+            CP("r", f"Could not read {datapath!s}")
             raise ValueError("Failed to read compressed pickle file")
     if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
-        CP.cprint(
+        CP(
             "y",
             f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protos:",
         )
