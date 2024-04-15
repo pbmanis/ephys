@@ -1354,7 +1354,9 @@ class DataTables:
 
         args.verbose = False
         args.spike_threshold = self.experiment["AP_threshold_V"]  # always in Volts
-        print("Mode: ", mode)
+        args.spike_detector = self.experiment["spike_detector"]
+        args.fit_gap = self.experiment["fit_gap"]
+
         if mode == "selected":
             args.day = day
             args.slicecell = slicecell
@@ -1680,7 +1682,6 @@ class DataTables:
         sdate = selected.date[:-4]
         cell_id = str(Path(selected.cell_id).name)
         cellname_parts = cell_id.split("_")
-        print("mode: ", mode)
         if mode == "IV":
             modename = "IVs"
         elif mode == "map":
