@@ -207,6 +207,7 @@ class IVAnalysis(Analysis):
             self.df.iloc[icell].data_directory,
             self.df.iloc[icell].cell_id,
         )
+        cell_id = self.df.iloc[icell].cell_id
         CP.cprint("m", f"File: {str(cell_directory):s}")
         CP.cprint(
             "m",
@@ -306,6 +307,7 @@ class IVAnalysis(Analysis):
 
         nfiles = 0
         allivs = []
+        # first, limit the valid protocols to those in our protocol list
         print("allprots: ", allprots["CCIV"])
         cciv_protocols = list(self.experiment["protocols"]["CCIV"].keys())
         for protoname in allprots["CCIV"]:  # check all the protocols
@@ -318,28 +320,47 @@ class IVAnalysis(Analysis):
                 print("     appended")
             else:
                 print("     not appended")
-
-        validivs = allivs
+        if len(allivs) == 0:
+            msg = "No protocols matching the CCIV protocol list in the configuration file were identified"
+            CP.cprint("r", msg)
+            Logger.info(msg)
+            return  # no matching protocols.
+        # next remove specific protocols that are targeted to be excluded
+        if self.exclusions is not None:
+            if cell_id in self.exclusions:
+                if self.exclusions[cell_id] in ["all", ["all"]]:
+                    msg = "All protocols for this cell are excluded from analysis in the configuration file."
+                    CP.cprint("r", msg)
+                    Logger.info(msg)
+                    return # nothing to do - entire cell is excluded.
+                else:
+                    validivs = [protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']]
+                    
+            else:
+                validivs = allivs
         # build a list of all exclusions
-        exclude_ivs = []
-        for ex_cell in self.exclusions.keys():
-            for ex_proto in self.exclusions[ex_cell]["protocols"]:
-                exclude_ivs.append(str(Path(ex_cell, ex_proto)))
-        print("Excluded IVs: ", exclude_ivs)
-        # the exclusion list is shorter (we hope), so let's iterate over it for removal
-        for iv_proto in exclude_ivs:
-            if iv_proto in validivs:
-                validivs.remove(iv_proto)
-        self.noparallel = False
+        # exclude_ivs = []
+        # print("exclusions: ", self.exclusions)
+        # for cell_id in self.exclusions.keys():
+        #     for ex_proto in self.exclusions[cell_id]["protocols"]:
+        #         exclude_ivs.append(str(Path(ex_cell, ex_proto)))
+        # print("Excluded IVs: ", exclude_ivs)
+        # # the exclusion list is shorter (we hope), so let's iterate over it for removal
+        # for iv_proto in exclude_ivs:
+        #     if iv_proto in validivs:
+        #         validivs.remove(iv_proto)
         print("Valid IDs: ", validivs)
-        print("NoParallel: ", self.noparallel)
-        nworkers = self.nworkers  # number of cores/threads to use
-        print("nworkers: ", nworkers)
+
+        self.noparallel = False
+        if not self.noparallel:
+            CP.cprint("y", f"Parallel processing enabled, nworkers = {self.nworkers:d}")
+        else:
+            CP.cprint("m", "Parallel processing disabled")
         tasks = range(len(validivs))  # number of tasks that will be needed
         results: dict = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
-        self.noparallel = True
+
         if self.noparallel:  # just serial...
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
@@ -369,7 +390,10 @@ class IVAnalysis(Analysis):
         #            print(self.df.at[icell, 'IV'])
         else:
             result = [None] * len(tasks)  # likewise
-            with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
+            # import sys # not available when using pyqtgraph.multiprocess
+            # if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
+            #     MP.set_start_method('spawn')
+            with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
                 for i, x in tasker:
                     result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
                     tasker.results[validivs[i]] = result
