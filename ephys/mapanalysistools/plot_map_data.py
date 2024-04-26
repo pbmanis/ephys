@@ -2073,7 +2073,7 @@ class PlotMapData:
                 PH.referenceline(self.P.axdict[self.panels["average_panel"]], 0.0, color="grey")
                 self.plot_timemarker(self.P.axdict[self.panels["average_panel"]], zerotime=first_stim_onset)
 
-        elif plotmode is "publication":
+        elif plotmode == "publication":
             # plot average of all the traces for which score is above threshold
             # and amplitude is in a specified range (to eliminate spikes)
             if zscore_threshold is not None:
