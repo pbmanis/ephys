@@ -27,6 +27,8 @@ import pprint
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Union
+import multiprocessing as MP
+from pyqtgraph import multiprocess as mproc
 
 import numpy as np
 import scipy.stats
@@ -36,6 +38,8 @@ from ..tools import fitting  # pbm's fitting stuff...
 from ..tools import utilities  # pbm's utilities...
 import pylibrary.tools.cprint as CP
 
+U = utilities.Utility()
+
 this_source_file = "ephysanalysis.SpikeAnalysis"
 
 
@@ -43,6 +47,7 @@ this_source_file = "ephysanalysis.SpikeAnalysis"
 class OneSpike:
     trace: int
     AP_number: int
+    dt: Union[float, None] =None  # sample rate
     dvdt: object = None  # np.array
     V: object = None  # np.array
     Vtime: object = None  # np.array
@@ -133,6 +138,7 @@ class SpikeAnalysis:
         verbose=False,
         mode="peak",
         min_halfwidth=0.010,
+        max_spike_look=0.010,
         data_time_units: str = "s",
         data_volt_units: str = "V",
     ):
@@ -188,7 +194,7 @@ class SpikeAnalysis:
         self.ar_window = 0.1
         self.ar_lastspike = 0.075
         self.min_peaktotrough = 0.010  # change in V on falling phase to be considered a spike
-        self.max_spike_look = 0.010  # msec over which to measure spike widths
+        self.max_spike_look = max_spike_look  # sec over which to measure spike widths
 
     def set_detector(self, detector: str = "argrelmax"):
         assert detector in [
@@ -302,7 +308,7 @@ class SpikeAnalysis:
         )
         self.spikes_counted = True
 
-    #        self.update_SpikePlots()
+    
 
     def analyzeSpikes_brief(self, mode="baseline"):
         """
@@ -388,9 +394,47 @@ class SpikeAnalysis:
         self.analysis_summary["AP2_HalfWidth"] = np.inf
         self.analysis_summary["AP2_HalfWidth_interpolated"] = np.inf
         self.analysis_summary["FiringRate_1p5T"] = np.inf
-        self.analysis_summary["AHP_Depth"] = np.inf  # convert to mV
-        self.analysis_summary["AHP_Trough"] = np.inf  # convert to mV
+        self.analysis_summary["AHP_Depth"] = np.inf  
+        self.analysis_summary["AHP_Trough_V"] = np.inf  # depth of trough
+        self.analysis_summary["AHP_Trough_T"] = np.inf  # time of trough minimum
 
+    def analyze_one_trace(self, i, begin_dV=12.0, max_spikeshape: Union[int, None] = 5, printSpikeInfo:bool=False):
+        if len(self.spikes[i]) == 0:
+            return
+        if printSpikeInfo:
+            print(f"{this_source_file:s}:: spikes: ", self.spikes[i])
+            print((np.array(self.Clamps.values)))
+            print((len(self.Clamps.traces)))
+        (self.rmps[i], r2) = U.measure(
+            "mean",
+            self.Clamps.time_base,
+            self.Clamps.traces[i],
+            0.0,
+            self.Clamps.tstart,
+        )
+        (self.iHold_i[i], r2) = U.measure(
+            "mean",
+            self.Clamps.time_base,
+            self.Clamps.cmd_wave[i],
+            0.0,
+            self.Clamps.tstart,
+        )
+        trspikes = OrderedDict()
+        if max_spikeshape is None:
+            jmax = len(self.spikes[i])
+        else:
+            jmax = max_spikeshape
+        for j in range(jmax):
+            # if max_spikeshape is not None and j > max_spikeshape:
+            #     continue
+            if j >= len(self.spikeIndices[i]):
+                continue
+            # print('i,j,etc: ', i, j, begin_dV)
+            thisspike = self.analyze_one_spike(i, j, begin_dV)
+            if thisspike is not None:
+                trspikes[j] = thisspike
+        self.spikeShapes[i] = trspikes
+    
     def analyzeSpikeShape(
         self, printSpikeInfo=False, begin_dV=12.0, max_spikeshape: Union[int, None] = 5,
     ):
@@ -432,49 +476,31 @@ class SpikeAnalysis:
 
         """
         self._initialize_summarymeasures()
-
         self.madeplot = False
         ntr = len(self.Clamps.traces)
         self.spikeShapes = OrderedDict()
-        rmps = np.zeros(ntr)
+        self.rmps = np.zeros(ntr)
         self.iHold_i = np.zeros(ntr)
-        U = utilities.Utility()
-        for i in range(ntr):
-            if len(self.spikes[i]) == 0:
-                continue
-            if printSpikeInfo:
-                print(f"{this_source_file:s}:: spikes: ", self.spikes[i])
-                print((np.array(self.Clamps.values)))
-                print((len(self.Clamps.traces)))
-            (rmps[i], r2) = U.measure(
-                "mean",
-                self.Clamps.time_base,
-                self.Clamps.traces[i],
-                0.0,
-                self.Clamps.tstart,
-            )
-            (self.iHold_i[i], r2) = U.measure(
-                "mean",
-                self.Clamps.time_base,
-                self.Clamps.cmd_wave[i],
-                0.0,
-                self.Clamps.tstart,
-            )
-            trspikes = OrderedDict()
-            if max_spikeshape is None:
-                jmax = len(self.spikes[i])
-            else:
-                jmax = max_spikeshape
-            for j in range(jmax):
-                # if max_spikeshape is not None and j > max_spikeshape:
-                #     continue
-                if j >= len(self.spikeIndices[i]):
-                    continue
-                # print('i,j,etc: ', i, j, begin_dV)
-                thisspike = self.analyze_one_spike(i, j, begin_dV)
-                if thisspike is not None:
-                    trspikes[j] = thisspike
-            self.spikeShapes[i] = trspikes
+
+        # for i in range(ntr):
+        #     self.analyze_one_trace(i, begin_dV, max_spikeshape, printSpikeInfo)
+
+        # parallelize the analysis of the traces
+
+        nWorkers = MP.cpu_count()  # get this automatically
+        traces = [tr for tr in range(ntr) if len(self.spikes[tr]) > 0]  # only traces with spikes
+        ntr = len(traces)
+        tasks = [s for s in range(ntr)]
+        tresults = [None]*len(tasks)
+        # with mproc.Parallelize(
+        #     enumerate(tasks), results=tresults, workers=nWorkers
+        # ) as tasker:
+        #     for i, x in tasker:
+        #         tr = self.analyze_one_trace(traces[i], begin_dV, max_spikeshape, printSpikeInfo)
+        #         tasker.results[i] = tr
+
+        for i in range(len(traces)):
+            self.analyze_one_trace(traces[i], begin_dV, max_spikeshape, printSpikeInfo)
 
         self.iHold = np.mean(self.iHold_i)
         self.analysis_summary["spikes"] = self.spikeShapes  # save in the summary dictionary too
@@ -483,17 +509,56 @@ class SpikeAnalysis:
             self.analysis_summary["pulseDuration"] = self.Clamps.tend - self.Clamps.tstart
         except:
             self.analysis_summary["pulseDuration"] = np.max(self.Clamps.time_base)
+
         if len(self.spikeShapes.keys()) > 0:  # only try to classify if there are spikes
+            lcs = self.get_lowest_current_spike()
+            self.analysis_summary["LowestCurrentSpike"] = lcs
             self.getClassifyingInfo()  # build analysis summary here as well.
+        else:
+            self.analysis_summary["LowestCurrentSpike"] = None
+
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
             for m in sorted(self.spikeShapes.keys()):
                 print(("----\nTrace: %d  has %d APs" % (m, len(list(self.spikeShapes[m].keys())))))
                 for n in sorted(self.spikeShapes[m].keys()):
                     pp.pprint(self.spikeShapes[m][n])
-
+        # print("a sp s done")
     
-
+    def get_lowest_current_spike(self):
+        dvdts = {}
+        for tr in self.spk:  # for each trace with spikes
+            if len(self.spikeShapes[tr]) >= 2:  # only there are least two spikes so we can get an AHP
+                dvdts[tr] = self.spikeShapes[tr][0]  # get the first spike in the trace
+                continue
+        LCS = {}
+        if len(dvdts) > 0:
+            currents = []
+            itr = []
+            for d in dvdts.keys():  # for each first spike, make a list of the currents
+                currents.append(dvdts[d].current)
+                itr.append(d)
+            i_min_current = np.argmin(currents)  # find spike elicited by the minimum current
+            min_current = currents[i_min_current]
+            sp = self.spikeShapes[itr[i_min_current]][0]
+            LCS['dvdt_rising'] = sp.dvdt_rising
+            LCS['dvdt_falling'] = sp.dvdt_falling
+            LCS['dvdt_current'] = min_current * 1e12  # put in pA
+            LCS['AP_thr_V'] = 1e3 * sp.AP_begin_V
+            LCS['AP_thr_T'] = sp.AP_beginIndex*self.Clamps.sample_interval*1e3
+            LCS['AP_peak_V'] = 1e3 * sp.peak_V
+            LCS['AP_peak_T'] = sp.peak_T
+            if sp.halfwidth_interpolated is not None:
+                LCS['AP_HW'] = sp.halfwidth_interpolated * 1e3
+            else: # if interpolated halfwidth is not available, use the raw halfwidth
+                LCS['AP_HW'] = sp.halfwidth * 1e3          
+            LCS['AP_begin_V'] = 1e3 * sp.AP_begin_V
+            LCS['AHP_depth'] = 1e3 * (sp.AP_begin_V - sp.trough_V)
+            LCS['AHP_trough_T'] = sp.trough_T
+            LCS['trace'] = itr[i_min_current]
+            LCS['dt'] = sp.dt
+        return LCS
+    
     def analyze_one_spike(self, i, j, begin_dV):
         thisspike = OneSpike(trace=i, AP_number=j)
         thisspike.current = self.Clamps.values[i] - self.iHold_i[i]
@@ -507,6 +572,7 @@ class SpikeAnalysis:
 
         # find the minimum going forward - that is AHP min
         dt = self.Clamps.time_base[1] - self.Clamps.time_base[0]
+        thisspike.dt = dt
         dvdt = np.diff(self.Clamps.traces[i]) / dt
 
         # find end of spike (either top of next spike, or end of trace)
@@ -564,6 +630,7 @@ class SpikeAnalysis:
         thisspike.AP_begin_V = self.Clamps.traces[i][thisspike.AP_beginIndex]
 
         # compute rising and falling max dv/dt
+        five_ms = int(5e-3 / dt)
         four_ms = int(4e-3 / dt)
         three_ms = int(3e-3 / dt)
         two_ms = int(2e-3 / dt)
@@ -572,10 +639,10 @@ class SpikeAnalysis:
         thisspike.dvdt_falling = np.min(dvdt[thisspike.AP_peakIndex : thisspike.AP_endIndex])
         thisspike.dvdt = dvdt[thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms]
         thisspike.V = self.Clamps.traces[i][
-            thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms
+            thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + five_ms
         ].view(np.ndarray)
         thisspike.Vtime = self.Clamps.time_base[
-            thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms
+            thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + five_ms
         ].view(np.ndarray)
         # if successful in defining spike start/end, calculate half widths in two ways:
         # closest points in raw data, and by interpolation
@@ -761,7 +828,8 @@ class SpikeAnalysis:
             # print(f"     Depth  = {AHPDepth*1e3:.2f} mV")
             self.analysis_summary["FiringRate_1p5T"] = rate
             self.analysis_summary["AHP_Depth"] = AHPDepth * 1e3  # convert to mV
-            self.analysis_summary["AHP_Trough"] = self.spikeShapes[j150][0].trough_V  # absolute
+            self.analysis_summary["AHP_Trough_V"] = self.spikeShapes[j150][0].trough_V  # absolute
+            self.analysis_summary["AHP_Trough_T"] = self.spikeShapes[j150][0].trough_T
 
     def getFISlope(
         self,

@@ -26,13 +26,16 @@ class NSFA:
         _description_
     """
 
-    def __init__(self, timebase: np.ndarray, eventtraces: np.ndarray, eventtimes: np.ndarray):
+    def __init__(self):
+        pass
+    
+    def setup(self, timebase: np.ndarray, eventtraces: np.ndarray, eventpeaktimes: np.ndarray):
         self.timebase = timebase
         self.dt = np.mean(np.diff(self.timebase))
         self.events = (
             eventtraces  # the actual traces of individual "cut out" events, each of length timebase
         )
-        self.eventtimes = eventtimes  # indicies to the peak times of events
+        self.eventtimes = eventpeaktimes  # indicies to the peak times of events
         self.d: np.ndarray = np.empty(0)
         self.t: float = 0.0
         self.meantr: float = 0.0
@@ -79,7 +82,7 @@ class NSFA:
         return derivs
 
     def align_on_rising(
-        self, prewindow: float = 0.030, postwindow=0.03, Nslope: int = 7, plot: bool = False
+        self, prewindow: float = 0.003, postwindow=0.03, Nslope: int = 7, plot: bool = False
     ):
         """Align the traces on the rising slope of an event.
 
@@ -102,6 +105,8 @@ class NSFA:
             rise_t = self.timebase
             d.append(rise)
             t.append(rise_t)
+            if rise.shape != rise_t.shape:
+                print(rise.shape, rise_t.shape)
             slope = self.linear_slope(rise_t, rise, N=Nslope)
             deriv.append(slope)
             maxsl.append(np.argmax(slope))
@@ -136,21 +141,31 @@ class NSFA:
             colr = c[itr % (len(c))]
             align_i = int(maxsl[itr])
             align_t = self.dt * align_i
-            ax[0].plot(self.timebase, self.events[itr], color=colr, linewidth=0.33)
+            ax[0].plot(self.timebase, self.events[itr]/np.max(self.events[itr]), color=colr, linewidth=0.33)
             ax[0].plot(
                 self.timebase[self.eventtimes[itr]],
-                self.events[itr][self.eventtimes[itr]],
+                self.events[itr][self.eventtimes[itr]]/np.max(self.events[itr][self.eventtimes[itr]]),
                 "x",
                 color=colr,
                 markersize=4,
             )
             ax[0].plot(t[itr][align_i], self.events[itr][align_i], "x", color=colr, markersize=4)
+            m = t[itr].shape[0]
+            # if t[itr].shape != deriv[itr].shape:
+            #     print("unmatched shapes: deriv",  t[itr].shape, deriv[itr].shape)
+            # else:
+            ax[2].plot(t[itr], deriv[itr][:m], "-", color=colr, linewidth=0.33)
+            # if t[itr].shape != d[itr].shape:
+            #     print("unmatched shapes: d",  t[itr].shape, d[itr].shape)
+            # else:
             ax[1].plot(
-                t[itr] - align_t, d[itr], color=colr, linewidth=0.33
-            )  # self.events[itr][event_indices])
-            ax[2].plot(t[itr], deriv[itr], "-", color=colr, linewidth=0.33)
+                    t[itr] - align_t, d[itr][:m], color=colr, linewidth=0.33
+                )  # self.events[itr][event_indices])
+
+
             ax[2].plot(t[itr][align_i], deriv[itr][align_i], "x", color=colr, markersize=4)
         yl1 = ax[1].get_ylim()
+        ax[0].set_xlim((tnew[0], tnew[-1]))
         ax[1].plot([0.0, 0.0], yl1, "k-", linewidth=0.25, alpha=0.5)
         ax[1].sharex(ax[0])
         yl2 = ax[2].get_ylim()
@@ -160,6 +175,62 @@ class NSFA:
         ax[1].set_title("max slope aligned PSCs at 0 time")
         ax[2].set_title("Aligned derivative of PSCs")
         mpl.show()
+
+    def fit_meanvar(self, mean: np.ndarray, var: np.ndarray):
+        qmod = QuadraticModel()
+
+        pars = qmod.guess(data=var, x=mean)
+        pars['c'].set(value=0.0, vary=False)
+        print(pars)
+        qfit = qmod.fit(var, pars, x=mean)
+
+        mpl.plot(mean, var, "o", color="k", markersize=2)
+        mpl.show()
+        print(qfit.fit_report(min_correl=0.25))
+        """fit parameters:
+        y = a*x**2 + b*x + c
+
+        var = -(I**2)/N + i_chan * I
+        c should be set to 0
+        Therfore, a = -1/N (N = -1/a), and b = i_chan
+
+        """
+        NChan = -1.0 / qfit.values["a"]
+        gamma = qfit.values["b"]
+        Pomax = np.max(var) / (2.0 * gamma * NChan)
+
+        print(f"nchan = {NChan:.3f}  \u03B3 = {gamma*1e12:.3f} pA, Pomax = {Pomax:.3e}")
+        return qfit
+
+    def plot(self, qfit, time, sweeps, i_chan=None, mean: np.ndarray = None, var: np.ndarray = None):
+        f, ax = mpl.subplots(3, 1)
+        if i_chan is not None:
+            for i in range(np.min((100, np.array(sweeps).shape[0]))):
+                ax[0].plot(time*1e3, sweeps[i]*1e12 + i_chan*1e12, linewidth=0.25)
+        ax[0].set_ylabel("pA")
+
+        if mean is None and var is None:
+            print("Mean and var ar none!!!")
+            return f, ax
+        ax[1].plot(time*1e3, mean*1e12, "b-", linewidth=0.5)
+        ax2 = ax[1].twinx()
+        imax_i = np.argmax(mean)
+        ax2.plot(time*1e3, var, "-", color="grey", linewidth=0.5)
+        ax2.plot(time[imax_i:]*1e3, var[imax_i:]*1e24, "-", color="c", linewidth=0.75)
+        ax2.set_ylabel("Variance (pA^2)")
+        ax[1].set_ylabel("Mean (pA)")
+
+        ax2.set_ylim((0, np.max(var*1e24)))
+        imax_i = np.argmax(mean)
+        qfit = self.fit_meanvar(mean=mean[imax_i:], var=var[imax_i:])
+        ax[2].scatter(mean[imax_i:]*1e12, var[imax_i:]*1e24, c="k", s=6)
+        ax[2].plot(mean[imax_i:]*1e12, qfit.best_fit*1e24, "r--", linewidth=0.5)
+        ax[2].set_ylabel("Variance (pA^2)")
+        ax[2].set_xlabel("Mean (pA)")
+        mpl.show()
+        exit()
+        return f, ax
+
 
 
 class TestGenerator:
@@ -207,58 +278,16 @@ class TestGenerator:
             )
         return sweeps
 
-    def fit_meanvar(self, mean: np.ndarray, var: np.ndarray):
-        qmod = QuadraticModel()
-
-        pars = qmod.guess(data=var, x=mean)
-        qfit = qmod.fit(var, pars, x=mean)
-        qfit.params["c"].set(vary=False, value=0.0)
-        print(qfit.fit_report(min_correl=0.25))
-        """fit parameters:
-        y = a*x**2 + b*x + c
-
-        var = -(I**2)/N + i_chan * I
-        c should be set to 0
-        Therfore, a = -1/N (N = -1/a), and b = i_chan
-
-        """
-        NChan = -1.0 / qfit.values["a"]
-        gamma = qfit.values["b"]
-        Pomax = np.max(var) / (2.0 * gamma * NChan)
-
-        print(f"nchan = {NChan:.3f}  \u03B3 = {gamma*1e12:.3f} pA, Pomax = {Pomax:.3e}")
-
-        return qfit
-
-    def run(self):
+    
+    def run(self, NSFA):
         sweeps = self.generate_sweeps()
         self.sweeps = sweeps
         self.mean = np.mean(sweeps, axis=0)
         self.var = np.var(sweeps, axis=0)
-        qfit = self.fit_meanvar(self.mean, self.var)
-        self.plot(qfit, self.sweeps)
+        qfit = NSFA.fit_meanvar(self.mean, self.var)
+        NSFA.plot(qfit, self.sweeps, NSFA.i_chan)
 
-    def plot(self, qfit, time, sweeps):
-        f, ax = mpl.subplots(3, 1)
-        for i in range(np.min((100, np.array(sweeps).shape[0]))):
-            ax[0].plot(time*1e3, sweeps[i]*1e12 + self.i_chan*1e12, linewidth=0.25)
-        ax[0].set_ylabel("pA")
-
-        ax[1].plot(time*1e3, self.mean*1e12, "b-", linewidth=0.5)
-        ax2 = ax[1].twinx()
-        imax_i = np.argmax(self.mean)
-        ax2.plot(time*1e3, self.var, "-", color="grey", linewidth=0.5)
-        ax2.plot(time[imax_i:]*1e3, self.var[imax_i:]*1e24, "-", color="c", linewidth=0.75)
-        ax2.set_ylabel("Variance (pA^2)")
-        ax[1].set_ylabel("Mean (pA)")
-
-        ax2.set_ylim((0, np.max(self.var*1e24)))
-        imax_i = np.argmax(self.mean)
-        qfit = self.fit_meanvar(mean=self.mean[imax_i:], var=self.var[imax_i:])
-        ax[2].scatter(self.mean[imax_i:]*1e12, self.var[imax_i:]*1e24, c="k", s=6)
-        ax[2].plot(self.mean[imax_i:]*1e12, qfit.best_fit*1e24, "r--", linewidth=0.5)
-        ax[2].set_ylabel("Variance (pA^2)")
-        ax[2].set_xlabel("Mean (pA)")
+    
 
 
 if __name__ == "__main__":
@@ -268,12 +297,12 @@ if __name__ == "__main__":
     sweep_data = tg.generate_sweeps()
     # tg.run()
     NSA = NSFA(timebase=tg.time, eventtraces=sweep_data, eventtimes=[np.argmax(tr) for tr in sweep_data])
-    NSA.align_on_rising(Nslope=13)
+    NSA.align_on_rising(Nslope=7)
     meanI = np.mean(NSA.d, axis=0)
     varI = np.var(NSA.d, axis=0)
-    tg.mean = meanI
-    tg.var = varI
-    qfit = tg.fit_meanvar(mean=meanI, var=varI)
-    tg.plot(qfit, NSA.t, NSA.d)
+    NSA.mean = meanI
+    NSA.var = varI
+    qfit = NSA.fit_meanvar(mean=meanI, var=varI)
+    f, ax = NSA.plot(qfit, NSA.t, NSA.d, mean=meanI, var=varI)
     print(f"NChan original: {nchans:3d}, gamma_original: {ichan*1e12:.3f} pA")
     mpl.show()

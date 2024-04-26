@@ -187,7 +187,7 @@ class RmTauAnalysis:
 
         assert len(time_window) == 2
         debug = False
-        print("Time Window0: ", time_window)
+        # print("Time Window0: ", time_window)
         Func = "exp1"  # single exponential fit with DC offset.
         self.taum_func = Func
         self.analysis_summary["taum"] = np.nan
@@ -323,7 +323,7 @@ class RmTauAnalysis:
             if debug:
                 print("times: ", time_window, len(time_base), np.min(time_base), np.max(time_base))
                 print('taubounds: ', taubounds)
-            print("fitwindow: ", time_window)
+
             (fparx, xf, yf, namesx) = Fits.FitRegion(
                 [k],
                 thisaxis=whichaxis,
@@ -393,6 +393,8 @@ class RmTauAnalysis:
         else:
             self.analysis_summary["taupars"] = self.taum_pars
         self.analysis_summary["taufunc"] = self.taum_func
+        self.analysis_summary["taum_fitted"] = self.taum_fitted
+
 
     def rmp_analysis(self, time_window:list=[]):
         """
@@ -474,6 +476,8 @@ class RmTauAnalysis:
             self.ivss_v = self.ivss_v[isort]
             bl = self.ivbaseline[isort]
             self.ivss_bl = bl
+            self.analysis_summary["ivss_cmd"] = self.ivss_cmd
+            self.analysis_summary["ivss_v"] = self.ivss_v
             # compute Rin from the SS IV:
             # this makes the assumption that
             # successive trials are in order, so we sort above
@@ -522,6 +526,10 @@ class RmTauAnalysis:
                     minloc,
                 ]  # where it was found
                 self.analysis_summary["Rin"] = self.r_in * 1.0e-6
+                self.analysis_summary["ivss_cmd"] = self.ivss_cmd
+                self.analysis_summary["ivss_v"] = self.ivss_v
+                self.analysis_summary["ivss_bl"] = self.ivss_bl
+                self.analysis_summary["ivss_fit"] = self.rss_fit
 
     def ivpk_analysis(self, time_window:list = []):
         """
@@ -609,6 +617,11 @@ class RmTauAnalysis:
                     minloc,
                 ]  # where it was found
                 self.analysis_summary["Rin_peak"] = self.r_in_peak * 1.0e-6
+                self.analysis_summary["ivpk_cmd"] = self.ivpk_cmd
+                self.analysis_summary["ivpk_v"] = self.ivpk_v
+                self.analysis_summary["ivpk_bl"] = self.ivpk_bl
+                self.analysis_summary["ivpk_fit"] = self.rpk_fit
+                
 
     def leak_subtract(self):
         self.yleak = np.zeros(len(self.ivss_v))
@@ -776,5 +789,6 @@ class RmTauAnalysis:
         self.analysis_summary["tauh_bovera"] = self.tauh_bovera
         self.analysis_summary["tauh_Gh"] = self.tauh_Gh
         self.analysis_summary["tauh_vss"] = self.tauh_vss
+        self.analysis_summary["tauh_fitted"] = self.tauh_fitted
 
         # print(self.analysis_summary)

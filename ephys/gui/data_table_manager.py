@@ -290,7 +290,6 @@ class TableManager:
         # print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
         Index_data.protocols = textwrap.fill(str(prots), width=40)
-
         # Index_data.data_complete = str(row.data_complete)
         return Index_data
 

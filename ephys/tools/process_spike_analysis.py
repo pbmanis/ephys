@@ -9,6 +9,7 @@ This data is computed from raw data sets, rather than from the .pkl intermediate
 The output spreadsheet can be passed to plot_spike_info to generate plots for these parameters
 
 """
+
 import logging
 from pathlib import Path
 from typing import Union
@@ -109,6 +110,7 @@ class ProcessSpikeAnalysis:
     def set_workers(self, nworkers: int = 10, computer: str = "Unknown"):
         self.nworkers = nworkers
         CP("c", f"Using {nworkers:d} workers for parallel processing on {computer:s}")
+        Logger.info(f"Using {nworkers:d} workers for parallel processing on {computer:s}")
 
     def get_rec_date(self, filename: Union[Path, str]):
         """get the recording date of record from the filename as listed n the excel sheet
@@ -137,9 +139,7 @@ class ProcessSpikeAnalysis:
             currents = []
             for d in dvdts:  # for each first spike, make a list of the currents
                 currents.append(d.current)
-            min_current = np.argmin(
-                currents
-            )  # find spike elicited by the minimum current
+            min_current = np.argmin(currents)  # find spike elicited by the minimum current
             row.dvdt_rising = dvdts[min_current].dvdt_rising
             row.dvdt_falling = dvdts[min_current].dvdt_falling
             row.dvdt_current = currents[min_current] * 1e12  # put in pA
@@ -172,7 +172,10 @@ class ProcessSpikeAnalysis:
         dataok = False
         if pd.isnull(row.date):
             return row
-        if self.experiment["celltypes"] != ["all"] and row.cell_type not in self.experiment["celltypes"]:
+        if (
+            self.experiment["celltypes"] != ["all"]
+            and row.cell_type not in self.experiment["celltypes"]
+        ):
             return row
 
         if int(row.name) > max_rows and max_rows != -1:
@@ -189,14 +192,19 @@ class ProcessSpikeAnalysis:
         print("    >>>> got row age: ", row.date, row.age)
 
         fullpatha = Path(
-            self.experiment["rawdatapath"], self.experiment['directory'], date, row.slice_slice, row.cell_cell, row.iv_name
+            self.experiment["rawdatapath"],
+            self.experiment["directory"],
+            date,
+            row.slice_slice,
+            row.cell_cell,
+            row.iv_name,
         )
         fullpath = None
         for protocol in list(self.experiment["protocols"]["CCIV"].keys()):
             # print("testing protocol and fullpath name: ", protocol, fullpatha.name)
             if fullpatha.name.startswith(protocol):
                 fullpath = fullpatha
-        
+
         if fullpath is None:
             CP("r", "    No IVs of the right kind were found")
             return row  # Nothing to do here, there are no IVs of the right kind to analyze.
@@ -213,9 +221,7 @@ class ProcessSpikeAnalysis:
                     if AR.error_info is not None:
                         Logger.error(AR.error_info)
                     AR.error_info = None
-                    return (
-                        row  # failed to get data, error will be indicated by acq4read
-                    )
+                    return row  # failed to get data, error will be indicated by acq4read
             except:
                 CP("r", f"Acq4Read failed to read data file: {str(fullpath.name):s}")
                 raise ValueError
@@ -274,7 +280,8 @@ class ProcessSpikeAnalysis:
             row.RMP_SD = IVA.RM.analysis_summary["RMP_SD"]
             row.Rin = IVA.RM.analysis_summary["Rin"]
             row.taum = IVA.RM.analysis_summary["taum"]
-            row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough"]
+            row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough_V"]
+            row.AHP_trough_T = 1e3 * IVA.SP.analysis_summary["AHP_Trough_T"]
             row.AHP_depth_V = IVA.SP.analysis_summary["AHP_Depth"]
             row.holding = IVA.RM.analysis_summary["holding"]
             row.tauh = IVA.RM.analysis_summary["tauh_tau"]
@@ -285,7 +292,14 @@ class ProcessSpikeAnalysis:
             gc.collect()
             return row
 
-    def _get_iv_protocol(self, row, pdf_pages: Union[object, None] = None, axis=1):
+    def _get_iv_protocol(
+        self,
+        row,
+        AR: DR.acq4_reader.acq4_reader,
+        IVA: EP.iv_analysis.IVAnalysis,
+        pdf_pages: Union[object, None] = None,
+        axis=1,
+    ):
         """Get the IV protocol from this dataframe row,
         compute the IV and spike information from the raw data using the ephys routines,
         and return the results in the row.
@@ -294,6 +308,8 @@ class ProcessSpikeAnalysis:
 
         Args:
             row (Pandas row): Row with all the protocol information for analysis
+            AR: an instance of the acq4_reader class
+            IV: an instance of the IV_analysis class
             pdfpages: PDF_write object for plotting
             ds: datasummary dataframe to retrieve metadata information from
         """
@@ -305,7 +321,10 @@ class ProcessSpikeAnalysis:
 
         # print("\nRow date: ", row.date, row.slice_slice, row.cell_cell)
         dataok = False
-        if self.experiment["celltypes"] != ["all"] and row.cell_type not in self.experiment["celltypes"]:
+        if (
+            self.experiment["celltypes"] != ["all"]
+            and row.cell_type not in self.experiment["celltypes"]
+        ):
             return row
         if pd.isnull(row.date):
             return row
@@ -316,7 +335,9 @@ class ProcessSpikeAnalysis:
 
         # Logger.info(f"\n**** Running analysis for :  {row.date!s}, {row.ID!s}, {row.age!s}, {row.Group!s}")
 
-        msg = f"\nRetrieved metadata for: {row.date!s}\n    Type: {row.cell_type:s}  Age={row.age!s}, T={row.temperature!s}, Internal Sol={row.internal:s}"
+        # print(row.keys())
+        msg = f"\nRetrieved metadata for: {row.date!s}\n    Type: {row.cell_type:s}"
+        msg += f" Age={row.age!s}, T={row.temperature!s}, Internal Sol={row.internal:s}"
         CP("m", msg)
         Logger.info(msg)
         fullpatha = Path(
@@ -329,9 +350,13 @@ class ProcessSpikeAnalysis:
         )
         day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
         CP("m", f"day_slice_cell: {day_slice_cell:s}")
-        if self.experiment["excludeIVs"] is not None and (day_slice_cell in self.experiment["excludeIVs"]) and (
-            (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
-            or row.protocol in ["all", ["all"]]
+        if (
+            self.experiment["excludeIVs"] is not None
+            and (day_slice_cell in self.experiment["excludeIVs"])
+            and (
+                (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
+                or row.protocol in ["all", ["all"]]
+            )
         ):
             CP("m", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
             Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
@@ -344,12 +369,12 @@ class ProcessSpikeAnalysis:
             if fullpatha.name.startswith(protocol):
                 fullpath = fullpatha
         if fullpath is None:
-            msg = f"protocol did not match our list: {day_slice_cell:s}, {row.protocol:s}"
+            msg = f"protocol did not match usable CCIV-type list: {day_slice_cell:s}, {row.protocol:s}"
             CP("m", msg)
             gc.collect()
             raise ValueError(msg)
             return row
-        
+
         CP(
             "m",
             f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)",
@@ -360,103 +385,93 @@ class ProcessSpikeAnalysis:
         else:
             CP("m", f"File not found: {fullpath!s}")
             Logger.error(f"File not found: {fullpath!s}")
-        with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
-            try:
-                if AR.getData():
-                    supindex = AR.readDirIndex(currdir=Path(fullpath.parent))
-                    CP("m", f"    Protocol read OK: {fullpath.name!s}")
-                    Logger.info(f"    Protocol read OK: {fullpath.name!s}")
-                    dataok = True
-                else:
-                    if AR.error_info is not None:
-                        Logger.error(AR.error_info)
-                    gc.collect()
-                    return (
-                        row  # failed to get data, error will be indicated by acq4read
-                    )
-            except ValueError as exc:
-                CP("m", f"Acq4Read failed to read data file: {str(fullpath):s}")
-                Logger.critical(f"Acq4Read failed to read data file: {str(fullpath):s}")
+        AR.setProtocol(fullpath)
+        AR.setDataName("MultiClamp1.ma")  # set the data file name
+        # with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
+        try:
+            if AR.getData():
+                supindex = AR.readDirIndex(currdir=Path(fullpath.parent))
+                CP("m", f"    Protocol read OK: {fullpath.name!s}")
+                Logger.info(f"    Protocol read OK: {fullpath.name!s}")
+                dataok = True
+            else:
+                if AR.error_info is not None:
+                    Logger.error(AR.error_info)
                 gc.collect()
-                return row
-
-            if not dataok:
-                gc.collect()
-                return row  # no update
-            CP("m", f"\nFullpath to protocol: {fullpatha!s}")
-            row.important = AR.checkProtocolImportant(fullpatha)
-            # print("protocol_index: ", protocol_index)
-            # if important:
-            #     # print(f"   Protocol index important: <{protocol_index["important]"!s}>")
-            #     row.important = important
-            #     # CP("m", f"   Important: {row.important!s}")
-            # else:
-            #     CP("r", f"   Important flag: not found, set False")   
-            #     row.important = False 
-            # return row
-            args = analysis_common.cmdargs  # get from default class
-            args.dry_run = False
-            args.merge_flag = True
-            args.experiment = self.experiment
-            args.iv_flag = True
-            args.map_flag = False
-            args.autoout = True
-
-            IVA = EP.iv_analysis.IVAnalysis(args)
-            IVA.configure(datapath=fullpatha, reader=AR, plot=True, pdf_pages=pdf_pages)
-            if IVA.AR.sample_rate[0] < 10000.0:
-                CP("m", "    Sample Rate too low")
-                Logger.info("    Sample Rate for this protocol is too low")
-                return row
-            IVA.iv_check(duration=0.1)
-            row.sample_rate = IVA.AR.sample_rate[0]
-
-            try:
-                IVA.AR.tstart
-            except:
-                CP("m", f"Failed to correctly read file: \n        {str(fullpath):s}")
-                Logger.critical(
-                    f"Failed to correctly read file: \n        {str(fullpath):s}"
-                )
-                raise ValueError("Failed to read file")
-                # return row
-            stable = IVA.stability_check(
-                rmpregion=[0, IVA.AR.tstart - 0.002], threshold=rmp_sd_limit
-            )
-            # print("stablity: ", stable, " SD: ", IVA.RM.rmp_sd)
-            row.rmp_sd = IVA.RM.rmp_sd
-            if not stable:
-                return row
-            # IVA.SP.set_detector("argrelmax")
-            # IVA.SP.threshold=-0.015
-            # return row # no further analysis.
-            CP("m", f"Processing Spikes: Computing IV: {day_slice_cell:s}, {row.protocol:s}")
-            IVA.compute_iv(to_peak=False, threshold=self.experiment["AP_threshold_V"], plotiv=True)
-            if len(IVA.SP.spikeShapes) == 0:  # no spikes
-                CP("y", f"No spike shape data: {day_slice_cell:s}, {row.protocol:s}")
-                return row
-
-            row = self.get_lowest_current_spike(row, IVA.SP)
-            # print("DVDT CURRENT: ", row.dvdt_current)
-            row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
-            row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
-            row.RMP = IVA.RM.analysis_summary["RMP"]
-            row.RMP_SD = IVA.RM.analysis_summary["RMP_SD"]
-            row.Rin = IVA.RM.analysis_summary["Rin"]
-            row.taum = IVA.RM.analysis_summary["taum"]
-            if "AP_begin_V" in IVA.SP.analysis_summary.keys():
-                row.AP_begin_V = 1e3 * IVA.SP.analysis_summary["AP_begin_V"]
-            row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough"]
-            row.AHP_depth_V = IVA.SP.analysis_summary["AHP_Depth"]
-            row.holding = IVA.RM.analysis_summary["holding"]
-            row.tauh = IVA.RM.analysis_summary["tauh_tau"]
-            row.Gh = IVA.RM.analysis_summary["tauh_Gh"]
-
-            row.FI_Curve = IVA.SP.analysis_summary["FI_Curve"]
-            # CP("g", f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)")
-            # print(resource.getrusage(resource.RUSAGE_SELF))
+                return row  # failed to get data, error will be indicated by acq4read
+        except ValueError:
+            CP("m", f"Acq4Read failed to read data file: {str(fullpath):s}")
+            Logger.critical(f"Acq4Read failed to read data file: {str(fullpath):s}")
             gc.collect()
             return row
+
+        if not dataok:
+            gc.collect()
+            return row  # no update
+        CP("m", f"\nFullpath to protocol: {fullpatha!s}")
+        row.important = AR.checkProtocolImportant(fullpatha)
+        # print("protocol_index: ", protocol_index)
+        # if important:
+        #     # print(f"   Protocol index important: <{protocol_index["important]"!s}>")
+        #     row.important = important
+        #     # CP("m", f"   Important: {row.important!s}")
+        # else:
+        #     CP("r", f"   Important flag: not found, set False")
+        #     row.important = False
+        # return row
+
+        IVA.configure(datapath=fullpatha, reader=AR, plot=True, pdf_pages=pdf_pages)
+        if AR.sample_rate[0] < 10000.0:
+            CP("m", "    Sample Rate too low")
+            Logger.info("    Sample Rate for this protocol is too low")
+            return row
+        IVA.iv_check(duration=0.1)
+        row.sample_rate = AR.sample_rate[0]
+
+        try:
+            IVA.AR.tstart
+        except:
+            CP("m", f"Failed to correctly read file: \n        {str(fullpath):s}")
+            Logger.critical(f"Failed to correctly read file: \n        {str(fullpath):s}")
+            raise ValueError("Failed to read file")
+            # return row
+        stable = IVA.stability_check(rmpregion=[0, IVA.AR.tstart - 0.002], threshold=rmp_sd_limit)
+        # print("stablity: ", stable, " SD: ", IVA.RM.rmp_sd)
+        row.rmp_sd = IVA.RM.rmp_sd
+        if not stable:
+            return row
+
+        CP("m", f"Processing Spikes: Computing IV: {day_slice_cell:s}, {row.protocol:s}")
+        IVA.compute_iv(to_peak=False, threshold=self.experiment["AP_threshold_V"], plotiv=True)
+        if len(IVA.SP.spikeShapes) == 0:  # no spikes
+            CP("y", f"No spike shape data: {day_slice_cell:s}, {row.protocol:s}")
+            return row
+
+        row = self.get_lowest_current_spike(row, IVA.SP)
+        # print("DVDT CURRENT: ", row.dvdt_current)
+        row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
+        row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
+        row.RMP = IVA.RM.analysis_summary["RMP"]
+        row.RMP_SD = IVA.RM.analysis_summary["RMP_SD"]
+        row.Rin = IVA.RM.analysis_summary["Rin"]
+        row.taum = IVA.RM.analysis_summary["taum"]
+        if "AP_begin_V" in IVA.SP.analysis_summary.keys():
+            row.AP_begin_V = 1e3 * IVA.SP.analysis_summary["AP_begin_V"]
+        row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough_V"]  # depth, absolute V
+        row.AHP_trough_T = IVA.SP.analysis_summary["AHP_Trough_T"]  # absolute time
+        row.AHP_depth_V = IVA.SP.analysis_summary["AHP_Depth"]  # depth from spike threshold
+        row.holding = IVA.RM.analysis_summary["holding"]
+        row.tauh = IVA.RM.analysis_summary["tauh_tau"]
+        row.Gh = IVA.RM.analysis_summary["tauh_Gh"]
+
+        row.FI_Curve = IVA.SP.analysis_summary["FI_Curve"]
+        CP(
+            "g",
+            f"RAM Used (GB): {psutil.virtual_memory()[3]/1000000000:.1f} ({psutil.virtual_memory()[2]:.1f}%)",
+        )
+        # print(resource.getrusage(resource.RUSAGE_SELF))
+        gc.collect()
+        return row
 
     def _make_short_name(self, row):
         return self.get_rec_date(row["date"])
@@ -469,7 +484,18 @@ class ProcessSpikeAnalysis:
         # print(row.date, row.data_complete.values)
         return row
 
-    def find_protocols(
+    def clean_up_after_merge(self, df, colname):
+        col_x = colname + "_x"
+        col_y = colname + "_y"
+        if col_x in df.columns and col_y in df.columns:
+            # two different sets of data in the merge with same name.
+            df.fillna({col_x: col_y}, inplace=True)
+            df.loc[df[col_x] == " ", col_x] = df[col_y]
+            df.rename(columns={col_x: colname}, inplace=True)
+            df.drop([col_y], axis=1)
+        return df
+
+    def find_and_process_protocols(
         self,
         exp: dict,
         datasummary: Union[Path, str],
@@ -477,7 +503,7 @@ class ProcessSpikeAnalysis:
         result_sheet: Union[Path, None, str] = None,
         pdf_pages: Union[object, None] = None,
     ):
-        """find_protocols - find the complete IV protocols from the datasummary file,
+        """find_and_process_protocols - find the complete IV protocols from the datasummary file,
         generate a new row for each one, and merge with the code sheet (to
         set the coding).
         Return the results as a pandas dataframe.
@@ -503,7 +529,7 @@ class ProcessSpikeAnalysis:
 
         if codesheet is not None:
             df_codes = pd.read_excel(codesheet)
-        
+
         assert result_sheet is not None
 
         df_summary = pd.read_pickle(datasummary)
@@ -513,32 +539,55 @@ class ProcessSpikeAnalysis:
         # match up. If they don't the problem is likely in the coding file date names.
 
         if codesheet is not None:
-            df = pd.merge(
-                df_summary, df_codes, left_on="date", right_on="date", how="left"
-            )
+            df = pd.merge(df_summary, df_codes, left_on="date", right_on="date", how="left")
         else:
             df = df_summary
             df["Group"] = "Control"  # all are control if there is no codesheet
             df["ID"] = ""  # no animal ID here
-            df["Date"] = ""  # no Data from here
-  
-        if 'sex_x' in df.columns and 'sex_y' in df.columns:
-            # two different sets of data in the merge with same name.
-            df['sex_x'].fillna(df['sex_y'], inplace=True)
-            df.loc[df["sex_x"] == ' ','sex_x'] = df["sex_y"]
-            df.rename(columns={"sex_x": "sex"}, inplace=True)
-            df.drop(['sex_y'], axis=1)
+            df["Date"] = ""  # no Date from here
+
+        cols_to_clean = [
+            "sex",
+            "age",
+            "cell_expression",
+            "cell_cell",
+            "slice_slice",
+            "animal identifier",
+            "important",
+            "reporters",
+            "strain",
+        ]
+        for colname in cols_to_clean:
+            df = self.clean_up_after_merge(df, colname)
 
         print("Number of potential cells: ", len(df))
         df["protocol"] = np.nan
+        # for index in df.index:
+        #     row = df.loc[index]
+        #     print("before data_complete_to_series:\n    ", index, row.date, row.slice_slice, row.cell_cell, row.data_complete)
+        #     if index > 20:
+        #         break
         # convert the data complete column to a list of protocols
         df = df.apply(self._data_complete_to_series, axis=1)
+        # for index in df.index:
+        #     row = df.loc[index]
+        #     print("after data_complete_to_series:\n    ", 
+        #           index, row.date, row.slice_slice, row.cell_cell, "<", row.data_complete, ">", "prot: ", row.protocol)
+        #     if index > 20:
+        #         exit()
+
         print(len(df), " rows after data complete to series")
         # now make a new dataframe that has a separate row for each protocol
-        df = df.explode("protocol")
+        df = df.explode(["protocol"], ignore_index=True)
         print("Number of protocols after explode", len(df))
         df = df.dropna(subset=["protocol"])
         print("Number of protocols after dropna", len(df))
+        # for index in df.index:
+        #     row = df.loc[index]
+        #     print("after data_complete_to_series:\n    ", 
+        #           index, row.date, row.slice_slice, row.cell_cell, "<", row.data_complete, ">", "prot: ", row.protocol)
+        #     if index > 19:
+        #         exit()
 
         df_null = df[df["cell_id"].isnull()]
         print("Null columns: ", df_null)
@@ -548,17 +597,8 @@ class ProcessSpikeAnalysis:
         print("protostrings: ", protostrings)
         print(df["protocol"].unique())
 
-        df = df[
-            df["protocol"].str.contains(
-                protostrings
-            )
-        ]
-        if "cell_cell_y"  in df.columns:
-            df = df.drop(["cell_cell_y", "slice_slice_y"], axis=1)
-            df.rename(columns={"cell_cell_x": "cell_cell", "slice_slice_x": "slice_slice"}, inplace=True)
-        if "reporters_y" in df.columns:
-            df = df.drop(["reporters_y", "animal identifier_y", "strain_y"], axis=1)
-            df.rename(columns={"reporters_x": "reporters", "animal identifier_x": "animal identifier", "strain_x": "strain"}, inplace=True)
+        df = df[df["protocol"].str.contains(protostrings)]
+
         print("# of protocols of right type: ", len(df))
         print(df["protocol"].unique())
         Logger.info(f"Number of protocols of right type for analysis: {len(df):d}")
@@ -579,6 +619,7 @@ class ProcessSpikeAnalysis:
             "AdaptRatio",
             "AP_begin_V",
             "AHP_trough_V",
+            "AHP_trough_T",
             "AHP_depth_V",
             "tauh",
             "Gh",
@@ -592,22 +633,30 @@ class ProcessSpikeAnalysis:
         # now do an analysis
         Logger.info("Starting analysis on protocols in database")
         print("workers: ", self.nworkers)
-
-        # df = df.apply(_get_iv_protocol, experiment=exp, pdf_pages=pdf_pages, axis=1)
+        args = analysis_common.cmdargs  # get from default class
+        args.dry_run = False
+        args.merge_flag = True
+        args.experiment = self.experiment
+        args.iv_flag = True
+        args.map_flag = False
+        args.autoout = True
+        args.nworkers = self.nworkers
+        AR = DR.acq4_reader.acq4_reader()
+        IVA = EP.iv_analysis.IVAnalysis(args)
         if len(df) < self.nworkers:
             nworkers = len(df)
         else:
             nworkers = self.nworkers
-        df = DataFrameParallel(df, n_cores=nworkers-2, pbar=True).apply(
-            self._get_iv_protocol, pdf_pages=None, axis=1
-        )
+        df = df.apply(self._get_iv_protocol, AR=AR, IVA=IVA, pdf_pages=None, axis=1)
+
+        # df = DataFrameParallel(df, n_cores=nworkers - 2, pbar=True).apply(
+        #     self._get_iv_protocol, AR=AR, IVA=IVA, pdf_pages=None, axis=1
+        # )
 
         writer = pd.ExcelWriter(result_sheet)
         df.to_excel(writer, sheet_name="Sheet1")
         for i, column in enumerate(df.columns):
-            column_width = max(
-                df[column].astype(str).map(len).max(), 24
-            )  # len(column))
+            column_width = max(df[column].astype(str).map(len).max(), 24)  # len(column))
             writer.sheets["Sheet1"].set_column(
                 first_col=i + 1, last_col=i + 1, width=column_width
             )  # column_dimensions[str(column.title())].width = column_width
@@ -637,13 +686,11 @@ class ProcessSpikeAnalysis:
             datasummaryfile = Path(
                 exp["databasepath"], exp["directory"], exp["datasummaryFilename"]
             )
-            protos = self.find_protocols(
+            protos = self.find_and_process_protocols(
                 exp,
                 datasummary=datasummaryfile,
                 codesheet=codesheet,
-                result_sheet=Path(
-                    exp["databasepath"], exp["directory"], exp["result_sheet"]
-                ),
+                result_sheet=result_sheet,
                 pdf_pages=pdfs,
             )
             gc.collect()
@@ -654,9 +701,7 @@ class ProcessSpikeAnalysis:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Further Processing for Spike Analysis"
-    )
+    parser = argparse.ArgumentParser(description="Further Processing for Spike Analysis")
     parser.add_argument(
         "-d",
         type=str,
