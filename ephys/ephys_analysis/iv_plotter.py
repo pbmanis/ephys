@@ -10,9 +10,23 @@ import ephys.datareaders.acq4_reader as acq4_reader
 from ephys.ephys_analysis.analysis_common import Analysis
 import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filename_tools
+import ephys.gui.data_table_functions as data_table_functions
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.figure
 import colorcet
+
+FUNCS = data_table_functions.Functions()
+
+def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, decorate):
+    with open(pkl_file, "rb") as fh:
+        df_selected = pd.read_pickle(fh, compression="gzip")
+        plotter = IVPlotter(
+            experiment=experiment,
+            df_summary=df_summary,
+            file_out_path=file_out_path,
+            decorate=decorate,
+        )
+        plotter.plot_ivs(df_selected)
 
 
 class IVPlotter(object):
@@ -55,16 +69,16 @@ class IVPlotter(object):
             self.nfiles += 1
 
     def plot_ivs(self, df_selected=None):
-        if df_selected is None:
+        if df_selected is None or df_selected['IV'] is None:
             return
 
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
         # check to see if this one is in the exclusion list:
         # print(df_selected.cell_id, self.experiment["excludeIVs"])
-        if ((self.experiment["excludeIVs"] is not None) 
-            and (df_selected.cell_id in self.experiment["excludeIVs"] )
-            and (self.experiment["excludeIVs"][df_selected.cell_id]['protocols'] == ["all"])):
+        protocols = df_selected["IV"].keys()
+        protocols = FUNCS.remove_excluded_protocols(self.experiment, df_selected.cell_id, protocols=protocols)
+        if len(protocols) == 0:
             CP("y", f"Excluding {df_selected.cell_id} from the plotting")
             return
 
@@ -385,20 +399,25 @@ class IVPlotter(object):
 
         # Plot the spike intervals as a function of time into the stimulus
         for i, spike_tr in enumerate(spikes):  # this is the trace number
-            spike_train = spikes[spike_tr]  # get the spike train, then get just the latency
+            spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
-            if len(spk_tr) == 0:
+            if (len(spk_tr) == 0) or (spk_tr[0] is None):
                 continue
-            spx = np.argwhere(  # get the spikes that are in the stimulus window
+            spk_tr = np.array([spk for spk in spk_tr if spk is not None])
+            spx = np.nonzero(  # get the spikes that are in the stimulus window
                 (spk_tr > self.AR.tstart) & (spk_tr <= self.AR.tend)
-            ).ravel()
+            )
             spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
+            # print(spkl)
             if len(spkl) == 1:
                 P.axdict["D"].plot(spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4)
             else:
+                # print("spkl shape: ", spkl.shape)
+                spk_isi = np.diff(spkl)
+                spk_isit = spkl[:len(spk_isi)]
                 P.axdict["D"].plot(
-                    spkl[:-1],
-                    np.diff(spkl),
+                    spk_isit,
+                    spk_isi,
                     "o-",
                     color=trace_colors[i],
                     markersize=3,
@@ -423,6 +442,8 @@ class IVPlotter(object):
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
         for k, i in enumerate(spikes.keys()):
+            if len(spikes[i]) == 0 or spikes[i][0] is None or spikes[i][0].dvdt is None:
+                continue
             n_dvdt = len(spikes[i][0].dvdt)
             P.axdict["E"].plot(
                 spikes[i][0].V[:n_dvdt],
