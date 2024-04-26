@@ -415,7 +415,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     celltype = str(celltype).replace("\n", "")
     if celltype == " ":  # no cell type
         celltype = "unknown"
-    CP("m", f"get cell: df_tmp cell type: {celltype:s}")
+    # CP("m", f"get cell: df_tmp cell type: {celltype:s}")
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
@@ -456,7 +456,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
 
     if datapath2.is_file():
-        CP("c", f"...  {datapath2!s} is OK")
+        # CP("c", f"...  {datapath2!s} is OK")
         datapath = datapath2
     else:
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
