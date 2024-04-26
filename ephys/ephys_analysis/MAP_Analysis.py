@@ -467,14 +467,14 @@ class MAP_Analysis(Analysis):
         str_path_to_map = str(path_to_map)
         self.internal_Cs = False
         self.high_Cl = False
-        csstr = re.compile("(Cs|Cesium|Cs)", re.IGNORECASE)
+        csstr = re.compile(r"(Cs|Cesium|Cs)", re.IGNORECASE)
         if re.search(csstr, internal_sol) is not None:
             self.internal_Cs = True
         if (
             re.search(csstr, notes) is not None
         ):  # could also be in notes; override interal setting
             self.internal_Cs = True
-        clstr = re.compile("(Hi|High)\s+(Cl|Chloride)", re.IGNORECASE)
+        clstr = re.compile(r"(Hi|High)\s+(Cl|Chloride)", re.IGNORECASE)
         if re.search(clstr, notes) is not None:
             self.high_Cl = True  # flips sign for detection
             # print(' HIGH Chloride cell ***************')
