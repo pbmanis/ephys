@@ -46,7 +46,7 @@ from ephys.datareaders import acq4_reader
 """
 Make a LaTex Header and Footer for the output
 """
-latex_header = """\\documentclass[8pt, letterpaper, oneside]{article}
+latex_header = r"""\\documentclass[8pt, letterpaper, oneside]{article}
 \\usepackage[utf8]{inputenc}
 \\usepackage{fancyvrb}
 \\usepackage{geometry}
@@ -106,13 +106,13 @@ class DirCheck:
 
         self.show_protocol = protocol
         self.img_re = re.compile(
-            "^[Ii]mage_(\d{3,3}).tif"
+            r"^[Ii]mage_(\d{3,3}).tif"
         )  # make case insensitive - for some reason in Xuying's data
-        self.s2p_re = re.compile("^2pStack_(\d{3,3}).ma")
-        self.i2p_re = re.compile("^2pImage_(\d{3,3}).ma")
-        self.video_re = re.compile("^[Vv]ideo_(\d{3,3}).ma")
-        self.daytype = re.compile("(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
-        self.tstamp = re.compile("\s*(__timestamp__: )([\d.\d]*)")
+        self.s2p_re = re.compile(r"^2pStack_(\d{3,3}).ma")
+        self.i2p_re = re.compile(r"^2pImage_(\d{3,3}).ma")
+        self.video_re = re.compile(r"^[Vv]ideo_(\d{3,3}).ma")
+        self.daytype = re.compile(r"(\d{4,4}).(\d{2,2}).(\d{2,2})_(\d{3,3})")
+        self.tstamp = re.compile(r"\s*(__timestamp__: )([\d.\d]*)")
         self.AR = acq4_reader.acq4_reader()
         self.recurselevel = 0
         self.fmtstring = "{0:>15s} {1:<10s} {2:<10s} {3:<40} {4:>20}"
@@ -135,17 +135,17 @@ class DirCheck:
                 #    self.printLine('\\end{Verbatim}' + self.lb)
                 print("Writing title page")
                 self.printLine(
-                    "\\vspace{2cm}\\center{\\textbf{\\large{Directory Check/Protocol Listing}}}"
+                    r"\\vspace{2cm}\\center{\\textbf{\\large{Directory Check/Protocol Listing}}}"
                     + self.lb
                 )
                 self.printLine(
-                    "\\vspace{2cm}\\center{\\textbf{\huge{"
+                    r"\\vspace{2cm}\\center{\\textbf{\huge{"
                     + str(self.outfile)  # .replace("_", "\_")
                     + "}}}"
                     + self.lb
                 )
                 self.printLine(
-                    "\\vspace{1cm}\\center{\\textbf{\\large{"
+                    r"\\vspace{1cm}\\center{\\textbf{\\large{"
                     + str(self.topdir)  # .replace("_", "\_")
                     + "}}}"
                     + self.lb
@@ -153,15 +153,15 @@ class DirCheck:
                 self.now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
                 self.rundate = datetime.datetime.now().strftime("%Y.%m.%d")
                 self.printLine(
-                    "\\vspace{1cm}\\center{\\textbf{\\LARGE{Run Date:}}}" + self.lb
+                    r"\\vspace{1cm}\\center{\\textbf{\\LARGE{Run Date:}}}" + self.lb
                 )
                 self.printLine(
-                    "\\vspace{0.5cm}\\center{\\textbf{\\huge{"
+                    r"\\vspace{0.5cm}\\center{\\textbf{\\huge{"
                     + self.now
                     + "}}}"
                     + self.lb
                 )
-                self.printLine("\\newpage", color=None)
+                self.printLine(r"\\newpage", color=None)
                 # self.printLine("\\begin{Verbatim} " + self.lb)
 
         path = self.topdir.parent
@@ -490,7 +490,7 @@ class DirCheck:
     def printLine(self, text, verbatim=False, suppress_trailing_lb=False, color=None):
         # if self.outputMode == 'latex':
         if not verbatim:
-            text = text.replace("_", "\_")
+            text = text.replace(r"_", r"\_")
         if self.outfile is None:
             if self.coloredOutput:
                 if color == None:
