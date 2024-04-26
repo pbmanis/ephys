@@ -17,7 +17,8 @@ def GHK(T, Ko, Ki, Pk, Nao, Nai, PNa, Clo, Cli, PCl):
     -------
     float
         Vm in volts
-    """    F = 96500
+    """
+    F = 96500.0
     RTF = R*Tk/F
     num = Pk * Ko + PNa * Nao + PCl * Cli
     den = Pk * Ki + PNa * Nai + PCl * Clo
