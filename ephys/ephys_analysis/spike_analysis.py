@@ -253,6 +253,7 @@ class SpikeAnalysis:
         # maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
         for trace_number in range(ntraces):  # this is where we would parallelize the analysis for spikes
             # if we could, but can only have ONE parallelization at a time (using top level)
+            # The question is whether this would be faster? 
             # CP.cprint("r", f"AnalyzeSpikes: 2: trace: {i:d}")
             spikes = self.U.findspikes(
                 self.Clamps.time_base,
@@ -349,11 +350,7 @@ class SpikeAnalysis:
 
         ntr = len(self.Clamps.traces)
         allspikes = [[] for i in range(ntr)]
-        # spikeIndices = [[] for i in range(ntr)]
 
-        # import matplotlib.pyplot as mpl
-
-        # f, ax = mpl.subplots(1, 1)
         for trace_number in range(ntr):
             spikes = self.U.findspikes(
                 self.Clamps.time_base,
@@ -371,12 +368,9 @@ class SpikeAnalysis:
                 debug=False,
             )
             if len(spikes) == 0:
-                # print 'no spikes found'
                 continue
             allspikes[trace_number] = spikes
-            # ax.plot(self.Clamps.time_base, np.array(self.Clamps.traces[i]))
-            # mpl.plot(self.Clamps.time_base[spikes], [self.threshold] * len(spikes), "ro")
-        # mpl.show()
+
         self.analysis_summary[mode + "_spikes"] = allspikes
 
     def _timeindex(self, t):
@@ -548,6 +542,7 @@ class SpikeAnalysis:
 
     def get_lowest_current_spike(self):
         """get_lowest_current_spike : get the lowest current spike in the traces
+        and save the various measurements in a dictionary
 
         Returns
         -------
@@ -571,12 +566,14 @@ class SpikeAnalysis:
                 itr.append(d)
             i_min_current = np.argmin(currents)  # find spike elicited by the minimum current
             min_current = currents[i_min_current]
-            sp = self.spikeShapes[itr[i_min_current]][0]
+            sp = self.spikeShapes[itr[i_min_current]][0]  # gets just the first spike in the lowest current trace
 
             LCS["dvdt_rising"] = sp.dvdt_rising
             LCS["dvdt_falling"] = sp.dvdt_falling
             LCS["dvdt_current"] = min_current * 1e12  # put in pA
-            LCS["AP_thr_V"] = 1e3 * sp.AP_begin_V
+            if sp.AP_begin_V is None:
+                print("\nSpike empty? \n", sp)
+
             LCS["AP_thr_T"] = sp.AP_beginIndex * self.Clamps.sample_interval * 1e3
             LCS["AP_peak_V"] = 1e3 * sp.peak_V
             LCS["AP_peak_T"] = sp.peak_T
@@ -584,11 +581,13 @@ class SpikeAnalysis:
                 LCS["AP_HW"] = sp.halfwidth_interpolated * 1e3
             else:  # if interpolated halfwidth is not available, use the raw halfwidth
                 LCS["AP_HW"] = sp.halfwidth * 1e3
+
             LCS["AP_begin_V"] = 1e3 * sp.AP_begin_V
             LCS["AHP_depth"] = 1e3 * (sp.AP_begin_V - sp.trough_V)
             LCS["AHP_trough_T"] = sp.trough_T
             LCS["trace"] = itr[i_min_current]
             LCS["dt"] = sp.dt
+            LCS["spike_no"] = 0
         return LCS
 
     def analyze_one_spike(
@@ -598,6 +597,40 @@ class SpikeAnalysis:
         spike_begin_dV: float,
         max_spikeshape: Union[int, None] = None,
     ):
+        """analyze_one_spike  Make measurements on a single spike in a trace. To the
+        extent possible (and it is not always possible), the measurements include:
+        spike threshold, spike height, half-width (data), half-width (interpolated),
+        AHP depth, time to AHP depth from time of spike threshold, spike latency,
+        and rising and falling slopes of the spike.
+        Requires that the spike has been detected and that the spike indices are available.
+
+        Parameters
+        ----------
+        trace_number : int
+            The trace that is being analyzed
+        spike_number : int
+            The spike # within the trace
+        spike_begin_dV : float
+            dvdt at spike start
+        max_spikeshape : Union[int, None], optional
+            Maximum number of spikes within a train that will get this
+            detaile analysis. Usually the analysis is only useful on the
+            first couple of spikes. By default None
+
+        Returns
+        -------
+        OneSpike class
+            The dataclass that holds information for individual spikes
+
+        Raises
+        ------
+        ValueError
+            Insufficient points before spike to perform analysis
+        ValueError
+            Insufficient points (< 3) before threshold
+        ValueError
+            Insufficient points (< 3) before threshold
+        """
         thisspike = OneSpike(trace=trace_number, AP_number=spike_number)
         thisspike.current = self.Clamps.values[trace_number] - self.iHold_i[trace_number]
         thisspike.iHold = self.iHold_i[trace_number]
@@ -610,58 +643,90 @@ class SpikeAnalysis:
 
         dt = self.Clamps.time_base[1] - self.Clamps.time_base[0]
         thisspike.dt = dt
-
+        t_step_start = int(self.Clamps.tstart / dt)
         # compute dv/dt
         dvdt = np.diff(self.Clamps.traces[trace_number]) / dt
-        # because index is to peak, we look for previous spike
         kpeak: int = int(self.spikeIndices[trace_number][spike_number])
-        kbegin: int = 0  # no previous spike, so use got back to start of the trace this spike
+        # Check whether there is a previous spike, 
+        # and find the minimum voltage between this spike and the previous spike.
+        # If this is the first spike, then find 
+        # the most proximal minimum before this spike to the start of the trace.
+        # Use a 2 mV threshold to find the minimum.
         if spike_number > 0:
-            kbegin = self.spikeIndices[trace_number][
+            kprevious = self.spikeIndices[trace_number][
                 spike_number - 1
-            ]  # index to previous spike start
+            ]  # index into voltage array to previous spike peak
+        else:  # no previous spike so look back to the beginning of the trace
+            #  to minimize current step artifacts, search for first local minimum prior to the spike
+            #  in the window from the peak of the spike to the start of the trance
 
-        if kpeak - kbegin < 3:
-            # should never happen.
-            raise ValueError(
-                f"k <= kbegin, can't analyze spike: trace {trace_number:d}, #{spike_number:d} kpeak: {kpeak:d}, kbegin: {kbegin:d}"
-            )
+            min_point = kpeak
+            band = 1e-3  # 1 mV change ends minimum search
+            for km in range(kpeak-1, t_step_start, -1):
+                delta = self.Clamps.traces[trace_number][km] - self.Clamps.traces[trace_number][km + 1]
+                if delta < 0:
+                    min_point = km
+                    min_v = self.Clamps.traces[trace_number][km]  # save current minimum
+                    continue
+                elif delta > 0:
+                    if self.Clamps.traces[trace_number][km] > (min_v + band):
+                        break  # end of minimum, report the prior minimum point
+            kprevious = min_point
+        # print(trace_number, kprevious, kpeak)
+        kbegin = np.argmin(self.Clamps.traces[trace_number][kprevious:kpeak]) + kprevious
+        if kpeak - kbegin < 2:
+            return thisspike
+        # raise ValueError(
+        #         f"k <= kbegin, can't analyze spike: trace {trace_number:d}, #{spike_number:d} kpeak: {kpeak:d}, kbegin: {kbegin:d}"
+        #     )
         #     k = kbegin + 2
-        try:
-            kbegin = kbegin + int((kpeak - kbegin) / 2)
-            km: int = (
-                np.argmax(dvdt[kbegin:kpeak]) + kbegin
-            )  # find max rising slope, but start halfway between last spike and this spike
-        except ValueError:
-            print(
-                f"can't analyze spike in {this_source_file:s}:: kbegin = {kbegin:d}, k = {kpeak:d}"
-            )
-            raise ValueError
-            # return thisspike
-
-        if (km - kbegin) < 1:
-            km = kbegin + int((kpeak - kbegin) / 2) + 1
-        # find point where slope exceeds the dv/dt defined for spike threshold
-        kthresh = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
-        # if len(kthresh) < 3:
-        #     print(f"??? no spike found: {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {km:d}, {kpeak:d}, {spike_begin_dV:.3f}")
-        #     import matplotlib.pyplot as mpl
-        #     f, ax = mpl.subplots(3, 1, figsize=(5, 8))
-        #     ax[0].plot(self.Clamps.time_base[kbegin:km], dvdt[kbegin:km])
-        #     ax[0].plot(self.Clamps.time_base[kbegin:km], np.ones_like(dvdt[kbegin:km]) * spike_begin_dV)
-        #     ax[1].plot(self.Clamps.time_base[kbegin:km], np.array(self.Clamps.traces[i][kbegin:km]))
-        #     # ax[1].plot(self.Clamps.time_base[kthresh], np.array(self.Clamps.traces[i][kthresh]), 'ro')
-        #     mpl.show()
+        # try:
+        #     # get the minimum voltage after the peak to use as the kbegin
+        #   #  kbegin = kbegin + int((kpeak - kbegin) / 2)
+        km: int = (
+            np.argmax(dvdt[kbegin:kpeak]) + kbegin
+        )  # find max rising slope, but start halfway between last spike and this spike
+        # except ValueError:
+        #     print(
+        #         f"Not enough points before spike to analyze spike in {this_source_file:s}:: kbegin = {kbegin:d}, kpeak = {kpeak:d}"
+        #     )
         #     raise ValueError
-        #     return thisspike
+        #     # return thisspike
 
-        # then get the LAST point that above that threshold - this avoids
+        # if (km - kbegin) < 1:
+        #     km = kbegin + int((kpeak - kbegin) / 2) + 1
+        # find points where slope exceeds the dv/dt defined for spike threshold, but
+        # only up to the max slope of the spike
+        kthresh = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
+        if len(kthresh) == 0:
+            print(f"??? no spike found: {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {kprevious:d}, {kpeak:d}, {spike_begin_dV:.3f}")
+            # import pyqtgraph as pg
+            # pg.plot(self.Clamps.time_base, self.Clamps.traces[trace_number], pen=pg.mkPen('b', width=1))
+            # pg.plot(self.Clamps.time_base[kbegin:kpeak+100], self.Clamps.traces[trace_number][kbegin:kpeak+100],
+            #         pen=pg.mkPen('r', width=2))
+
+            # import matplotlib.pyplot as mpl
+            # f, ax = mpl.subplots(3, 1, figsize=(5, 8))
+            # kb = kbegin - int(0.002/dt)
+            # k2 = kpeak + int(0.002/dt)
+            # ax[0].plot(self.Clamps.time_base[kb:k2], dvdt[kb:k2])
+            # ax[0].plot(self.Clamps.time_base[kb:k2], np.ones_like(dvdt[kb:k2]) * spike_begin_dV)
+            # ax[1].plot(self.Clamps.time_base[kb:k2], np.array(self.Clamps.traces[trace_number][kb:k2]))
+            # # ax[1].plot(self.Clamps.time_base[kthresh], np.array(self.Clamps.traces[i][kthresh]), 'ro')
+            # mpl.show()
+            # raise ValueError
+            return thisspike
+
+        # then get the LAST point that is above that threshold - this avoids
         # having noise in the trace just below threshold determine the threshold.
         # A better way would be to provide logic that ensures that the threshold represents
         # a monotonically increasing region of the values, or to fit a simple function to
         # smooth out the noise in this region.
+        # Note that if there is only one point in kthresh, then the threshold is the first point
         kthresh = int(kthresh[-1]) + kbegin
-
+        # if self.Clamps.time_base[kthresh] < 0.25 + self.Clamps.tstart:
+        #     CP("y", f"Spike too early - probably artifact?: {self.Clamps.time_base[kthresh]:.3f}")
+        #     return thisspike
         # print(f"kthresh:  {kthresh:d}, kbegin: {kbegin:d}, time: {self.Clamps.time_base[kthresh]:.3f}, detection dvdt: {spike_begin_dV:.3f}, spike dvdt at thresho: {dvdt[kthresh]:.3f}")
         # print(dvdt[kbegin:km])
         # raise ValueError

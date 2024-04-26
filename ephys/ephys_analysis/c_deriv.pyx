@@ -54,6 +54,7 @@ def c_box_spike_find(
            double C1,  #  # slope value(express in units of y_data) (input)
            double C2, # slope value (express in units of y_data) (input)
            double dt2, # spike window (nominal 1.75 msec) (input)
+           double minwidth,  # minimum width of spike (0.1 msec, for example) (input)
            double[:] spikes, # calculated spikes (times, set to 1 else 0) (output)
            ):
 
@@ -67,8 +68,8 @@ def c_box_spike_find(
         if (y_data[i] > thr): # increasingly restrictive measures: works for clean data
             if (y_data[i]>y_data[i-1]) and (y_data[i] > y_data[i+1]):
                 if ((y_data[i+iwid] - y_data[i]) < C1) and ((y_data[i]-y_data[i-iwid]) > C2):
-                   #  printf("  spike: %ld\n", i)
-                    spikes[i] = 1.0
+                    if (x_data[i+iwid] - x_data[i-iwid]) > minwidth:
+                        spikes[i] = 1.0
 
 
     
