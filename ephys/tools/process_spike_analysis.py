@@ -128,7 +128,7 @@ class ProcessSpikeAnalysis:
         d = int(1e4 * int(s[0])) + int(1e2 * int(s[1])) + int(s[2])
         return d
 
-    def get_lowest_current_spike(self, row, SP):
+    def find_lowest_current_spike(self, row, SP):
         dvdts = []
         for tr in SP.spikeShapes:  # for each trace
             if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
@@ -272,7 +272,7 @@ class ProcessSpikeAnalysis:
             if len(IVA.SP.spikeShapes) == 0:  # no spikes
                 return row
 
-            row = self.get_lowest_current_spike(row, IVA.SP)
+            row = self.find_lowest_current_spike(row, IVA.SP)
 
             row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
             row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
@@ -340,6 +340,22 @@ class ProcessSpikeAnalysis:
         msg += f" Age={row.age!s}, T={row.temperature!s}, Internal Sol={row.internal:s}"
         CP("m", msg)
         Logger.info(msg)
+        
+        day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
+        CP("m", f"day_slice_cell: {day_slice_cell:s}")
+        if (
+            self.experiment["excludeIVs"] is not None
+            and (day_slice_cell in self.experiment["excludeIVs"])
+            and (
+                (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
+                or self.experiment["excludeIVs"][day_slice_cell]["protocols"] in ["all", ["all"]]
+            )
+        ):
+            CP("m", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
+            Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
+            gc.collect()
+            return row
+
         fullpatha = Path(
             self.experiment["rawdatapath"],
             # self.experiment["directory"],
@@ -348,21 +364,6 @@ class ProcessSpikeAnalysis:
             row.cell_cell,
             row.protocol,
         )
-        day_slice_cell = str(Path(row.date, row.slice_slice, row.cell_cell))
-        CP("m", f"day_slice_cell: {day_slice_cell:s}")
-        if (
-            self.experiment["excludeIVs"] is not None
-            and (day_slice_cell in self.experiment["excludeIVs"])
-            and (
-                (row.protocol in self.experiment["excludeIVs"][day_slice_cell]["protocols"])
-                or row.protocol in ["all", ["all"]]
-            )
-        ):
-            CP("m", f"Excluded cell/protocol: {day_slice_cell:s}, {row.protocol:s}")
-            Logger.info(f"Excluded cell: {day_slice_cell:s}, {row.protocol:s}")
-            gc.collect()
-            return row
-
         fullpath = None
         for protocol in list(self.experiment["protocols"]["CCIV"].keys()):
             # print("testing protocol and fullpath name: ", protocol, fullpatha.name)
@@ -447,7 +448,7 @@ class ProcessSpikeAnalysis:
             CP("y", f"No spike shape data: {day_slice_cell:s}, {row.protocol:s}")
             return row
 
-        row = self.get_lowest_current_spike(row, IVA.SP)
+        row = self.find_lowest_current_spike(row, IVA.SP)
         # print("DVDT CURRENT: ", row.dvdt_current)
         row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
         row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
