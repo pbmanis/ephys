@@ -2,7 +2,7 @@
 # Used by make_env.sh
 
 # development utilities
-black>=24.2.0
+black>=24.3.0
 flake8==7.0.0
 Pint>=0.23
 isort>=5.13.2
@@ -18,6 +18,7 @@ dill==0.3.8
 # efel>=3.0.93 
 # envisage==4.7.2
 colorcet
+colormaps==0.4.1
 termcolor
 jinja2==3.1.2
 python-docx==1.1.0  # for writing Word docx files. Maybe used by associated programs
