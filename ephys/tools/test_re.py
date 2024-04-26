@@ -2,7 +2,7 @@ import re
 """ Parse S0C0, S0C00, S00C00 to 
 the slice # and cell # 
 """
-re_parse = re.compile("([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
+re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
 
 # test cases:
 tests = ["S0C0", "S0C00", "S00C00", "S001C001"]
