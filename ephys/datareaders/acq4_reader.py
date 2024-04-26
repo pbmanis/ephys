@@ -709,6 +709,8 @@ class acq4_reader:
         if allow_partial is true, we get as much data as we can even if the protocol
         did not complete.
 
+        Returns False if it fails.
+
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
