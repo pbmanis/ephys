@@ -98,7 +98,7 @@ def make_tar_files(topdir):
             fo = Path(*d.parts[5:])
             tar.add(d, arcname=fo)
 
-def main()
+def main():
     topdir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Cerebellum"
     #make_tar_files(topdir)
     get_tar_info(topdir, nmax=0)
