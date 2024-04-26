@@ -83,11 +83,11 @@ Distributed under MIT/X11 license. See license.txt for more infomation.
 
 import datetime
 import functools
-import importlib
 import pprint
 import sys
 from pathlib import Path
-import platform, multiprocessing
+import multiprocessing
+import concurrent.futures
 
 import pandas as pd
 import pyqtgraph as pg
@@ -100,18 +100,13 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-# import ephys
 from ephys.gui import data_summary_table
 from ephys.gui import data_table_functions as functions
 from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
-from ephys.plotters import plot_spike_info
-# from ephys.tools import process_spike_analysis
-# from ephys.tools import data_summary
+from ephys.plotters import plot_spike_info as plot_spike_info
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
-# import ephys.tools.configuration_manager as configuration_manager
-# from ephys.tools import filename_tools
 
 from ephys.ephys_analysis import (
     analysis_common,
@@ -124,6 +119,12 @@ from ephys.tools import (
     configuration_manager as configuration_manager,
     filename_tools,
 )
+
+import sys
+
+# if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
+#     multiprocessing.set_start_method('spawn')
+
 
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
 PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
@@ -303,9 +304,8 @@ class DataTables:
         self.table = pg.TableWidget(sortable=True)
         self.Dock_Table.addWidget(self.table)  # don't raise yet
 
-
         self.DS_table = pg.TableWidget(sortable=True)
-        self.Dock_DataSummary.addWidget(self.DS_table)  
+        self.Dock_DataSummary.addWidget(self.DS_table)
         self.Dock_DataSummary.raiseDock()
 
         self.PDFView = QWebEngineView()
@@ -432,8 +432,12 @@ class DataTables:
                     {"name": "Plot Rmtau Data", "type": "action"},
                     {"name": "Plot FIData Data", "type": "action"},
                     {"name": "Plot FICurves", "type": "action"},
-                    {"name": "Set BSpline S", "type": "float", "value": 1.0,
-                     "limits": [0., 100.0]},
+                    {
+                        "name": "Set BSpline S",
+                        "type": "float",
+                        "value": 1.0,
+                        "limits": [0.0, 100.0],
+                    },
                     {"name": "Plot Selected Spike", "type": "action"},
                     {"name": "Plot Selected FI Fitting", "type": "action"},
                     {"name": "Print Stats on IVs and Spikes", "type": "action"},
@@ -590,27 +594,27 @@ class DataTables:
 
         self.Dock_Params.addWidget(self.ptree)  # put the parameter three here
 
-        self.trace_plots = pg.PlotWidget(title="Trace Plots")
-        self.Dock_Traces.addWidget(self.trace_plots, rowspan=5, colspan=1)
-        self.trace_plots.setXRange(-5.0, 2.5, padding=0.2)
-        self.trace_plots.setContentsMargins(10, 10, 10, 10)
-        # Build the trace selector
-        self.trace_selector = pg.graphicsItems.InfiniteLine.InfiniteLine(
-            0, movable=True, markers=[("^", 0), ("v", 1)]
-        )
-        self.trace_selector.setPen((255, 255, 0, 200))  # should be yellow
-        self.trace_selector.setZValue(1)
-        self.trace_selector_plot = pg.PlotWidget(title="Trace selector")
-        self.trace_selector_plot.hideAxis("left")
-        self.frameTicks = pg.graphicsItems.VTickGroup.VTickGroup(yrange=[0.8, 1], pen=0.4)
-        self.trace_selector_plot.setXRange(0.0, 10.0, padding=0.2)
-        self.trace_selector.setBounds((0, 10))
-        self.trace_selector_plot.addItem(self.frameTicks, ignoreBounds=True)
-        self.trace_selector_plot.addItem(self.trace_selector)
-        self.trace_selector_plot.setMaximumHeight(100)
-        self.trace_plots.setContentsMargins(10, 10, 10, 10)
+        # self.trace_plots = pg.PlotWidget(title="Trace Plots")
+        # self.Dock_Traces.addWidget(self.trace_plots, rowspan=5, colspan=1)
+        # self.trace_plots.setXRange(-5.0, 2.5, padding=0.2)
+        # self.trace_plots.setContentsMargins(10, 10, 10, 10)
+        # # Build the trace selector
+        # self.trace_selector = pg.graphicsItems.InfiniteLine.InfiniteLine(
+        #     0, movable=True, markers=[("^", 0), ("v", 1)]
+        # )
+        # self.trace_selector.setPen((255, 255, 0, 200))  # should be yellow
+        # self.trace_selector.setZValue(1)
+        # self.trace_selector_plot = pg.PlotWidget(title="Trace selector")
+        # self.trace_selector_plot.hideAxis("left")
+        # self.frameTicks = pg.graphicsItems.VTickGroup.VTickGroup(yrange=[0.8, 1], pen=0.4)
+        # self.trace_selector_plot.setXRange(0.0, 10.0, padding=0.2)
+        # self.trace_selector.setBounds((0, 10))
+        # self.trace_selector_plot.addItem(self.frameTicks, ignoreBounds=True)
+        # self.trace_selector_plot.addItem(self.trace_selector)
+        # self.trace_selector_plot.setMaximumHeight(100)
+        # self.trace_plots.setContentsMargins(10, 10, 10, 10)
 
-        self.Dock_Traces.addWidget(self.trace_selector_plot, row=5, col=0, rowspan=1, colspan=1)
+        # self.Dock_Traces.addWidget(self.trace_selector_plot, row=5, col=0, rowspan=1, colspan=1)
 
         self.set_experiment(self.dataset)
 
@@ -811,12 +815,14 @@ class DataTables:
                         case "Analyze ALL IVs m/Important":
                             self.analyze_ivs("important")
 
-                        case "Analyze Selected IVs":  # work from the *datasummary* table, not the Assembled table.
+                        case (
+                            "Analyze Selected IVs"
+                        ):  # work from the *datasummary* table, not the Assembled table.
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
- 
+
                             for selected in index_rows:
                                 if selected is None:
                                     print("selected was None")
@@ -826,7 +832,7 @@ class DataTables:
                                 print("len pathparts: ", len(pathparts))
                                 slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
                                 day = str(Path(*pathparts[0:-2]))
-                                
+
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
                                 print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
                                 self.analyze_ivs(mode="selected", day=day, slicecell=slicecell)
@@ -849,23 +855,30 @@ class DataTables:
                                     break
                                 # selected = self.table_manager.get_table_data(index_row)
                                 FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
-                                pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
- 
+                                pkl_file = filename_tools.get_pickle_filename_from_row(
+                                    selected, dspath
+                                )
+
                                 print("Reading from pkl_file: ", pkl_file)
                                 FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
                                 tempdir = Path(dspath, "temppdfs")
+                                decorate = True
                                 self.pdfFilename = Path(
                                     dspath, self.experiment["pdfFilename"]
                                 ).with_suffix(".pdf")
-                                with open(pkl_file, "rb") as fh:
-                                    df_selected = pd.read_pickle(fh, compression="gzip")
-                                    plotter = iv_plotter.IVPlotter(
-                                        experiment=self.experiment,
-                                        df_summary=self.datasummary,
-                                        file_out_path=dspath,
-                                        decorate=True,
+                                # use concurrent futures to prevent issue with multiprocessing
+                                # when using matplotlib.
+                                with concurrent.futures.ProcessPoolExecutor() as executor:
+                                    f = executor.submit(
+                                        iv_plotter.concurrent_iv_plotting,
+                                        pkl_file,
+                                        self.experiment,
+                                        self.datasummary,
+                                        dspath,
+                                        decorate,
                                     )
-                                    plotter.plot_ivs(df_selected)
+                                    ret = f.result()
+
                             CP.cprint("g", "Finished plotting IVs")
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
@@ -902,7 +915,7 @@ class DataTables:
                             print("adddata: ", adddata)
                             print(self.experiment["coding_file"])
                             if self.experiment["coding_file"] is not None:
-                                      coding_file = Path(
+                                coding_file = Path(
                                     self.experiment["analyzeddatapath"],
                                     self.experiment["directory"],
                                     self.experiment["coding_file"],
@@ -947,7 +960,7 @@ class DataTables:
                                     pp.pprint(
                                         f"   prot Spike data keys: {cell_df['Spikes'][prot].keys()!s}"
                                     )
-                                    if "LowestCurrentSpike" in cell_df['Spikes'][prot].keys():
+                                    if "LowestCurrentSpike" in cell_df["Spikes"][prot].keys():
                                         pp.pprint(
                                             f"   prot LowestCurrentSpike: {cell_df['Spikes'][prot]['LowestCurrentSpike']!s}"
                                         )
@@ -973,36 +986,29 @@ class DataTables:
                             )
                             if hue_category == "None":
                                 hue_category = None
-                            df = self.PSI.preload(fn)
-                            (
-                                P1,
-                                picker_funcs1,
-                            ) = self.PSI.summary_plot_spike_parameters_categorical(
-                                df,
-                                xname=group_by,
-                                hue_category=hue_category,
-                                plot_order=self.experiment["plot_order"][group_by],
-                                measures=self.experiment["spike_measures"],
-                                colors=colors,
-                                enable_picking=self.picker_active,
-                            )
-                            P1.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
-                            picked_cellid = P1.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-                                "pick_event",
-                                lambda event: PSI.pick_handler(event, picker_funcs1),
-                            )
                             header = self.get_analysis_info(fn)
-                            P1.figure_handle.text(
-                                self.infobox_x,
-                                self.infobox_y,
-                                header,
-                                fontdict={
-                                    "fontsize": self.infobox_fontsize,
-                                    "fontstyle": "normal",
-                                    "font": "Courier",
-                                },
-                            )
-                            P1.figure_handle.show()
+                            parameters = {
+                                "header": header,
+                                "experiment": self.experiment,
+                                "datasummary": self.datasummary,
+                                "group_by": group_by,
+                                "colors": colors,
+                                "hue_category": hue_category,
+                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                            }
+                            with concurrent.futures.ProcessPoolExecutor() as executor:
+                                f = executor.submit(
+                                    plot_spike_info.concurrent_spike_data_plotting,
+                                    fn,
+                                    parameters,
+                                    self.picker_active,
+                                    infobox={
+                                        "x": self.infobox_x,
+                                        "y": self.infobox_y,
+                                        "fontsize": self.infobox_fontsize,
+                                    },
+                                )
+                                self.spike_plot = f.result()
 
                         case "Plot Rmtau Data":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1016,42 +1022,31 @@ class DataTables:
                                 hue_category = None
                                 # hue_category = self.experiment["plot_order"][group_by]
                             plot_order = self.experiment["plot_order"][group_by]
-
-                            print("    plot order: ", plot_order)
-                            # if not isinstance(group_by, list):
-                            #     group_by = [group_by]
-                            df = self.PSI.preload(fn)
-                            (
-                                P3,
-                                picker_funcs3,
-                            ) = self.PSI.summary_plot_rm_tau_categorical(
-                                df,
-                                xname=group_by,
-                                hue_category=hue_category,
-                                plot_order=plot_order,
-                                colors=colors,
-                                enable_picking=self.picker_active,
-                                measures=self.experiment["rmtau_measures"],
-                            )
-                            P3.figure_handle.suptitle(
-                                "Membrane Properties", fontweight="bold", fontsize=18
-                            )
-                            picked_cellid = P3.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-                                "pick_event",
-                                lambda event: PSI.pick_handler(event, picker_funcs3),
-                            )
                             header = self.get_analysis_info(fn)
-                            P3.figure_handle.text(
-                                self.infobox_x,
-                                self.infobox_y,
-                                header,
-                                fontdict={
-                                    "fontsize": self.infobox_fontsize,
-                                    "fontstyle": "normal",
-                                    "font": "helvetica",
-                                },
-                            )
-                            P3.figure_handle.show()
+                            parameters = {
+                                "header": header,
+                                "experiment": self.experiment,
+                                "datasummary": self.datasummary,
+                                "group_by": group_by,
+                                "plot_order": plot_order,
+                                "colors": colors,
+                                "hue_category": hue_category,
+                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                            }
+                            with concurrent.futures.ProcessPoolExecutor() as executor:
+                                f = executor.submit(
+                                    plot_spike_info.concurrent_rmtau_data_plotting,
+                                    fn,
+                                    parameters,
+                                    self.picker_active,
+                                    infobox={
+                                        "x": self.infobox_x,
+                                        "y": self.infobox_y,
+                                        "fontsize": self.infobox_fontsize,
+                                    },
+                                )
+                                self.rmtau_plot = f.result()
+                            
 
                         case "Plot FIData Data":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1063,36 +1058,31 @@ class DataTables:
                             if hue_category == "None":
                                 hue_category = None
                             plot_order = self.experiment["plot_order"][group_by]
-                            df = self.PSI.preload(fn)
-                            (
-                                P2,
-                                picker_funcs2,
-                            ) = self.PSI.summary_plot_spike_parameters_categorical(
-                                df,
-                                xname=group_by,
-                                hue_category=hue_category,
-                                measures=self.experiment["FI_measures"],
-                                plot_order=plot_order,
-                                colors=self.experiment["plot_colors"],
-                                enable_picking=self.picker_active,
-                            )
-                            P2.figure_handle.suptitle("Firing Rate", fontweight="bold", fontsize=18)
-                            picked_cellid = P2.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-                                "pick_event",
-                                lambda event: PSI.pick_handler(event, picker_funcs2),
-                            )
                             header = self.get_analysis_info(fn)
-                            P2.figure_handle.text(
-                                self.infobox_x,
-                                self.infobox_y,
-                                header,
-                                fontdict={
-                                    "fontsize": self.infobox_fontsize,
-                                    "fontstyle": "normal",
-                                    "font": "helvetica",
-                                },
-                            )
-                            P2.figure_handle.show()
+                            parameters = {
+                                "header": header,
+                                "experiment": self.experiment,
+                                "datasummary": self.datasummary,
+                                "group_by": group_by,
+                                "plot_order": plot_order,
+                                "colors": colors,
+                                "hue_category": hue_category,
+                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                            }
+                            with concurrent.futures.ProcessPoolExecutor() as executor:
+                                f = executor.submit(
+                                    plot_spike_info.concurrent_fidata_data_plotting,
+                                    fn,
+                                    parameters,
+                                    self.picker_active,
+                                    infobox={
+                                        "x": self.infobox_x,
+                                        "y": self.infobox_y,
+                                        "fontsize": self.infobox_fontsize,
+                                    },
+                                )
+                                self.fidata_plot = f.result()
+
 
                         case "Plot FICurves":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1137,7 +1127,12 @@ class DataTables:
                             if self.assembleddata is None:
                                 raise ValueError("Must load assembled data file first")
                             FUNCS.get_selected_cell_data_spikes(
-                                self.experiment, self.table_manager, self.assembleddata, self.bspline_s
+                                self.experiment,
+                                self.table_manager,
+                                self.assembleddata,
+                                self.bspline_s,
+                                self.Dock_Traces,
+                                self.win,  # target dock and window for plot
                             )
 
                         case "Plot Selected FI Fitting":
@@ -1362,8 +1357,8 @@ class DataTables:
             args.slicecell = slicecell
 
         # args.after= "2021.07.01"
-        # this is to handle an old config file structure that related to 
-            # specific cell types etc. Pretty sure it does not work anymore
+        # this is to handle an old config file structure that related to
+        # specific cell types etc. Pretty sure it does not work anymore
         # if args.configfile is not None:
         #     config = None
         #     if args.configfile is not None:
@@ -1390,7 +1385,12 @@ class DataTables:
         IV = iv_analysis.IVAnalysis(args)
         IV.set_experiment(self.experiment)
         CP.cprint("r", "analyze_ivs datatables: experiment set")
-        # IV.set_exclusions(exclusions)
+        if 'excludeIVs' in self.experiment.keys():
+            IV.set_exclusions(self.experiment['excludeIVs'])
+            # CP.cprint("y", self.experiment['excludeIVs'])
+        else:
+            CP.cprint("y", "No IV exclusions set")
+            return
         IV.setup()
         CP.cprint("r", "analyze_ivs datatables: setup completed")
         IV.run()

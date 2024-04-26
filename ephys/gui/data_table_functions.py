@@ -4,28 +4,32 @@
 
 import logging
 import pprint
+import re
 import subprocess
 from pathlib import Path
-import re
 from typing import Union
 
-import matplotlib.pyplot as mpl
-import matplotlib
+import colormaps
+
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
 import scipy
-import colormaps
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
-from pyqtgraph.Qt import QtGui
-from scipy.interpolate import splrep, splev, spalde
+from pyqtgraph.Qt import QtGui, QtCore
+from scipy.interpolate import spalde, splev, splrep
+
+import ephys
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
-from ephys.tools import utilities
-from ephys.tools import filename_tools
-import ephys
+from ephys.tools import annotated_cursor, filename_tools, utilities
+from ephys.tools import annotated_cursor_pg
 
 UTIL = utilities.Utility()
+AnnotatedCursor = annotated_cursor.AnnotatedCursor
+AnnotatedCursorPG = annotated_cursor_pg.AnnotatedCursorPG
+
 CP = cprint.cprint
 
 
@@ -202,6 +206,7 @@ def print_spike_keys(row):
 class Functions:
     def __init__(self):
         self.textbox = None
+        self.cursor = []  # a list to hold cursors (need to keep a live reference)
         pass
 
     def get_row_selection(self, table_manager):
@@ -457,7 +462,63 @@ class Functions:
         # Plot the orthogonal line
         ax.plot([x_start, x_end], [y_start, y_end], color=color)
 
-    def get_selected_cell_data_spikes(self, experiment, table_manager, assembleddata, bspline_s):
+
+    def remove_excluded_protocols(self, experiment, cell_id, protocols):
+        """remove_excluded_protocols For all protocols in the list of protocols,
+        remove any that are in the excludeIVs list for the cell_id.
+        In general, protocols will include all protocols run on this cell.
+
+        Parameters
+        ----------
+        experiment : experiment configuration dictionary
+            _description_
+        cell_id : str
+            The specific cell identifier ('2024.01.01_000/slice_000/cell_001')
+        protocols : list
+            List of all protocols for this cell
+
+        Returns
+        -------
+        list
+            The list of protocols to keep. List is [] if all are excluded
+        """
+        if isinstance(protocols, str):
+            protocols = protocols.replace(" ", "") # remove all white space
+            protocols = [p for p in protocols.split(",")]  # turn into a list
+        if experiment['excludeIVs'] is None:  # no protocols to exclude
+            return protocols
+        if cell_id in experiment['excludeIVs'].keys():  # consider excluding some or all protocols
+            if experiment["excludeIVs"][cell_id]['protocols'] == ["all"]:
+                return []
+            protocols = [
+                protocol for protocol in protocols if protocol not in experiment["excludeIVs"][cell_id]['protocols']
+            ]
+        return protocols
+
+    def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
+        exclude_flag = day_slice_cell in experiment["excludeIVs"]
+        print("    IV is in exclusion table: ", exclude_flag)
+        if exclude_flag:
+            exclude_table = experiment["excludeIVs"][day_slice_cell]
+            print("    excluded table data: ", exclude_table)
+            print("    testing protocol: ", protocol)
+            proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
+            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"]:
+                CP(
+                    "y",
+                    f"Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
+                )
+                Logger.info(
+                    f"Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
+                )
+                return True
+        print("    Protocol passed: ", protocol)
+        return False
+    
+    def get_selected_cell_data_spikes_mpl(
+        self, experiment, table_manager, assembleddata, bspline_s
+    ):
+        self.spike_cursors = []
         self.get_row_selection(table_manager)
         if self.selected_index_rows is None:
             return None
@@ -472,13 +533,15 @@ class Functions:
                 experiment, assembleddata, cell_id=selected.cell_id
             )
             protocols = list(cell_df["Spikes"].keys())
+            protocols = self.remove_excluded_protocols(experiment, cell_df['cell_id'], protocols)
             min_index = None
             min_current = 1
             V = None
             min_protocol = None
             spike = None
             for ip, protocol in enumerate(protocols):
-                print(cell_df["Spikes"][protocol]["LowestCurrentSpike"])
+                # print('lowest current spike: ', cell_df["Spikes"][protocol]["LowestCurrentSpike"])
+
                 min_current_index, current, trace = self.find_lowest_current_trace(
                     cell_df["Spikes"][protocol]
                 )
@@ -499,19 +562,41 @@ class Functions:
                 print("Min index: ", min_index)
                 print("len spikes: ", len(spike["spikes"][V]))
                 return None
-
+            print("min index: ", min_index, "trace: ", V)
+            print(low_spike)
             if nplots == 0:
                 import matplotlib.pyplot as mpl
 
-                P = PH.regular_grid(1, 4, order="rowsfirst", figsize=(12, 4))
+                # print(low_spike)
+                P = PH.regular_grid(
+                    1,
+                    4,
+                    order="rowsfirst",
+                    figsize=(12, 4),
+                    margins={
+                        "bottommargin": 0.1,
+                        "leftmargin": 0.07,
+                        "rightmargin": 0.07,
+                        "topmargin": 0.1,
+                    },
+                )
                 # f, ax = mpl.subplots(1, 4, figsize=(12, 4), gridspec_kw={'hspace': 0.2})
                 f = P.figure_handle
+                f.suptitle(
+                    f"{day:s} {slicecell:s} {Path(protocol).name:s} trace: {low_spike.trace:d} I (nA): {1e9*low_spike.current:.3f}"
+                )
                 ax = P.axarr[0]
-                print(ax)
+                self.spike_plots_ax = ax
+                # Text location in data coords
+                props = dict(boxstyle="round", facecolor="wheat", alpha=0.4)
+                self.txt1 = ax[1].text(0, 0, "", fontsize=8, bbox=props)
+                self.txt0 = ax[0].text(0, 0, "", fontsize=8, bbox=props)
             vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
-            vtrace_color = "black"
-            ax[0].plot(vtime, low_spike.V * 1e3, color=pcolor, linewidth=1.25)
-            ax[1].plot(low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt, color=pcolor)
+            voltage_plot_line = ax[0].plot(vtime, low_spike.V * 1e3, color=pcolor, linewidth=1.25)
+            phase_plot_line = ax[1].plot(
+                low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt, color=pcolor
+            )
+
             dvdt_ticks = np.arange(-4, 2.01, 0.1)
             t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
             thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
@@ -656,7 +741,8 @@ class Functions:
                 tck_a, xfit_a, yfit_a, kappa_a = self.spline_fits(
                     vtime, low_spike.V, ahp_phase_indices, k=5, s=bspline_s, label="ahp"
                 )
-
+            print("len rising phase indices: ", len(rising_phase_indices))
+            fits_ok = True
             if savgol:
                 from scipy.signal import savgol_filter
 
@@ -666,30 +752,49 @@ class Functions:
                 else:
                     polyorder = 3
                     window_length = 5
-                yfit_r = savgol_filter(
-                    low_spike.V[rising_phase_indices],
-                    window_length=window_length,
-                    polyorder=polyorder,
-                )
-                yfit_f = savgol_filter(
-                    low_spike.V[falling_phase_indices],
-                    window_length=window_length,
-                    polyorder=polyorder,
-                )
-                yfit_a = savgol_filter(
-                    low_spike.V[ahp_phase_indices], window_length=window_length, polyorder=polyorder
-                )
+                try:
+                    yfit_r = savgol_filter(
+                        low_spike.V[rising_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                    yfit_f = savgol_filter(
+                        low_spike.V[falling_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                    yfit_a = savgol_filter(
+                        low_spike.V[ahp_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                except:
+                    yfit_r = np.zeros(len(rising_phase_indices))
+                    yfit_f = np.zeros(len(falling_phase_indices))
+                    yfit_a = np.zeros(len(ahp_phase_indices))
+                    fits_ok = False
                 xfit_r = vtime[rising_phase_indices]
                 xfit_f = vtime[falling_phase_indices]
                 xfit_a = vtime[ahp_phase_indices]
-                kappa_r = self.curvature(xfit_r, yfit_r)
-                kappa_f = self.curvature(xfit_f, yfit_f)
-                kappa_a = self.curvature(xfit_a, yfit_a)
+                try:
+                    kappa_r = self.curvature(xfit_r, yfit_r)
+                    kappa_f = self.curvature(xfit_f, yfit_f)
+                    kappa_a = self.curvature(xfit_a, yfit_a)
+                except:
+                    kappa_r = np.zeros(len(rising_phase_indices))
+                    kappa_f = np.zeros(len(falling_phase_indices))
+                    kappa_a = np.zeros(len(ahp_phase_indices))
+                    fits_ok = False
 
-            ax[3].plot(
-                xfit_r, 1e3 * np.gradient(yfit_r, xfit_r), color=pcolor, linestyle="-", linewidth=1
-            )
-            if bspline or savgol:
+            if fits_ok:
+                ax[3].plot(
+                    xfit_r,
+                    1e3 * np.gradient(yfit_r, xfit_r),
+                    color=pcolor,
+                    linestyle="-",
+                    linewidth=1,
+                )
+            if (bspline or savgol) and fits_ok:
                 ax[0].plot(xfit_f, yfit_f * 1e3, color="cyan", linestyle="--", linewidth=0.5)
                 ax[1].plot(
                     yfit_f[:-1] * 1e3,
@@ -750,6 +855,7 @@ class Functions:
                 ax[0].set_ylabel("V (mV)")
                 ax[1].set_xlabel("V (mV)")
                 ax[1].set_ylabel("dV/dt (mV/ms)")
+                # ax[1].set_clip_on(False)
                 ax[2].set_xlabel("V (mV)")
                 ax[2].set_ylabel("Curvature (1/mV)")
                 ax[3].set_xlabel("Time (msec)")
@@ -757,6 +863,32 @@ class Functions:
                 for i in range(2):
                     PH.nice_plot(ax[i])
                     PH.talbotTicks(ax[i])
+                self.spike_cursors.append(
+                    AnnotatedCursor(
+                        line=voltage_plot_line[0],
+                        ax=ax[0],
+                        numberformat="{0:.3f} {1:5.3f}",
+                        mode="stick",
+                        useblit=True,
+                        color="skyblue",
+                        linewidth=0.5,
+                    )
+                )
+
+                ax[0].plot([-2, 5], [-60, -60], "m--", linewidth=0.5)
+                # print("Made cursor")
+                self.spike_cursors.append(
+                    AnnotatedCursor(
+                        line=phase_plot_line[0],
+                        ax=ax[1],
+                        numberformat="{0:.3f} {1:5.3f}",
+                        useblit=True,
+                        mode="stick",
+                        color="skyblue",
+                        linewidth=0.5,
+                    )
+                )
+                ax[1].plot([-60, 20], [12, 12], "m--", linewidth=0.5)
 
             nplots += 1
 
@@ -764,10 +896,432 @@ class Functions:
             mpl.show()
         return cell_df
 
+    def report_data(self, pos):
+        thr = self.cell_df["Spikes"][self.match_protocol]['LowestCurrentSpike']['AP_begin_V']
+        msg = f"{self.cell_df.cell_id:s},{self.cell_df.cell_type:s},{self.cell_df.age!s},{thr:.3f},{pos[0]:.2f},{pos[1]:.3f}"
+        print(msg)
+        self.textappend(msg, color="w")
+
+    def get_selected_cell_data_spikes(
+        self, experiment, table_manager, assembleddata, bspline_s, dock, window
+    ):
+        """get_selected_cell_data_spikes  plot cell data spikes into the pg window; avoid MPL.
+
+        Parameters
+        ----------
+        experiment : _type_
+            _description_
+        table_manager : _type_
+            _description_
+        assembleddata : _type_
+            _description_
+        bspline_s : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        self.get_row_selection(table_manager)
+        if self.selected_index_rows is None:
+            return None
+        N = len(self.selected_index_rows)
+        colors = colormaps.sinebow_dark.discrete(N)
+        for nplots, index_row in enumerate(self.selected_index_rows):
+            selected = table_manager.get_table_data(index_row)
+            day = selected.date[:-4]
+            slicecell = selected.cell_id[-4:]
+            pcolor = colors[nplots].colors[0]
+            cell_df, cell_df_tmp = filename_tools.get_cell(
+                experiment, assembleddata, cell_id=selected.cell_id
+            )
+            self.cell_df = cell_df 
+            print("cell id: ", selected.cell_id)
+            self.current_selection = selected
+            print("cell_df: ", cell_df['date'], cell_df['slice_slice'], cell_df['cell_id'])
+            protocols = list(cell_df["Spikes"].keys())
+            protocols = self.remove_excluded_protocols(experiment, cell_id = cell_df['cell_id'], protocols=protocols)
+
+            min_index = None
+            min_current = 1
+            trace = None
+            min_protocol = None
+            for ip, protocol in enumerate(protocols):
+                # print('\nprotocol: ',protocol, ' lowest current spike: ', cell_df["Spikes"][protocol]["LowestCurrentSpike"])
+                if cell_df["Spikes"][protocol]["LowestCurrentSpike"] is None:
+                    continue
+                lcs_trace = cell_df["Spikes"][protocol]["LowestCurrentSpike"]['trace']
+                min_current_index, current, trace = self.find_lowest_current_trace(
+                    cell_df["Spikes"][protocol]
+                )
+                if trace != lcs_trace:
+                    print("Mismatch: ", protocol, trace, lcs_trace)
+                elif current < min_current:
+                    min_trace = trace
+                    min_index = min_current_index
+                    min_protocol = protocol
+                    min_current = current
+                    print("match, protocol", protocol)
+            pp = PrettyPrinter(indent=4)
+
+            if min_protocol is None:
+                CP.cprint("r", f"No protocol found with a small current spike!: {protocols!s} ")
+                continue
+            try:
+                # print("min protocol: ", min_protocol)
+                # print("min protocol keys: ", cell_df["Spikes"][min_protocol].keys())
+                # print("min trace #: ", min_trace)
+                low_spike = cell_df["Spikes"][min_protocol]['spikes'][min_trace][0]
+            except KeyError:
+                CP.cprint("Failed to get min spike")
+                print("min protocol spikes: ", cell_df["Spikes"][min_protocol].keys())
+                print("V: ", min_trace)
+                print("Min index: ", min_index)
+                print("len spikes in min current trace: ", cell_df["Spikes"][min_protocol][min_index])
+                return None
+            self.match_protocol = protocol
+            # print("min index: ", min_index, "trace: ", V)
+            # print(low_spike)
+            if nplots == 0:
+                dock.raiseDock()
+                title = f"{day:s} {slicecell:s} {Path(protocol).name:s} trace: {low_spike.trace:d} {1e9*low_spike.current:.3f} nA"
+                # print(dir(dock))
+                window.setWindowTitle(title)
+                dock.setTitle("Spike Analysis")
+                dock.layout.setContentsMargins(50, 50, 50, 50)
+                dock.layout.setSpacing(50)
+                # dock.setTitle(title)
+                self.P1 = pg.PlotWidget(title=f"{title:s}\nAP Voltage")
+                self.P2 = pg.PlotWidget(title="AP Phase Plot")
+                self.P3 = pg.PlotWidget(title="AP Curvature")
+                self.P4 = pg.PlotWidget(title="AP Rising dV/dt")
+                ax: list = []
+                self.spike_cursors: list = []
+
+                dock.addWidget(self.P1, 1, 0) # row=0, column=0)
+                dock.addWidget(self.P2, 1, 1) # row=0, column=1)
+                dock.addWidget(self.P3, 2, 1) # row=1, column=0)
+                dock.addWidget(self.P4, 2, 0) # row=1, column=1)
+                dock.setAutoFillBackground(True)
+                ax = [self.P1, self.P2, self.P3, self.P4]
+
+                self.spike_plots_ax = ax
+                # Text location in data coords
+                # props = dict(boxstyle="round", facecolor="wheat", alpha=0.4)
+                # self.txt1 = ax[1].text(0, 0, "", fontsize=8, bbox=props)
+                # self.txt0 = ax[0].text(0, 0, "", fontsize=8, bbox=props)
+
+            vtime = (low_spike.Vtime - low_spike.peak_T) * 1e3
+            voltage_plot_line = ax[0].plot(
+                vtime, low_spike.V * 1e3, pen=pg.mkColor(pcolor), linewidth=2
+            )
+            cursor1 = AnnotatedCursorPG(line=voltage_plot_line, ax=ax[0], mode="stick")
+            self.spike_cursors.append(cursor1)
+            phase_plot_line = ax[1].plot(
+                low_spike.V[: low_spike.dvdt.shape[0]] * 1e3, low_spike.dvdt, pen=pg.mkColor(pcolor)
+            )
+            cursor2 = AnnotatedCursorPG(line=phase_plot_line, ax=ax[1], mode="stick")
+            self.spike_cursors.append(cursor2)
+            dvdt_ticks = np.arange(-4, 2.01, 0.1)
+            t_indices = np.array([np.abs(vtime - point).argmin() for point in dvdt_ticks])
+            thr_index = np.abs(vtime - (low_spike.AP_latency - low_spike.peak_T) * 1e3).argmin()
+            thr_t = vtime[thr_index]
+            peak_index = np.abs(vtime - 0).argmin()
+            peak_t = vtime[peak_index]
+
+            # indicate the threshold on the phase plot
+            scatter0 = pg.PlotDataItem(
+                [low_spike.V[thr_index] * 1e3],
+                [low_spike.dvdt[thr_index]],
+                symbolBrush=pg.mkBrush("r"),
+                symbolSize=6,
+                symbol="o",
+            )
+
+            ax[1].addItem(scatter0)
+            maxdvdt = np.argmax(low_spike.dvdt) + 1
+            rising_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[thr_index])
+                & (low_spike.Vtime <= low_spike.Vtime[maxdvdt])  # [peak_index])
+            )[0]
+            falling_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[peak_index])
+                & (low_spike.V >= low_spike.V[thr_index])
+            )[0]
+            ahp_phase_indices = np.nonzero(
+                (low_spike.Vtime >= low_spike.Vtime[peak_index])
+                & (low_spike.V < low_spike.V[thr_index])
+            )[0]
+
+            # indicate the AHP nadir on the phase plot
+            ahp_index = np.abs(vtime - (low_spike.trough_T - low_spike.peak_T) * 1e3).argmin()
+            scatter1 = pg.PlotDataItem(
+                [low_spike.V[ahp_index] * 1e3],
+                [low_spike.dvdt[ahp_index]],
+                symbolBrush=pg.mkBrush("orange"),
+                symbolSize=9,
+                symbol="o",
+            )
+            ax[1].addItem(scatter1)
+            # indicate the AHP on the voltage trace
+            spike_pk_to_trough_T = low_spike.trough_T - low_spike.peak_T
+            AHP_t = spike_pk_to_trough_T * 1e3  # in msec, time from peak
+            latency = (low_spike.AP_latency - low_spike.peak_T) * 1e3  # in msec
+            scatter2 = pg.PlotDataItem(
+                [AHP_t],
+                [low_spike.trough_V * 1e3],
+                symbolBrush=pg.mkBrush("orange"),
+                symbolSize=9,
+                symbol="o",
+            )
+            ax[0].addItem(scatter2)
+            x_line = [latency, AHP_t]
+            # draw dashed line at threshold
+            thrline = pg.PlotDataItem(
+                x_line,
+                low_spike.V[thr_index] * np.ones(2) * 1e3,
+                pen=pg.mkPen("k", width=1, style=QtCore.Qt.PenStyle.DashLine),
+            )
+            # draw dashed line at nadir of AHP
+            nadirahpline = pg.PlotDataItem(
+                x_line,
+                low_spike.V[ahp_index] * np.ones(2) * 1e3,
+                pen=pg.mkPen("m", width=1, style=QtCore.Qt.PenStyle.DashLine),
+            )
+            ax[0].addItem(thrline)
+            ax[0].addItem(nadirahpline)
+            # indicate the threshold on the voltage plot
+            thrpoint = pg.PlotDataItem(
+                [latency],
+                [low_spike.AP_begin_V * 1e3],
+                symbolBrush=pg.mkBrush("r"),
+                symbol="o",
+                symbolSize=9,
+            )
+            ax[0].addItem(thrpoint)
+            hwline = pg.PlotDataItem(
+                [
+                    (low_spike.left_halfwidth_T - low_spike.peak_T - 0.0001) * 1e3,
+                    (low_spike.right_halfwidth_T - low_spike.peak_T + 0.0001) * 1e3,
+                ],
+                [  # in msec
+                    low_spike.halfwidth_V * 1e3,
+                    low_spike.halfwidth_V * 1e3,
+                ],
+                pen=pg.mkPen("g", width=0.5),
+            )
+            ax[0].addItem(hwline)
+            # ax[0].plot(
+            #     (low_spike.right_halfwidth_T - low_spike.peak_T)
+            #     * 1e3,  # in msec
+            #     low_spike.halfwidth_V * 1e3,
+            #     "co",
+            # )
+            savgol = True
+            bspline = False
+            if bspline:  # fit with a bspline
+                # rising phase of AP from threshold to peak dvdt
+                tck_r, xfit_r, yfit_r, kappa_r = self.spline_fits(
+                    vtime, low_spike.V, rising_phase_indices[:-2], k=5, s=bspline_s, label="rising"
+                )
+                # ax[0].plot(vtime[rising_phase_indices]-peak_t, low_spike.V[rising_phase_indices]*1e3,
+                #            color="b", linestyle="--", linewidth=2)
+
+                # falling phase of AP from peak to spike threshold
+                tck_f, xfit_f, yfit_f, kappa_f = self.spline_fits(
+                    vtime, low_spike.V, falling_phase_indices, label="falling"
+                )
+                # ahp phase of AP from threshold time on out
+                tck_a, xfit_a, yfit_a, kappa_a = self.spline_fits(
+                    vtime, low_spike.V, ahp_phase_indices, k=5, s=bspline_s, label="ahp"
+                )
+            # print("len rising phase indices: ", len(rising_phase_indices))
+            fits_ok = True
+            if savgol:
+                from scipy.signal import savgol_filter
+
+                window_length = int(bspline_s)
+                if window_length > 5:
+                    polyorder = 5
+                else:
+                    polyorder = 3
+                    window_length = 5
+                try:
+                    yfit_r = savgol_filter(
+                        low_spike.V[rising_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                    yfit_f = savgol_filter(
+                        low_spike.V[falling_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                    yfit_a = savgol_filter(
+                        low_spike.V[ahp_phase_indices],
+                        window_length=window_length,
+                        polyorder=polyorder,
+                    )
+                except:
+                    yfit_r = np.zeros(len(rising_phase_indices))
+                    yfit_f = np.zeros(len(falling_phase_indices))
+                    yfit_a = np.zeros(len(ahp_phase_indices))
+                    fits_ok = False
+                xfit_r = vtime[rising_phase_indices]
+                xfit_f = vtime[falling_phase_indices]
+                xfit_a = vtime[ahp_phase_indices]
+                try:
+                    kappa_r = self.curvature(xfit_r, yfit_r)
+                    kappa_f = self.curvature(xfit_f, yfit_f)
+                    kappa_a = self.curvature(xfit_a, yfit_a)
+                except:
+                    kappa_r = np.zeros(len(rising_phase_indices))
+                    kappa_f = np.zeros(len(falling_phase_indices))
+                    kappa_a = np.zeros(len(ahp_phase_indices))
+                    fits_ok = False
+
+            if fits_ok:
+                fit_plot = pg.PlotDataItem(
+                    xfit_r,
+                    1e3 * np.gradient(yfit_r, xfit_r),
+                    pen=pg.mkPen("w", width=1, style=QtCore.Qt.PenStyle.SolidLine),
+                )
+                ax[3].addItem(fit_plot)
+                cursor4 = AnnotatedCursorPG(line=fit_plot, ax=ax[3], mode="stick")
+                self.spike_cursors.append(cursor4)
+            if (bspline or savgol) and fits_ok:
+                vfitplot = pg.PlotDataItem(
+                    xfit_f,
+                    yfit_f * 1e3,
+                    pen=pg.mkPen("c", width=1, style=QtCore.Qt.PenStyle.DashLine),
+                )
+
+                dvdtfitplot = pg.PlotDataItem(
+                    yfit_f[:-1] * 1e3,
+                    np.diff(yfit_f * 1e3) / np.diff(xfit_f),
+                    pen=pg.mkPen("c", width=1, style=QtCore.Qt.PenStyle.DashLine),
+                )
+                dvdt_thr_line = pg.PlotDataItem(
+                    [-60., 20.], [12., 12.], 
+                    pen=pg.mkPen(color="r", width=1.0) #  style=QtCore.Qt.PenStyle.DashLine)
+                )
+                ax[0].addItem(vfitplot)
+                ax[1].addItem(dvdtfitplot)
+                ax[1].addItem(dvdt_thr_line)
+
+                repol_fitplot = pg.PlotDataItem(
+                    xfit_r,
+                    yfit_r * 1e3,
+                    pen=pg.mkPen("y", width=1.5, style=QtCore.Qt.PenStyle.DashLine),
+                )
+
+                dvdt_repol_fitploat = pg.PlotDataItem(
+                    yfit_r[:-1] * 1e3,
+                    np.diff(yfit_r * 1e3) / (np.diff(xfit_r)),
+                    pen=pg.mkPen("orange", width=0.3, style=QtCore.Qt.PenStyle.DashLine),
+                )
+                ax[1].addItem(repol_fitplot)
+                ax[1].addItem(dvdt_repol_fitploat)
+
+                ahp_plot = pg.PlotDataItem(
+                    xfit_a,
+                    yfit_a * 1e3,
+                    pen=pg.mkPen("m", width=1.0, style=QtCore.Qt.PenStyle.DashLine),
+                )
+                dvdt_ahp_plot = pg.PlotDataItem(
+                    yfit_a[:-1] * 1e3,
+                    np.diff(yfit_a * 1e3) / np.diff(xfit_a),
+                    pen=pg.mkPen("m", width=1.0, style=QtCore.Qt.PenStyle.DashLine),
+                )
+                ax[0].addItem(ahp_plot)
+                ax[1].addItem(dvdt_ahp_plot)
+
+                kappa_r_plot = pg.PlotDataItem(
+                    yfit_r[1:] * 1e3,
+                    kappa_r[1:],
+                    pen=pg.mkPen(pcolor, width=1.0, style=QtCore.Qt.PenStyle.DashLine),
+                )
+
+
+                kappa_a_plot = pg.PlotDataItem(
+                    yfit_a[1:] * 1e3,
+                    kappa_a[1:],
+                    pen=pg.mkPen("m", width=0.3, style=QtCore.Qt.PenStyle.DashLine),
+                )
+
+                kappa_f_plot = pg.PlotDataItem(
+                    yfit_f[1:] * 1e3,
+                    kappa_f[1:],
+                    pen=pg.mkPen("c", width=0.3, style=QtCore.Qt.PenStyle.DashLine),
+                )
+
+                # horizontal line at 0 curvature
+                zcurve_plot = pg.PlotDataItem(
+                    [-60, 20],
+                    [0, 0],
+                    pen=pg.mkPen("k", width=0.3, style=QtCore.Qt.PenStyle.DashLine),
+                )
+                ax[2].addItem(kappa_r_plot)
+                ax[2].addItem(kappa_a_plot)
+                ax[2].addItem(kappa_f_plot)
+                ax[2].addItem(zcurve_plot)
+
+                cursor3 = AnnotatedCursorPG(line=kappa_r_plot, ax=ax[2], mode="stick",
+                                            report_func=self.report_data)
+                cursor3.set_tracker_from(cursor2)
+
+                self.spike_cursors.append(cursor3)
+                # m = int(len(low_spike.V[rising_phase_indices]) / 4)
+                # if m > len(low_spike.V[rising_phase_indices]) / 4:
+                #     m = int(len(low_spike.V[rising_phase_indices]) / 2)
+                # print(f"Len ahp: {len(low_spike.V[rising_phase_indices]):d}, m: {m:d}")
+                # if m == 0:
+                #     break
+                # # interpolation in V and dvdt to get a uniform distribution of points in V space
+                # # yv = np.interp(xv, low_spike.V[rising_phase_indices], low_spike.dvdt[rising_phase_indices])
+                # tck_p = splrep(
+                #     low_spike.V[rising_phase_indices],
+                #     low_spike.dvdt[rising_phase_indices],
+                #     k=5,
+                #     s=64,
+                # )
+                # print("xv: ", xv)
+                # print("tck: ", tck_p)
+                # yfit_p = splev(xv, tck_p)  # , der=0)
+            # ax[0].plot(xfit_r, yfit_r, color="orange", linestyle="--", linewidth=0.5)
+
+            if nplots == 0:  # annotate
+                ax[0].setLabel("bottom", "Time (msec), re Peak")
+                ax[0].setLabel("left", "V (mV)")
+                ax[1].setLabel("bottom", "V (mV)")
+                ax[1].setLabel("left", "dV/dt (mV/ms)")
+                # ax[1].set_clip_on(False)
+                ax[2].setLabel("bottom", "V (mV)")
+                ax[2].setLabel("left", "Curvature (1/mV)")
+                ax[3].setLabel("bottom", "Time (msec)")
+                ax[3].setLabel("left", "Rising dV/dt (mV/ms)")
+                
+
+            nplots += 1
+
+        return cell_df
+
+    def mouse_move(self, event):
+        """
+        Display text in box in response to mouse movement
+        """
+        print("mouse: event")
+        if not event.inaxes:
+            return
+        x, y = event.xdata, event.ydata
+        self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
+
     def get_selected_cell_data_FI(self, experiment, table_manager, assembleddata):
         self.get_row_selection(table_manager)
         pp = PrettyPrinter(indent=4, width=120)
         if self.selected_index_rows is not None:
+            import matplotlib.pyplot as mpl
             P = PH.regular_grid(
                 2,
                 2,
@@ -1111,32 +1665,14 @@ class Functions:
 
         return hill_max_derivs, hill_i_max_derivs, FI_fits, linfits
 
-    def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
-        exclude_flag = day_slice_cell in experiment["excludeIVs"]
-        print("    IV is in exclusion table: ", exclude_flag)
-        if exclude_flag:
-            exclude_table = experiment["excludeIVs"][day_slice_cell]
-            print("    excluded table data: ", exclude_table)
-            print("    testing protocol: ", protocol)
-            proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
-            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"]:
-                CP(
-                    "y",
-                    f"Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
-                )
-                Logger.info(
-                    f"Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
-                )
-                return True
-        print("    Protocol passed: ", protocol)
-        return False
+    
 
     def compute_FI_Fits(
         self,
         experiment,
         df: pd.DataFrame,
         cell: str,
-        protodurs: dict=None,
+        protodurs: dict = None,
     ):
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
@@ -1173,7 +1709,8 @@ class Functions:
                 fullpath = Path(experiment["rawdatapath"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
-                    AR.getData(fullpath)
+                    if not AR.getData(fullpath):
+                        continue
                     sample_rate = AR.sample_rate[0]
                     duration = AR.tend - AR.tstart
                     srs[protocol] = sample_rate
@@ -1225,10 +1762,10 @@ class Functions:
                 threshold_slope=experiment["AP_threshold_dvdt"],
             )
         # now combine the FI data across protocols for this cell
-        FI_Data_I1_: list_ = []
-        FI_Data_FR1_: list_ = []  # firing rate
-        FI_Data_I4_: list_ = []
-        FI_Data_FR4_: list_ = []  # firing rate
+        FI_Data_I1_: list = []
+        FI_Data_FR1_: list = []  # firing rate
+        FI_Data_I4_: list = []
+        FI_Data_FR4_: list = []  # firing rate
         FI_fits: dict = {"fits": [], "pars": [], "names": []}
 
         linfits: list = []
@@ -1253,8 +1790,10 @@ class Functions:
                 if short_proto_name not in protodurs.keys():
                     continue  # prototol will not be considered for this analysis
                 if isinstance(protodurs[short_proto_name], float):
-                    protodurs[short_proto_name] = [protodurs[short_proto_name]] # make it a list
-                for duration in protodurs[short_proto_name]:  # check if the duration is within the acceptable limits
+                    protodurs[short_proto_name] = [protodurs[short_proto_name]]  # make it a list
+                for duration in protodurs[
+                    short_proto_name
+                ]:  # check if the duration is within the acceptable limits
                     # print("    >>>> Protocol: ", protocol, "duration of proto: ", dur[protocol],  "dur to test: ", duration)
                     if not np.isclose(dur[protocol], duration):
                         durflag = True
@@ -1297,7 +1836,11 @@ class Functions:
                 if len(spikes) == 0:
                     continue
                 latencies = np.sort(
-                    [spikes[spike].AP_latency - spikes[spike].tstart for spike in spikes]
+                    [
+                        spikes[spike].AP_latency - spikes[spike].tstart
+                        for spike in spikes
+                        if spikes[spike].AP_latency is not None
+                    ]
                 )
                 # for spike in spikes:
                 #     latencies.append(spikes[spike].AP_latency-spikes[spike].tstart)
@@ -1473,7 +2016,7 @@ class Functions:
                     f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file"
                 )
 
-    def get_lowest_current_spike(self, row, SP):
+    def find_lowest_current_spike(self, row, SP):
         measured_first_spike = False
         dvdts = []
         for tr in SP.spikeShapes:  # for each trace
