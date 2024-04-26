@@ -800,12 +800,13 @@ class Utility:
         )
         return dout
 
-    def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75):
+    def box_spike_find(self, x, y, dt, thr=-35.0, C1=-12.0, C2=11.0, dt2=1.75, minwidth=0.1):
         """
         Find spikes using a box method:
         Must be > threshold, and be above the rising/falling values in the window dt2
         Units must be consistent: x, dt, dt2 (s or ms)
-        Unist must be consistent: y, thr, C1, C2 (V or mV)
+        Units must be consistent: y, thr, C1, C2 (V or mV)
+        Event must have a width of at least minwidth (in ms)
         Note: probably works best with mV and ms, given the constants above.
         to C1, C2 and the width dt2
         From Hight and Kalluri, J Neurophysiol., 2016
@@ -819,9 +820,10 @@ class Utility:
             y.view(np.ndarray),
             x.shape[0] - 1,
             thr,  # threshold -35 mV
-            C1,  #  # slope value
-            C2,  # slope value
+            C1,   # slope value
+            C2,   # slope value
             dt2,  # spike window (nominal 1.75 msec)
+            minwidth,  # minimum width (nominal, 0.1 msec)
             spikes,  # calculated spikes (times, set to 1 else 0)
         )
         # print('boxspikefind: ', spikes)
@@ -1046,6 +1048,7 @@ class Utility:
         refract: float = 0.0007,  # sec
         interpolate: bool = False,
         peakwidth: float = 0.001,  # sec
+        minwidth: float = 0.0003, # sec (300 microseconds)
         mindip: float = 0.01,  # V
         data_time_units: str='s',
         data_volt_units: str='V',
@@ -1139,6 +1142,7 @@ class Utility:
                 pars = {'dt2': 1.75*1e-3/tfac, # s
                         'C1': -12.0*1e-3/vfac,  # V
                         'C2' : 11.0*1e-3/vfac,  # V
+                        'minwidth': 0.1*1e-3/tfac, # s
                 }
             else:
                 k = list(pars.keys())
@@ -1146,6 +1150,7 @@ class Utility:
 
             u = self.box_spike_find(
                 x=x, y=v, dt=dt, thr=thresh, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
+                minwidth=pars['minwidth'],
             )
             st = np.array([x for x in u if (x >= t0) and (x <= t1)])  # limit to those in the window
             # if len(st) > 0:
@@ -1159,7 +1164,7 @@ class Utility:
        #  print('dt: ', dt)
 
         dv = np.diff(vma) / dt  # compute slope
-        dv2 = np.diff(dv) / dt  # and second derivative
+        # dv2 = np.diff(dv) / dt  # and second derivative
         st = np.array([])  # store spike times
 
         if detector == "threshold":
@@ -1240,7 +1245,7 @@ class Utility:
 
         sp.sort()  # make sure all detected events are in order (sets is unordered)
 
-        spl = sp
+        # spl = sp
         sp = tuple(sp)  # convert to tuple
         if sp == ():
             return st  # nothing detected
