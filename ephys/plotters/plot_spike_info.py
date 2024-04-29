@@ -871,9 +871,9 @@ class PlotSpikeInfo(QObject):
                 if datadict is None:
                     print("datadict is none for cell: ", cell)
                     continue
-                print("cbc.cell: ", cell)
-                # print("cbc.datadict keys: ", datadict.keys())
-                print("cbc.Group: ", datadict["Group"])
+                # print("cbc.cell: ", cell)
+                # # print("cbc.datadict keys: ", datadict.keys())
+                # print("cbc.Group: ", datadict["Group"])
                 df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
         print("cbc.after compute FI fits: ", df_new.Group.unique())
         return df_new
