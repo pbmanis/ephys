@@ -2180,12 +2180,21 @@ class Functions:
                     and df_cell.Spikes[protocol]["LowestCurrentSpike"] is None
                 ):
                     CP("r", "Lowest Current spike is None")
-                elif measure in ["AP_thr_V"]:
+                elif measure in ["AP_thr_V", "AP_begin_V"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
-                        Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
-                        m.append(Vthr)
+                        if "AP_thr_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
+                            Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
+                            m.append(Vthr)
+                        elif "AP_begin_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
+                            Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_begin_V"]
+                            m.append(Vthr)
+                        
+                        else:
+                            print("Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike", measure)
+                            print("LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys())
+                            raise
                     else:
-                        print(df_cell.Spikes[protocol].keys())
+                        print("Missing lowest current spike data in spikes dictionary: ", df_cell.Spikes[protocol].keys())
                         raise
                 elif measure in ["AP_thr_T"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
