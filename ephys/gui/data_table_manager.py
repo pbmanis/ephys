@@ -101,6 +101,7 @@ class TableManager:
         self.experiment = experiment
         self.selvals = selvals
         self.altColors = altcolormethod
+        self.data = []
 
     def textclear(self):
         if self.parent is None:
