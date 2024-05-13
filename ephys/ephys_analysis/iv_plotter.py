@@ -12,7 +12,6 @@ import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filename_tools
 import ephys.gui.data_table_functions as data_table_functions
 from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.figure
 import colorcet
 
 FUNCS = data_table_functions.Functions()
@@ -64,7 +63,7 @@ class IVPlotter(object):
 
             pdf.savefig()  # t_path, dpi=300)  # use the map filename, as we will sort by this later
             mpl.close()  # (plot_handle)
-            msg = f"Plotted {protocol_directory!s}"
+            msg = f"Plotted protocol from {protocol_directory!s}"
             CP("g", msg)
             self.nfiles += 1
 
@@ -91,6 +90,7 @@ class IVPlotter(object):
         
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
         if datestr is None:
+            CP("r", f"Could not make filename partition for cell: {self.df_summary.cell_id:s}")
             return False
         slicecell = filename_tools.make_slicecell(slicestr, cellstr)
         matchcell, slicecell3, slicecell2, slicecell1 = filename_tools.compare_slice_cell(
@@ -107,6 +107,7 @@ class IVPlotter(object):
             experiment=self.experiment, df=self.df_summary, cell_id=df_selected.cell_id
         )
         if self.plot_df is None: # likely no spike or IV protocols for this cell
+            CP("r", f"Cell had no spike or IV protocol cell: {self.df_summary.cell_id:s}")
             return
         
         self.nfiles = 0
@@ -127,7 +128,10 @@ class IVPlotter(object):
                 )
 
     def plot_one_iv(self, protocol, pubmode=False) -> Union[None, object]:
-        spikes = self.plot_df["Spikes"][protocol]["spikes"]
+        if "spikes" in self.plot_df["Spikes"][protocol].keys():
+            spikes = self.plot_df["Spikes"][protocol]["spikes"]
+        else:
+            spikes = None
         spike_dict = self.plot_df["Spikes"][protocol]
         ivs = self.plot_df["IV"][protocol]
         # print("spike keys in protocol: ", spike_dict.keys()) # get keys for protocol
@@ -174,7 +178,7 @@ class IVPlotter(object):
         jsp = 0
 
         if not self.AR.getData():
-            return None
+            return None, None
         # create a color map ans use it for all data in the plot
         # the map represents the index into the data array,
         # and is then mapped to the current levels in the trace
@@ -192,7 +196,7 @@ class IVPlotter(object):
                 if i % self.plotting_alternation != 0:
                     continue
 
-            if trace_number in list(spikes.keys()):
+            if spikes is not None and trace_number in list(spikes.keys()):
                 idv = float(jsp) * dv
                 jsp += 1
             else:
@@ -215,7 +219,7 @@ class IVPlotter(object):
             # mark spikes inside the stimulus window
             ptps = np.array([])
             paps = np.array([])
-            if trace_number in list(spikes.keys()) and self.decorate:
+            if (spikes is not None) and (trace_number in list(spikes.keys())) and self.decorate:
                 for j in list(spikes[trace_number].keys()):
                     paps = np.append(paps, spikes[trace_number][j].peak_V * 1e3)
                     ptps = np.append(ptps, spikes[trace_number][j].peak_T * 1e3)
@@ -315,9 +319,9 @@ class IVPlotter(object):
             P.axdict["B"].legend(fontsize=6)
         if "ivss_cmd" not in ivs.keys():
             print("\nNo ivss_cmd found in the iv keys")
-            print("cell, protocol: ", self.plot_df["cell_id"], protocol)
-            print("\nIvs: ", ivs, "\n")
-            print("Keys in the ivs: ", ivs.keys())
+            print("    cell, protocol: ", self.plot_df["cell_id"], protocol)
+            print("\n    Ivs: ", ivs, "\n")
+            print("    Keys in the ivs: ", ivs.keys())
 
         else:
             P.axdict["C"].plot(
