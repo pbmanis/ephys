@@ -13,9 +13,12 @@ import logging
 import pickle
 import sys
 from collections.abc import Iterable
-from multiprocessing import set_start_method
+from pyqtgraph import multiprocess as MP
+
+# from multiprocessing import set_start_method
 import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filenametools
+
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
 import datetime
@@ -52,6 +55,7 @@ np.seterr(divide="raise", invalid="raise")
 
 Logger = logging.getLogger("AnalysisLogger")
 
+
 class NumpyArrayEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
@@ -68,7 +72,8 @@ class NumpyArrayEncoder(json.JSONEncoder):
             return None
         else:
             return super().default(obj)
-        
+
+
 def def_empty_list():
     return []
 
@@ -128,11 +133,13 @@ class cmdargs:
     plotsoff: bool = False
     rasterize: bool = True
     update: bool = False
-    noparallel: bool = True
     mapsZQA_plot: bool = False
     recalculate_events: bool = True
 
     # analysis parameters
+    parallel_mode: str = (
+        "cell"  # parallel mode: cell means over protocols in one cell; day means over all cells in one day, etc
+    )
     downsample: int = 1
     ivduration: float = 0.0
     max_spikeshape: int = 5
@@ -228,7 +235,8 @@ class Analysis:
         self.plotsoff = args.plotsoff
         self.rasterize = True
         self.update = args.update
-        self.noparallel = args.noparallel
+        self.parallel_mode = args.parallel_mode
+
         self.mapsZQA_plot = args.mapsZQA_plot
         self.recalculate_events = args.recalculate_events
 
@@ -483,7 +491,7 @@ class Analysis:
         Returns:
             nothing
         """
-        CP.cprint("r", "starting IV ranalysis run")
+        CP.cprint("r", "\nStarting IV Analysis run")
         self.n_analyzed = 0
         self.prots_done = (
             []
@@ -520,45 +528,92 @@ class Analysis:
             CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
             print("Cells in day: ", cells_in_day.index)
             cellprots = []
-            
-            for (
-                icell
-            ) in (
-                cells_in_day.index
-            ):  # for all the cells in the day (but will check for slice_cell too)
-                cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
-                print("Cell ok: ", cell_ok)
-                # now generate pdf files from the pkl files
-                # if cell_ok:
-                #     self.plot_data(icell)
-            return None  # get the complete protocols:
+
+            if self.parallel_mode != "day":
+                # just loop through the selected cells
+                for icell in cells_in_day.index:
+                    # for all the cells in the day (but will check for slice_cell too)
+                    cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
+                    print("Cell ok: ", cell_ok)
+                    # now generate pdf files from the pkl files
+                    # if cell_ok:
+                    #     self.plot_data(icell)
+                return None  # get the complete protocols:
+            else:
+                # do the selected days in parallel mode hehre
+                tasks = range(len(cells_in_day))  # number of tasks that will be needed
+                results: dict = {}
+                result = [None] * len(tasks)  # likewise
+                with MP.Parallelize(
+                    enumerate(tasks), results=results, workers=self.nworkers
+                ) as tasker:
+                    for icell, x in tasker:
+                        print("i: ", icell, "x: ", x)
+                        result = self.do_cell(icell, pdf=self.pdfFilename)
+                        # tasker.results[cells_in_day[i]] = result
+                return None
         # Only returns a dataframe if there is more than one entry
         # Otherwise, it is like a series or dict
-        else:
-            if self.pdfFilename is None:
-                for n, icell in enumerate(range(len(self.df.index))):
-                    print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
-                    cell_ok = self.do_cell(icell, pdf=None)
-                    # generate pdf files from the pkl files
-                    if cell_ok:
-                        self.plot_data(icell)
-            else:
-                with PdfPages(self.pdfFilename) as pdf:
+        else:  # ALL cells in the index
+            if self.parallel_mode == 'off':
+                if self.pdfFilename is None:
                     for n, icell in enumerate(range(len(self.df.index))):
-                        CP.cprint("g", f"Cell type(s): {self.celltype!s}")
-                        if self.celltype == "all":
-                            cell_ok = self.do_cell(icell, pdf=pdf)
-                            if cell_ok:
-                                self.plot_data(icell)
-                            # CP.cprint("r", f"***** All")
-                        else:  # only do a select cell type
-                            if self.celltype == self.df.iloc[icell]["cell_type"]:
-                                CP.cprint("r", f"***** selected: {self.celltype:s}")
-                                cell_ok = self.do_cell(icell, pdf=pdf)
-                                # generate pdf files from the pkl files
-                                if cell_ok:
-                                    self.plot_data(icell)
+                        print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
+                        cell_ok = self.do_cell(icell, pdf=None)
+                        # generate pdf files from the pkl files
+                        if cell_ok:
+                            self.plot_data(icell)
+                # else:
+                #     with PdfPages(self.pdfFilename) as pdf:
+                #         for n, icell in enumerate(range(len(self.df.index))):
+                #             CP.cprint("g", f"Cell type(s): {self.celltype!s}")
+                #             if self.celltype == "all":
+                #                 cell_ok = self.do_cell(icell, pdf=pdf)
+                #                 if cell_ok:
+                #                     self.plot_data(icell)
+                #                 # CP.cprint("r", f"***** All")
+                #             else:  # only do a select cell type
+                #                 if self.celltype == self.df.iloc[icell]["cell_type"]:
+                #                     CP.cprint("r", f"***** selected: {self.celltype:s}")
+                #                     cell_ok = self.do_cell(icell, pdf=pdf)
+                #                     # generate pdf files from the pkl files
+                #                     if cell_ok:
+                #                         self.plot_data(icell)
+            elif self.parallel_mode == 'day':
+                tasks = range(len(range(len(self.df.index))) ) # number of tasks that will be needed
+                results: dict = {}
+                result = [None] * len(tasks)  # likewise
+                with MP.Parallelize(
+                    enumerate(tasks), results=results, workers=self.nworkers
+                ) as tasker:
+                    for icell, x in tasker:
+                        print("i: ", icell, "x: ", x)
+                        result = self.do_cell(icell, pdf=self.pdfFilename)
+                        # tasker.results[cells_in_day[i]] = result
 
+                if self.pdfFilename is None:
+                    for n, icell in enumerate(range(len(self.df.index))):
+                        print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
+                        cell_ok = self.do_cell(icell, pdf=None)
+                        # generate pdf files from the pkl files
+                        if cell_ok:
+                            self.plot_data(icell)
+                # else:
+                #     with PdfPages(self.pdfFilename) as pdf:
+                #         for n, icell in enumerate(range(len(self.df.index))):
+                #             CP.cprint("g", f"Cell type(s): {self.celltype!s}")
+                #             if self.celltype == "all":
+                #                 cell_ok = self.do_cell(icell, pdf=pdf)
+                #                 if cell_ok:
+                #                     self.plot_data(icell)
+                #                 # CP.cprint("r", f"***** All")
+                #             else:  # only do a select cell type
+                #                 if self.celltype == self.df.iloc[icell]["cell_type"]:
+                #                     CP.cprint("r", f"***** selected: {self.celltype:s}")
+                #                     cell_ok = self.do_cell(icell, pdf=pdf)
+                #                     # generate pdf files from the pkl files
+                #                     if cell_ok:
+                #                         self.plot_data(icell)
             if self.iv_analysisFilename is None:
                 msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
                 Logger.warning(msg)
@@ -588,12 +643,12 @@ class Analysis:
                     ).with_suffix(".bak")
                 )
             self.df.to_pickle(str(self.inputFilename))
-    
+
     def plot_data(self, icell: int):
         self.IVplotter = EP.iv_plotter.IVPlotter(
             experiment=self.experiment,
             file_out_path=Path(self.analyzeddatapath),
-            df_summary = self.df,
+            df_summary=self.df,
             decorate=True,
         )
         self.IVplotter.plot_ivs(df_selected=self.df.iloc[icell])
@@ -878,7 +933,8 @@ class Analysis:
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
         msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, {'/'.join([datestr, slicestr, cellstr])!s}"
         CP.cprint("c", msg)
-        Logger.info(msg)
+        if self.parallel_mode not in ['day']:
+            Logger.info(msg)
         annotated_celltype = None
         map_annotated_celltype = None
         if self.annotated_dataframe is not None:  # get annotation file cell type
@@ -891,7 +947,8 @@ class Analysis:
                     "c",
                     msg,
                 )
-                Logger.warning(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.info(msg)
             annotated_celltype = cell_df["cell_type"].values[0].strip()
 
         if self.map_annotations is not None:  # get map annotation cell type
@@ -904,7 +961,8 @@ class Analysis:
                     "c",
                     msg,
                 )
-                Logger.warning(msg)
+                if self.parallel_mode not in ['day']:
+                    Logger.info(msg)
             if len(cell_df["cell_type"].values) > 0:
                 map_annotated_celltype = cell_df["cell_type"].values[0].strip()
             else:
@@ -930,7 +988,8 @@ class Analysis:
                         "red",
                         msg,
                     )
-                    Logger.info(msg)
+                    if self.parallel_mode not in ['day']:
+                        Logger.info(msg)
                     return map_annotated_celltype, True
                 else:
                     msg = f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}"
@@ -946,7 +1005,8 @@ class Analysis:
                     "c",
                     msg,
                 )
-                Logger.info(msg)
+                if self.parallel_mode not in ['day']:
+                    Logger.info(msg)
                 return original_celltype, False
 
         # if not pd.isnull(celltype) and not isinstance(celltype, str):
@@ -963,7 +1023,8 @@ class Analysis:
                 if annotated_celltype != original_celltype:
                     msg = f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})"
                     CP.cprint("red", msg)
-                    Logger.info(msg)
+                    if self.parallel_mode not in ['day']:
+                        Logger.info(msg)
                     return annotated_celltype, True
                 else:
                     # msg = f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}"
@@ -979,7 +1040,8 @@ class Analysis:
                     "c",
                     msg,
                 )
-                Logger.info(msg)
+                if self.parallel_mode not in ['day']:
+                    Logger.info(msg)
                 return original_celltype, False
         else:
             if (
@@ -994,90 +1056,7 @@ class Analysis:
                     "Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
                 )
 
-    def get_markers(self, fullfile: Path, verbose: bool = True) -> dict:
-        # dict of known markers and one calculation of distance from soma to surface
-        dist = np.nan
-        # this may be too restrictive....
-        marker_dict = {}
-        # :dict = {
-        #     "soma": [],
-        #     "surface": [],
-        #     "medialborder": [],
-        #     "lateralborder": [],
-        #     "rostralborder": [],
-        #     "caudalborder": [],
-        #     "ventralborder": [],
-        #     "dorsalborder": [],
-        #     "rostralsurface": [],
-        #     "caudalsurface": [],
-        #     "AN": [],
-        #     "dist": dist,
-        # }
-
-        mosaic_file = list(fullfile.glob("*.mosaic"))
-        if len(mosaic_file) > 0:
-            if verbose:
-                CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
-            state = json.load(open(mosaic_file[0], "r"))
-            cellmark = None
-            for item in state["items"]:
-                if item["type"] == "MarkersCanvasItem":
-                    markers = item["markers"]
-                    for markitem in markers:
-                        if verbose:
-                            CP.cprint(
-                                "c",
-                                f"    {markitem[0]:>20s} x={markitem[1][0]*1e3:8.3f} y={markitem[1][1]*1e3:8.3f} z={markitem[1][2]*1e3:8.3f} mm ",
-                            )
-                        marker_dict[markitem[0]] = [
-                            markitem[1][0],
-                            markitem[1][1],
-                            markitem[1][2],
-                        ]
-                        for j in range(len(markers)):
-                            markname = markers[j][0]
-                            if markname in marker_dict:
-                                marker_dict[markname] = [
-                                    markers[j][1][0],
-                                    markers[j][1][1],
-                                ]
-                elif item["type"] == "CellCanvasItem":  # get Cell marker position also
-                    cellmark = item["userTransform"]
-                else:
-                    pass
-                # print("didnt parse item type: ", item["type"])
-            soma_xy: list = []
-            somapos = []
-            if cellmark is None:
-                if "soma" in marker_dict.keys():
-                    somapos = marker_dict["soma"]
-            else:  # override soma position with cell marker position
-                somapos = cellmark["pos"]
-                marker_dict["soma"] = somapos
-
-            surface_xy: list = []
-
-            if "surface" in marker_dict.keys():
-                if len(somapos) >= 2 and len(marker_dict["surface"]) >= 2:
-                    soma_xy = somapos
-                    surface_xy = marker_dict["surface"]
-                    dist = np.sqrt(
-                        (soma_xy[0] - surface_xy[0]) ** 2 + (soma_xy[1] - surface_xy[1]) ** 2
-                    )
-                    if verbose:
-                        CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
-                else:
-                    if verbose:
-                        CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
-            if soma_xy == [] or surface_xy == []:
-                if verbose:
-                    CP.cprint("r", "    No soma or surface markers found")
-        else:
-            if verbose:
-                pass
-                # CP.cprint("r", "No mosaic file found")
-
-        return marker_dict
+    
 
     def do_cell(self, icell: int, pdf=None) -> bool:
         """
@@ -1098,9 +1077,12 @@ class Analysis:
         success: bool
 
         """
-        CP.cprint("y", "Entering do_cell")
+        CP.cprint("c", "Entering do_cell")
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
-        print("icell, slice cell, etc: ", icell, self.slicecell, datestr, slicestr, cellstr)
+        CP.cprint(
+            "c",
+            f"icell: {icell:d}, slice: {self.slicecell!s} date: {datestr!s} slicestr: {slicestr:s} cellstr: {cellstr:s}",
+        )
         matchcell, slicecell3, slicecell2, slicecell1 = filenametools.compare_slice_cell(
             self.slicecell,
             datestr=datestr,
@@ -1119,7 +1101,7 @@ class Analysis:
         fullfile = Path(self.rawdatapath, self.directory, self.df.iloc[icell].cell_id)
         print("**Fullfile: ", fullfile)
 
-        self.get_markers(fullfile, verbose=True)
+        markers = mapanalysistools.get_markers(fullfile, verbose=True)
 
         if self.skip_subdirectories is not None:
             # skip matching subdirectories
@@ -1140,7 +1122,9 @@ class Analysis:
                 # self.experiment["directory"],
                 filenametools.make_cellstr(self.df, icell, shortpath=True),
             )
-            CP.cprint("c", f"fullfile was not dir, trying to make another path: {str(fullfile):s}")
+            CP.cprint(
+                "y", f"Fullfile was not a directory, trying to make another path: {str(fullfile):s}"
+            )
         else:
             CP.cprint("g", f"Data found: {str(fullfile):s}")
 
@@ -1255,19 +1239,24 @@ class Analysis:
             # self.cell_pklFilename = filenametools.make_pickle_filename(self.analyzeddatapath, thisday, celltype, slicecell2)
             msg = f"do_cell: Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}"
             CP.cprint("c", msg)
-            Logger.info(msg)
             if "Spikes" not in self.df.iloc[icell].keys() or self.df.iloc[icell]["Spikes"] is None:
-                msg = f"   @@@ Spikes array is empty @@@"
-                CP.cprint("r", msg)
-                Logger.warning(msg)
+                msg2 = f"   @@@ Spikes array is empty @@@"
+                CP.cprint("r", msg2) 
+                # try:  # we do this to avoid issues when doing multiprocessing in "day" mode
+                #     Logger.warning(msg2)
+                # except:
+                #     pass
             else:
-                msg = f"*** Have Spikes keys: {str(self.df.iloc[icell]['Spikes'].keys()):s}"
-                CP.cprint("g", msg)
-                Logger.info(msg)
-          
+                msg2 = f"*** Have Spikes keys: {str(self.df.iloc[icell]['Spikes'].keys()):s}"
+                CP.cprint("g", msg2)
+                # try:
+                #     Logger.info(msg2)
+                # except:
+                #     pass
+
             # pp = pprint.PrettyPrinter(indent=4)
             # pp.pprint(self.df.iloc[icell]["IV"])
-          
+
             with open(self.cell_pklFilename, "wb") as fh:
                 self.df.iloc[icell].to_pickle(
                     fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
@@ -1290,7 +1279,6 @@ class Analysis:
             #         print("IV ok")
             #         assert json.dumps(the_pkl['Spikes'], sort_keys=True, cls=NumpyArrayEncoder) == json.dumps(original['Spikes'], sort_keys=True, cls=NumpyArrayEncoder)
             #         print("Spikes ok")
-                
 
             self.df["IV"] = None  # ALL rows
             self.df["Spikes"] = None  # ALL rows
