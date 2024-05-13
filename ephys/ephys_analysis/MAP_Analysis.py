@@ -87,7 +87,7 @@ class MAP_Analysis(Analysis):
         )
 
         print(f"    Celltype: {celltype:s}  with {len(allprots['maps']):4d} protocols")
-        self.markers=  self.get_markers(fullfile=file, verbose=False)
+        self.markers=  mapanalysistyools.get_markers(fullfile=file, verbose=False)
 
         # print(allprots["maps"])
         # return
@@ -806,7 +806,7 @@ class MAP_Analysis(Analysis):
             )
             print("map_analysis: tmax/pre time: ", self.AM.Pars.template_tmax, self.AM.Pars.template_pre_time)
             result = self.AM.analyze_one_map(
-                mapdir, noparallel=self.noparallel, verbose=verbose,
+                mapdir, parallel_mode=self.parallel_mode, verbose=verbose,
                 template_tmax=self.AM.Pars.template_tmax, template_pre_time=self.AM.Pars.template_pre_time,
             )
 

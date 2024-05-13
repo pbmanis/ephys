@@ -197,11 +197,13 @@ class IVAnalysis(Analysis):
         -------
         Nothing - generates pdfs and updates the pickled database file.
         """
-        Logger.info("Starting iv_analysis")
+        if self.parallel_mode not in ['day']:
+            Logger.info("Starting iv_analysis")
         msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
         msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
         CP.cprint("c", msg)
-        Logger.info(msg)
+        if self.parallel_mode not in ['day']:
+            Logger.info(msg)
         cell_directory = Path(
             # self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
             self.df.iloc[icell].data_directory,
@@ -236,7 +238,8 @@ class IVAnalysis(Analysis):
         # CP.cprint(
         #     "c", msg,
         # )
-        Logger.info(msg)
+        if self.parallel_mode not in ['day']:
+            Logger.info(msg)
 
         # clean up data in IV and Spikes : remove Posix
         def _cleanup_ivdata(results: dict):
@@ -323,7 +326,8 @@ class IVAnalysis(Analysis):
         if len(allivs) == 0:
             msg = "No protocols matching the CCIV protocol list in the configuration file were identified"
             CP.cprint("r", msg)
-            Logger.info(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.info(msg)
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
         if self.exclusions is not None:
@@ -331,7 +335,8 @@ class IVAnalysis(Analysis):
                 if self.exclusions[cell_id] in ["all", ["all"]]:
                     msg = "All protocols for this cell are excluded from analysis in the configuration file."
                     CP.cprint("r", msg)
-                    Logger.info(msg)
+                    if self.parallel_mode not in ['day']:
+                        Logger.info(msg)
                     return # nothing to do - entire cell is excluded.
                 else:
                     validivs = [protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']]
@@ -351,9 +356,8 @@ class IVAnalysis(Analysis):
         #         validivs.remove(iv_proto)
         print("Valid IDs: ", validivs)
 
-        self.noparallel = False
-        if not self.noparallel:
-            CP.cprint("y", f"Parallel processing enabled, nworkers = {self.nworkers:d}")
+        if self.parallel_mode in ["cell", "day"]:
+            CP.cprint("y", f"Parallel processing enabled (mode={self.parallel_mode:s}), nworkers = {self.nworkers:d}")
         else:
             CP.cprint("m", "Parallel processing disabled")
         tasks = range(len(validivs))  # number of tasks that will be needed
@@ -361,7 +365,7 @@ class IVAnalysis(Analysis):
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
 
-        if self.noparallel:  # just serial...
+        if self.parallel_mode in ["off", "day"]:  # just serial at this level
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
                     icell=icell,
@@ -388,7 +392,7 @@ class IVAnalysis(Analysis):
                     "Spikes"
                 ]  # everything in the SP analysus_summary structure
         #            print(self.df.at[icell, 'IV'])
-        else:
+        elif self.parallel_mode == "cell":
             result = [None] * len(tasks)  # likewise
             # import sys # not available when using pyqtgraph.multiprocess
             # if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
@@ -437,7 +441,8 @@ class IVAnalysis(Analysis):
                 "m",
                 msg,
             )
-            Logger.info(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.info(msg)
             # with hdf5:
             day, slice, cell = filename_tools.make_cell(icell=icell)
             keystring = str(Path(Path(day).name, slice, cell))  # the keystring is the cell.
@@ -468,7 +473,8 @@ class IVAnalysis(Analysis):
                 "b",
                 msg,
             )
-            Logger.info(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.info(msg)
             with open(self.iv_analysisFilename, "wb") as fh:
                 self.df.to_feather(fh)
 
@@ -513,7 +519,8 @@ class IVAnalysis(Analysis):
                 "r",
                 msg,
             )
-            Logger.error(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.error(msg)
             exit()
         if self.important_flag_check:
             if not self.AR.checkProtocolImportant(protocol_directory):
@@ -522,7 +529,8 @@ class IVAnalysis(Analysis):
                     "r",
                     msg,
                 )
-                Logger.info(msg)
+                if self.parallel_mode not in ['day']:
+                    Logger.info(msg)
                 return (None, 0)
 
         self.configure(
@@ -551,7 +559,8 @@ class IVAnalysis(Analysis):
                     self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
                 )
                 print(msg)
-                Logger.info(msg)
+                if self.parallel_mode not in ['day']:
+                    Logger.info(msg)
 
             ctype = self.df.at[icell, "cell_type"].lower()
             if ctype in self.experiment["fit_gap"].keys():
@@ -669,5 +678,6 @@ class IVAnalysis(Analysis):
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
             print(msg)
-            Logger.error(msg)
+            if self.parallel_mode not in ['day']:
+                Logger.error(msg)
         return None
