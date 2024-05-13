@@ -9,4 +9,5 @@ __version__ = '%d.%d.%d%s' % version_info
 
 from . import get_table
 from . import analyze_map_data
+from . import get_markers
 
