@@ -151,10 +151,12 @@ def build_parser(experiments):
         help="Print verbose output",
     )
     parser.add_argument(
-        "--noparallel",
-        action="store_true",
-        dest="noparallel",
-        help="Turn off parallel processing (used primarily for debugging)",
+        "--parallel",
+        type=str,
+        dest="parallel_mode",
+        default="cell",
+        choices=["cell", "day", "off"],
+        help="set parallel processing (used primarily for debugging)",
     )
     parser.add_argument(
         "--mapZQA",
