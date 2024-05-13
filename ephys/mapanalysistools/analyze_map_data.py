@@ -434,7 +434,7 @@ class AnalyzeMap(object):
         mapdir: Union[str, Path] = None,
         plotevents:bool=False,
         raster:bool=False,
-        noparallel:bool=False,
+        parallel_mode:str="cell",
         verbose:bool=False,
         template_tmax:float = 0.020,
         template_pre_time:float = 0.0,
@@ -445,7 +445,7 @@ class AnalyzeMap(object):
             mapdir (Union[str, Path]): Directory of map protocol
             plotevents (bool, optional): Flag to allow plotting of events. Defaults to False.
             raster (bool, optional): Flag to cause plot output to be rasterized rather than vectorized. Defaults to False.
-            noparallel (bool, optional): Cause to run in parallel mode for each trace. Defaults to False.
+            parallel_mode (str): Cell or day: Cause to run in parallel mode for each trace. Defaults to "off".
             verbose (bool, optional): If True, print out a lot of debugging stuff. Defaults to False.
 
         Returns:
@@ -483,7 +483,7 @@ class AnalyzeMap(object):
         )
         if self.verbose:
             CP.cprint("c", "  ANALYZE ONE MAP")
-        self.noparallel = noparallel
+        self.parallel_mode = parallel_mode
         # only clip window after setting analysis window
         raw_data, self.raw_timebase, (jmin, jmax) = self.MA.clip_window(self.mod_data[0], timebase=self.AR.time_base)
         self.raw_data_averaged = np.mean(raw_data, axis=0) - np.mean(raw_data[:, 0:100])
@@ -686,8 +686,8 @@ class AnalyzeMap(object):
         )  # number of tasks that will be needed is number of targets
         # result = [None] * len(tasks)  # likewise
         # results = {}
-        # print('noparallel: ', self.noparallel)
-        # if not self.noparallel:
+
+        # if self.parallel_mode in ["cell", "day", "traces"]:
         #     print("Parallel on all traces in a map")
         #     with mp.Parallelize(
         #         enumerate(tasks), results=results, workers=self.nworkers
@@ -722,17 +722,22 @@ class AnalyzeMap(object):
         )
 
         if len(summary.average.avgevent) == 0:
+            CP.cprint("y", "AnalyzeMap::analyze_one_trial: no events in summary.average.avgevent")
             return None
+
 
         method.fit_average_event(
             summary.average.avgeventtb,
             summary.average.avgevent,
             inittaus=self.Pars.taus,
         )
-
+        
         if self.verbose:
             print("    Trial analyzed")
         # CP.cprint("r", f"analyze one event summary average:\n{str(summary):s}")
+        # the summary is a mini_event_summary dataclass (see min_event_dataclasses.py for the structure)
+        # the fits are in average_spont and average_evoked, as AverageEvent dataclasses.
+
         return summary
 
     def analyze_traces_in_trial(
