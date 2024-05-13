@@ -987,6 +987,7 @@ class acq4_reader:
         self.data_array = np.array(self.data_array)
         self.time_base = np.array(self.time_base[0])
         protoreps = ("protocol", "repetitions")
+        scannertargets = ("Scanner", "targets")
         mclamppulses = (self.shortdname, "Pulse_amplitude")
         mclamppulses2 = (self.shortdname, "Pulse2_amplitude")
 
@@ -1007,9 +1008,9 @@ class acq4_reader:
                 self.tstart = 0.0
                 self.tend = np.max(self.time_base)
             seqkeys = list(seqparams.keys())
-            if mclamppulses not in seqkeys and mclamppulses2 not in seqkeys:
-                print("seqkeys cannot handle the standard mclamppulse names ", seqkeys)
-                print(mclampulses, mclampulses2)
+            if (mclamppulses not in seqkeys) and (mclamppulses2 not in seqkeys) and (protoreps not in seqkeys):
+                print("seqkeys cannot handle the standard mclamppulse names and missing protoreps ", seqkeys)
+                print(mclamppulses, mclamppulses2, protoreps)
                 print("you probably need to add this to acq4_reader near line 1008")
                 raise ValueError("Cannot parse the protocol sequence information")
             if mclamppulses in seqkeys:
