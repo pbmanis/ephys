@@ -147,7 +147,7 @@ class PlotMaps(object):
          self.ylim = (y0, y1)
          if not pd.isnull(x0):
              self.window = True
-             print('window set!!!!!')
+            #  print('window set!!!!!')
          else:
             self.window = False
     
