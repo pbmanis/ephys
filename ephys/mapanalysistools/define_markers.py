@@ -102,7 +102,7 @@ def define_markers():
             mark_colors[k] = "g"
             mark_symbols[k] = "o"
         elif k.startswith(("AN", "VN", "injection", "hpc")):
-            mark_colors[k
+            mark_colors[k] = "r"
             mark_symbols[k] = "D"
         elif k.startswith(("soma", "cell")):
             mark_colors[k] = "y"
