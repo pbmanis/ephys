@@ -639,6 +639,8 @@ def numeric_age(row):
 
 
 def make_datetime_date(row, colname="date"):
+    if colname == 'date' and 'Date' in row.keys():
+        colname = 'Date'
     if pd.isnull(row[colname]) or row[colname] == "nan":
         row.shortdate = 0
         return row.shortdate
@@ -773,7 +775,9 @@ class PlotSpikeInfo(QObject):
         # print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
         if coding_file is not None:  # add coding from the coding file
             df = self.read_coding_file(df_summary, coding_file, coding_sheet, coding_level)
-
+        else:
+            df = df_summary
+            df["Group"] = "Control"
         FD = filter_data.FilterDataset(df)
         df = FD.filter_data_entries(
             df,
@@ -802,26 +806,16 @@ class PlotSpikeInfo(QObject):
         """
         CP("y", "Combine by cell")
 
-        # print("1: starting number of entries", len(df))
         df = df.apply(make_cell_id, axis=1)
-        # print("1.5, before dropping empty ids: ", len(df))
         df.dropna(subset=["cell_id"], inplace=True)
-        # print("2: after dropping nan ids", len(df))
         df.rename(columns={"sex_x": "sex"}, inplace=True)
         if self.experiment["celltypes"] != ["all"]:
             df = df[df.cell_type.isin(self.experiment["celltypes"])]
-        # print("3: in selected cell types", len(df))
-        # print("4: Protocols: ", df.protocol.unique())
-        # print("5: # Cell IDs: ", len(df.cell_id.unique()))
-        # # for index in df.index:
-        #     print("6: # cellids: ", index, df.iloc[index].cell_id, df.iloc[index].cell_type)
         df["shortdate"] = df.apply(
             make_datetime_date, colname="date", axis=1
         )  # make a short date as a datetime for sorting
-        # print("# Dates in original data range: ", len(df))
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
-        # print("# Dates in specified time range: ", len(df))
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
         dfdict = {}  # {col: [] for col in cols}
@@ -829,6 +823,7 @@ class PlotSpikeInfo(QObject):
         computer_name = get_computer()
         nworkers = self.experiment["NWORKERS"][computer_name]
         cells_to_do = [cell for cell in cell_list if cell is not None]
+     
         # here we should check to see if cell has been done in the current file,
         # and remove it from the list.
         already_done = pd.read_pickle(
@@ -840,7 +835,6 @@ class PlotSpikeInfo(QObject):
         )
         already_done = already_done.cell_id.unique()
         # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
-        # print("Cells to do: ", cells_to_do)
         tasks = range(len(cells_to_do))
         result = [None] * len(tasks)
         results = dfdict
@@ -852,10 +846,8 @@ class PlotSpikeInfo(QObject):
                         self.experiment, df, cell_list[i], protodurs=self.experiment["FI_protocols"]
                     )
                     tasker.results[cell_list[i]] = result
-            # print("results: ", results)
 
             for r in results:
-                # print("\nr: ", results[r])
                 df_new = pd.concat([df_new, pd.Series(results[r]).to_frame().T], ignore_index=True)
         else:
 
@@ -871,11 +863,7 @@ class PlotSpikeInfo(QObject):
                 if datadict is None:
                     print("datadict is none for cell: ", cell)
                     continue
-                # print("cbc.cell: ", cell)
-                # # print("cbc.datadict keys: ", datadict.keys())
-                # print("cbc.Group: ", datadict["Group"])
                 df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
-        print("cbc.after compute FI fits: ", df_new.Group.unique())
         return df_new
 
     def to_1D(self, series):
@@ -984,6 +972,7 @@ class PlotSpikeInfo(QObject):
         ):
             hue_palette = self.experiment["hue_palette"][hue_category]
         # if hue_category == "sex":
+        #     print("setting hue_palette via sex")
         #     hue_palette = {
         #         "F": "#FF000088",
         #         "M": "#0000ff88",
@@ -997,7 +986,8 @@ class PlotSpikeInfo(QObject):
             hue_category = xname
             hue_palette = colors
             # dodge = False
-
+        # print("hue Palette: ", hue_palette)
+        # print("hue category: ", hue_category)
         if hue_category != xname:
             dodge = True
             hue_order = self.experiment["plot_order"][hue_category]
@@ -1232,12 +1222,14 @@ class PlotSpikeInfo(QObject):
             enable_picking: bool, optional: enable picking of data points
         """
         df = df.copy()  # make sure we don't modifiy the incoming
+        print("summary plot incomding x : ", df[xname].unique())
+                                                
         # Remove cells for which the FI Hill slope is maximal at 0 nA:
         #    These have spont.
-        df = df[df["I_maxHillSlope"] > 1e-11]
+        # df = df[df["I_maxHillSlope"] > 1e-11]
         # for p in plot_order:
         #     print(p, df[df['age_category'] == p]['ID'])
-
+        print("summary_plot_spike_parameters_categorical: incoming x categories: ", df[xname].unique())
 
         ncols = len(measures)
         letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
@@ -1263,7 +1255,7 @@ class PlotSpikeInfo(QObject):
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         picker_funcs = {}
-        n_celltypes = len(self.experiment["celltypes"])
+        # n_celltypes = len(self.experiment["celltypes"])
         df = self.rescale_values(df)
         # print("plot order: ", plot_order)
         for icol, measure in enumerate(measures):
@@ -1492,7 +1484,10 @@ class PlotSpikeInfo(QObject):
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
         if transform is not None:
             dfp[y] = dfp[y].apply(transform)
-        print("barpts: hue: ", hue_category, "plot order: ", plot_order)
+        # if hue_category is None:
+        #     raise ValueError(f"Missing Hue category for plot; xname is: {xname:s}")
+        print("calling barpts. Hue_category: ", hue_category, "Plot order: ", plot_order)
+        print("x categories: ", dfp[xname].unique())
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
@@ -1863,7 +1858,7 @@ class PlotSpikeInfo(QObject):
         # in the combine_fi_curves function.
         # if "protocol" not in df.columns:
         #     df = df.rename({"iv_name": "protocol"}, axis="columns")
-        # print("unique protocols: ", df["protocol"].unique())
+        print("unique protocols: ", df["protocol"].unique())
         # print("protocols: ", df["protocols"])
         plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         P = PH.regular_grid(
@@ -1902,14 +1897,11 @@ class PlotSpikeInfo(QObject):
             P.figure_handle.suptitle("FI Mean, SEM ", fontweight="normal", fontsize=18)
         elif mode == "individual":
             P.figure_handle.suptitle("FI Individual", fontweight="normal", fontsize=18)
-        print("plot mode: ", mode)
         fi_stats = []
         NCells: Dict[tuple] = {}
         picker_funcs: Dict = {}
         found_groups = []
-
         for i, celltype in enumerate(self.experiment["celltypes"]):
-            print("cell types to analyze: ", self.experiment["celltypes"])
             ax = P.axdict[plabels[i]]
             ax.set_title(celltype.title(), y=1.05)
             ax.set_xlabel("I$_{inj}$ (nA)")
@@ -1942,9 +1934,18 @@ class PlotSpikeInfo(QObject):
                 if pd.isnull(cdd["cell_id"][index]):
                     print("No cell ids")
                     continue
-                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
+                try:
+                    FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
+                except:
+                    print("No FI data", cdd.cell_id[index])
+                    print(cdd.columns)
+                    print("Did you run the assembly on the final IV analysis files?")
+                    continue
+                #raise KeyError("No FI data")
+                
                 if len(FI_data[0]) == 0:
-                    print("FI data is empty")
+                    print("FI data is empty", cdd.cell_id[index])
+
                     continue
 
                 FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
@@ -2442,6 +2443,8 @@ class PlotSpikeInfo(QObject):
     def get_AHP_trough_time(self, row):
         # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
+        if "AHP_trough_T" not in row.keys():
+            return np.nan
         row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T * 1e-3
         if row.AHP_trough_T < 0:
             row.AHP_trough_T = np.nan
@@ -2532,16 +2535,9 @@ class PlotSpikeInfo(QObject):
         """
         CP("g", f"    PRELOAD, {fn!s}")
         df = pd.read_pickle(fn)
-        # print("        # entries in dataframe BEFORE: ", len(df))
-        # print("fn: ", fn)
-        # print(df.Group.unique())
-        # exit()
         df_summary = get_datasummary(self.experiment)
-        # print("summary columns: ", df_summary.columns)
-        # print(df_summary["animal identifier"].unique())
 
         df["animal identifier"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
-        # print(df["animal identifier"].unique())
 
         if "cell_layer" not in df.columns:
             layers = df_summary.cell_layer.unique()
@@ -2550,7 +2546,6 @@ class PlotSpikeInfo(QObject):
             else:
                 df["cell_layer"] = ""
                 df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
-            # print("cell layers: ", df.cell_layer.unique())
 
         if "cell_expression" not in df.columns:
             expression = df_summary.cell_expression.unique()
@@ -2569,21 +2564,17 @@ class PlotSpikeInfo(QObject):
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
         df["age_category"] = df.apply(self.categorize_ages, axis=1)
-        print("age categories: ", df.age_category.unique())
         df["FIRate"] = df.apply(self.getFIRate, axis=1)
         df["Group"] = df["Group"].astype("str")
-        # print(df.columns)
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
         df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
         df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
-        # print(df["Group"].unique())
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
-        # df = df[df["Group"] != 'nan']  # remove residual NaN groups
         groups = df.Group.unique()
-        print("        # Groups found: ", groups, " n = ", len(groups))
+        print("preload: Groups: ", groups)
         # self.data_table_manager.update_table(data=df)
         df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
         if len(groups) > 1:
@@ -2602,7 +2593,7 @@ class PlotSpikeInfo(QObject):
         #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
         # print("cell ids: \n", df.cell_id)
         if self.experiment["excludeIVs"] is not None:
-
+            print("Parsing Excluded IV datasets (noise, etc)")
             # print(self.experiment["excludeIVs"])
             for fn, key in self.experiment["excludeIVs"].items():
                 # print(fn, key)
@@ -2636,14 +2627,27 @@ class PlotSpikeInfo(QObject):
                     df.drop(df.loc[df.cell_id == fn1].index, inplace=True)
                     df.drop(df.loc[df.cell_id == fn2].index, inplace=True)
                     CP("r", f"dropped CELL {fn:s} from analysis, reason = {reason:s}")
+        gu = df.Group.unique()
+        print("Groups after exclusions: ")
 
-        # now apply any external filters that might be specified in the configuratoin file
+        for g in sorted(gu):
+            print("    ", g)
+            i0 = 0
+            for x in df.loc[df.Group == g].cell_id:
+                print("        ", x)
+                if g in ["A", "AA"] and i0 < 20:
+                    print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
+                    i0 += 1
+        print("="*80)
+        # now apply any external filters that might be specified in the configuration file
         if "filters" in self.experiment.keys():
+            print("Filters is set: ")
             for key, values in self.experiment["filters"].items():
-                print("Filtering on: ", key, values)
+                print("   Filtering on: ", key, values)
                 df = df[df[key].isin(values)]
 
         print("age categories: ", df.age_category.unique())
+        # print("preload returns with Group list: ", df.Group.unique())
         return df
 
     def do_stats(
