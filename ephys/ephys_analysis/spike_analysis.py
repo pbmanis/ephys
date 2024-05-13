@@ -551,12 +551,13 @@ class SpikeAnalysis:
 
         """
         dvdts = {}
+        # print("LCS: len spike traces: ", len(self.spikeShapes))
         for tr in self.spk:  # for each trace with spikes
-            if (
-                len(self.spikeShapes[tr]) >= 2
-            ):  # only there are least two spikes so we can get an AHP
+            # print("trace: ", tr, "# spikes: ", len(self.spikeShapes[tr]))
+            if len(self.spikeShapes[tr]) >= 1:  # only if there is at least one spike
                 dvdts[tr] = self.spikeShapes[tr][0]  # get the first spike in the trace
                 continue
+        # print("get_lowest_current_spike: # traces to investigate: ", len(dvdts))
         LCS = {}
         if len(dvdts) > 0:
             currents = []
@@ -567,12 +568,13 @@ class SpikeAnalysis:
             i_min_current = np.argmin(currents)  # find spike elicited by the minimum current
             min_current = currents[i_min_current]
             sp = self.spikeShapes[itr[i_min_current]][0]  # gets just the first spike in the lowest current trace
-
+            if sp.AP_begin_V is None:
+                print("\nSpike empty? \n", sp)
+                return None
             LCS["dvdt_rising"] = sp.dvdt_rising
             LCS["dvdt_falling"] = sp.dvdt_falling
             LCS["dvdt_current"] = min_current * 1e12  # put in pA
-            if sp.AP_begin_V is None:
-                print("\nSpike empty? \n", sp)
+
 
             LCS["AP_thr_T"] = sp.AP_beginIndex * self.Clamps.sample_interval * 1e3
             LCS["AP_peak_V"] = 1e3 * sp.peak_V
@@ -672,10 +674,10 @@ class SpikeAnalysis:
                     if self.Clamps.traces[trace_number][km] > (min_v + band):
                         break  # end of minimum, report the prior minimum point
             kprevious = min_point
-        # print(trace_number, kprevious, kpeak)
-        kbegin = np.argmin(self.Clamps.traces[trace_number][kprevious:kpeak]) + kprevious
-        if kpeak - kbegin < 2:
+        if kpeak-kprevious <= 2:
+            print(trace_number, kprevious, kpeak)
             return thisspike
+        kbegin = np.argmin(self.Clamps.traces[trace_number][kprevious:kpeak]) + kprevious
         # raise ValueError(
         #         f"k <= kbegin, can't analyze spike: trace {trace_number:d}, #{spike_number:d} kpeak: {kpeak:d}, kbegin: {kbegin:d}"
         #     )
@@ -699,7 +701,8 @@ class SpikeAnalysis:
         # only up to the max slope of the spike
         kthresh = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
         if len(kthresh) == 0:
-            print(f"??? no spike found: {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {kprevious:d}, {kpeak:d}, {spike_begin_dV:.3f}")
+            print(f"No spike found: trace: {trace_number:d}")
+            # {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {kprevious:d}, {kpeak:d}, {spike_begin_dV:.3f}")
             # import pyqtgraph as pg
             # pg.plot(self.Clamps.time_base, self.Clamps.traces[trace_number], pen=pg.mkPen('b', width=1))
             # pg.plot(self.Clamps.time_base[kbegin:kpeak+100], self.Clamps.traces[trace_number][kbegin:kpeak+100],
