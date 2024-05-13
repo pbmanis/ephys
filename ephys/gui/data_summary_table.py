@@ -15,6 +15,7 @@ import pandas as pd
 import textwrap
 import numpy as np
 from pylibrary.tools import cprint as CP
+from ephys.tools import map_cell_types as MCT
 
 # import vcnmodel.util.fixpicklemodule as FPM
 
@@ -90,12 +91,15 @@ class IndexData:
 class TableManager:
     def __init__(
         self,
+        parent = None,
         table: object = None,
         experiment: dict = None,
         selvals: dict = {},
         altcolormethod: object = None,
     ):
         self.table = table
+        assert parent is not None
+        self.parent = parent
 
         self.experiment = experiment
         self.selvals = selvals
@@ -185,26 +189,26 @@ class TableManager:
             dtype=[
                 ("cell_id", object),  # 0
                 ("important", object),  # 1
-                ("description", object),  # 1
-                ("notes", object),  # 2
-                ("species", object),  # 3
-                ("strain", object),  # 4
-                ("genotype", object),  # 5
-                ("solution", object),  # 6
-                ("internal", object),  # 7
-                ("sex", object),  # 8
-                ("age", object),  # 9
-                ("weight", object),  # 10
-                ("temperature", object),  # 11
-                ("slice_orientation", object),  # 12
-                ("cell_cell", object),  # 13
-                ("slice_slice", object),  # 14
-                ("cell_type", object),  # 15
-                ("cell_location", object),  # 16
-                ("cell_layer", object),  # 17
-                ("data_complete", object),  # 18
-                ("data_directory", object),  # 19
-                ("flag", bool),  # 20
+                ("description", object),  # 2
+                ("notes", object),  # 3
+                ("species", object),  # 4
+                ("strain", object),  # 5
+                ("genotype", object),  # 6
+                ("solution", object),  # 7
+                ("internal", object),  # 8
+                ("sex", object),  # 9
+                ("age", object),  # 10
+                ("weight", object),  # 11
+                ("temperature", object),  # 12
+                ("slice_orientation", object),  # 13
+                ("cell_cell", object),  # 14
+                ("slice_slice", object),  # 15
+                ("cell_type", object),  # 16
+                ("cell_location", object),  # 17
+                ("cell_layer", object),  # 18
+                ("data_complete", object),  # 19
+                ("data_directory", object),  # 20
+                ("flag", bool),  # 21
             ],
         )
         self.update_table(self.data)
@@ -223,7 +227,7 @@ class TableManager:
                 self.setColortoRowText(i, QtGui.QColor(0xff, 0xff, 0xff))
         cprint("g", "Finished updating index files")
 
-    def update_table(self, data):
+    def update_table(self, data, QtCore=None, QtGui=None):
         cprint("g", "Updating data table")
         # print("data for update: ", data)
         # print("data complete: ", data[:]['data_complete'])
@@ -299,4 +303,74 @@ class TableManager:
                 self.table.selectRow(i)
                 return i
         return None
+
+    def apply_filter(self, QtCore=None, QtGui=None):
+        """
+        self.filters = {'Use Filter': False, 'dBspl': None, 'nReps': None,
+        'Protocol': None,
+        'Experiment': None, 'modelName': None, 'dendMode': None,
+        "dataTable": None,}
+        """
+        if not self.parent.filters["Use Filter"]:  # no filter, so update to show whole table
+            self.update_table(self.data, QtCore=QtCore, QtGui=QtGui)
+
+        else:
+            self.filter_table(self.parent.filters, QtCore=QtCore, QtGui=QtGui)
+
+    def filter_table(self, filters, QtCore=None, QtGui=None):
+        coldict = {  # numbers must match column in the table.
+            "flag": 21,
+            "cell_type": 16,
+            "age": 10,
+            "sex": 9,
+            #"Group": 6,
+            #"DataTable": 18,
+        }
+        self.parent.doing_reload = True
+        filtered_table = self.data.copy()
+        matchsets = dict([(x, set()) for x in filters.keys() if x != "Use Filter"])
+        for k, d in enumerate(self.data):
+            for f, v in filters.items():
+                if v is None or v == "None":
+                    continue
+                if f not in coldict.keys():
+                    continue
+                if f == "cell_type":
+                    print("old: ", v)
+                    v = MCT.map_cell_type(v)  # convert various names to a consistent one
+                    print("new: ", v)
+                    if v is None:
+                        continue
+                if (
+                    not isinstance(v, list)
+                    and (coldict.get(f, False))
+                    and (self.data[k][coldict[f]] == v)
+                ):
+                    # and f in list(coldict.keys())) and if
+                    # (self.data[k][coldict[f]] == v): print("f: ", f, "
+                    # v: ", v)
+                    matchsets[f].add(k)
+                elif isinstance(v, list) and (coldict.get(f, False)):
+                    v = sorted(v)  # be sure order is ok for comparisions
+                    if f == "age":
+                        age = ephys.tools.parse_ages.age_as_int(self.data[k][coldict[f]])
+                        if age >= v[0] and age <= v[1]:
+                            matchsets[f].add(k)
+                    else:
+                        if self.data[k][coldict[f]] >= v[0] and self.data[k][coldict[f]] <= v[1]:
+                            matchsets[f].add(k)
+
+        baseset = set()
+        for k, v in matchsets.items():
+            if len(v) > 0:
+                baseset = v
+                break
+        # and logic:
+        finds = [v for k, v in matchsets.items() if len(v) > 0]
+        keep_index = baseset.intersection(*finds)
+        self.keep_index = keep_index  # we might want this later!
+        # print('Filter index: ', keep_index)
+        filtered_table = [filtered_table[ft] for ft in keep_index]
+        self.update_table(filtered_table, QtCore=QtCore, QtGui=QtGui)
+        self.parent.doing_reload = False
 
