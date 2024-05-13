@@ -1325,6 +1325,7 @@ class MiniAnalyses:
         traces: list,
         data: np.ndarray,
         summary: MEDC.Mini_Event_Summary,  # dataclass Summary
+        n_taus: int=1,
     ) -> tuple:
         """
         compute average event with length of template
@@ -1478,9 +1479,14 @@ class MiniAnalyses:
         clean_event_traces = np.array([allevents[ev] for ev in isolated_event_list])
         clean_event_onsets = tuple([ev for ev in allevents_onsets if ev in isolated_event_list])
         wrong_event_traces = np.array([allevents[ev] for ev in wrong_event_list])
-        overlapping_event_traces = np.array(
-            [allevents[ev] for ev in overlapping_event_list]
+        try:
+            overlapping_event_traces = np.array(
+            [allevents[ev] for ev in overlapping_event_list if ev in allevents.keys()]
         )  #  if ev in allevents.keys()])
+        except:
+            print("overlapping_event_list: ", overlapping_event_list)
+            print("allevents: ", allevents)
+            raise ValueError("overlapping_event_list: ")
 
         if self.verbose:
             f, ax = mpl.subplots(3, 1)
@@ -1612,12 +1618,14 @@ class MiniAnalyses:
                 tb=summary.average.avgeventtb,
                 avgevent=summary.average.avgevent,
                 initdelay=self.template_pre_time,
-                debug=False,
+                n_taus=n_taus,
+                debug=True
             )
             print(f"Averaged event fit:\n")
             print(
                 f"   tau1: {self.fitted_tau1:.3e}, tau2: {self.fitted_tau2:.3e}, A: {self.amplitude*1e12:.2f} pA, A2:{self.amplitude2*1e12:.2f} pA, err: {self.avg_fiterr:.4g}"
             )
+            summary.average.fitted_n_taus = n_taus
             summary.average.fitted_tau1 = self.fitted_tau1
             summary.average.fitted_tau2 = self.fitted_tau2
             summary.average.fitted_tau3 = self.fitted_tau3
@@ -1710,7 +1718,7 @@ class MiniAnalyses:
             ave,
             n=min(3, len(ave)),
         )
-        move_avg = ave
+        # move_avg = ave
         ipk = np.argmax(move_avg)
         pk = move_avg[ipk]
         p10 = 0.20 * pk
@@ -1751,13 +1759,13 @@ class MiniAnalyses:
         else:
             i37 = i37[-1]  # last point
             self.decaythirtyseven = self.dt_seconds * i37
-        # print(
-        #     "Measures t10, 90, t1 init, t37: ",
-        #     self.t10,
-        #     self.t90,
-        #     (self.t90 - self.t10) / 2.0,
-        #     self.decaythirtyseven,
-        # )
+        print(
+            "Measures t10, 90, t1 init, t37: ",
+            self.t10,
+            self.t90,
+            (self.t90 - self.t10) / 2.0,
+            self.decaythirtyseven,
+        )
 
     def fit_average_event(
         self,
@@ -1765,34 +1773,38 @@ class MiniAnalyses:
         avgevent: np.ndarray,
         debug: bool = False,
         label: str = "",
+        n_taus: int = 1,  # number of time courses to superimpose (1 yields rise/fall, e.g., fast amps, 2 yields 2 rise/fall times, e.g., amps + nmda)
         inittaus: List = [0.001, 0.005, 0.005, 0.030],
         initdelay: float = 0.001,
     ) -> None:
-        """
-        Fit the averaged event to a double exponential epsc-like function
+        """fit_average_event         
+        Fit the averaged event to a double exponential epsc-like function (e.g, fast amps), or
+        the sum of 2 double-exponential epsc-like functions (e.g. ampa+nmda)
         Operates on the AverageEvent data structure
+
+        Parameters
+        ----------
+        tb : np.ndarray
+            time base for average event
+        avgevent : np.ndarray
+            current waveform for average event
+        debug : bool, optional
+            flag to print debugging information, by default False
+        label : str, optional
+            _description_, by default ""
+        n_taus : int, optional
+            whether to fit to 1 or the sum of 2 double-exp waveforms by default 1
+        initdelay : float, optional
+            delay to start of event from start of trace, by default 0.001
         """
-        CP.cprint("c", f"        Fitting average event, fixed_delay={initdelay:f}")
+        CP.cprint("c", f"        MiniMethodsCommon::MiniAnalysis::Fitting average event with initial delay ={initdelay:f}")
         self.risetenninety = np.nan
         self.t10 = np.nan
         self.t90 = np.nan
         self.decaythirtyseven = np.nan
-
-        ave = self.sign * avgevent
-        self.measure_psc_shape(ave)  # first get 10-90 times and t37
-
-        tsel = 0  # use whole averaged trace
-        self.tsel = tsel
-        self.tau1 = inittaus[0]  #  (self.t90 - self.t10) / 2.0  # inittaus[0]
-        self.tau2 = self.decaythirtyseven  # inittaus[1]
-        if self.tau2 < self.tau1:
-            self.tau2 = inittaus[1]
-        self.tau3 = self.tau1 * 3.0
-        self.tau4 = self.tau2 * 5
-        self.tau_ratio = self.tau2 / self.tau1
-        self.tau2_range = 10.0
-        self.tau1_minimum_factor = 5.0
-        time_past_peak = 2.5e-4
+        
+        # initialized fitting results values
+        self.fitted_n_taus = n_taus
         self.fitted_tau1 = np.nan
         self.fitted_tau2 = np.nan
         self.fitted_tau3 = np.nan
@@ -1805,12 +1817,33 @@ class MiniAnalyses:
         self.bfdelay = np.nan
         self.avg_best_fit = None
         self.Qtotal = np.nan
+        ave = self.sign * avgevent
+        
+        self.measure_psc_shape(ave)  # first get 10-90 times and t37
 
+        tsel = 0  # use whole averaged trace
+        self.tsel = tsel
+        self.tau1 = inittaus[0]  #  (self.t90 - self.t10) / 2.0  # inittaus[0]
+        self.tau2 = self.decaythirtyseven  # inittaus[1]
+        if self.tau2 < self.tau1:
+            self.tau2 = inittaus[1]
+        if n_taus > 1:
+            self.tau3 = self.tau1 * 3.0
+            self.tau4 = self.tau2 * 5
+        else:
+            self.tau3 = np.nan
+            self.tau4 = np.nan
+        self.tau_ratio = self.tau2 / self.tau1
+        self.tau2_range = 10.0
+        self.tau1_minimum_factor = 5.0
+        time_past_peak = 2.5e-4
+        
         # try:
         res = self.event_fitter_lm(
             tb,
             avgevent,
             time_past_peak=time_past_peak,
+            n_taus=n_taus,
             tau1=self.tau1,
             tau2=self.tau2,
             tau3=self.tau3,
@@ -1839,8 +1872,13 @@ class MiniAnalyses:
         self.amplitude2 = res.values["amp2"]
         self.fitted_tau1 = res.values["tau_1"]
         self.fitted_tau2 = res.values["tau_2"]
-        self.fitted_tau3 = res.values["tau_3"]
-        self.fitted_tau4 = res.values["tau_4"]
+        self.fitted_n_taus = n_taus
+        if n_taus == 2:
+            self.fitted_tau3 = res.values["tau_3"]
+            self.fitted_tau4 = res.values["tau_4"]
+        else:
+            self.fitted_tau3 = np.nan
+            self.fitted_tau4 = np.nan
         self.fitted_tau_ratio = np.nan  # res.values["tau_ratio"] #(
         # res.values["tau_2"] / res.values["tau_1"]
         # )  # res.values["tau_ratio"]
@@ -2023,7 +2061,7 @@ class MiniAnalyses:
         y: np.ndarray = None,
     ) -> np.ndarray:
         """
-        Calculate a double exponential EPSC-like waveform, with 2 double functions added together.
+        Calculate a double exponential EPSC-like waveform, with 2 single_exp functions added together.
         The rising phase of each
         is taken to a power to make it sigmoidal
         Note that the parameters p[1] and p[2] are multiplied, rather
@@ -2097,6 +2135,7 @@ class MiniAnalyses:
         timebase: np.ndarray,
         event: np.ndarray,
         time_past_peak: float = 1e-4,
+        n_taus: int = 1,
         tau1: float = None,
         tau2: float = None,
         tau3: float = None,
@@ -2117,8 +2156,12 @@ class MiniAnalyses:
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
         if peak_pos == len(event):
             peak_pos = len(event) - 10
-        # dexpmodel = lmfit.Model(self.doubleexp_lm)
-        dexpmodel = lmfit.Model(self.singleexp_lm)
+        if n_taus == 2:
+            dexpmodel = lmfit.Model(self.doubleexp_lm)
+        elif n_taus == 1:
+            dexpmodel = lmfit.Model(self.singleexp_lm)
+        else:
+            raise ValueError("minis_methos_common::event_fitter_lm: n_taus must be 1 or 2")
         params = lmfit.Parameters()
         # get some logical initial parameters
         init_amp = maxev
@@ -2129,29 +2172,34 @@ class MiniAnalyses:
         if tau2 is None or np.isnan(tau2):
             # first smooth the decay a bit
             decay_data = SPS.savgol_filter(self.sign * event[peak_pos:], 11, 3, mode="nearest")
-            # try to look for the first point at 0.37 height
+            # try to look for the first point that falls below 0.37 * the peak current
+            # This is an estimate of the decay time constant.
             itau2 = np.nonzero(decay_data < self.sign * 0.37 * event[peak_pos])[0]
             if len(itau2) == 0:
                 itau2 = np.nonzero(decay_data < self.sign * 0.37 * event[peak_pos])[-1]
                 if len(itau2) == 0:
-                    itau2 = [int((0.005 - fixed_delay) / self.dt_seconds)]
-            tau2 = (itau2[0] - fixed_delay) * self.dt_seconds
+                    itau2 = np.array([3])
+            tau2 = (itau2[0] - (fixed_delay/self.dt_seconds)) * self.dt_seconds
             if tau2 < 0:
-                tau2 = 4e-3
-        if tau2 <= self.dt_seconds:  # check limits
+                tau2 = 2e-3
+        if tau2 <= self.dt_seconds:  # check absolute limits
             tau2 = 2.0 * self.dt_seconds
-        if tau2 <= 1.5 * tau1:
+        if tau2 <= 1.1 * tau1:
             tau2 = 5 * tau1  # move it further out
+        if tau2 > np.max(timebase) - fixed_delay:
+            tau2 = 0.5*(np.max(timebase) - fixed_delay)
 
         amp = event[peak_pos]
         # print("initial tau1: ", tau1, "tau2: ", tau2)
+        # the range of usable taus depends on the recording type
+        # Use faster (smaller) values for voltage clamp
         if self.datatype in ["V", "VC"]:
             tau1min = self.dt_seconds
             tau1max = tau1 * 3.0
             if tau1min < self.dt_seconds / 2.0:
                 tau1min = self.dt_seconds / 2.0
 
-            tau2min = tau2 / 2.0
+            tau2min = 3.0*self.dt_seconds
             tau2max = tau2 * 5.0
 
             params["amp"] = lmfit.Parameter(
@@ -2220,24 +2268,25 @@ class MiniAnalyses:
             max=tau2max,
             vary=True,
         )
-        if tau3 is None or np.isnan(tau3):
-            tau3 = tau1 * 2
-        params["tau_3"] = lmfit.Parameter(
-            name="tau_3",
-            value=tau3,
-            min=tau1min,
-            max=50e-3,  # tau1 * tau1_maxfac,
-            vary=True,
-        )
-        if tau4 is None or np.isnan(tau4):
-            tau4 = 2 * tau2min
-        params["tau_4"] = lmfit.Parameter(
-            name="tau_4",
-            value=tau4,
-            min=tau2min,
-            max=50e-3,  # tau1 * tau1_maxfac,
-            vary=True,
-        )
+        if n_taus == 2:
+            if tau3 is None or np.isnan(tau3):
+                tau3 = tau1 * 2
+            params["tau_3"] = lmfit.Parameter(
+                name="tau_3",
+                value=tau3,
+                min=tau1min,
+                max=50e-3,  # tau1 * tau1_maxfac,
+                vary=True,
+            )
+            if tau4 is None or np.isnan(tau4):
+                tau4 = 2 * tau2min
+            params["tau_4"] = lmfit.Parameter(
+                name="tau_4",
+                value=tau4,
+                min=tau2min,
+                max=50e-3,  # tau1 * tau1_maxfac,
+                vary=True,
+            )
         print("fixed delay: ", fixed_delay)
         if fixed_delay == 0.0:
             fixed_end = 2.0
@@ -2265,28 +2314,28 @@ class MiniAnalyses:
         params["tau_1"].value = self.fitresult.best_values["tau_1"]
         params["tau_2"].value = self.fitresult.best_values["tau_2"]
         params["amp"].value = self.fitresult.best_values["amp"]
-        try:
-            self.fitresult = dexpmodel.fit(
-                evfit,
-                params,
-                nan_policy="raise",
-                time=timebase,
-                # max_nfev=3000,
-                method="nelder",
-            )
-        except:
-            Logger.error(f"Double exponential fit failed with tau1 = {tau1:.3e}, tau2 ={tau2:.3e}")
-            if tau3 is not None and tau4 is not None:
-                Logger.error(f"   and with tau3= {tau3:.3e} and tau4 = {tau4:.3e}    ")
-            else:
-                Logger.error(f"     tau3 or tau4 is None")
+        # try:
+        #     self.fitresult = dexpmodel.fit(
+        #         evfit,
+        #         params,
+        #         nan_policy="raise",
+        #         time=timebase,
+        #         # max_nfev=3000,
+        #         method="nelder",
+        #     )
+        # except:
+        #     Logger.error(f"Double exponential fit failed with tau1 = {tau1:.3e}, tau2 ={tau2:.3e}")
+        #     if tau3 is not None and tau4 is not None:
+        #         Logger.error(f"   and with tau3= {tau3:.3e} and tau4 = {tau4:.3e}    ")
+        #     else:
+        #         Logger.error(f"     tau3 or tau4 is None")
 
-            self.fitresult = None
-            return
+        #     self.fitresult = None
+        #     return
 
         self.peak_val = maxev
         self.evfit = self.fitresult.best_fit  # handy right out of the result
-
+        self.fitresult_n_taus = n_taus
         debug = False
         if debug:
             import matplotlib.pyplot as mpl

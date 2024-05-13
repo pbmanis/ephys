@@ -22,21 +22,21 @@ class Mini_summary():
         tm = A * ((1-(np.exp(-x/tau_1)))**4 * np.exp((-x/tau_2))) + dc
         return tm
     
-    def fit_average_event(self, x, y):
+#     def fit_average_event(self, x, y):
 
-        init_vals = [-20., 0.5, 5., 0.]
-        best_vals, covar = curve_fit(self.doubleexp, x, y, p0=init_vals)
-#        print ('best vals: ', best_vals)
-        self.fitresult = best_vals
-        self.best_fit = self.doubleexp(self.tbx, best_vals[0], best_vals[1], best_vals[2], best_vals[3])
-        # lmfit version - fails for odd reason
-        # dexpmodel = Model(self.doubleexp)
-        # params = dexpmodel.make_params(A=-10., tau_1=0.5, tau_2=4.0, dc=0.)
-        # self.fitresult = dexpmodel.fit(self.avgevent[tsel:], params, x=self.avgeventtb[tsel:])
-        # print(self.fitresult.fit_report())
-        self.best_vals = best_vals
-        self.tau1 = best_vals[1]
-        self.tau2 = best_vals[2]
+#         init_vals = [-20., 0.5, 5., 0.]
+#         best_vals, covar = curve_fit(self.doubleexp, x, y, p0=init_vals)
+# #        print ('best vals: ', best_vals)
+#         self.fitresult = best_vals
+#         self.best_fit = self.doubleexp(self.tbx, best_vals[0], best_vals[1], best_vals[2], best_vals[3])
+#         # lmfit version - fails for odd reason
+#         # dexpmodel = Model(self.doubleexp)
+#         # params = dexpmodel.make_params(A=-10., tau_1=0.5, tau_2=4.0, dc=0.)
+#         # self.fitresult = dexpmodel.fit(self.avgevent[tsel:], params, x=self.avgeventtb[tsel:])
+#         # print(self.fitresult.fit_report())
+#         self.best_vals = best_vals
+#         self.tau1 = best_vals[1]
+#         self.tau2 = best_vals[2]
 
     def do_one_protocol(self, ds, dprot, sign=-1, plots=False):
         fn = os.path.join(self.basedir, datasets[ds]['dir'], ('minis_{0:03d}'.format(datasets[ds]['prots'][dprot])))

@@ -69,6 +69,7 @@ class AverageEvent:
     Nevents: int = 0  # number of events that were averaged
     avgnpts: int = 0  # number of points in the array
     fitted: bool = False  # Set True if data has been fitted
+    fitted_n_taus: int = 1  # number of rise/fall functions in the fit
     fitted_tau1: float = np.nan  # rising time constant for 2-exp fit
     fitted_tau2: float = np.nan  # falling time constant for 2-exp fit
     fitted_tau3: float = np.nan  # slow superimposed event
