@@ -98,6 +98,7 @@ from pylibrary.tools import cprint as CP
 import PyQt6.QtWebEngineWidgets
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pyqtgraph.parametertree import Parameter, ParameterTree
+from pyqtgraph import multiprocess as MP
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from ephys.gui import data_summary_table
@@ -230,7 +231,9 @@ class DataTables:
         self.picker_active = False
         self.show_pdf_on_pick = False
         self.dry_run = False
+        self.parallel_mode = "cell"
         self.exclude_unimportant = False
+        self.computer_name = get_computer()
 
         self.PSI = plot_spike_info.PlotSpikeInfo(
             dataset=None,
@@ -401,6 +404,9 @@ class DataTables:
                 "type": "group",
                 "expanded": False,
                 "children": [
+                    {"name": "Parallel Mode", "type": "list", 
+                        "limits": ["cell", "day", "trace", "map", "off"],
+                        "value": "cell"},
                     {"name": "Analyze Selected IVs", "type": "action"},
                     {"name": "Plot from Selected IVs", "type": "action"},
                     {"name": "Analyze Selected IVs m/Important", "type": "action"},
@@ -458,12 +464,13 @@ class DataTables:
                         "limits": [
                             "None",
                             "bushy",
-                            "tstellate",
-                            "dstellate",
+                            "t-stellate",
+                            "d-stellate",
                             "octopus",
                             "pyramidal",
                             "cartwheel",
                             "golgi",
+                            "glial",
                             "granule",
                             "stellate",
                             "tuberculoventral",
@@ -639,6 +646,7 @@ class DataTables:
         self.update_assembled_data()
 
         self.DS_table_manager = data_summary_table.TableManager(
+            parent=self, 
             table=self.DS_table,
             experiment=self.experiment,
             selvals=self.selvals,
@@ -806,6 +814,9 @@ class DataTables:
 
                 case "IV Analysis":
                     match path[1]:
+                        case "Parallel Mode":
+                            self.parallel_mode = data
+                            CP.cprint("b", f"Parallel mode set to: {self.parallel_mode!s}")
                         case "Dry run (test)":
                             self.dry_run = data
 
@@ -852,37 +863,44 @@ class DataTables:
                             dspath = Path(
                                 self.experiment["analyzeddatapath"], self.experiment["directory"]
                             )
-                            for selected in index_rows:
-                                if selected is None:
-                                    print("Selection was None!")
-                                    break
-                                # selected = self.table_manager.get_table_data(index_row)
-                                FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
-                                pkl_file = filename_tools.get_pickle_filename_from_row(
-                                    selected, dspath
-                                )
+                            if self.parallel_mode == 'off':
+                                for selected in index_rows:
+                                    if selected is None:
+                                        print("Selection was None!")
+                                        break
+                                    self.plot_selected(selected, dspath)
 
-                                print("Reading from pkl_file: ", pkl_file)
-                                FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
-                                tempdir = Path(dspath, "temppdfs")
-                                decorate = True
-                                self.pdfFilename = Path(
-                                    dspath, self.experiment["pdfFilename"]
-                                ).with_suffix(".pdf")
-                                # use concurrent futures to prevent issue with multiprocessing
-                                # when using matplotlib.
-                                with concurrent.futures.ProcessPoolExecutor() as executor:
-                                    f = executor.submit(
-                                        iv_plotter.concurrent_iv_plotting,
-                                        pkl_file,
-                                        self.experiment,
-                                        self.datasummary,
-                                        dspath,
-                                        decorate,
-                                    )
-                                    ret = f.result()
+                                    
+                            else:
+                                nworkers = self.experiment["NWORKERS"][self.computer_name]
+                                # chunksize = nworkers  # try chunking this... 
+                                # all_tasks = list(range(len(index_rows)))
+                                # n_tasks = len(all_tasks)
+                                # n_runs = n_tasks//chunksize
+                                # leftover = n_tasks%chunksize
+                                # if leftover > 0:
+                                #     n_runs += 1
+                                # for run in range(n_runs):
+                                #     if run < n_runs-1:
+                                #         result = [None] * chunksize  # likewise
+                                #         tasks = range(chunksize)
+                                #         results={}
+                                #     else:
+                                #         result = [None] * leftover
+                                #         tasks = range(leftover)
+                                #         results={}
 
-                            CP.cprint("g", "Finished plotting IVs")
+                                tasks = range(len(index_rows))
+                                results = {}
+                                result = [None]*len(tasks)
+                                with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
+                                    for i, x in tasker:
+                                        # result= self.plot_selected(index_rows[i+run*chunksize], dspath)
+                                        result = self.plot_selected(index_rows[i], dspath)
+                                        tasker.results[i] = result
+                                # reform the results for our database
+
+                            CP.cprint("g", f"\nFinished plotting {len(index_rows):d} IVs")
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case (
@@ -1224,9 +1242,11 @@ class DataTables:
                             if path[2] in ["Apply"]:
                                 self.filters["Use Filter"] = True
                                 self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
+                                self.DS_table_manager.apply_filter(QtCore=QtCore,  QtGui=QtGui)
                             elif path[2] in ["Clear"]:
                                 self.filters["Use Filter"] = False
                                 self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
+                                self.DS_table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
                         case _:
                             print("Fell thorugh with : ", path[1])
                             if data != "None":
@@ -1315,6 +1335,34 @@ class DataTables:
                         case "Export Brief Table":
                             self.table_manager.export_brief_table(self.textbox)
 
+    def plot_selected(self, selected, dspath):
+        # selected = self.table_manager.get_table_data(index_row)
+        FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
+        pkl_file = filename_tools.get_pickle_filename_from_row(
+            selected, dspath
+        )
+
+        print("Reading from pkl_file: ", pkl_file)
+        FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
+        tempdir = Path(dspath, "temppdfs")
+        decorate = True
+        self.pdfFilename = Path(
+            dspath, self.experiment["pdfFilename"]
+        ).with_suffix(".pdf")
+        # use concurrent futures to prevent issue with multiprocessing
+        # when using matplotlib.
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            print("   submitting execution to concurrent futures")
+            f = executor.submit(
+                iv_plotter.concurrent_iv_plotting,
+                pkl_file,
+                self.experiment,
+                self.datasummary,
+                dspath,
+                decorate,
+            )
+            ret = f.result()
+
     def analyze_ivs(
         self, mode="all", important: bool = False, day: str = None, slicecell: str = None
     ):
@@ -1338,13 +1386,15 @@ class DataTables:
         args.iv_flag = True
         args.map_flag = False
         args.autoout = True
-        computer_name = get_computer()
-        nworkers = self.experiment["NWORKERS"][computer_name]
+        nworkers = self.experiment["NWORKERS"][self.computer_name]
+        args.parallel_mode = self.parallel_mode  # get value from the parameter tree
 
-        if nworkers > 1:
-            args.noparallel = False
+        if nworkers == 1:
+            args.parallel_mode = "off"
+            args.nworkers = 1
+        if args.parallel_mode != "off":
             args.nworkers = nworkers
-        print("data_table: nworkers, noparallel ", args.nworkers, args.noparallel)
+        print("data_table: nworkers, parallel_mode", args.nworkers, args.parallel_mode)
         if mode == "important" or important:
             args.important_flag_check = True  # only analyze the "important" ones
         else:
@@ -1384,10 +1434,10 @@ class DataTables:
             f"Starting IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
         print("\n" * 3)
-        CP.cprint("r", "=" * 80)
+        CP.cprint("g", "=" * 80)
         IV = iv_analysis.IVAnalysis(args)
         IV.set_experiment(self.experiment)
-        CP.cprint("r", "analyze_ivs datatables: experiment set")
+        CP.cprint("c", "analyze_ivs datatables: experiment set")
         if 'excludeIVs' in self.experiment.keys():
             IV.set_exclusions(self.experiment['excludeIVs'])
             # CP.cprint("y", self.experiment['excludeIVs'])
@@ -1395,9 +1445,9 @@ class DataTables:
             CP.cprint("y", "No IV exclusions set")
             return
         IV.setup()
-        CP.cprint("r", "analyze_ivs datatables: setup completed")
+        CP.cprint("c", "analyze_ivs datatables: setup completed")
         IV.run()
-        CP.cprint("r", "analyze_ivs datatables: run completed")
+        CP.cprint("c", "analyze_ivs datatables: run completed")
         if self.dry_run:
             CP.cprint(
                 "cyan",
@@ -1412,6 +1462,8 @@ class DataTables:
                 self.iv_finished_message()
 
     def iv_finished_message(self):
+        if self.dry_run:
+            return
         CP.cprint("r", "=" * 80)
         # CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
         CP.cprint("r", f"Now run 'assemble datasets' to combine the FI curves")
@@ -1584,15 +1636,15 @@ class DataTables:
     # Next we provide dispatches for a few specific actions. These are mostly
     # to routines in plot_sims.py
 
-    def analyze_singles(self, ana_name=None):
-        """
-        Analyze data this is formatted from the 'singles' runs in model_run2
-        These are runs in which each input is evaluated independently
-        """
-        index_row, selected = FUNCS.get_row_selection(self.table_manager)
-        if selected is None:
-            return
-        self.PLT.analyze_singles(index_row, selected)
+    # def analyze_singles(self, ana_name=None):
+    #     """
+    #     Analyze data this is formatted from the 'singles' runs in model_run2
+    #     These are runs in which each input is evaluated independently
+    #     """
+    #     index_row, selected = FUNCS.get_row_selection(self.table_manager)
+    #     if selected is None:
+    #         return
+    #     self.PLT.analyze_singles(index_row, selected)
 
     def trace_viewer(self, ana_name=None):
         """

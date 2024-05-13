@@ -231,7 +231,7 @@ class Functions:
         return a list of indexs from the selected rows.
         """
         self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
-        print("get multiple row selection: ", self.selected_index_rows)
+        print("get multiple row selection: ", len(self.selected_index_rows))
         if self.selected_index_rows is None:
             return None
         else:
@@ -1337,6 +1337,9 @@ class Functions:
             iplot = 0
             dropout_threshold = 0.8  # seconds
             N = len(self.selected_index_rows)
+            max_I = 1000.
+            if "Max_FI_I" in experiment.keys():
+                max_I = experiment["Max_FI_I"]
             dropout = np.zeros((2, len(self.selected_index_rows)))
             cellids = ["None"] * len(self.selected_index_rows)
             # cmap = mpl.cm.get_cmap("tab20", N)
@@ -1378,6 +1381,8 @@ class Functions:
                         color=pcolor,
                     )
                     ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
+                    if max_I > 1000:
+                        ax[0,0].plot(np.array["FI_Curve4"][0] * 1e12, datadict["FI_Curve4"][1], sym1, markersize=4, color=pcolor)
 
                     if datadict["firing_currents"] is not None:
                         ax[1, 0].plot(
@@ -1442,8 +1447,8 @@ class Functions:
                 ax[1, 0].set_ylabel("Firing Rate (Hz) (1st to last spike)")
                 ax[0, 1].set_ylabel("Time of last spike (sec)")
                 ax[1, 1].set_ylabel("Time of last spike < 0.8 sec (sec)")
-                ax[1, 1].set_xlim(0, 1000)
-                ax[1, 1].set_ylim(0, 1000)
+                ax[1, 1].set_xlim(0, 1000.)
+                ax[1, 1].set_ylim(0, 1000.)
 
                 fig.suptitle(f"Firing analysis for {cell_df.cell_expression:s}")
                 mpl.show()
@@ -1687,10 +1692,13 @@ class Functions:
         # print("    df_tmp group>>: ", df_tmp.Group.values)
         # print("    df_cell group>>: ", df_cell.keys())
         # print("compute_FI_Fits: ", df_tmp.keys())
-        protocols = list(df_cell.Spikes.keys())
-        # spike_keys = list(df_cell.Spikes[protocols[0]].keys())
-        # iv_keys = list(df_cell.IV[protocols[0]].keys())
-
+        protocol_list = list(df_cell.Spikes.keys())
+        # build protocols excluding removed protocols
+        protocols = []
+        day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
+        for protocol in protocol_list:
+            if not self.check_excluded_dataset(day_slice_cell, experiment, protocol):
+                protocols.append(protocol)
         srs = {}
         dur = {}
         important = {}
@@ -1700,8 +1708,8 @@ class Functions:
                 continue
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
-            # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
-            #     continue
+            if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
+                continue
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
                 fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
@@ -1854,12 +1862,6 @@ class Functions:
                     rate.append(np.nan)
                     last_spike.append(np.nan)
 
-            # firing_pars = {'current': current, 'rate': rate, 'last_spike': last_spike}
-            # print(f"    Currents: {current!s}")
-            # print(f"    Rates: {rate!s}")
-            # print(f"    Last Spikes: {last_spike!s}")
-
-            # exit()
             if np.max(fidata[0]) > 1.01e-9:  # accumulate high-current protocols
                 FI_Data_I4_.extend(fidata[0])
                 FI_Data_FR4_.extend(fidata[1] / dur[protocol])
@@ -2101,7 +2103,7 @@ class Functions:
         -------
         _type_
             _description_
-        """
+        """ 
         m = []
         if measure in iv_keys:
             for protocol in protocols:
@@ -2177,7 +2179,8 @@ class Functions:
 
                 elif (
                     "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
-                    and df_cell.Spikes[protocol]["LowestCurrentSpike"] is None
+                    and (df_cell.Spikes[protocol]["LowestCurrentSpike"] is None or
+                    len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) == 0)
                 ):
                     CP("r", "Lowest Current spike is None")
                 elif measure in ["AP_thr_V", "AP_begin_V"]:
@@ -2190,12 +2193,13 @@ class Functions:
                             m.append(Vthr)
                         
                         else:
-                            print("Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike", measure)
+                            print("Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike", protocol, measure)
                             print("LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys())
-                            raise
+                            continue
                     else:
-                        print("Missing lowest current spike data in spikes dictionary: ", df_cell.Spikes[protocol].keys())
-                        raise
+                        df_cell.Spikes[protocol]["LowestCurrentSpike"] = None  # install value, but set to None
+                        CP("r", f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}")
+
                 elif measure in ["AP_thr_T"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
                         Vthr_time = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_T"]
