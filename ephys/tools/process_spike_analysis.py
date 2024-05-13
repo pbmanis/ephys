@@ -236,11 +236,11 @@ class ProcessSpikeAnalysis:
             args.iv_flag = True
             args.map_flag = False
             args.autoout = True
-            args.noparallel = False  # try to use parallel processing
+            args.parallel_mode = "cell"  # try to use parallel processing
             args.nworkers = self.nworkers
             args.max_spikeshape = 1
             args.downsample = 1
-            print("process spike analysis: nworkers, noparallel ", args.nworkers, args.noparallel)
+            print("process spike analysis: nworkers, parallel_mode ", args.nworkers, args.parallel_mode)
             IVA = EP.iv_analysis.IVAnalysis(args)
             IVA.configure(datapath=fullpatha, reader=AR, plot=True, pdf_pages=pdf_pages)
             # print('   Data sample freq (Hz): ', IVA.AR.sample_rate[0])
