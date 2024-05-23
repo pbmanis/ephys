@@ -437,9 +437,12 @@ class DataTables:
                     {"name": "View Cell Data", "type": "action"},
                     {"name": "Use Picker", "type": "bool", "value": False},
                     {"name": "Show PDF on Pick", "type": "bool", "value": False},
-                    {"name": "Plot Spike Data", "type": "action"},
-                    {"name": "Plot Rmtau Data", "type": "action"},
-                    {"name": "Plot FIData Data", "type": "action"},
+                    {"name": "Plot Spike Data categorical", "type": "action"},
+                    {"name": "Plot Rmtau Data categorical", "type": "action"},
+                    {"name": "Plot FIData Data categorical", "type": "action"},
+                    {"name": "Plot Spike Data continuous", "type": "action"},
+                    {"name": "Plot Rmtau Data continuous", "type": "action"},
+                    {"name": "Plot FIData Data continuous", "type": "action"},
                     {"name": "Plot FICurves", "type": "action"},
                     {
                         "name": "Set BSpline S",
@@ -999,7 +1002,7 @@ class DataTables:
                         case "Show PDF on Pick":
                             self.show_pdf_on_pick = data
 
-                        case "Plot Spike Data":
+                        case "Plot Spike Data categorical":
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             group_by = self.ptreedata.child("Plotting").child("Group By").value()
                             hue_category = (
@@ -1031,7 +1034,39 @@ class DataTables:
                                 )
                                 self.spike_plot = f.result()
 
-                        case "Plot Rmtau Data":
+                        case "Plot Spike Data continuous":
+                            fn = self.PSI.get_assembled_filename(self.experiment)
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            hue_category = (
+                                self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            )
+                            if hue_category == "None":
+                                hue_category = None
+                            header = self.get_analysis_info(fn)
+                            parameters = {
+                                "header": header,
+                                "experiment": self.experiment,
+                                "datasummary": self.datasummary,
+                                "group_by": group_by,
+                                "colors": colors,
+                                "hue_category": hue_category,
+                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                            }
+                            with concurrent.futures.ProcessPoolExecutor() as executor:
+                                f = executor.submit(
+                                    plot_spike_info.concurrent_spike_data_plotting_continuous,
+                                    fn,
+                                    parameters,
+                                    self.picker_active,
+                                    infobox={
+                                        "x": self.infobox_x,
+                                        "y": self.infobox_y,
+                                        "fontsize": self.infobox_fontsize,
+                                    },
+                                )
+                                self.spike_plot = f.result()
+
+                        case "Plot Rmtau Data categorical":
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("RmTau Plotting: \n    Loading fn: ", fn)
                             group_by = self.ptreedata.child("Plotting").child("Group By").value()
@@ -1069,7 +1104,7 @@ class DataTables:
                                 self.rmtau_plot = f.result()
                             
 
-                        case "Plot FIData Data":
+                        case "Plot FIData Data categorical":
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
                             group_by = self.ptreedata.child("Plotting").child("Group By").value()
@@ -1159,9 +1194,61 @@ class DataTables:
                         case "Plot Selected FI Fitting":
                             if self.assembleddata is None:
                                 raise ValueError("Must load assembled data file first")
-                            FUNCS.get_selected_cell_data_FI(
-                                self.experiment, self.table_manager, self.assembleddata
+                            
+                            fn = self.PSI.get_assembled_filename(self.experiment)
+                            print("Loading fn: ", fn)
+                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
+                            hue_category = (
+                                self.ptreedata.child("Plotting").child("2nd Group By").value()
                             )
+                            if hue_category == "None":
+                                hue_category = None
+                            plot_order = self.experiment["plot_order"][group_by]
+                            header = self.get_analysis_info(fn)
+                            self.selected_index_rows = self.table.selectionModel().selectedRows()
+                            table_data = pd.DataFrame()
+                            for irow in self.selected_index_rows:
+                                cellid = self.table_manager.get_table_data(irow).cell_id
+                                dfi = self.assembleddata[self.assembleddata.ID == cellid]
+                                table_data = pd.concat([table_data, dfi])
+                            parameters = {
+                                "header": header,
+                                "experiment": self.experiment,
+                                "datasummary": self.datasummary,
+                                "assembleddata": table_data,  # only the 
+                                "group_by": group_by,
+                                "plot_order": plot_order,
+                                "colors": colors,
+                                "hue_category": hue_category,
+                                "pick_display_function": None,  # self.display_from_table_by_cell_id
+                            }
+                            # plot_spike_info.concurrent_selected_fidata_data_plotting(
+                            #         fn,
+                            #         parameters,
+                            #         self.picker_active,
+                            #         infobox={
+                            #             "x": self.infobox_x,
+                            #             "y": self.infobox_y,
+                            #             "fontsize": self.infobox_fontsize,
+                            #         },
+                            #     )
+                            
+                            with concurrent.futures.ProcessPoolExecutor() as executor:
+                                print("executing")
+                                f = executor.submit(
+                                    plot_spike_info.concurrent_selected_fidata_data_plotting,
+                                    filename=fn,
+                                    parameters=parameters,
+                                    picker_active=self.picker_active,
+                                    infobox={
+                                        "x": self.infobox_x,
+                                        "y": self.infobox_y,
+                                        "fontsize": self.infobox_fontsize,
+                                    },
+                                )
+                                self.fidata_plot = f.result()
+                            print("Plotting selected FI's Done")
+                            
 
                         case "Print Stats on IVs and Spikes":
                             (
