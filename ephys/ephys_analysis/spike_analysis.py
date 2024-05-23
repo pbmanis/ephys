@@ -435,8 +435,8 @@ class SpikeAnalysis:
         #     jmax = max_spikeshape
         # print("# in train: ", i, len(self.spikes[i]))
         for spike_number in range(len(self.spikes[trace_number])):
-            if spike_number >= len(self.spikeIndices[trace_number]):
-                continue
+            # if spike_number >= len(self.spikeIndices[trace_number]):
+            #     continue
             # print("trace, spike, beginDV: ", trace_number, spike_number, begin_dV)
             thisspike = self.analyze_one_spike(
                 trace_number, spike_number, begin_dV, max_spikeshape=max_spikeshape
@@ -675,7 +675,7 @@ class SpikeAnalysis:
                         break  # end of minimum, report the prior minimum point
             kprevious = min_point
         if kpeak-kprevious <= 2:
-            print(trace_number, kprevious, kpeak)
+            print("peak too close to 'previous' spike: ", trace_number, kprevious, kpeak)
             return thisspike
         kbegin = np.argmin(self.Clamps.traces[trace_number][kprevious:kpeak]) + kprevious
         # raise ValueError(
@@ -738,6 +738,8 @@ class SpikeAnalysis:
         thisspike.AP_beginIndex = kthresh
         thisspike.AP_begin_V = self.Clamps.traces[trace_number][thisspike.AP_beginIndex]
         if spike_number > max_spikeshape:  # no shape measurements on the rest of the spikes for speed
+            # print("Reached spike # > max_spike shape")
+            # print("returning latency: ", thisspike.AP_latency)
             return thisspike
 
         # find end of spike (either top of next spike, or end of trace)
