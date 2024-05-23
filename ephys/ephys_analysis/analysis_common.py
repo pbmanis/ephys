@@ -1101,7 +1101,7 @@ class Analysis:
         fullfile = Path(self.rawdatapath, self.directory, self.df.iloc[icell].cell_id)
         print("**Fullfile: ", fullfile)
 
-        markers = mapanalysistools.get_markers(fullfile, verbose=True)
+        markers = mapanalysistools.get_markers.get_markers(fullfile, verbose=True)
 
         if self.skip_subdirectories is not None:
             # skip matching subdirectories

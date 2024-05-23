@@ -330,6 +330,7 @@ class IVAnalysis(Analysis):
                 Logger.info(msg)
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
+        validivs = []
         if self.exclusions is not None:
             if cell_id in self.exclusions:
                 if self.exclusions[cell_id] in ["all", ["all"]]:
@@ -341,8 +342,8 @@ class IVAnalysis(Analysis):
                 else:
                     validivs = [protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']]
                     
-            else:
-                validivs = allivs
+        else:
+            validivs = allivs
         # build a list of all exclusions
         # exclude_ivs = []
         # print("exclusions: ", self.exclusions)
