@@ -462,7 +462,6 @@ class Functions:
         # Plot the orthogonal line
         ax.plot([x_start, x_end], [y_start, y_end], color=color)
 
-
     def remove_excluded_protocols(self, experiment, cell_id, protocols):
         """remove_excluded_protocols For all protocols in the list of protocols,
         remove any that are in the excludeIVs list for the cell_id.
@@ -483,19 +482,23 @@ class Functions:
             The list of protocols to keep. List is [] if all are excluded
         """
         if isinstance(protocols, str):
-            protocols = protocols.replace(" ", "") # remove all white space
+            protocols = protocols.replace(" ", "")  # remove all white space
             protocols = [p for p in protocols.split(",")]  # turn into a list
-        if experiment['excludeIVs'] is None:  # no protocols to exclude
+        if experiment["excludeIVs"] is None:  # no protocols to exclude
             return protocols
-        if cell_id in experiment['excludeIVs'].keys():  # consider excluding some or all protocols
-            if experiment["excludeIVs"][cell_id]['protocols'] == ["all"]:
+        if cell_id in experiment["excludeIVs"].keys():  # consider excluding some or all protocols
+            if experiment["excludeIVs"][cell_id]["protocols"] == ["all"]:
                 return []
             protocols = [
-                protocol for protocol in protocols if protocol not in experiment["excludeIVs"][cell_id]['protocols']
+                protocol
+                for protocol in protocols
+                if protocol not in experiment["excludeIVs"][cell_id]["protocols"]
             ]
         return protocols
 
     def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
+        if experiment["excludeIVs"] is None:
+            return False
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
         print("    IV is in exclusion table: ", exclude_flag)
         if exclude_flag:
@@ -514,7 +517,7 @@ class Functions:
                 return True
         print("    Protocol passed: ", protocol)
         return False
-    
+
     def get_selected_cell_data_spikes_mpl(
         self, experiment, table_manager, assembleddata, bspline_s
     ):
@@ -533,7 +536,7 @@ class Functions:
                 experiment, assembleddata, cell_id=selected.cell_id
             )
             protocols = list(cell_df["Spikes"].keys())
-            protocols = self.remove_excluded_protocols(experiment, cell_df['cell_id'], protocols)
+            protocols = self.remove_excluded_protocols(experiment, cell_df["cell_id"], protocols)
             min_index = None
             min_current = 1
             V = None
@@ -897,7 +900,7 @@ class Functions:
         return cell_df
 
     def report_data(self, pos):
-        thr = self.cell_df["Spikes"][self.match_protocol]['LowestCurrentSpike']['AP_begin_V']
+        thr = self.cell_df["Spikes"][self.match_protocol]["LowestCurrentSpike"]["AP_begin_V"]
         msg = f"{self.cell_df.cell_id:s},{self.cell_df.cell_type:s},{self.cell_df.age!s},{thr:.3f},{pos[0]:.2f},{pos[1]:.3f}"
         print(msg)
         self.textappend(msg, color="w")
@@ -936,12 +939,14 @@ class Functions:
             cell_df, cell_df_tmp = filename_tools.get_cell(
                 experiment, assembleddata, cell_id=selected.cell_id
             )
-            self.cell_df = cell_df 
+            self.cell_df = cell_df
             print("cell id: ", selected.cell_id)
             self.current_selection = selected
-            print("cell_df: ", cell_df['date'], cell_df['slice_slice'], cell_df['cell_id'])
+            print("cell_df: ", cell_df["date"], cell_df["slice_slice"], cell_df["cell_id"])
             protocols = list(cell_df["Spikes"].keys())
-            protocols = self.remove_excluded_protocols(experiment, cell_id = cell_df['cell_id'], protocols=protocols)
+            protocols = self.remove_excluded_protocols(
+                experiment, cell_id=cell_df["cell_id"], protocols=protocols
+            )
 
             min_index = None
             min_current = 1
@@ -951,7 +956,7 @@ class Functions:
                 # print('\nprotocol: ',protocol, ' lowest current spike: ', cell_df["Spikes"][protocol]["LowestCurrentSpike"])
                 if cell_df["Spikes"][protocol]["LowestCurrentSpike"] is None:
                     continue
-                lcs_trace = cell_df["Spikes"][protocol]["LowestCurrentSpike"]['trace']
+                lcs_trace = cell_df["Spikes"][protocol]["LowestCurrentSpike"]["trace"]
                 min_current_index, current, trace = self.find_lowest_current_trace(
                     cell_df["Spikes"][protocol]
                 )
@@ -972,13 +977,15 @@ class Functions:
                 # print("min protocol: ", min_protocol)
                 # print("min protocol keys: ", cell_df["Spikes"][min_protocol].keys())
                 # print("min trace #: ", min_trace)
-                low_spike = cell_df["Spikes"][min_protocol]['spikes'][min_trace][0]
+                low_spike = cell_df["Spikes"][min_protocol]["spikes"][min_trace][0]
             except KeyError:
                 CP.cprint("Failed to get min spike")
                 print("min protocol spikes: ", cell_df["Spikes"][min_protocol].keys())
                 print("V: ", min_trace)
                 print("Min index: ", min_index)
-                print("len spikes in min current trace: ", cell_df["Spikes"][min_protocol][min_index])
+                print(
+                    "len spikes in min current trace: ", cell_df["Spikes"][min_protocol][min_index]
+                )
                 return None
             self.match_protocol = protocol
             # print("min index: ", min_index, "trace: ", V)
@@ -999,10 +1006,10 @@ class Functions:
                 ax: list = []
                 self.spike_cursors: list = []
 
-                dock.addWidget(self.P1, 1, 0) # row=0, column=0)
-                dock.addWidget(self.P2, 1, 1) # row=0, column=1)
-                dock.addWidget(self.P3, 2, 1) # row=1, column=0)
-                dock.addWidget(self.P4, 2, 0) # row=1, column=1)
+                dock.addWidget(self.P1, 1, 0)  # row=0, column=0)
+                dock.addWidget(self.P2, 1, 1)  # row=0, column=1)
+                dock.addWidget(self.P3, 2, 1)  # row=1, column=0)
+                dock.addWidget(self.P4, 2, 0)  # row=1, column=1)
                 dock.setAutoFillBackground(True)
                 ax = [self.P1, self.P2, self.P3, self.P4]
 
@@ -1203,8 +1210,9 @@ class Functions:
                     pen=pg.mkPen("c", width=1, style=QtCore.Qt.PenStyle.DashLine),
                 )
                 dvdt_thr_line = pg.PlotDataItem(
-                    [-60., 20.], [12., 12.], 
-                    pen=pg.mkPen(color="r", width=1.0) #  style=QtCore.Qt.PenStyle.DashLine)
+                    [-60.0, 20.0],
+                    [12.0, 12.0],
+                    pen=pg.mkPen(color="r", width=1.0),  #  style=QtCore.Qt.PenStyle.DashLine)
                 )
                 ax[0].addItem(vfitplot)
                 ax[1].addItem(dvdtfitplot)
@@ -1243,7 +1251,6 @@ class Functions:
                     pen=pg.mkPen(pcolor, width=1.0, style=QtCore.Qt.PenStyle.DashLine),
                 )
 
-
                 kappa_a_plot = pg.PlotDataItem(
                     yfit_a[1:] * 1e3,
                     kappa_a[1:],
@@ -1267,8 +1274,9 @@ class Functions:
                 ax[2].addItem(kappa_f_plot)
                 ax[2].addItem(zcurve_plot)
 
-                cursor3 = AnnotatedCursorPG(line=kappa_r_plot, ax=ax[2], mode="stick",
-                                            report_func=self.report_data)
+                cursor3 = AnnotatedCursorPG(
+                    line=kappa_r_plot, ax=ax[2], mode="stick", report_func=self.report_data
+                )
                 cursor3.set_tracker_from(cursor2)
 
                 self.spike_cursors.append(cursor3)
@@ -1301,7 +1309,6 @@ class Functions:
                 ax[2].setLabel("left", "Curvature (1/mV)")
                 ax[3].setLabel("bottom", "Time (msec)")
                 ax[3].setLabel("left", "Rising dV/dt (mV/ms)")
-                
 
             nplots += 1
 
@@ -1317,40 +1324,52 @@ class Functions:
         x, y = event.xdata, event.ydata
         self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
 
-    def get_selected_cell_data_FI(self, experiment, table_manager, assembleddata):
-        self.get_row_selection(table_manager)
-        pp = PrettyPrinter(indent=4, width=120)
-        if self.selected_index_rows is not None:
+    def get_selected_cell_data_FI(
+        self,
+        experiment: pd.DataFrame,
+        assembleddata: pd.DataFrame,
+    ):
+        print("got row selection")
+        print("# selected: ", len(assembleddata))
+        if len(assembleddata) > 0:
             import matplotlib.pyplot as mpl
+
             P = PH.regular_grid(
                 2,
-                2,
+                3,
                 margins={
                     "bottommargin": 0.08,
                     "leftmargin": 0.1,
                     "rightmargin": 0.05,
                     "topmargin": 0.1,
                 },
+                figsize=(11, 8),
             )
             fig = P.figure_handle
             ax = P.axarr
             iplot = 0
             dropout_threshold = 0.8  # seconds
-            N = len(self.selected_index_rows)
-            max_I = 1000.
+            N = len(assembleddata)
+            max_I = 1000.0
             if "Max_FI_I" in experiment.keys():
                 max_I = experiment["Max_FI_I"]
-            dropout = np.zeros((2, len(self.selected_index_rows)))
-            cellids = ["None"] * len(self.selected_index_rows)
+            fcol = {"+/+": "green", "-/-": "orange"}
+            max_fr = {"+/+": [], "-/-": []}
+            dropout = np.zeros((2, N))
+            cellids = ["None"] * N
+            expression = ["None"] * N
+            genotype = ["None"] * N
             # cmap = mpl.cm.get_cmap("tab20", N)
             # colors = [matplotlib.colors.to_hex(cmap(i)) for i in range(N)]
             colors = colormaps.sinebow_dark.discrete(N)
-            for nplots, index_row in enumerate(self.selected_index_rows):
-                selected = table_manager.get_table_data(index_row)
+            nplots = 0
+            for selected in assembleddata.itertuples():
                 pcolor = colors[nplots].colors
 
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
+                # we need to reach into the main data set to get the expression,
+                # as it is not carried into the assembled data.
                 cell_df, _ = filename_tools.get_cell(
                     experiment, assembleddata, cell_id=selected.cell_id
                 )
@@ -1363,62 +1382,114 @@ class Functions:
                     selected.cell_id,
                     protodurs=experiment["FI_protocols"],
                 )
-                sym1 = "o"
-                if cell_df.cell_expression in ["+", "GFP+", "EYFP", "EYFP+"]:
-                    sym1 = "s"
-                sym = sym1 + "-"
+                # designate symbols:
+                # s for +/+ genotype
+                # o for -/- genotype
+                # filled for GFP+ or EYFP+
+                # open for GFP- or EYFP-
+                print("expression: ", cell_df.cell_expression)
+                match selected.Group:
+                    case "+/+":
+                        symbol = "s"
+                    case "-/-":
+                        symbol = "o"
+                    case "+/-" | "-/+":
+                        symbol = "D"
+                    case _:
+                        symbol = "X"
+                match cell_df.cell_expression:
+                    case "+" | "GFP+" | "EYFP" | "EYFP+":
+                        fillstyle = "full"
+                        facecolor = pcolor
+                    case "-" | "GFP-" | "EYFP-" | "EGFP-":
+                        fillstyle = "full"
+                        facecolor = "white"
+                    case _:
+                        fillstyle = "full"
+                        facecolor = "lightgrey"
+                # print(cell_df.cell_expression, selected.Group)
+                # print(symbol, fillstyle, facecolor, pcolor)
                 if datadict is not None:
                     try:
                         fit = datadict["fit"][0][0]
                     except:
-                        print("datadict keys: ", datadict.keys())
-                        print("fit keys: ", datadict["fit"])
+                        print("No fit? : ")
+                        print("     datadict keys: ", datadict.keys())
+                        print("     fit keys: ", datadict["fit"])
                     ax[0, 0].plot(
                         np.array(datadict["FI_Curve1"][0]) * 1e12,
                         datadict["FI_Curve1"][1],
-                        sym1,
+                        marker=symbol,
+                        linestyle="-",
                         markersize=4,
+                        fillstyle=fillstyle,
+                        markerfacecolor=facecolor,
                         color=pcolor,
                     )
-                    ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
+                    if "fit" in datadict.keys() and len(datadict["fit"][0]) > 0:
+                        fit = datadict["fit"][0][0]
+                        ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
+                    max_fr[selected.Group].append(np.max(datadict["FI_Curve1"][1]))
+                    
                     if max_I > 1000:
-                        ax[0,0].plot(np.array["FI_Curve4"][0] * 1e12, datadict["FI_Curve4"][1], sym1, markersize=4, color=pcolor)
+                        ax[0, 0].plot(
+                            np.array(datadict["FI_Curve4"][0]) * 1e12,
+                            np.array(datadict["FI_Curve4"][1]),
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
+                            color=pcolor,
+                        )
 
                     if datadict["firing_currents"] is not None:
                         ax[1, 0].plot(
                             np.array(datadict["firing_currents"]) * 1e12,
                             datadict["firing_rates"],
-                            sym,
+                            marker=symbol,
+                            linestyle="-",
                             markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
                             color=pcolor,
                         )
                         ax[0, 1].plot(
                             np.array(datadict["firing_currents"]) * 1e12,
                             datadict["last_spikes"],
-                            sym,
+                            marker=symbol,
+                            linestyle="-",
                             markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
                             color=pcolor,
                         )
+                        # plot maximal firing rate
+
                     # compute "dropout" time
                     if datadict["last_spikes"] is not None:
                         # find the largest current that is above the dropuout threshold
-                        for ils in range(len(datadict["last_spikes"])):
-                            print(ils, datadict["last_spikes"][ils] * 1e3)
+                        # for ils in range(len(datadict["last_spikes"])):
+                        #     print("Last spikes: ", ils, datadict["last_spikes"][ils] * 1e3)
                         do_pts = np.nonzero(np.array(datadict["last_spikes"]) >= dropout_threshold)[
                             0
                         ]
                         # print("do_pts: ", do_pts)
-                        idrop = np.argmax(datadict["firing_currents"][do_pts]) + do_pts[0]
+                        # print("Firing currents: ", datadict["firing_currents"])
+
                         # print("idrop: ", idrop)
                         # print(datadict["last_spikes"][idrop] * 1e3)
                         # print(datadict["firing_currents"][idrop] * 1e12)
                         if len(do_pts) > 0:
+                            idrop = np.argmax(datadict["firing_currents"][do_pts]) + do_pts[0]
                             dropout[1, nplots] = datadict["firing_currents"][idrop] * 1e12
                             dropout[0, nplots] = datadict["last_spikes"][idrop] * 1e3
                         else:
                             dropout[1, nplots] = datadict["firing_currents"][0] * 1e12
                             dropout[0, nplots] = 0
                         cellids[nplots] = selected.cell_id
+                        expression[nplots] = cell_df.cell_expression
+                        genotype[nplots] = selected.Group
                         print(selected.cell_id, dropout[0, nplots], dropout[1, nplots])
                         ax[1, 1].plot(
                             [0, 1000],
@@ -1430,15 +1501,30 @@ class Functions:
                         ax[1, 1].plot(
                             dropout[1, nplots],
                             dropout[0, nplots],
-                            sym1,
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
                             color=pcolor,
                             clip_on=False,
                         )
+                        ax[1, 1].text(
+                            x=dropout[1, nplots],
+                            y=dropout[0, nplots],
+                            s=selected.cell_id,
+                            fontsize=6,
+                            horizontalalignment="right",
+                            color=fcol[cell_df.genotype],
+                        )
                     iplot += 1
-            print("dropout current levels: ")
+                    nplots += 1
+            print("Dropout current levels: ")
             print("-" * 20)
+            # print(cell_df.keys())
+            print("N, cell, expression, genotype, idrop")
             for i in np.argsort(dropout[1]):
-                print(i, cellids[i], dropout[1, i])
+                print(i,", ", cellids[i], ", ", expression[i], ", ", genotype[i], ", ", dropout[1, i])
             print("-" * 20)
             if iplot > 0:
                 ax[1, 0].set_xlabel("Current (pA)")
@@ -1447,12 +1533,12 @@ class Functions:
                 ax[1, 0].set_ylabel("Firing Rate (Hz) (1st to last spike)")
                 ax[0, 1].set_ylabel("Time of last spike (sec)")
                 ax[1, 1].set_ylabel("Time of last spike < 0.8 sec (sec)")
-                ax[1, 1].set_xlim(0, 1000.)
-                ax[1, 1].set_ylim(0, 1000.)
+                ax[1, 1].set_xlim(0, 1000.0)
+                ax[1, 1].set_ylim(0, 1000.0)
 
                 fig.suptitle(f"Firing analysis for {cell_df.cell_expression:s}")
                 mpl.show()
-            return self.selected_index_rows
+            return P
         else:
             return None
 
@@ -1670,8 +1756,6 @@ class Functions:
 
         return hill_max_derivs, hill_i_max_derivs, FI_fits, linfits
 
-    
-
     def compute_FI_Fits(
         self,
         experiment,
@@ -1839,6 +1923,11 @@ class Functions:
             current = []
             rate = []
             last_spike = []
+            # print("protocol: ", protocol)
+            # print("# traces with spikes: ", len(df_cell.Spikes[protocol]['spikes']))
+            # for k in df_cell.Spikes[protocol]['spikes'].keys():
+            #     print(df_cell.Spikes[protocol]['spikes'][k].keys())
+            # raise
 
             for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
                 if len(spikes) == 0:
@@ -1850,6 +1939,7 @@ class Functions:
                         if spikes[spike].AP_latency is not None
                     ]
                 )
+                # print("latencies: ", k, latencies)
                 # for spike in spikes:
                 #     latencies.append(spikes[spike].AP_latency-spikes[spike].tstart)
                 current.append(
@@ -1857,11 +1947,12 @@ class Functions:
                 )  # current is the same for all spikes in this trace
                 if len(latencies) >= 3:
                     rate.append(1.0 / np.mean(np.diff(latencies)))
-                    last_spike.append(latencies[-1])
                 else:  # keep arrays the same length
                     rate.append(np.nan)
+                if len(latencies) > 0:
+                    last_spike.append(latencies[-1])
+                else:
                     last_spike.append(np.nan)
-
             if np.max(fidata[0]) > 1.01e-9:  # accumulate high-current protocols
                 FI_Data_I4_.extend(fidata[0])
                 FI_Data_FR4_.extend(fidata[1] / dur[protocol])
@@ -2103,7 +2194,7 @@ class Functions:
         -------
         _type_
             _description_
-        """ 
+        """
         m = []
         if measure in iv_keys:
             for protocol in protocols:
@@ -2177,10 +2268,9 @@ class Functions:
                         m.append(np.nan)
                     # print("spike data: ", spike_data.keys())
 
-                elif (
-                    "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
-                    and (df_cell.Spikes[protocol]["LowestCurrentSpike"] is None or
-                    len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) == 0)
+                elif "LowestCurrentSpike" in df_cell.Spikes[protocol].keys() and (
+                    df_cell.Spikes[protocol]["LowestCurrentSpike"] is None
+                    or len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) == 0
                 ):
                     CP("r", "Lowest Current spike is None")
                 elif measure in ["AP_thr_V", "AP_begin_V"]:
@@ -2191,14 +2281,23 @@ class Functions:
                         elif "AP_begin_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
                             Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_begin_V"]
                             m.append(Vthr)
-                        
+
                         else:
-                            print("Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike", protocol, measure)
+                            print(
+                                "Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike",
+                                protocol,
+                                measure,
+                            )
                             print("LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys())
                             continue
                     else:
-                        df_cell.Spikes[protocol]["LowestCurrentSpike"] = None  # install value, but set to None
-                        CP("r", f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}")
+                        df_cell.Spikes[protocol][
+                            "LowestCurrentSpike"
+                        ] = None  # install value, but set to None
+                        CP(
+                            "r",
+                            f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
+                        )
 
                 elif measure in ["AP_thr_T"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
