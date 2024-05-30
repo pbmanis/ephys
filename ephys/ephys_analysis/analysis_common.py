@@ -491,7 +491,7 @@ class Analysis:
         Returns:
             nothing
         """
-        CP.cprint("r", "\nStarting IV Analysis run")
+        CP.cprint("r", "\nStarting Analysis run")
         self.n_analyzed = 0
         self.prots_done = (
             []
@@ -555,7 +555,7 @@ class Analysis:
         # Only returns a dataframe if there is more than one entry
         # Otherwise, it is like a series or dict
         else:  # ALL cells in the index
-            if self.parallel_mode == 'off':
+            if self.parallel_mode == "off":
                 if self.pdfFilename is None:
                     for n, icell in enumerate(range(len(self.df.index))):
                         print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
@@ -579,8 +579,8 @@ class Analysis:
                 #                     # generate pdf files from the pkl files
                 #                     if cell_ok:
                 #                         self.plot_data(icell)
-            elif self.parallel_mode == 'day':
-                tasks = range(len(range(len(self.df.index))) ) # number of tasks that will be needed
+            elif self.parallel_mode == "day":
+                tasks = range(len(range(len(self.df.index))))  # number of tasks that will be needed
                 results: dict = {}
                 result = [None] * len(tasks)  # likewise
                 with MP.Parallelize(
@@ -733,8 +733,13 @@ class Analysis:
         CP.cprint("c", "********* MERGE PDFS ************\n")
 
         if self.autoout:
-            self.cell_pdfFilename = self.make_pdf_filename(
-                self.analyzeddatapath, celltype, slicecell
+            print(self.analyzeddatapath)
+            self.cell_pdfFilename = filenametools.make_pdf_filename(
+                dpath=self.analyzeddatapath,
+                thisday=thisday,
+                celltype=celltype,
+                analysistype="Map",
+                slicecell=slicecell,
             )
 
         fns = sorted(
@@ -933,7 +938,7 @@ class Analysis:
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
         msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, {'/'.join([datestr, slicestr, cellstr])!s}"
         CP.cprint("c", msg)
-        if self.parallel_mode not in ['day']:
+        if self.parallel_mode not in ["day"]:
             Logger.info(msg)
         annotated_celltype = None
         map_annotated_celltype = None
@@ -947,7 +952,7 @@ class Analysis:
                     "c",
                     msg,
                 )
-            if self.parallel_mode not in ['day']:
+            if self.parallel_mode not in ["day"]:
                 Logger.info(msg)
             annotated_celltype = cell_df["cell_type"].values[0].strip()
 
@@ -961,7 +966,7 @@ class Analysis:
                     "c",
                     msg,
                 )
-                if self.parallel_mode not in ['day']:
+                if self.parallel_mode not in ["day"]:
                     Logger.info(msg)
             if len(cell_df["cell_type"].values) > 0:
                 map_annotated_celltype = cell_df["cell_type"].values[0].strip()
@@ -988,7 +993,7 @@ class Analysis:
                         "red",
                         msg,
                     )
-                    if self.parallel_mode not in ['day']:
+                    if self.parallel_mode not in ["day"]:
                         Logger.info(msg)
                     return map_annotated_celltype, True
                 else:
@@ -1005,7 +1010,7 @@ class Analysis:
                     "c",
                     msg,
                 )
-                if self.parallel_mode not in ['day']:
+                if self.parallel_mode not in ["day"]:
                     Logger.info(msg)
                 return original_celltype, False
 
@@ -1023,7 +1028,7 @@ class Analysis:
                 if annotated_celltype != original_celltype:
                     msg = f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})"
                     CP.cprint("red", msg)
-                    if self.parallel_mode not in ['day']:
+                    if self.parallel_mode not in ["day"]:
                         Logger.info(msg)
                     return annotated_celltype, True
                 else:
@@ -1040,7 +1045,7 @@ class Analysis:
                     "c",
                     msg,
                 )
-                if self.parallel_mode not in ['day']:
+                if self.parallel_mode not in ["day"]:
                     Logger.info(msg)
                 return original_celltype, False
         else:
@@ -1055,8 +1060,6 @@ class Analysis:
                 raise ValueError(
                     "Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
                 )
-
-    
 
     def do_cell(self, icell: int, pdf=None) -> bool:
         """
@@ -1241,7 +1244,7 @@ class Analysis:
             CP.cprint("c", msg)
             if "Spikes" not in self.df.iloc[icell].keys() or self.df.iloc[icell]["Spikes"] is None:
                 msg2 = f"   @@@ Spikes array is empty @@@"
-                CP.cprint("r", msg2) 
+                CP.cprint("r", msg2)
                 # try:  # we do this to avoid issues when doing multiprocessing in "day" mode
                 #     Logger.warning(msg2)
                 # except:
