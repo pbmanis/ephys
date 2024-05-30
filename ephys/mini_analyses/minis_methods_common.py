@@ -246,10 +246,10 @@ class MiniAnalyses:
         if self.filters.LPF_frequency > 0.49 / self.dt_seconds:
             raise ValueError(
                 "lpf > Nyquist: ",
-                self.filters.LPF_frequency,
-                0.49 / self.dt_seconds,
-                self.dt_seconds,
-                1.0 / self.dt_seconds,
+                "Filter (Hz): ", self.filters.LPF_frequency,
+                "Nyquist (Hz): ", 0.49 / self.dt_seconds,
+                "Sample freq (Hz): ", self.dt_seconds,
+                "Sample rate (s): ", 1.0 / self.dt_seconds,
             )
         # data = dfilt.SignalFilter_LPFButter(data, lpf, 1./self.dt_seconds, NPole=8)
         if self.filters.LPF_type == "ba":

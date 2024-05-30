@@ -389,7 +389,7 @@ class AndradeJonas(MiniAnalyses):
         if prepare_data:
             self.prepare_data(data)  # also generates a timebase
             data = self.data
-            timebase = self.Data.timebase # get timebase associated with prepare_data
+            timebase = self.timebase # get timebase associated with prepare_data
         else:
             assert timebase is not None
         if self.template is None:
