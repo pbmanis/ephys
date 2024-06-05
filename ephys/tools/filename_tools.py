@@ -23,8 +23,8 @@ def check_celltype(celltype: Union[str, None] = None):
 
     if isinstance(celltype, str):
         celltype = celltype.strip()
-    if celltype in [None, "", "?", " ", "  ", "\t"]:
-        CP("y", f"Changing Cell type to unknown from <{celltype:s}>")
+    if celltype in [None, "", "?", " ", "  ", "\t"] or len(celltype) == 0:
+        CP("y", f"check_celltype:: Changing Cell type to unknown from <{celltype:s}>")
         celltype = "unknown"
     return celltype
 
@@ -104,7 +104,7 @@ def make_pdf_filename(
     return Path(pdfdir, pdfname.stem).with_suffix(".pdf")
 
 
-def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path]):
+def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path], mode="IVs"):
     """get_pickle_filename_from_row given the selected row in a table / dataframe,
     return the full path to the pickle file.
 
@@ -114,6 +114,8 @@ def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path]):
         Panda Series of the selected row
     dspath : Union[str, Path]
         Path to the dataset
+    mode : str, optional (default "IVs")
+        Type of analysis held in the file (IVs, maps, etc)
 
     Returns
     -------
@@ -127,7 +129,6 @@ def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path]):
     ValueError
         Slice/cell not found in the selected Series
     """
-    print("selected cell: ", selected.cell_id)
     celln = selected.cell_cell
     if selected.cell_type is None or selected.cell_type == " ":
         cell_type = "unknown"
@@ -165,7 +166,7 @@ def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path]):
         else:
             raise ValueError(f"Failed to find slice and cell in cell_id: {selected.cell_id:s}")
 
-    day = f"{day:s}_{slicecell:s}_{cell_type:s}_IVs.pkl"
+    day = f"{day:s}_{slicecell:s}_{cell_type:s}_{mode:s}.pkl"
     pkl_file = Path(dspath, cell_type, day)
     return pkl_file
 
@@ -487,3 +488,7 @@ if __name__ == "__main__":
     test_fn = "2022_01_01_S00C02_pyramidal_IVs.pkl"
     test_res = change_pickle_filename(test_fn, "S0C2")
     print(test_res)
+
+    cell_id = "2017.03.28_000/slice_000/cell_001"
+    print(make_cell_filename( "stellate", "S00C01", "IVs"))
+

@@ -87,6 +87,7 @@ import pprint
 import sys
 from pathlib import Path
 import multiprocessing
+import textwrap
 import concurrent.futures
 
 import pandas as pd
@@ -113,6 +114,7 @@ from ephys.ephys_analysis import (
     analysis_common,
     iv_analysis,
     iv_plotter,
+    map_analysis,
 )
 
 
@@ -289,7 +291,9 @@ class DataTables:
         self.Dock_DataSummary = PGD.Dock(
             "DataSummary", size=(right_docks_width, right_docks_height)
         )
-        self.Dock_Table = PGD.Dock("Dataset Table", size=(right_docks_width, right_docks_height))
+        self.Dock_IV_Table = PGD.Dock("IV Data Table", size=(right_docks_width, right_docks_height))
+        self.Dock_Map_Table = PGD.Dock("Map Data Table", size=(right_docks_width, right_docks_height))
+        self.Dock_Minis_Table = PGD.Dock("Mini Data Table", size=(right_docks_width, right_docks_height))
         self.Dock_Traces = PGD.Dock("Traces", size=(right_docks_width, right_docks_height))
 
         self.Dock_PDFView = PGD.Dock("PDFs", size=(right_docks_width, right_docks_height))
@@ -297,8 +301,10 @@ class DataTables:
 
         self.dockArea.addDock(self.Dock_Params, "left")
         self.dockArea.addDock(self.Dock_DataSummary, "right", self.Dock_Params)
-        self.dockArea.addDock(self.Dock_Table, "below", self.Dock_DataSummary)
-        self.dockArea.addDock(self.Dock_Report, "below", self.Dock_Table)
+        self.dockArea.addDock(self.Dock_IV_Table, "below", self.Dock_DataSummary)
+        self.dockArea.addDock(self.Dock_Map_Table, "below", self.Dock_IV_Table)
+        self.dockArea.addDock(self.Dock_Minis_Table, "below", self.Dock_Map_Table)
+        self.dockArea.addDock(self.Dock_Report, "below", self.Dock_Minis_Table)
         self.dockArea.addDock(self.Dock_PDFView, "below", self.Dock_Report)
         self.dockArea.addDock(self.Dock_Traces, "below", self.Dock_PDFView)
 
@@ -308,7 +314,7 @@ class DataTables:
         # self.Dock_Traces.addContainer(type=pg.QtGui.QGridLayout,
         # obj=self.trace_layout)
         self.table = pg.TableWidget(sortable=True)
-        self.Dock_Table.addWidget(self.table)  # don't raise yet
+        self.Dock_IV_Table.addWidget(self.table)  # don't raise yet
 
         self.DS_table = pg.TableWidget(sortable=True)
         self.Dock_DataSummary.addWidget(self.DS_table)
@@ -399,23 +405,46 @@ class DataTables:
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
+            {"name": "Save Assembled Data", "type": "action"},
+            {"name": "Parallel Mode", "type": "list", 
+                        "limits": ["cell", "day", "trace", "map", "off"],
+                        "value": "cell"},
+            {"name": "Dry run (test)", "type": "bool", "value": False},
+            {"name": "Only Analyze Important Flagged Data", "type": "bool", "value": False},
             {
                 "name": "IV Analysis",
                 "type": "group",
                 "expanded": False,
                 "children": [
-                    {"name": "Parallel Mode", "type": "list", 
-                        "limits": ["cell", "day", "trace", "map", "off"],
-                        "value": "cell"},
                     {"name": "Analyze Selected IVs", "type": "action"},
                     {"name": "Plot from Selected IVs", "type": "action"},
-                    {"name": "Analyze Selected IVs m/Important", "type": "action"},
-                    {"name": "Dry run (test)", "type": "bool", "value": False},
                     {"name": "Analyze ALL IVs", "type": "action"},
                     {"name": "Analyze ALL IVs m/Important", "type": "action"},
                     # {"name": "Process Spike Data", "type": "action"},
                     {"name": "Assemble IV datasets", "type": "action"},
                     {"name": "Exclude unimportant in assembly", "type": "bool", "value": False},
+                ],
+            },
+            {
+                "name": "Map Analysis",
+                "type": "group",
+                "expanded": False,
+                "children": [
+                    {"name": "Analyze Selected Maps", "type": "action"},
+                    {"name": "Analyze ALL Maps", "type": "action"},
+                    # {"name": "Assemble Map datasets", "type": "action"},
+                    # {"name": "Plot from Selected Maps", "type": "action"},
+                ],
+            },
+            {
+                "name": "Mini Analysis",
+                "type": "group",
+                "expanded": False,
+                "children": [
+                    {"name": "Analyze Selected Minis", "type": "action"},
+                    {"name": "Analyze ALL Minis", "type": "action"},
+                    # {"name": "Assemble Mini datasets", "type": "action"},
+                    # {"name": "Plot from Selected Minis", "type": "action"},
                 ],
             },
             {
@@ -662,6 +691,8 @@ class DataTables:
         if self.datasummary is None:
             self.load_data_summary()
             # self.Dock_DataSummary.raiseDock()
+        self.DS_table.cellDoubleClicked.connect(functools.partial(self.DSTable_show_cell_on_double_click, self.DS_table))
+
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         self.table_manager.update_table(self.table_manager.data, QtCore=QtCore, QtGui=QtGui)
@@ -677,9 +708,10 @@ class DataTables:
         index = w.selectionModel().currentIndex()
 
         modifiers = QtWidgets.QApplication.keyboardModifiers()
+        print("Modifiers: ", modifiers)
         mode = "IV"
-        if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
-            mode = "map"
+        if modifiers == QtCore.Qt.KeyboardModifier.MetaModifier:
+            mode = "maps"
         # elif modifiers == QtCore.Qt.ControlModifier:
         #     print('Control+Click')
         # elif modifiers == (QtCore.Qt.ControlModifier |
@@ -703,23 +735,78 @@ class DataTables:
         #     self.analyze_from_table(index.row())
 
     def display_from_table_by_row(self, i_row, mode="IV"):
-        self.table_manager.select_row_by_row(i_row)
-        self.display_from_table(mode=mode)
+        match mode:
+            case "IV" | "IVs" | "iv" | "ivs":
+                self.DS_table_manager.select_row_by_row(i_row)
+                self.display_from_table(mode=mode)
+        
+            case "maps" | "map" | "Map" | "Maps":
+                self.DS_table_manager.select_row_by_row(i_row) 
+                self.display_from_table(mode=mode)
+            case _:
+                print("Invalid mode")
+                raise ValueError(f"Invalid mode for display from table: got {mode}")
 
-    def display_from_table_by_cell_id(self, cell_id):
+
+    def display_from_table_by_cell_id(self, cell_id, mode:str="IV", pickable:bool=True):
         """
         Display the selected cell_id from the table
         """
-        if not self.show_pdf_on_pick:
-            print("show pdf on pick is turned off")
-            return
-        FUNCS.textappend(f"Displaying cell: {cell_id:s}")
+        msg = f"Displaying cell: {cell_id:s}, mode={mode:s}, pickable={pickable!s}"
+        print(msg)
+        FUNCS.textappend(msg)
 
         i_row = self.table_manager.select_row_by_cell_id(cell_id)
         if i_row is not None:
-            self.display_from_table(mode="IV")
+            self.display_from_table_by_row(row=i_row, mode=mode)
         else:
             FUNCS.textappend(f"Cell {cell_id:s} not found in table")
+
+    def DSTable_show_pdf_on_control_click(self,w):
+        """
+        Control click gets the selected row and then displays the associated PDF (IV or Map)
+        """
+        index = w.selectionModel().currentIndex()
+        i_row = index.row()
+        self.selected_index_row = i_row
+        self.display_from_table_by_row(i_row, mode="maps", pickable=True)
+
+    def DSTable_show_cell_on_double_click(self, w):
+        """
+        Double click gets the selected row and cell and then displays the full contents
+        of the cell in a QMessageBox
+        """
+        modifier = QtWidgets.QApplication.keyboardModifiers()
+        mode = "IV"
+        row = w.selectionModel().currentIndex().row()
+        col = w.selectionModel().currentIndex().column()
+        if modifier == QtCore.Qt.KeyboardModifier.AltModifier:
+            mode = "maps"
+        elif modifier == QtCore.Qt.KeyboardModifier.ControlModifier:
+            mode = "IVs"
+        elif modifier == QtCore.Qt.KeyboardModifier.NoModifier:
+            msg = pg.QtWidgets.QMessageBox()
+
+            colname = self.DS_table_manager.table.horizontalHeaderItem(col).text()
+            infotext = f"{colname:s}:<br><br>{self.DS_table_manager.table.item(row, col).text():s}"
+            title = f"<center>{self.DS_table_manager.table.item(row, 0).text()!s}</center>"
+            text = "{}<br><br>{}".format(title, "\n".join(textwrap.wrap(infotext, width=120)))
+            msg.setText(text)
+            msg.setFont(QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Normal))
+            # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
+            msg.exec()
+            return
+        else:
+            return
+        cell_id = self.DS_table_manager.get_table_data(w.selectionModel().currentIndex()).cell_id
+        print("cell_id: ", cell_id)
+        self.display_from_table_by_row(row, mode=mode)
+        return
+
+        
+
+
+
 
     def handleSortIndicatorChanged(self, index, order):
         """
@@ -815,16 +902,19 @@ class DataTables:
                 case "Load Assembled Data":
                     self.load_assembled_data()
 
+                # some general flags that can be used in analysis.
+                case "Parallel Mode":
+                    self.parallel_mode = data
+                    CP.cprint("b", f"Parallel mode set to: {self.parallel_mode!s}")
+                case "Dry run (test)":
+                    self.dry_run = data
+
+                case "Exclude unimportant in assembly":
+                    self.exclude_unimportant = data
+
+
                 case "IV Analysis":
                     match path[1]:
-                        case "Parallel Mode":
-                            self.parallel_mode = data
-                            CP.cprint("b", f"Parallel mode set to: {self.parallel_mode!s}")
-                        case "Dry run (test)":
-                            self.dry_run = data
-
-                        case "Exclude unimportant in assembly":
-                            self.exclude_unimportant = data
 
                         case "Analyze ALL IVs":
                             self.analyze_ivs("all")
@@ -958,6 +1048,35 @@ class DataTables:
 
                         # case "Process Spike Data":
                         #     PSA.process_spikes()
+                case "Map Analysis":
+                    match path[1]:
+                        case "Analyze ALL Maps":
+                            pass
+                        case "Analyze Selected Maps":
+
+                        # work from the *datasummary* table, not the Assembled table.
+                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            FUNCS.textappend(
+                                f"Analyze all LSPS maps from selected cell(s) at rows: {len(index_rows)!s}"
+                            )
+
+                            for selected in index_rows:
+                                if selected is None:
+                                    print("selected was None")
+                                    break
+                                FUNCS.textappend(selected.cell_id)
+                                pathparts = Path(selected.cell_id).parts
+                                slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
+                                day = str(Path(*pathparts[0:-2]))
+                                FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                                print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
+                                self.analyze_maps(mode="selected", day=day, slicecell=slicecell)
+                            self.maps_finished_message()
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
+
+                        case "Analyze Selected Maps m/Important":
+                            pass
+                        
 
                 case "Plotting":
                     match path[1]:
@@ -1559,6 +1678,106 @@ class DataTables:
         )
         CP.cprint("r", "=" * 80)
 
+
+    def analyze_maps(self, mode="all", important: bool = False, day: str = None, slicecell: str = None):
+        import numpy as np
+        args = analysis_common.cmdargs  # get from default class
+        args.dry_run = False
+        args.autoout = True
+        args.merge_flag = True
+        args.experiment = self.experiment
+        args.iv_flag = False
+        args.map_flag = True
+        args.mapsZQA_plot = False
+        args.zscore_threshold = 1.96  # p = 0.05 for charge relative to baseline
+
+        args.plotmode = "document"
+        args.recalculate_events = True
+        args.artifact_filename = self.experiment['artifactFilename']
+        args.artifact_path = self.experiment['artifactPath']
+
+        args.artifact_suppression = True
+        args.artifact_derivative = False
+        args.post_analysis_artifact_rejection = False
+        args.autoout = True
+        args.verbose = False
+        # these are all now in the excel table
+        # args.LPF = 3000.0
+        # args.HPF = 0.
+
+        args.detector = "aj"
+        args.spike_threshold = -0.020 # always in Volts
+        # args.threshold = 7
+
+        if mode == "selected":
+            args.day = day
+            args.slicecell = slicecell
+
+        args.notchfilter = True
+        odds = np.arange(1, 43, 2)*60.  # odd harmonics
+        nf = np.hstack((odds, [30, 15, 120., 240., 360.]))  # default values - replaced by what is in table
+        str_nf = "[]" # "[" + ", ".join(str(f) for f in nf) + "]"
+        args.notchfreqs = str_nf # "[60., 120., 180., 240., 300., 360., 600., 4000]"
+        args.notchQ = 90.
+
+        # if args.configfile is not None:
+        #     config = None
+        #     if args.configfile is not None:
+        #         if ".json" in args.configfile:
+        #             config = json.load(open(args.configfile))
+        #         elif ".toml" in args.configfile:
+        #             config = toml.load(open(args.configfile))
+
+            # vargs = vars(args)  # reach into the dict to change values in namespace
+            # for c in config:
+            #     if c in args:
+            #         # print("c: ", c)
+            #         vargs[c] = config[c]
+        CP.cprint(
+            "cyan",
+            f"Starting MAP analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+        )
+        print("\n" * 3)
+        CP.cprint("r", "=" * 80)
+
+        MAP = map_analysis.MAP_Analysis(args)
+        MAP.set_experiment(self.experiment)
+        # MAP.set_exclusions(self.experiment.exclusions)
+        MAP.AM.set_artifact_suppression(args.artifact_suppression)
+        MAP.AM.set_artifact_path(self.experiment['artifactPath'])
+        MAP.AM.set_artifact_filename(self.experiment['artifactFilename'])
+        MAP.AM.set_post_analysis_artifact_rejection(args.post_analysis_artifact_rejection)
+        MAP.AM.set_template_parameters(tmax=0.009, pre_time=0.001)
+        MAP.AM.set_shutter_artifact_time(0.050)
+    
+        CP.cprint("b", "=" * 80)
+        MAP.setup()
+
+        CP.cprint("c", "=" * 80)
+        MAP.run()
+
+        # allp = sorted(list(set(NF.allprots)))
+        # print('All protocols in this dataset:')
+        # for p in allp:
+        #     print('   ', path)
+        # print('---')
+        #
+        CP.cprint(
+            "cyan",
+            f"Finished analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+        )
+
+    def maps_finished_message(self):
+        if self.dry_run:
+            return
+        CP.cprint("r", "=" * 80)
+        # CP.cprint("r", f"Now run 'process_spike_analysis' to generate the summary data file")
+        # CP.cprint("r", f"Now run 'assemble datasets' to combine the FI curves")
+        CP.cprint(
+            "r", f"Now try the plotting functions to plot summaries and get statistical results"
+        )
+        CP.cprint("r", "=" * 80)
+
     def get_analysis_info(self, filename):
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
         second_group_by = self.ptreedata.child("Plotting").child("2nd Group By").value()
@@ -1806,39 +2025,59 @@ class DataTables:
             return
         self.PLT.plot_VC(self.selected_index_rows)
 
-    def display_from_table(self, mode="IV"):
+
+    def display_from_table(self, mode="IVs"):
         """
         display the data in the PDF dock
         """
-        self.selected_index_rows = self.table.selectionModel().selectedRows()
-        if self.selected_index_rows is None:
-            return
-        index_row = self.selected_index_rows[0]
-        selected = self.table_manager.get_table_data(index_row)  # table_data[index_row]
-        # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
-        # the first part is based on the selected cell_id from the table, and the rest
-        # just makes life easier when looking at the directories.
+        match mode:
+            case "IV" | "IVs" | "iv" | "ivs":
+                self.selected_index_rows = self.DS_table.selectionModel().selectedRows()
+                if self.selected_index_rows is None:
+                    return
+                index_row = self.selected_index_rows[0]
+                selected = self.DS_table_manager.get_table_data(index_row)  # table_data[index_row]
+                modename = "IVs"
+                # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
+                # the first part is based on the selected cell_id from the table, and the rest
+                # just makes life easier when looking at the directories.
+            case "Map" | "map" | "Maps" | "maps":
+                self.selected_index_rows = self.DS_table.selectionModel().selectedRows()
+                if self.selected_index_rows is None:
+                    return
+                index_row = self.selected_index_rows[0]
+                selected = self.DS_table_manager.get_table_data(index_row)
+                modename = "maps"
+            case _:
+                raise ValueError(f"Invalid mode: {mode!s}")
+        
         cell_type = selected.cell_type
         if cell_type == " " or len(cell_type) == 0:
             cell_type = "unknown"
-        sdate = selected.date[:-4]
-        cell_id = str(Path(selected.cell_id).name)
-        cellname_parts = cell_id.split("_")
-        if mode == "IV":
-            modename = "IVs"
-        elif mode == "map":
-            modename = "maps"
-        pdfname = f"{cellname_parts[0].replace('.', '_'):s}_{cellname_parts[2]:s}_{cell_type:s}_{modename:s}.pdf"
+
         datapath = self.experiment["databasepath"]
-        direct = self.experiment["directory"]
-        filename = f"{Path(datapath, direct, cell_type, pdfname)!s}"
-        url = "file://" + filename
+        directory = self.experiment["directory"]
+  
+        filename = filename_tools.get_pickle_filename_from_row(selected, Path(datapath, directory), mode=modename)
+        filename = Path(filename).with_suffix(".pdf")
+        url = "file://" + str(filename)
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
         print(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
+        if not Path(filename).is_file():
+            FUNCS.textappend(f"File does not exist: {filename!s}")
+            msg = pg.QtWidgets.QMessageBox()
+            infotext = f"PDF file for {modename:s} does not exist for cell: {selected.cell_id!s}\nSearched file: {str(filename)!s}"
+            title = f"<center>{selected.cell_id:s}</center>"
+            text = "{}<br><br>{}".format(title, "\n".join(textwrap.wrap(infotext, width=120)))
+            msg.setText(text)
+            msg.setFont(QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Normal))
+            # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
+            msg.exec()
+            return
+        
         self.PDFView.setUrl(pg.QtCore.QUrl(url))  # +"#zoom=80"))
         self.Dock_PDFView.raiseDock()
-        if selected is None:
-            return
+
 
 
 def main():

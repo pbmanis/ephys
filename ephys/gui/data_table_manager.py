@@ -615,6 +615,7 @@ class TableManager:
 
     def select_row_by_cell_id(self, cell_id):
         for i in range(len(self.table_data)):
+            # print("i: ", i, cell_id, self.table_data[i].cell_id)
             if cell_id == self.table_data[i].cell_id:
                 self.table.selectRow(i)
                 return i
