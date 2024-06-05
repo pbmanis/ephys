@@ -1,20 +1,20 @@
-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
-from pyqtgraph import Qt
-import pandas as pd
-import datetime as datetime
-import subprocess
-from pathlib import Path
-import numpy as np
-from dataclasses import dataclass, field
+"""Class to handle the data summary table, and some actions from the 
+table in the gui.
+"""
+import datetime
 import pprint
-from typing import List, Union
-import ephys
-from ephys.tools import win_print as WP
-import pandas as pd
+import subprocess
 import textwrap
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Union
+
 import numpy as np
+import pandas as pd
 from pylibrary.tools import cprint as CP
+from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+
+import ephys
 from ephys.tools import map_cell_types as MCT
 
 # import vcnmodel.util.fixpicklemodule as FPM
@@ -22,9 +22,7 @@ from ephys.tools import map_cell_types as MCT
 
 cprint = CP.cprint
 PP = pprint.PrettyPrinter(indent=8, width=80)
-process = subprocess.Popen(
-    ["git", "rev-parse", "HEAD"], shell=False, stdout=subprocess.PIPE
-)
+process = subprocess.Popen(["git", "rev-parse", "HEAD"], shell=False, stdout=subprocess.PIPE)
 git_head_hash = process.communicate()[0].strip()
 
 ephyspath = Path(ephys.__file__).parent
@@ -34,7 +32,6 @@ process = subprocess.Popen(
     stdout=subprocess.PIPE,
 )
 ephys_git_hash = process.communicate()[0].strip()
-
 
 
 """ The Data summary database has the following:
@@ -51,7 +48,18 @@ Index(['date', 'description', 'notes', 'species', 'strain', 'genotype',
 
 """
 
+
 def defemptylist():
+    """defemptylist
+    make an empty list for the dataclass.
+    Yeah, I know this is silly, but this is what you
+    have to do to instantiate an empty list in a dataclass.
+
+    Returns
+    -------
+    list
+        empty list
+    """
     return []
 
 
@@ -63,38 +71,37 @@ class IndexData:
     project_code_hash: str = git_head_hash  # this repository!
     ephys_hash: str = ephys_git_hash  # save hash for the model code
     date: str = ""
-    cell_id: str=""
-    important: str=""
-    description: str=""
-    notes: str=""
-    species: str=""
-    strain: str=""
-    genotype: str=""
-    solution: str=""
-    internal: str=""
-    sex: str=""
-    age: str=""
-    weight: str=""
-    temperature: str=""
-    slice_orientation: str=""
-    cell_cell: str=""
-    slice_slice: str=""
+    cell_id: str = ""
+    important: str = ""
+    description: str = ""
+    notes: str = ""
+    species: str = ""
+    strain: str = ""
+    genotype: str = ""
+    solution: str = ""
+    internal: str = ""
+    sex: str = ""
+    age: str = ""
+    weight: str = ""
+    temperature: str = ""
+    slice_orientation: str = ""
+    cell_cell: str = ""
+    slice_slice: str = ""
     cell_type: str = ""
-    cell_location: str=""
-    cell_layer: str=""
+    cell_location: str = ""
+    cell_layer: str = ""
     data_complete: List = field(default_factory=defemptylist)
-    data_directory: str=""
+    data_directory: str = ""
     flag: bool = False
-
 
 
 class TableManager:
     def __init__(
         self,
-        parent = None,
+        parent=None,
         table: object = None,
         experiment: dict = None,
-        selvals: dict = {},
+        selvals: Union[dict, None] = None,
         altcolormethod: object = None,
     ):
         self.table = table
@@ -103,9 +110,12 @@ class TableManager:
 
         self.experiment = experiment
         self.selvals = selvals
-        self.altColors = altcolormethod
+        self.alt_colors = altcolormethod
+        self.data = []
+        self.table_data = []
+        self.current_table_data = None
+        self.keep_index = set()
 
-    
     def make_indexdata(self, row):
         """
         Load up the index data class with selected information from the datasummary
@@ -133,22 +143,28 @@ class TableManager:
         Index_data.cell_cell = str(row.cell_cell)
         Index_data.slice_slice = str(row.slice_slice)
         Index_data.cell_type = str(row.cell_type)
-        Index_data.cell_location = str(row.cell_location)
+        Index_data.cell_location = textwrap.fill(str(row.cell_location), width=10)
         Index_data.cell_layer = str(row.cell_layer)
-        Index_data.data_complete = str(row.data_complete) # textwrap.fill(str(row.data_complete), width=40)
-        Index_data.data_directory = str(row.data_directory)
+        Index_data.data_complete = textwrap.fill(str(row.data_complete), width=40)
+        Index_data.data_directory = textwrap.fill(str(row.data_directory), width=40)
         Index_data.flag = False
         return Index_data
 
     def build_table(self, dataframe, mode="scan"):
-        if mode == "scan":
-            force = False
-        if mode == "update":
-            force = True
-        self.data = []
+        """build_table Create the table from the dataframe
+
+        Parameters
+        ----------
+        dataframe : pandas dataframe
+            datasummary table as a pd.dataframe
+        mode : str, optional
+            How the dataframe is created, by default "scan"
+            Unused argument.
+        """
+
         self.table.setData(self.data)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-        indxs = []        
+        indxs = []
         for i, dfindex in enumerate(dataframe.index):
             index_file_data = self.make_indexdata(dataframe.loc[dfindex])
             if index_file_data is not None:
@@ -159,31 +175,29 @@ class TableManager:
         self.data = np.array(
             [
                 (
-                indxs[i].cell_id,
-                indxs[i].important,
-                indxs[i].description,
-                indxs[i].notes,
-                indxs[i].species,
-                indxs[i].strain,
-                indxs[i].genotype,
-                indxs[i].solution,
-                indxs[i].internal,
-                indxs[i].sex,
-                indxs[i].age,
-                indxs[i].weight,
-                indxs[i].temperature,
-                indxs[i].slice_orientation,
-                indxs[i].cell_cell,
-                indxs[i].slice_slice,
-                indxs[i].cell_type,
-                indxs[i].cell_location,
-                indxs[i].cell_layer,
-                indxs[i].data_complete,
-                indxs[i].data_directory,
-                indxs[i].flag,
-                    
+                    indxs[i].cell_id,
+                    indxs[i].important,
+                    indxs[i].description,
+                    indxs[i].notes,
+                    indxs[i].species,
+                    indxs[i].strain,
+                    indxs[i].genotype,
+                    indxs[i].solution,
+                    indxs[i].internal,
+                    indxs[i].sex,
+                    indxs[i].age,
+                    indxs[i].weight,
+                    indxs[i].temperature,
+                    indxs[i].slice_orientation,
+                    indxs[i].cell_cell,
+                    indxs[i].slice_slice,
+                    indxs[i].cell_type,
+                    indxs[i].cell_location,
+                    indxs[i].cell_layer,
+                    indxs[i].data_complete,
+                    indxs[i].data_directory,
+                    indxs[i].flag,
                 )
-
                 for i in range(len(indxs))
             ],
             dtype=[
@@ -212,22 +226,31 @@ class TableManager:
             ],
         )
         self.update_table(self.data)
-        self.altColors(self.table)  # reset the coloring for alternate lines
+        self.alt_colors(self.table)  # reset the coloring for alternate lines
         if QtGui is None:
             return
         for i in range(self.table.rowCount()):
             if self.table_data[i].flag:
-                self.setColortoRow(i, QtGui.QColor(0xff, 0xef, 0x00, 0xee))
-                self.setColortoRowText(i, QtGui.QColor(0x00, 0x00, 0x00))
+                self.set_color_to_row(i, QtGui.QColor(0xFF, 0xEF, 0x00, 0xEE))
+                self.set_color_to_row_text(i, QtGui.QColor(0x00, 0x00, 0x00))
             else:
                 if i % 2:
-                    self.setColortoRow(i, QtGui.QColor(0xCA, 0xFB, 0xF4, 0x66))
+                    self.set_color_to_row(i, QtGui.QColor(0xCA, 0xFB, 0xF4, 0x66))
                 else:
-                    self.setColortoRow(i, QtGui.QColor(0x33, 0x33, 0x33))
-                self.setColortoRowText(i, QtGui.QColor(0xff, 0xff, 0xff))
+                    self.set_color_to_row(i, QtGui.QColor(0x33, 0x33, 0x33))
+                self.set_color_to_row_text(i, QtGui.QColor(0xFF, 0xFF, 0xFF))
         cprint("g", "Finished updating index files")
 
-    def update_table(self, data, QtCore=None, QtGui=None):
+    def update_table(self, data):
+        """update_table 
+        WHen changes are made to the data, update the table
+
+        Parameters
+        ----------
+        data : data to go in the table
+            _description_
+    
+        """
         cprint("g", "Updating data table")
         # print("data for update: ", data)
         # print("data complete: ", data[:]['data_complete'])
@@ -241,38 +264,68 @@ class TableManager:
         # self.table.resizeRowsToContents()
         self.table.resizeColumnsToContents()
         self.current_table_data = data
-        self.altColors(self.table)  # reset the coloring for alternate lines
+        self.alt_colors(self.table)  # reset the coloring for alternate lines
         # if QtGui is not None:
         # if self.table_data[i].flag:
-        #     self.setColortoRow(i, QtGui.QColor(0x88, 0x00, 0x00))
+        #     self.set_color_to_row(i, QtGui.QColor(0x88, 0x00, 0x00))
         # else:
-        #     self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0xf00))
+        #     self.set_color_to_row(i, QtGui.QColor(0x00, 0x00, 0xf00))
 
+    def set_color_to_row(self, rowIndex, color):
+        """set_color_to_row Set the color of the row
 
-    def setColortoRow(self, rowIndex, color):
+        Parameters
+        ----------
+        rowIndex : int
+            row to change
+        color : QtColor
+            Color for the row
+        """
         for j in range(self.table.columnCount()):
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setBackground(color)
-    
-    def setColortoRowText(self, rowIndex, color):
+
+    def set_color_to_row_text(self, rowIndex, color):
+        """set_color_to_row_text set the foreground color for a row
+
+        Parameters
+        ----------
+        rowIndex : int
+            row to change
+        color : QtColor
+            Color for the row
+        """
         for j in range(self.table.columnCount()):
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setForeground(color)
 
     def get_table_data_index(self, index_row, use_sibling=False) -> int:
+        """get_table_data_index
+
+        Parameters
+        ----------
+        index_row : int
+            row in the table
+        use_sibling : bool, optional
+            whether to use the sibling table, by default False
+
+        Returns
+        -------
+        int
+            row in the table
+        """
         if use_sibling:
             value = index_row.sibling(index_row.row(), 1).data()
             for i, d in enumerate(self.data):
                 if self.data[i][1] == value:
                     return i
             return None
-    
+
         elif isinstance(index_row, IndexData):
             value = index_row
         else:
             value = index_row.row()
             return value
-        
 
     def get_table_data(self, selected_row):
         """
@@ -286,32 +339,55 @@ class TableManager:
 
         ind = self.get_table_data_index(selected_row)
         # print("  ind: ", ind)
-        for i in range(len(self.table_data)):
-            if self.table_data[ind].cell_id == self.table_data[i].cell_id:
+        for i, td in enumerate(self.table_data):
+            if self.table_data[ind].cell_id == td.cell_id:
                 # print("  found: ", i, self.table_data[i].cell_id)
                 return self.table_data[ind]
         return None
-        
+
         # if ind is not None:
         #     return self.table_data[ind]
         # else:
         #     return None
 
     def select_row_by_cell_id(self, cell_id):
-        for i in range(len(self.table_data)):
-            if cell_id == self.table_data[i].cell_id:
+        """select_row_by_cell_id Select a row by the cell_id
+
+        Parameters
+        ----------
+        cell_id : string
+            cell id in the form 'yyyy.mm.dd_nnn/slice_mmm/cell_xxx'
+
+        Returns
+        -------
+        int
+            row, or None
+        """
+        for i, td in enumerate(self.table_data):
+            if cell_id == td[i].cell_id:
                 self.table.selectRow(i)
                 return i
         return None
 
     def select_row_by_row(self, irow: int):
+        """select_row_by_row select row given row number 
+        just make sure the row exists...
+        Parameters
+        ----------
+        irow : int
+            row
+        Returns
+        -------
+        row or None
+            
+        """
         try:
             self.table.selectRow(irow)
             return irow
         except:
             return None
 
-    def apply_filter(self, QtCore=None, QtGui=None):
+    def apply_filter(self):
         """
         self.filters = {'Use Filter': False, 'dBspl': None, 'nReps': None,
         'Protocol': None,
@@ -319,19 +395,26 @@ class TableManager:
         "dataTable": None,}
         """
         if not self.parent.filters["Use Filter"]:  # no filter, so update to show whole table
-            self.update_table(self.data, QtCore=QtCore, QtGui=QtGui)
+            self.update_table(self.data)
 
         else:
             self.filter_table(self.parent.filters, QtCore=QtCore, QtGui=QtGui)
 
-    def filter_table(self, filters, QtCore=None, QtGui=None):
+    def filter_table(self, filters):
+        """filter_table _summary_
+
+        Parameters
+        ----------
+        filters : _type_
+            _description_
+        """
         coldict = {  # numbers must match column in the table.
             "flag": 21,
             "cell_type": 16,
             "age": 10,
             "sex": 9,
-            #"Group": 6,
-            #"DataTable": 18,
+            # "Group": 6,
+            # "DataTable": 18,
         }
         self.parent.doing_reload = True
         filtered_table = self.data.copy()
@@ -378,6 +461,5 @@ class TableManager:
         self.keep_index = keep_index  # we might want this later!
         # print('Filter index: ', keep_index)
         filtered_table = [filtered_table[ft] for ft in keep_index]
-        self.update_table(filtered_table, QtCore=QtCore, QtGui=QtGui)
+        self.update_table(filtered_table)
         self.parent.doing_reload = False
-

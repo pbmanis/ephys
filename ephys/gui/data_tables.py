@@ -668,7 +668,7 @@ class DataTables:
             table=self.table,
             experiment=self.experiment,
             selvals=self.selvals,
-            altcolormethod=self.altColors,
+            altcolormethod=self.alt_colors,
         )
         self.table.setSelectionMode(pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(QtWidgets.QTableView.SelectionBehavior.SelectRows)
@@ -682,7 +682,7 @@ class DataTables:
             table=self.DS_table,
             experiment=self.experiment,
             selvals=self.selvals,
-            altcolormethod=self.altColors,
+            altcolormethod=self.alt_colors,
         )
         self.DS_table.setSelectionMode(
             pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
@@ -1486,7 +1486,7 @@ class DataTables:
                             #     table=self.table,
                             #     experiment=self.experiment,
                             #     selvals=self.selvals,
-                            #     altcolormethod=self.altColors,
+                            #     altcolormethod=self.alt_colors,
                             # )
 
                             print("   reload ok")
@@ -1507,7 +1507,7 @@ class DataTables:
                             #     self.table.sortByColumn(
                             #         0, QtCore.Qt.SortOrder.AscendingOrder
                             #     )  # by date
-                            #     self.altColors(self.table)  # reset the color list.
+                            #     self.alt_colors(self.table)  # reset the color list.
                             #     # now reapply the original selection
                             mode = (
                                 QtCore.QItemSelectionModel.SelectionFlag.Select
@@ -1799,7 +1799,7 @@ class DataTables:
         self.textbox.append(text)
         self.textbox.setTextColor(self.QColor("white"))
 
-    def setColortoRow(self, rowIndex, color):
+    def set_color_to_row(self, rowIndex, color):
         """
         Set the color of a row
         """
@@ -1807,7 +1807,7 @@ class DataTables:
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setBackground(color)
 
-    def altColors(
+    def alt_colors(
         self, table, colors=[QtGui.QColor(0x22, 0x22, 0x22), QtGui.QColor(0x44, 0x44, 0x44)]
     ):
         """
@@ -1820,9 +1820,9 @@ class DataTables:
         """
         for j in range(table.rowCount()):
             if j % 2:
-                self.setColortoRow(j, colors[0])
+                self.set_color_to_row(j, colors[0])
             else:
-                self.setColortoRow(j, colors[1])
+                self.set_color_to_row(j, colors[1])
 
     def force_suffix(self, filename, suffix=".pkl"):
         """

@@ -100,7 +100,7 @@ class TableManager:
         self.table = table
         self.experiment = experiment
         self.selvals = selvals
-        self.altColors = altcolormethod
+        self.alt_colors = altcolormethod
         self.data = []
 
     def textclear(self):
@@ -491,19 +491,19 @@ class TableManager:
         # self.table.resizeRowsToContents()
         self.table.resizeColumnsToContents()
         self.current_table_data = data
-        self.altColors(self.table)  # reset the coloring for alternate lines
+        self.alt_colors(self.table)  # reset the coloring for alternate lines
         if QtGui is None:
             return
         for i in range(self.table.rowCount()):
             if self.table_data[i].flag:
-                self.setColortoRow(i, QtGui.QColor(0xff, 0xef, 0x00, 0xee))
-                self.setColortoRowText(i, QtGui.QColor(0x00, 0x00, 0x00))
+                self.set_color_to_row(i, QtGui.QColor(0xff, 0xef, 0x00, 0xee))
+                self.set_color_to_row_text(i, QtGui.QColor(0x00, 0x00, 0x00))
             else:
                 if i % 2:
-                    self.setColortoRow(i, QtGui.QColor(0x00, 0x00, 0x00))
+                    self.set_color_to_row(i, QtGui.QColor(0x00, 0x00, 0x00))
                 else:
-                    self.setColortoRow(i, QtGui.QColor(0x33, 0x33, 0x33))
-                self.setColortoRowText(i, QtGui.QColor(0xff, 0xff, 0xff))
+                    self.set_color_to_row(i, QtGui.QColor(0x33, 0x33, 0x33))
+                self.set_color_to_row_text(i, QtGui.QColor(0xff, 0xff, 0xff))
 
         # self.parent.Dock_Table.raiseDock()
 
@@ -569,12 +569,12 @@ class TableManager:
         self.update_table(filtered_table, QtCore=QtCore, QtGui=QtGui)
         self.parent.doing_reload = False
 
-    def setColortoRow(self, rowIndex, color):
+    def set_color_to_row(self, rowIndex, color):
         for j in range(self.table.columnCount()):
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setBackground(color)
     
-    def setColortoRowText(self, rowIndex, color):
+    def set_color_to_row_text(self, rowIndex, color):
         for j in range(self.table.columnCount()):
             if self.table.item(rowIndex, j) is not None:
                 self.table.item(rowIndex, j).setForeground(color)
