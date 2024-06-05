@@ -1,28 +1,28 @@
 import datetime
+import logging
 import re
 from pathlib import Path
 from typing import Union
-import logging
 
 import dill
-import matplotlib
 import matplotlib.pyplot as mpl  # import locally to avoid parallel problems
 import numpy as np
+import pandas as pd
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
-import pandas as pd
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
 
 import ephys.mapanalysistools as mapanalysistools
+import ephys.tools.filename_tools as filename_tools
 from ephys.ephys_analysis.analysis_common import Analysis
 
 PMD = mapanalysistools.plot_map_data.PlotMapData()
 
-logging.getLogger('fontTools.subset').disabled = True
+logging.getLogger("fontTools.subset").disabled = True
 Logger = logging.getLogger("AnalysisLogger")
 level = logging.DEBUG
 Logger.setLevel(level)
@@ -35,7 +35,9 @@ Logger.addHandler(logging_fh)
 Logger.addHandler(logging_ch)
 # setFileConfig(filename="map_analysis.log", encoding='utf=8')
 # log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(message)s")
-log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s ")
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s "
+)
 
 logging_fh.setFormatter(log_formatter)
 logging_ch.setFormatter(log_formatter)
@@ -50,48 +52,57 @@ class MAP_Analysis(Analysis):
     def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
         # print("icell: ", icell)
 
-
         if self.celltype != "all":
-            if self.celltype == "DCN" and celltype in ['pyramidal', 'cartwheel', 'tuberculoventral', 'giant']:
+            if self.celltype == "DCN" and celltype in [
+                "pyramidal",
+                "cartwheel",
+                "tuberculoventral",
+                "giant",
+            ]:
                 oktype = True
-            elif self.celltype == "VCN" and celltype in ['bushy', 't-stellate', 'd-stellate', 'octopus']:
+            elif self.celltype == "VCN" and celltype in [
+                "bushy",
+                "t-stellate",
+                "d-stellate",
+                "octopus",
+            ]:
                 oktype = True
             elif isinstance(self.celltype, str) and self.celltype == celltype:
                 oktype = True
             else:
                 oktype = False
         else:
-            oktype = True # All cell types are ok
+            oktype = True  # All cell types are ok
         if not oktype:
             return
 
-        if len(allprots["maps"]) == 0:
-            datestr, slicestr, cellstr = self.make_cell(icell)
+        if len(allprots["Maps"]) == 0:
+            datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
             msg = f"No maps to analyze for entry #{icell:d}: {datestr:s}/{slicestr:s}/{cellstr:s}"
-            CP.cprint('r', msg)
+            CP.cprint("r", msg)
             Logger.warning(msg)
             return
-        
-        msg = f"Starting map analyze for cell at index: {icell: d} ({str(self.df.at[icell, 'date']):s} incoming celltype: {celltype:s})",
+
+        msg = (
+            f"Starting map analyze for cell at index: {icell: d} ({str(self.df.at[icell, 'date']):s} incoming celltype: {celltype:s})",
+        )[0]
         Logger.info(msg)
-        CP.cprint(
-            "c", msg
-        )
+        CP.cprint("c", msg)
         file = Path(self.df.iloc[icell].data_directory, self.df.iloc[icell].cell_id)
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         slicecellstr = f"S{slicestr[-1]:s}C{cellstr[-1]:s}"
         self.this_celltype, self.celltype_changed = self.get_celltype(icell)
         CP.cprint(
             "c",
-            f"    {str(file):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
+            f"    {str(file):s}\n          at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
-        print(f"    Celltype: {celltype:s}  with {len(allprots['maps']):4d} protocols")
-        self.markers=  mapanalysistyools.get_markers(fullfile=file, verbose=False)
+        print(f"    Celltype: {celltype:s}  with {len(allprots["Maps"]):4d} protocols")
+        self.markers = mapanalysistools.get_markers.get_markers(fullfile=file, verbose=False)
 
-        # print(allprots["maps"])
+        # print(allprots["Maps"])
         # return
-        # for i, p in enumerate(allprots["maps"]):
+        # for i, p in enumerate(allprots["Maps"]):
         #     cell_df = self.find_cell(
         #         self.map_annotations, datestr, slicestr, cellstr, Path(p)
         #     )
@@ -106,26 +117,33 @@ class MAP_Analysis(Analysis):
         #         raise ValueError("Error in MAP_Analysis.analyze_maps: find_cell returned empty dataframe")
 
         validmaps = []
-        for p in allprots["maps"]:  # first remove excluded protocols
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, Path(p)
-            )
-            if cell_df is None or len(cell_df) == 0 or len(cell_df['Usable'].values) == 0:  # nothing set
+        print("original list of maps: ", allprots["Maps"])
+        for p in allprots["Maps"]:  # first remove excluded protocols
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, Path(p))
+            print(p, cell_df)
+            if (
+                cell_df is None or len(cell_df) == 0 or len(cell_df["Usable"].values) == 0
+            ):  # nothing set
+                CP.cprint("y"f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
                 continue
             if self.map_annotations is not None:  # determine from the map annotation table
-                if (cell_df['Usable'].values[0] in ['Y', 'y']):
+                if cell_df["Usable"].values[0] in ["Y", "y"]:
                     validmaps.append(p)
-                if cell_df['Usable'].values[0] not in ['Y', 'y', 'N', 'n']:
+                if cell_df["Usable"].values[0] not in ["Y", "y", "N", "n"]:
                     print(f"Usable = <{str(cell_df['Usable'].values[0]):s}>")
-                    raise ValueError("Please fill the map annotation table with Y or N for 'Usable'")
-            else: # determine from the exclusions dictionary
+                    raise ValueError(
+                        "Please fill the map annotation table with Y or N for 'Usable'"
+                    )
+            else:  # determine from the exclusions dictionary
                 if self.exclusions is None or (str(p) not in self.exclusions):
                     validmaps.append(p)
-        allprots["maps"] = validmaps
+        allprots["Maps"] = validmaps
+        print("allprots[Maps]: ", allprots["Maps"])
         from ephys.tools import get_computer
         computername = get_computer.get_computer()
         nworkers = self.experiment["NWORKERS"][computername]  # number of cores/threads to use
-        tasks = range(len(allprots["maps"]))  # number of tasks that will be needed
+        tasks = range(len(allprots["Maps"]))  # number of tasks that will be needed
+        print("tasks: ", tasks)
         results = dict()  # storage for results
         result = [None] * len(tasks)  # likewise
         plotmap = True
@@ -139,7 +157,9 @@ class MAP_Analysis(Analysis):
 
         foname += ".pkl"
         picklefilename = Path(self.analyzeddatapath, "events", foname)
-        msg = f"\n    Analyzing data filename: {str(picklefilename):s}, dry_run={str(self.dry_run):s}"
+        msg = (
+            f"\n    Analyzing data filename: {str(picklefilename):s}, dry_run={str(self.dry_run):s}"
+        )
         CP.cprint("m", msg)
         Logger.info(msg)
         if self.dry_run:
@@ -163,8 +183,7 @@ class MAP_Analysis(Analysis):
 
             if result is None:
                 continue
-            results[allprots["maps"][x]] = result
-
+            results[allprots["Maps"][x]] = result
 
         # terminate early when testing
         # if i == 0:
@@ -174,7 +193,8 @@ class MAP_Analysis(Analysis):
         #                     for i, x in tasker:
         #                         result = self.analyze_map(icell, i, x, allprots, plotmap)
         # #                        print(x)
-        #                         tasker.results[allprots['maps'][x]] = result
+        #                         tasker.results[allprots["Maps"][x]] = result
+        # then dive right in .
         if self.recalculate_events:  # save the recalculated events to the events file
             CP.cprint("g", f"    Recalculated Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
@@ -192,16 +212,14 @@ class MAP_Analysis(Analysis):
             else:
                 CP.cprint("g", f"    Database celltype: {txt:s}")
 
-        self.merge_pdfs(celltype=celltype, slicecell=slicecellstr, pdf=pdf)
+        self.merge_pdfs(celltype=celltype, thiscell=self.df.iloc[icell].cell_id, slicecell=slicecellstr, pdf=pdf)
 
     def set_vc_taus(self, icell: int, path: Union[Path, str]):
         """ """
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
 
         if self.map_annotationFilename is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             if cell_df is None:
                 return
 
@@ -236,12 +254,10 @@ class MAP_Analysis(Analysis):
                     msg,
                 )
                 Logger.warning(msg)
-        CP.cprint(
-            "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
-        )
+        CP.cprint("w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]")
 
     def set_cc_taus(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotationFilename is not None:
             cell_df = self.find_cell(
                 self.map_annotations,
@@ -259,16 +275,12 @@ class MAP_Analysis(Analysis):
                 print("    Setting CC taus from map annotation: ", end="")
             else:
                 print("    Using default taus")
-        CP.cprint(
-            "w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]"
-        )
+        CP.cprint("w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]")
 
     def set_vc_threshold(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotations is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["alt1_threshold"].shape
             if cell_df is not None and sh != (0,):
                 if not self.signflip:
@@ -289,11 +301,9 @@ class MAP_Analysis(Analysis):
         print(f"      Threshold: {self.AM.Pars.threshold:6.1f}")
 
     def set_cc_threshold(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotationFilename is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["cc_threshold"].shape
             if cell_df is not None and sh != (0,):
                 self.AM.Pars.threshold = cell_df["cc_threshold"].values[0]
@@ -304,15 +314,16 @@ class MAP_Analysis(Analysis):
                 Logger.warning(msg)
 
     def set_LPF_freq(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotations is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["LPF"].shape
             if cell_df is not None and sh != (0,):
                 self.AM.set_LPF(float(cell_df["LPF"].values[0]))
-                print(f"    Setting LPF to {self.AM.filters.LPF_frequency:.1f} from map table", end=" ")
+                print(
+                    f"    Setting LPF to {self.AM.filters.LPF_frequency:.1f} from map table",
+                    end=" ",
+                )
             else:
                 print("    Using default LPF", end=" ")
         else:
@@ -322,15 +333,16 @@ class MAP_Analysis(Analysis):
         print(f"      LPF: {self.AM.filters.LPF_frequency:6.1f}")
 
     def set_HPF_freq(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotations is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["HPF"].shape
             if cell_df is not None and sh != (0,):
                 self.AM.set_HPF(float(cell_df["HPF"].values[0]))
-                print(f"    Setting HPF to {self.AM.filters.HPF_frequency:.1f} from map table", end=" ")
+                print(
+                    f"    Setting HPF to {self.AM.filters.HPF_frequency:.1f} from map table",
+                    end=" ",
+                )
             else:
                 print("    Using default HPF", end=" ")
         else:
@@ -339,22 +351,24 @@ class MAP_Analysis(Analysis):
             Logger.warning(msg)
         print(f"      HPF: {self.AM.filters.HPF_frequency:6.1f}")
 
-
     def set_Notch_frequencies(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotations is not None:
             # print("set notch, using map_annotations")
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["Notch"].shape
             # print("Sh: ", sh)
             if cell_df is not None and sh != (0,):
                 # print("    Setting Notch to ", cell_df["Notch"].values[0])
-                self.AM.set_notch(enable=True, 
-                                  freqs=str(list(eval(cell_df["Notch"].values[0]))),
-                                  Q=cell_df["NotchQ"].values[0])
-                print(f"    Setting Notch to {str(cell_df['Notch'].values[0]):s} from map table", end=" ")
+                self.AM.set_notch(
+                    enable=True,
+                    freqs=str(list(eval(cell_df["Notch"].values[0]))),
+                    Q=cell_df["NotchQ"].values[0],
+                )
+                print(
+                    f"    Setting Notch to {str(cell_df['Notch'].values[0]):s} from map table",
+                    end=" ",
+                )
             else:
                 self.AM.set_notch(enable=False, freqs=[])
                 print("    No Notch filtering set", end=" ")
@@ -364,24 +378,25 @@ class MAP_Analysis(Analysis):
             Logger.warning(msg)
         # print(f"      Notch: {str(cell_df['Notch'].values[0]):s}")
 
-    def set_artifact_path(self, icell, artpath: Union[Path, str]): # this is set globally
+    def set_artifact_path(self, icell, artpath: Union[Path, str]):  # this is set globally
         self.AM.set_artifact_path(artpath)
-    
+
     def set_artifact_filename(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         self.AM.set_artifact_filename(None)
         if self.map_annotations is not None:
             # print("set artifact epoch, using map_annotations")
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             # there may be multiple entries in cell_df. Pick the first non-null one
             # that is also usable.
             if cell_df is not None and len(cell_df["use_artifact_file"]) > 0:
-                for i, fn in enumerate(cell_df['use_artifact_file'].values):
-                    if not pd.isnull(fn) and cell_df['Usable'].values[i] == 'y':
+                for i, fn in enumerate(cell_df["use_artifact_file"].values):
+                    if not pd.isnull(fn) and cell_df["Usable"].values[i] == "y":
                         self.AM.set_artifact_filename(fn)
-                        CP.cprint("c", f"    Setting artifact file from map annotation:  {str(cell_df['use_artifact_file'].values[i]):s}")
+                        CP.cprint(
+                            "c",
+                            f"    Setting artifact file from map annotation:  {str(cell_df['use_artifact_file'].values[i]):s}",
+                        )
                         break
 
         else:
@@ -389,15 +404,12 @@ class MAP_Analysis(Analysis):
             CP.cprint("r", msg)
             Logger.warning(msg)
 
-
     def set_artifact_scale(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         self.AM.set_artifact_scale(1.0)
         if self.map_annotations is not None:
             # print("set artifact scaling, using map_annotations")
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             if cell_df is not None:
                 sh = cell_df["artScale"].shape
                 data = cell_df["artScale"].values
@@ -412,16 +424,21 @@ class MAP_Analysis(Analysis):
         CP.cprint("c", f"    Setting artifact scale to  {self.AM.Pars.artifact_scale:5.2f}")
 
     def set_detrend(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotations is not None:
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["Detrend"].shape
-            if cell_df is not None and sh != (0,) and cell_df["Detrend"].values[0] in ['meegkit', 'scipy']:
+            if (
+                cell_df is not None
+                and sh != (0,)
+                and cell_df["Detrend"].values[0] in ["meegkit", "scipy"]
+            ):
                 # print(cell_df["Detrend"].values[0])
                 self.AM.set_detrend(enable=True, method=cell_df["Detrend"].values[0])
-                print(f"    Setting detrend to {str(self.AM.filters.Detrend_method):s} from map table", end=" ")
+                print(
+                    f"    Setting detrend to {str(self.AM.filters.Detrend_method):s} from map table",
+                    end=" ",
+                )
             else:
                 self.AM.set_detrend(enable=False, method=None)
                 print("    No Detrending set", end=" ")
@@ -429,15 +446,15 @@ class MAP_Analysis(Analysis):
             msg = "No map annotation file has been read; using default values"
             CP.cprint("r", msg)
             Logger.warning(msg)
-        print(f"      Detrend: {str(self.AM.filters.Detrend_enable):s}  {str(self.AM.filters.Detrend_method):s}")
+        print(
+            f"      Detrend: {str(self.AM.filters.Detrend_enable):s}  {str(self.AM.filters.Detrend_method):s}"
+        )
 
     def set_stimdur(self, icell: int, path: Union[Path, str]):
-        datestr, slicestr, cellstr = self.make_cell(icell)
+        datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
         if self.map_annotationFilename is not None:
             print(f"Loading map annotation: {str(self.map_annotationFilename):s}")
-            cell_df = self.find_cell(
-                self.map_annotations, datestr, slicestr, cellstr, path
-            )
+            cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, path)
             sh = cell_df["stimdur"].shape
             if sh != (0,):
                 self.AM.set_stimdur(cell_df["stimdur"].values[0])
@@ -470,9 +487,7 @@ class MAP_Analysis(Analysis):
         csstr = re.compile(r"(Cs|Cesium|Cs)", re.IGNORECASE)
         if re.search(csstr, internal_sol) is not None:
             self.internal_Cs = True
-        if (
-            re.search(csstr, notes) is not None
-        ):  # could also be in notes; override interal setting
+        if re.search(csstr, notes) is not None:  # could also be in notes; override interal setting
             self.internal_Cs = True
         clstr = re.compile(r"(Hi|High)\s+(Cl|Chloride)", re.IGNORECASE)
         if re.search(clstr, notes) is not None:
@@ -481,13 +496,13 @@ class MAP_Analysis(Analysis):
         # read the mapdir protocol
         protodir = Path(self.rawdatapath, path_to_map)
         print("protodir: ", protodir)
-        # set preprocessing (filtering, detrending) 
+        # set preprocessing (filtering, detrending)
 
         self.set_artifact_scale(icell, path_to_map)
         self.set_artifact_path(icell, self.AM.Pars.artifact_path)
         self.set_artifact_filename(icell, path_to_map)
-        
-        if self.AM.Pars.artifact_filename is not None: # check for file
+
+        if self.AM.Pars.artifact_filename is not None:  # check for file
             artfile = Path(self.AM.Pars.artifact_path, f"{self.AM.Pars.artifact_filename:s}.pkl")
             if not artfile.is_file():
                 print(f"Artifact fie not found: {str(artfile):s}")
@@ -516,9 +531,7 @@ class MAP_Analysis(Analysis):
 
         self.set_stimdur(icell, path_to_map)
 
-        if (
-            "_VC_" in str_path_to_map or record_mode == "VC"
-        ) and not self.rawdatapath.match(
+        if ("_VC_" in str_path_to_map or record_mode == "VC") and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSC
             print(f"Exscitatory PSC, VC, not VGAT")
@@ -529,11 +542,8 @@ class MAP_Analysis(Analysis):
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
-            
 
-        elif (
-            "_VC_" in str_path_to_map or record_mode == "VC"
-        ) and str_path_to_map.match(
+        elif ("_VC_" in str_path_to_map or record_mode == "VC") and str_path_to_map.match(
             "*VGAT_*"
         ):  # inhibitory PSC
             print(f"Inhibitory PSC, VC, VGAT")
@@ -551,9 +561,7 @@ class MAP_Analysis(Analysis):
             self.set_vc_threshold(icell, path_to_map)
             print("sign: ", self.AM.Pars.sign)
 
-        elif (
-            "_CA_" in str_path_to_map and record_mode == "VC"
-        ):  # cell attached (spikes)
+        elif "_CA_" in str_path_to_map and record_mode == "VC":  # cell attached (spikes)
             print(f"Cell attached, VC")
             self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1  # trigger on negative current
@@ -564,8 +572,9 @@ class MAP_Analysis(Analysis):
             self.set_vc_threshold(icell, path_to_map)
 
         elif (
-            "_IC_" in str_path_to_map and record_mode in ["IC", "I=0"]
-             and not ("VGAT_" in str_path_to_map)
+            "_IC_" in str_path_to_map
+            and record_mode in ["IC", "I=0"]
+            and not ("VGAT_" in str_path_to_map)
         ):  # excitatory PSP
             print(f"Excitatory PSP, IC or I=0, not VGAT")
             self.AM.Pars.sign = 1  # positive going
@@ -576,8 +585,7 @@ class MAP_Analysis(Analysis):
             self.set_cc_taus(icell, path_to_map)
             self.set_cc_threshold(icell, path_to_map)
 
-        elif ("_IC_" in str_path_to_map and "VGAT_" in str_path_to_map
-        ):  # inhibitory PSP
+        elif "_IC_" in str_path_to_map and "VGAT_" in str_path_to_map:  # inhibitory PSP
             print(f"Inhibitory PSP, IC, VGAT")
             self.AM.Pars.sign = -1  # inhibitory so negative for current clamp
             self.AM.Pars.scale_factor = 1e3
@@ -589,9 +597,7 @@ class MAP_Analysis(Analysis):
             self.set_cc_threshold(icell, path_to_map)
 
         elif "VGAT_" in str_path_to_map and not (
-            "_IC_" in str_path_to_map
-            or "_VC_" in str_path_to_map
-            or "_CA_" in str_path_to_map
+            "_IC_" in str_path_to_map or "_VC_" in str_path_to_map or "_CA_" in str_path_to_map
         ):  # VGAT but no mode information
             print(f"VGAT but no mode information")
 
@@ -608,9 +614,7 @@ class MAP_Analysis(Analysis):
                 else:
                     self.AM.Pars.sign = 1
             else:
-                raise ValueError(
-                    "Record mode not recognized: {0:s}".format(record_mode)
-                )
+                raise ValueError("Record mode not recognized: {0:s}".format(record_mode))
             # self.AM.Pars.analysis_window = [0, 0.999]
             self.AM.Pars.scale_factor = 1e12
             self.AM.Pars.taus[0:2] = [2e-3, 10e-3]  # slow events
@@ -634,7 +638,6 @@ class MAP_Analysis(Analysis):
             self.set_vc_taus(icell, path_to_map)
             self.AM.Pars.threshold = self.threshold  # threshold...
             self.set_vc_threshold(icell, path_to_map)
-
 
         elif (
             "Vc_LED_stim" in str_path_to_map and record_mode == "I=0"
@@ -679,7 +682,6 @@ class MAP_Analysis(Analysis):
                 )
             )
 
-
     def analyze_map(
         self,
         icell: int,
@@ -718,12 +720,12 @@ class MAP_Analysis(Analysis):
             true if there data was processed; otherwise False
         """
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
-        self.map_name = allprots["maps"][i_protocol]
+        self.map_name = allprots["Maps"][i_protocol]
         if len(self.map_name) == 0:
-            Logger.warning(f"No map name found! for {str(allprots['maps'][i_protocol]):s}")
+            Logger.warning(f"No map name found! for {str(allprots["Maps"][i_protocol]):s}")
             return None
- 
-        msg = f"    Map protocol: {str(allprots['maps'][i_protocol]):s} map name: {self.map_name}"
+
+        msg = f"    Map protocol: {str(allprots["Maps"][i_protocol]):s} map name: {self.map_name}"
         print(msg)
         Logger.info(msg)
         mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
@@ -750,9 +752,7 @@ class MAP_Analysis(Analysis):
                 raise FileExistsError(
                     f"The map has not been analyzed: re-run with mapsZQA_plot to false"
                 )
-            with open(
-                picklefilename, "rb"
-            ) as fh:  # read the previously analyzed data set
+            with open(picklefilename, "rb") as fh:  # read the previously analyzed data set
                 results = dill.load(fh)
             mapkey = Path("/".join(Path(self.map_name).parts[-4:]))
             if str(mapkey) not in results.keys():
@@ -785,13 +785,9 @@ class MAP_Analysis(Analysis):
             self.AM.Pars.sign = -1 * self.AM.Pars.sign  # flip analysis sign
 
         self.AM.set_analysis_window(*self.AM.Pars.analysis_window)
-        CP.cprint(
-            "c", f"    Setting analysis window to : {str(self.AM.Pars.analysis_window):s}"
-        )
+        CP.cprint("c", f"    Setting analysis window to : {str(self.AM.Pars.analysis_window):s}")
 
-        CP.cprint(
-            "c", f"    Setting artifact suppression to: {str(self.artifact_suppression):s}"
-        )
+        CP.cprint("c", f"    Setting artifact suppression to: {str(self.artifact_suppression):s}")
         self.AM.set_artifact_suppression(self.artifact_suppression)
         self.AM.set_artifact_derivative(self.artifact_derivative)
         self.AM.set_artifact_filename(self.AM.Pars.artifact_filename)
@@ -804,10 +800,17 @@ class MAP_Analysis(Analysis):
                 "g",
                 f"MAP_Analysis:analyze_map  Running map analysis: {str(self.map_name):s}",
             )
-            print("map_analysis: tmax/pre time: ", self.AM.Pars.template_tmax, self.AM.Pars.template_pre_time)
+            print(
+                "map_analysis: tmax/pre time: ",
+                self.AM.Pars.template_tmax,
+                self.AM.Pars.template_pre_time,
+            )
             result = self.AM.analyze_one_map(
-                mapdir, parallel_mode=self.parallel_mode, verbose=verbose,
-                template_tmax=self.AM.Pars.template_tmax, template_pre_time=self.AM.Pars.template_pre_time,
+                mapdir,
+                parallel_mode=self.parallel_mode,
+                verbose=verbose,
+                template_tmax=self.AM.Pars.template_tmax,
+                template_pre_time=self.AM.Pars.template_pre_time,
             )
 
             if result is not None:
@@ -826,9 +829,7 @@ class MAP_Analysis(Analysis):
             getimage = False
             plotevents = True
             self.AM.Pars.overlay_scale = 0.0
-            PMD.set_Pars_and_Data(
-                pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA
-            )
+            PMD.set_Pars_and_Data(pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA)
             if self.mapsZQA_plot:
                 mapok = PMD.display_position_maps(
                     dataset_name=mapdir, result=result, pars=self.AM.Pars
@@ -843,7 +844,7 @@ class MAP_Analysis(Analysis):
                     results=results,
                     imagefile=None,
                     rotation=0.0,
-                    markers = self.markers,
+                    markers=self.markers,
                     measuretype=measuretype,
                     zscore_threshold=self.AM.Pars.zscore_threshold,
                     plotevents=plotevents,
@@ -860,7 +861,7 @@ class MAP_Analysis(Analysis):
             Logger.info(msg)
 
             if mapok:
-                results['FittingResults'] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
+                results["FittingResults"] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
                 infostr = ""
                 colnames = self.df.columns
                 if "animal identifier" in colnames:
@@ -903,26 +904,24 @@ class MAP_Analysis(Analysis):
                     self.AM.Pars.scale_factor,
                     self.AM.methodname,
                 )
-                datestr, slicestr, cellstr = self.make_cell(icell)
+                datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
                 cell_df = self.find_cell(
                     self.map_annotations, datestr, slicestr, cellstr, Path(mapdir)
                 )
                 preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts: {4:s} scale:{5:5.2f}".format(
                     self.AM.filters.HPF_frequency,
                     self.AM.filters.LPF_frequency,
-                    str(cell_df['Notch'].values[0]),  # get compact form
+                    str(cell_df["Notch"].values[0]),  # get compact form
                     str(self.AM.filters.Detrend_method),
                     str(self.AM.Pars.artifact_filename),
                     self.AM.Pars.artifact_scale,
-                )   
+                )
                 fix_mapdir = str(mapdir)  # .replace("_", "\_")
                 PMD.P.figure_handle.suptitle(
                     f"{fix_mapdir:s}\n{infostr:s} {params:s}\n{preprocessing:s}",
                     fontsize=8,
                 )
-                t_path = Path(
-                    self.cell_tempdir, "temppdf_{0:s}.pdf".format(str(mapdir.name))
-                )
+                t_path = Path(self.cell_tempdir, "temppdf_{0:s}.pdf".format(str(mapdir.name)))
                 if not self.cell_tempdir.is_dir():
                     print("The cell's tempdir was not found: ", self.cell_tempdir)
                     Logger.critical("The cell's tempdir was not found: ", self.cell_tempdir)
@@ -936,7 +935,7 @@ class MAP_Analysis(Analysis):
                     print("        ***** Temp file to : ", t_path)
                     mpl.savefig(
                         pp, format="pdf"
-                        )  # use the map filename, as we will sort by this later
+                    )  # use the map filename, as we will sort by this later
                     pp.close()
                     # except ValueError:
                     #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
