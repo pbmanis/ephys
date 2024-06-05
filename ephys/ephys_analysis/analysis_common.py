@@ -710,7 +710,14 @@ class Analysis:
         for fn in fns:  # delete the files in the tempdir
             Path(fn).unlink(missing_ok=True)
 
-    def merge_pdfs(self, celltype: str, slicecell: str = None, pdf=None, overwrite: bool = True):
+    def merge_pdfs(
+        self,
+        celltype: str,
+        thiscell: str = None,
+        slicecell: str = None,
+        pdf=None,
+        overwrite: bool = True,
+    ):
         """
         Merge the PDFs in tempdir with the pdffile (self.pdfFilename)
         The tempdir PDFs are deleted once the merge is complete.
@@ -725,7 +732,7 @@ class Analysis:
             )
 
         if self.dry_run or not self.autoout:
-            print("Dry run or not automatic output")
+            print("Dry run or automatic output (self.autoout) is False")
             return
         if not self.merge_flag:
             print("Merge flag is False")
@@ -733,14 +740,23 @@ class Analysis:
         CP.cprint("c", "********* MERGE PDFS ************\n")
 
         if self.autoout:
-            print(self.analyzeddatapath)
+            # print("Auto out, analyzed data path: ", self.analyzeddatapath)
+            thiscell = thiscell
+            for dstr in Path(thiscell).parts:  # look for date ("20xx.xx.xx[_xxx]")
+                if dstr.startswith("20"):
+                    thiscell = dstr
+            thiscell = thiscell.split("_")[0]  # remove the number within the date
+            # print("thiscell: ", thiscell) # just the date
+            # print("celltype: ", celltype)
+            # print("slicecell: ", slicecell)
             self.cell_pdfFilename = filenametools.make_pdf_filename(
                 dpath=self.analyzeddatapath,
-                thisday=thisday,
+                thisday=thiscell,
                 celltype=celltype,
-                analysistype="Map",
+                analysistype="maps",
                 slicecell=slicecell,
             )
+            # print("autoout: Cell pdf filename: ", self.cell_pdfFilename)
 
         fns = sorted(
             list(self.cell_tempdir.glob("*.pdf"))
@@ -866,7 +882,7 @@ class Analysis:
             # # VCIVs
             # if x.startswith("VCIV"):
             #     allprots["VCIVs"].append(c_str)
-        print("Gather_protocols: all protocols: ", allprots)
+        print("Gather_protocols: Found these protocols: ", allprots)
         return allprots
 
     def find_cell(
@@ -921,6 +937,24 @@ class Analysis:
 
     def get_celltype(self, icell):
         """Find the type of the cell associated with this entry
+        This checks for re-identification of cell type in the "annotation table" and the "map_annotation" table.
+        The "annotation table" is an early table that was used to annotate/update mislabeled cell types. 
+        The "map annotation table" contains more information, and is used to drive the analyses (specific filtering,
+        event shape parameters, etc). 
+        To be confident of the assignment for cell types, we check the cell type in the original data against
+        both tables. 
+        To do this, we get the type listed in each of the 3 sources.
+        Test 5 conditions:
+        1. If the map annotation table and the annotation table have different types (and neither of them
+            is empty), it is an error, as we will raise an exception.
+
+        2. If there is no entry in the map_annotation table, but an entry in the annotation table,
+            we compare and update the celltype with the new value from the annotation table.
+        3. If there is no entry in the annotathio table, but an entry in the map_annotation table,
+            we compare and update the celltype with the new value from the map_annotation table.
+            If the cell has a type, but there is no entry "map_annotation" table, then keep the designated type.
+        4. If the cell has no type, and is not in either the "map_annotation" or the annotation table, 
+            then keep (or set) the type as "unknown".
 
         Parameters
         ----------
@@ -935,131 +969,88 @@ class Analysis:
             otherwise False
         """
         original_celltype = self.df.at[icell, "cell_type"]
+        original_celltype = filenametools.check_celltype(original_celltype)
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
-        msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, {'/'.join([datestr, slicestr, cellstr])!s}"
+        msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, cell id: {'/'.join([datestr, slicestr, cellstr])!s}"
         CP.cprint("c", msg)
         if self.parallel_mode not in ["day"]:
             Logger.info(msg)
         annotated_celltype = None
         map_annotated_celltype = None
+        # Check the cell type from each of the 3 possible sources: original data, annotated data, and map_annotation data
         if self.annotated_dataframe is not None:  # get annotation file cell type
             cell_df = self.find_cell(
                 self.annotated_dataframe, datestr, slicestr, cellstr, protocolstr=None
             )
-            if cell_df.empty:  # cell was not in annotated dataframe
-                msg = f"    {datestr:s} {cellstr:s} {slicestr:s} does not have an annotation cell type specification (that is ok)"
-                CP.cprint(
-                    "c",
-                    msg,
-                )
-            if self.parallel_mode not in ["day"]:
-                Logger.info(msg)
-            annotated_celltype = cell_df["cell_type"].values[0].strip()
-
-        if self.map_annotations is not None:  # get map annotation cell type
+            if not cell_df.empty:
+                annotated_celltype = cell_df["cell_type"].values[0].strip()
+        if self.map_annotations is not None:  # get annotated cell type from the map annotations.
             cell_df = self.find_cell(
                 self.map_annotations, datestr, slicestr, cellstr, protocolstr=None
             )
-            if cell_df.empty:
-                msg = f"    {datestr:s} {cellstr:s} {slicestr:s} does not have an map_annotation celltype specification (field was empty)"
-                CP.cprint(
-                    "c",
-                    msg,
-                )
-                if self.parallel_mode not in ["day"]:
-                    Logger.info(msg)
-            if len(cell_df["cell_type"].values) > 0:
+            if not cell_df.empty:
                 map_annotated_celltype = cell_df["cell_type"].values[0].strip()
-            else:
-                CP.cprint(
-                    "r",
-                    f"Changing cell type to 'unknown'; cell type was {cell_df['cell_type'].values!s}",
-                )
-                map_annotated_celltype = "unknown"
 
         # now we have several possibilities: only original (prefered), annotated_celltype from
         # the old annotation table, or map_annotated_celltype from the map annotation table.
         # compare these to the original cell type and see if we need to change it.
         #
         if pd.isnull(map_annotated_celltype) and pd.isnull(annotated_celltype):
-            return original_celltype, False
-        elif pd.isnull(
-            annotated_celltype
-        ):  # check map annotated type and use instead if different from original
-            if not pd.isnull(map_annotated_celltype) and isinstance(map_annotated_celltype, str):
-                if map_annotated_celltype != original_celltype:
-                    msg = f"   Cell type was re-annotated in map_annotation file from: <{original_celltype:s}> to: {map_annotated_celltype:s})"
-                    CP.cprint(
-                        "red",
-                        msg,
-                    )
-                    if self.parallel_mode not in ["day"]:
-                        Logger.info(msg)
-                    return map_annotated_celltype, True
-                else:
-                    msg = f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}"
-                    CP.cprint(
-                        "c",
-                        msg,
-                    )
-                    Logger.info(msg)
-                    return original_celltype, False
-            else:
-                msg = f"    Map annotation celltype was empty, so using original: {original_celltype:s}"
+            msg = f"\n      No re-annotation of cell type, so using original: {original_celltype:s} for cell id: {'/'.join([datestr, slicestr, cellstr])!s}"
+            CP.cprint("c", msg)
+            if self.parallel_mode not in ["day"]:
+                Logger.info(msg)
+            return original_celltype, False  # no annotations, so use the original cell type
+        
+        # mismatch in annotated types:
+        if not pd.isnull(map_annotated_celltype) and not pd.isnull(annotated_celltype):
+            if map_annotated_celltype != annotated_celltype:
+                msg = "Cell type mismatch between annotated and map_annotated cell types, Please resolve in the tables"
+                if self.parallel_mode not in ["day"]:
+                    Logger.critical(msg)
+                raise ValueError(msg)
+        
+        # check map annotation when no entry in the annotation file 
+        if pd.isnull(annotated_celltype) and not pd.isnull(map_annotated_celltype) and isinstance(map_annotated_celltype, str):
+            if map_annotated_celltype != original_celltype:
+                msg = f"   Cell type was re-annotated in map_annotation file from: <{original_celltype:s}> to: {map_annotated_celltype:s})"
                 CP.cprint(
-                    "c",
+                    "red",
                     msg,
                 )
                 if self.parallel_mode not in ["day"]:
                     Logger.info(msg)
-                return original_celltype, False
-
-        # if not pd.isnull(celltype) and not isinstance(celltype, str):
-        #     CP.print("c",
-        #             f"    Annotated dataFrame: new celltype = {cell_df['cell_type']:s} vs. {original_celltype:s}"
-        #         )
-        #     CP.cprint("c", f"    Annotation did not change celltype: {celltype:s}")
-        #     return original_celltype, False
-
-        elif pd.isnull(
-            map_annotated_celltype
-        ):  # no map annotation, use the annotated celltype if it is different from original
-            if not pd.isnull(annotated_celltype) and isinstance(annotated_celltype, str):
-                if annotated_celltype != original_celltype:
-                    msg = f"   Cell type was re-annotated from: {original_celltype:s} to: {annotated_celltype:s})"
-                    CP.cprint("red", msg)
-                    if self.parallel_mode not in ["day"]:
-                        Logger.info(msg)
-                    return annotated_celltype, True
-                else:
-                    # msg = f"    Annotation and original cell types were identical, not changed from: {original_celltype:s}"
-                    # CP.cprint(
-                    #     "c",
-                    #     msg,
-                    # )
-                    # Logger.info(msg)
-                    return original_celltype, False
+                return map_annotated_celltype, True
             else:
-                msg = f"    Annotated celltype was not specified, so using original: {original_celltype:s}"
+                msg = f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}"
                 CP.cprint(
                     "c",
                     msg,
                 )
+                Logger.info(msg)
+                return original_celltype, False
+            
+        # check reverse: in annotation file, but not in map annotation file
+        if pd.isnull(map_annotated_celltype) and not pd.isnull(annotated_celltype) and isinstance(annotated_celltype, str):
+            if annotated_celltype != original_celltype:
+                msg = f"   Cell type was re-annotated in annotation file from: <{original_celltype:s}> to: {annotated_celltype:s})"
+                CP.cprint(
+                    "red",
+                    msg,
+                )
                 if self.parallel_mode not in ["day"]:
                     Logger.info(msg)
+
+            else:
+                msg = f"    Map annotation celltype and original cell types were identical, not changed from: {original_celltype:s}"
+                CP.cprint(
+                    "c",
+                    msg,
+                )
+                Logger.info(msg)
                 return original_celltype, False
-        else:
-            if (
-                map_annotated_celltype != original_celltype
-                or map_annotated_celltype != annotated_celltype
-                or annotated_celltype != original_celltype
-            ):
-                Logger.critical(
-                    f"Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
-                )
-                raise ValueError(
-                    "Cell type mismatch between original, annotated, and map_annotated cell types, Please resolve in the tables"
-                )
+
+        
 
     def do_cell(self, icell: int, pdf=None) -> bool:
         """
@@ -1175,7 +1166,7 @@ class Analysis:
             CP.cprint("r", msg)
             print("*" * 40)
             Logger.warning(msg)
-            self.merge_pdfs(celltype, pdf=pdf)
+            self.merge_pdfs(celltype, thiscell=self.df.iloc[icell].cell_id, pdf=pdf)
             return False
 
         elif fullfile.is_dir() and len(allprots) == 0:
@@ -1295,17 +1286,33 @@ class Analysis:
             if self.cell_tempdir is not None:
                 self.make_tempdir()
             self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
-            # analyze_maps stores events in an events subdirectory by cell
-            # It also merges the PDFs for that cell in the celltype directory
+            # analyze_maps stores events in an "events" subdirectory under the main
+            # dataset directory, with filenames tagged by cell
+            # It also merges the PDFs for that cell in the celltype-specific directory
+            #
             if pdf is not None:
                 msg = f"Merging pdfs, with: {str(pdf):s}"
                 CP.cprint("r", msg)
                 Logger.info(msg)
-                self.merge_pdfs(celltype, slicecell=slicecell2, pdf=pdf)
+                self.merge_pdfs(
+                    celltype, thiscell=self.df.iloc[icell].cell_id, slicecell=slicecell2, pdf=pdf
+                )
             # also remove slicecell3 and slicecell1 filenames if they exist
-            pdf1 = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell1)
+            pdf1 = filenametools.make_pdf_filename(
+                dpath=self.analyzeddatapath,
+                thisday=self.df.iloc[icell].cell_id,
+                celltype=celltype,
+                analysistype="Map",
+                slicecell=slicecell1,
+            )
             pdf1.unlink(missing_ok=True)
-            pdf3 = self.make_pdf_filename(self.analyzeddatapath, celltype, slicecell3)
+            pdf3 = filenametools.make_pdf_filename(
+                dpath=self.analyzeddatapath,
+                thisday=self.df.iloc[icell].cell_id,
+                celltype=celltype,
+                analysistype="Map",
+                slicecell=slicecell3,
+            )
             pdf3.unlink(missing_ok=True)
 
             gc.collect()
@@ -1356,7 +1363,7 @@ class Analysis:
                         #     pdf.savefig(dpi=300)
                         mpl.close(EPVC.IVFigure)
                     mpl.close(EPVC.IVFigure)
-        self.merge_pdfs(celltype=celltype, pdf=pdf)
+        self.merge_pdfs(celltype=celltype, thiscell=self.df.iloc[icell].cell_id, pdf=pdf)
 
 
 # This is old code. Use project-specific files instead.
