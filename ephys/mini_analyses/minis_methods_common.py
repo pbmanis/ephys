@@ -2223,6 +2223,8 @@ class MiniAnalyses:
             tau1max = tau1 * 5.0
             if tau1min < 1e-4:
                 tau1min = 1e-4
+            tau2min = tau2 / 10.0
+            tau2max = tau2 * 5.0
             # params["amp"] = lmfit.Parameter(
             #     name="amp", value=1.0e-3, min=0.0, max=50e-3, vary=True
             # )
