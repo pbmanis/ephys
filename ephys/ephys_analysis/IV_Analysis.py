@@ -445,7 +445,7 @@ class IVAnalysis(Analysis):
             if self.parallel_mode not in ['day']:
                 Logger.info(msg)
             # with hdf5:
-            day, slice, cell = filename_tools.make_cell(icell=icell)
+            day, slice, cell = filename_tools.make_cell(icell=icell, df=self.df)
             keystring = str(Path(Path(day).name, slice, cell))  # the keystring is the cell.
             # pytables does not like the keystring starting with a number, or '.' in the string
             # so put "d_" at start, and then replace '.' with '_'
