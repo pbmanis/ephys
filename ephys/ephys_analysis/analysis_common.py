@@ -350,7 +350,7 @@ class Analysis:
 
             if self.experiment["cell_annotationFilename"] is not None:
                 self.cell_annotationFilename = Path(
-                    self.analyzeddatapath, self.experiment["annotationFilename"]
+                    self.analyzeddatapath, self.experiment["cell_annotationFilename"]
                 )
                 if not self.cell_annotationFilename.is_file():
                     raise FileNotFoundError(f"{str(self.cell_annotationFilename):s}")

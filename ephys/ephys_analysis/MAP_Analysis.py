@@ -124,7 +124,7 @@ class MAP_Analysis(Analysis):
             if (
                 cell_df is None or len(cell_df) == 0 or len(cell_df["Usable"].values) == 0
             ):  # nothing set
-                CP.cprint("y"f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
+                CP.cprint("y", f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
                 continue
             if self.map_annotations is not None:  # determine from the map annotation table
                 if cell_df["Usable"].values[0] in ["Y", "y"]:
