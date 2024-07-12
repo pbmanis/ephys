@@ -16,7 +16,9 @@ from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 
 import ephys
 from ephys.tools import map_cell_types as MCT
+from ephys.gui import data_table_functions as functions
 
+FUNCS = functions.Functions()
 # import vcnmodel.util.fixpicklemodule as FPM
 
 
@@ -161,7 +163,7 @@ class TableManager:
             How the dataframe is created, by default "scan"
             Unused argument.
         """
-
+        self.dataframe = dataframe  # save pointer to the dataframe
         self.table.setData(self.data)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         indxs = []
@@ -463,3 +465,28 @@ class TableManager:
         filtered_table = [filtered_table[ft] for ft in keep_index]
         self.update_table(filtered_table)
         self.parent.doing_reload = False
+
+    def export_brief_table(self, textbox, dataframe:pd.DataFrame):
+        #  table for coding stuff
+        FUNCS.textbox_setup(textbox)
+        FUNCS.textclear()
+        FUNCS.textappend("date\tStrain\tGroup\treporters\tage\tdob\tAnimal_ID\tsex\tslice_slice\tcell_cell\tcell_expression")
+        for i, dfindex in enumerate(dataframe.index):
+            row = dataframe.loc[dfindex]
+            if i == 0:
+                print(row)
+
+            cell_id = row.date
+            Group = row.genotype
+            strain = row.strain
+            reporters = row.reporters
+            age = row.age
+            dob = "" # row.dob
+            animal_id = row['animal identifier']  # animal_id
+            sex = row.sex
+            slice_slice = row.slice_slice
+            cell_cell = row.cell_cell
+            cell_expression = row.cell_expression
+            msg = f"{cell_id:s}\t{strain:s}\t{Group:s}\t{reporters:s}\t{age:s}\t{dob:s}\t{animal_id:s}\t{sex:s}\t{slice_slice:s}\t{cell_cell:s}\t{cell_expression:s}"
+            FUNCS.textappend(msg)
+        print("Table exported in Report")

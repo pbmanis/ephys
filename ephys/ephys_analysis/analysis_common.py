@@ -488,6 +488,11 @@ class Analysis:
     def run(self):
         """Perform analysis on one day, a range of days, one cell, or everything.
 
+        self.day is a string that can be:
+            "all" : all days in the database
+            "2020.01.01" : a specific day
+            "2020.01.01_000" : a specific day (formatted)
+
         Returns:
             nothing
         """
@@ -510,7 +515,7 @@ class Analysis:
         self.df = self.df.apply(_add_day, axis=1)  # add a day (short name)
         day = str(self.day)
 
-        if self.day != "all":  # specified day
+        if day != "all":  # specified day
             print(f"Looking for day: {day:s} in database from {str(self.inputFilename):s}")
             if "_" not in day:
                 day = day + "_000"
@@ -525,13 +530,15 @@ class Analysis:
                 #     CP.cprint("r", f"    day: {dx:s}")
                 raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
                 return None
-            CP.cprint("c", f"  ... Retrieved day:\n    {day:s}")
-            print("Cells in day: ", cells_in_day.index)
+            CP.cprint("c", f"  ... [Analysis:run] Retrieved day:\n    {day:s}")
+            cell_indices = cells_in_day.index
+            print("Cells in day: ", cell_indices)
             cellprots = []
-
+            return None
             if self.parallel_mode != "day":
                 # just loop through the selected cells
-                for icell in cells_in_day.index:
+                print(f"Doing day: {day!s}  with parallel mode: {self.parallel_mode!s}")
+                for icell in cell_indices:
                     # for all the cells in the day (but will check for slice_cell too)
                     cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
                     print("Cell ok: ", cell_ok)
@@ -540,7 +547,7 @@ class Analysis:
                     #     self.plot_data(icell)
                 return None  # get the complete protocols:
             else:
-                # do the selected days in parallel mode hehre
+                # do the selected days in parallel mode here
                 tasks = range(len(cells_in_day))  # number of tasks that will be needed
                 results: dict = {}
                 result = [None] * len(tasks)  # likewise
@@ -587,7 +594,7 @@ class Analysis:
                     enumerate(tasks), results=results, workers=self.nworkers
                 ) as tasker:
                     for icell, x in tasker:
-                        print("i: ", icell, "x: ", x)
+                        print("Cell #: ", icell, "tasker: ", x)
                         result = self.do_cell(icell, pdf=self.pdfFilename)
                         # tasker.results[cells_in_day[i]] = result
 
@@ -1071,12 +1078,13 @@ class Analysis:
         success: bool
 
         """
-        CP.cprint("c", "Entering do_cell")
+        CP.cprint("c", f"Entering do_cell with icell = {icell:d} (dataframe index, not table index)")
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
         CP.cprint(
             "c",
             f"icell: {icell:d}, slice: {self.slicecell!s} date: {datestr!s} slicestr: {slicestr:s} cellstr: {cellstr:s}",
         )
+        print("after, before: ", self.after, self.before)
         matchcell, slicecell3, slicecell2, slicecell1 = filenametools.compare_slice_cell(
             self.slicecell,
             datestr=datestr,
@@ -1085,8 +1093,9 @@ class Analysis:
             after_dt=self.after,
             before_dt=self.before,
         )
-        # CP.cprint("y", f"Match cell: {matchcell!s}")
+        CP.cprint("y", f"Match cell: {matchcell!s}")
         if not matchcell:
+            CP.cprint("r", f"Failed to match cell: {matchcell!s}")
             return False
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
