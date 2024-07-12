@@ -64,7 +64,7 @@ def setMapColors(colormapname: str, reverse: bool = False) -> object:
             as_cmap=True,
         )
     elif colormapname in cmnames:
-        cm_sns = mpl.cm.get_cmap(colormapname)
+        cm_sns = mpl.get_cmap(colormapname)
     # elif colormapname == 'a':
     #     cm_sns = matplotlib.colors.LinearSegmentedColormap.from_list('option_a', colormaps.option_a.cm_data)
     # elif colormapname == 'b':
