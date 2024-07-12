@@ -1088,6 +1088,7 @@ class PlotSpikeInfo(QObject):
         # must use scatterplot if you want to use picking.
         if enable_picking:
             # print("xname, uniqe xnames: ", xname, df_x[xname].unique())
+            print("hue category: ", hue_category)
             sns.swarmplot(
                 x=xname,
                 y=yname,
@@ -1383,7 +1384,7 @@ class PlotSpikeInfo(QObject):
                         enable_picking=enable_picking,
                     )
                 except Exception as e:
-                    # print("ylims: ", self.ylims.keys(), ycell)
+                    print("ylims: ", self.ylims.keys(), ycell)
                     raise KeyError(f"\n{e!s}")
                 picker_funcs[axp] = picker_func  # each axis has different data...
                 if celltype != self.experiment["celltypes"][-1]:
@@ -2259,9 +2260,13 @@ class PlotSpikeInfo(QObject):
         facs = {"AP_HW": 1e6, "taum": 1e3}
         if measure in facs:
             scale = facs[measure]
+        CP("c", "\n==================================================")
+        print(f"Celltype:: {celltype:s}, Measure: {measure:s}")
+        print("Subject, Group, sex, Value\n-----------------------------------------------")
         for cell in sorted(list(df_clean.cell_id.values)):
-            print(f"cell: {cell:48s}, {df_clean[df_clean.cell_id == cell].Group.values[0]:5s}", end=" ")
-            print(f"{measure:12s}, {scale*df_clean[df_clean.cell_id == cell][measure].values[0]:12.6f}")
+            print(f"{cell:s}, {df_clean[df_clean.cell_id == cell].Group.values[0]:s},", end=" ")
+            print(f"{df_clean[df_clean.cell_id == cell].sex.values[0]:s},", end="")
+            print(f"{scale*df_clean[df_clean.cell_id == cell][measure].values[0]:12.6f}")
 
         groups_in_data = df_clean[group_by].unique()
         # print("Groups found in data: ", groups_in_data, len(groups_in_data))
