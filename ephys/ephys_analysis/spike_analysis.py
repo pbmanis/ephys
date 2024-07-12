@@ -699,8 +699,8 @@ class SpikeAnalysis:
         #     km = kbegin + int((kpeak - kbegin) / 2) + 1
         # find points where slope exceeds the dv/dt defined for spike threshold, but
         # only up to the max slope of the spike
-        kthresh = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
-        if len(kthresh) == 0:
+        kthresholds = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
+        if len(kthresholds) == 0:
             print(f"No spike found: trace: {trace_number:d}")
             # {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {kprevious:d}, {kpeak:d}, {spike_begin_dV:.3f}")
             # import pyqtgraph as pg
@@ -725,8 +725,8 @@ class SpikeAnalysis:
         # A better way would be to provide logic that ensures that the threshold represents
         # a monotonically increasing region of the values, or to fit a simple function to
         # smooth out the noise in this region.
-        # Note that if there is only one point in kthresh, then the threshold is the first point
-        kthresh = int(kthresh[-1]) + kbegin
+        # Note that if there is only one point in kthresholds, then the threshold is the first point
+        kthresh:int = int(kthresholds[-1][0]) + kbegin
         # if self.Clamps.time_base[kthresh] < 0.25 + self.Clamps.tstart:
         #     CP("y", f"Spike too early - probably artifact?: {self.Clamps.time_base[kthresh]:.3f}")
         #     return thisspike
