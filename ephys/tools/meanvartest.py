@@ -47,11 +47,13 @@ class EventParameters:
     artifact_suppression: bool = False
 
 
-fn = "/Users/pbmanis/Desktop/Python/Downs-McElligott/abf_data/2023_09_20_0001.abf"
+# fn = "/Users/pbmanis/Desktop/Python/Downs-McElligott/abf_data/2023_09_20_0001.abf"
 # fn = "/Users/pbmanis/Desktop/Python/Downs-McElligott/abf_data/2023_12_08_0016.abf"
-# fn = "/Users/pbmanis/Desktop/Python/Downs-McElligott/abf_data/2023_12_08_0024.abf"
+fn = "/Users/pbmanis/Desktop/Python/Downs-McElligott/abf_data/2023_12_08_0024.abf"
+fn_title = Path(*Path(fn).parts[-2:])
 
 print("File exists: ", Path(fn).exists())
+print("title: ", fn_title)
 abf = pyabf.ABF(fn)
 # print(dir(abf))
 # print(abf.sampleRate)
@@ -196,7 +198,7 @@ def process_data(aj, summary, tracetimebase):
     print(n, aj.data.shape)
     timebase = aj.dt_seconds * np.arange(len(clean_event_traces[0]))
     nsfa = ephys.tools.mean_variance.NSFA(
-        tracetimebase, aj.data[0,:n]
+        tracetimebase, aj.data[0,:n], title=fn_title
     )  # timebase, clean_event_traces, clean_event_onsets)
     nsfa.setup(timebase, clean_event_traces, peak_times)
 

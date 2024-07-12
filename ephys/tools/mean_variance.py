@@ -3,18 +3,20 @@ Provide and test non-stationary noise analysis
 
 """
 
+from pathlib import Path
 import sys
-from numpy.random import default_rng
-import pyqtgraph as pg
-import numpy as np
-import pandas as pd
-from typing import Tuple
-from lmfit.models import QuadraticModel, LinearModel
-from statsmodels.nonparametric.smoothers_lowess import lowess
-from scipy.interpolate import UnivariateSpline
-from scipy.stats import linregress
+from typing import Tuple, Union
+
 import digital_filters as DF
 import meanvartest as MVT
+import numpy as np
+import pandas as pd
+import pyqtgraph as pg
+from lmfit.models import LinearModel, QuadraticModel
+from numpy.random import default_rng
+from scipy.interpolate import UnivariateSpline
+from scipy.stats import linregress
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 
 class NSFA:
@@ -28,10 +30,10 @@ class NSFA:
         _description_
     """
 
-    def __init__(self, timebase=None, idata=None):
+    def __init__(self, timebase=None, idata=None, title:Union[Path, str]=None):
         self.tracetimebase = timebase
         self.tracedata = idata
-        self.setupplots()
+        self.setupplots(title=title)
 
     def setup(self, timebase: np.ndarray, eventtraces: np.ndarray, eventpeaktimes: np.ndarray):
         self.timebase = timebase
@@ -301,9 +303,9 @@ class NSFA:
         print(f"nchan = {NChan:.3f}  \u03B3 = {gamma*1e12:.3f} pA, Pomax = {Pomax:.3e}")
         return qfit
 
-    def setupplots(self):
+    def setupplots(self, title:Union[Path, str] = None):
         self.win = pg.GraphicsLayoutWidget()
-        self.win.setWindowTitle("NSFA")
+        self.win.setWindowTitle(f"NSFA: {title!s}")
         self.win.resize(800, 1200)
         self.P0 = self.win.addPlot(row=0, col=0, rowspan=1, colspan=2, title="PSCs")
         self.P0.setLabel("left", "Current (pA)")
@@ -439,7 +441,7 @@ if __name__ == "__main__":
     tg = TestGenerator(nchans=nchans, ichan=ichan, ntrials=1000, dt=1e-4)
     sweep_data = tg.generate_sweeps()
     # tg.run()
-    NSA = NSFA()
+    NSA = NSFA(title="Synthetic data")
     print(len(tg.time), np.max(tg.time), tg.dt)
     print(sweep_data.shape)
     print(sweep_data.shape[0] * sweep_data.shape[1])
