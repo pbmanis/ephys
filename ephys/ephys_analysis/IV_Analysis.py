@@ -330,9 +330,11 @@ class IVAnalysis(Analysis):
                 Logger.info(msg)
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
+        print("iv_analysis:analyze_ivs: allivs: ", allivs)
         validivs = []
         if self.exclusions is not None:
             if cell_id in self.exclusions:
+                print("cell_id is in exclusions")
                 if self.exclusions[cell_id] in ["all", ["all"]]:
                     msg = "All protocols for this cell are excluded from analysis in the configuration file."
                     CP.cprint("r", msg)
@@ -340,9 +342,16 @@ class IVAnalysis(Analysis):
                         Logger.info(msg)
                     return # nothing to do - entire cell is excluded.
                 else:
-                    validivs = [protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']]
-                    
+                    print("appending valid protocols: ")
+                    for protocol in allivs:
+                        if Path(protocol).name not in self.exclusions[cell_id]['protocols']:
+                            validivs.append(protocol)
+                    # validivs.append([protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']])
+            else:
+                validivs = allivs
+
         else:
+            print("iv_analysis: analye_ivs:: No exclusions set")
             validivs = allivs
         # build a list of all exclusions
         # exclude_ivs = []
@@ -355,18 +364,19 @@ class IVAnalysis(Analysis):
         # for iv_proto in exclude_ivs:
         #     if iv_proto in validivs:
         #         validivs.remove(iv_proto)
-        print("Valid IDs: ", validivs)
+        print("Valid IVs: ", validivs)
 
         if self.parallel_mode in ["cell", "day"]:
-            CP.cprint("y", f"Parallel processing enabled (mode={self.parallel_mode:s}), nworkers = {self.nworkers:d}")
+            CP.cprint("y", f"iv_analysis: Parallel processing enabled (mode={self.parallel_mode:s}), nworkers = {self.nworkers:d}")
         else:
-            CP.cprint("m", "Parallel processing disabled")
+            CP.cprint("m", "iv_analysis: Parallel processing disabled")
         tasks = range(len(validivs))  # number of tasks that will be needed
         results: dict = dict(
             [("IV", {}), ("Spikes", {})]
         )  # storage for results; predefine the dicts.
 
         if self.parallel_mode in ["off", "day"]:  # just serial at this level
+            print("iv analysis: parallel mode in 'off' or 'day'")
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
                     icell=icell,
@@ -394,6 +404,7 @@ class IVAnalysis(Analysis):
                 ]  # everything in the SP analysus_summary structure
         #            print(self.df.at[icell, 'IV'])
         elif self.parallel_mode == "cell":
+            print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
             result = [None] * len(tasks)  # likewise
             # import sys # not available when using pyqtgraph.multiprocess
             # if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
@@ -412,8 +423,9 @@ class IVAnalysis(Analysis):
                     riv[f] = _cleanup_ivdata(results[f]["IV"])
                 if "Spikes" in results[f]:
                     rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
-            #            print('parallel results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-            #            print('riv: ', riv)
+                # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+                # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
+                # print('analyze_ivs: riv: ', riv)
 
             self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
             self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
@@ -511,11 +523,11 @@ class IVAnalysis(Analysis):
         result = {}
         iv_result = {}
         sp_result = {}
-        print("cell directory: ", cell_directory)
-        print("protocol: ", protocol)
+        print("analyze_iv: cell directory: ", cell_directory)
+        print("analyze_iv: protocol: ", protocol)
         protocol_directory = Path(cell_directory, protocol)
         if not protocol_directory.is_dir():
-            msg = f"Protocol directory not found (A): {str(protocol_directory):s}"
+            msg = f"analyze_iv: Protocol directory not found (A): {str(protocol_directory):s}"
             CP.cprint(
                 "r",
                 msg,
@@ -572,6 +584,7 @@ class IVAnalysis(Analysis):
                 raise ValueError("No 'default' fit_gap in experiment.cfg file")
 
             self.plot_mode(mode=self.IV_pubmode)
+            print("analyze iv: calling compute_iv")
             self.compute_iv(
                 threshold=self.spike_threshold,
                 refractory=self.refractory,
