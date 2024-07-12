@@ -2,7 +2,7 @@
 from . import bridge
 from . import cursor_plot
 from . import data_summary
-from . import fix_objscale
+# from . import fix_objscale
 from . import tools_plot_maps
 from . import miniviewer
 from . import minicalcs
