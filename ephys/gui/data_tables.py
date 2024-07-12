@@ -1539,7 +1539,7 @@ class DataTables:
                                 return
                             self.print_file_info(selected)
                         case "Export Brief Table":
-                            self.table_manager.export_brief_table(self.textbox)
+                            self.DS_table_manager.export_brief_table(self.textbox, dataframe=self.datasummary)
 
     def plot_selected(self, selected, dspath):
         # selected = self.table_manager.get_table_data(index_row)
