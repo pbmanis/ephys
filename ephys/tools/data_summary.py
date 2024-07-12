@@ -647,7 +647,7 @@ class DataSummary:
                 if k == "slice_mosaic":
                     slicepath = Path(self.basedir, day, slicen)
                     mosaics = list(slicepath.glob("*.mosaic"))  # look for mosaic files
-                    print ("****  SLICE :", slicepath, " MOSAICS: ", mosaics)
+                    print ("\n****  SLICE :", slicepath, " MOSAICS: ", mosaics)
                     if len(mosaics) > 0:
                         self.slice_index["mosaic"] = ", ".join(m.name for m in mosaics)
                     else:
@@ -1297,7 +1297,7 @@ def dir_recurse(ds, current_dir, exclude_list: list = [], indent=0):
     Printer(f"\n{' '*indent:s}All Protocols in dataset: \n", "white")
     for prot in sorted(ds.all_dataset_protocols):
         Printer(f"{' '*indent:s}    {prot:s}", "blue")
-    print("all done?")
+    print("\nall done?")
     return indent
 
 
