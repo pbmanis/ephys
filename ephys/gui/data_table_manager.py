@@ -629,15 +629,24 @@ class TableManager:
             return None
 
     def export_brief_table(self, textbox):
+        #  table for coding stuff
         FUNCS.textbox_setup(textbox)
         FUNCS.textclear()
-        FUNCS.textappend("cell_id\tGroup\tcell_type\tage\tsex")
+        FUNCS.textappend("date\tStrain\tGroup\treporters\tage\tdob\tAnimal_ID\tsex\tslice_slice\tcell_cell\tcell_expression")
         for i in range(len(self.table_data)):
+            if i == 0:
+                print(self.table_data[i])
             cell_id = self.table_data[i].cell_id
             Group = self.table_data[i].Group
-            cell_type = self.table_data[i].cell_type
+            strain = self.table_data[i].strain
+            reporters = self.table_data[i].reporters
             age = self.table_data[i].age
+            dob = self.table_data[i].dob
+            animal_id = " "  # self.table_data[i].animal_id
             sex = self.table_data[i].sex
-            msg = f"{cell_id:s}\t{Group:s}\t{cell_type:s}\t{age:s}\t{sex:s}"
+            slice_slice = self.table_data[i].slice_slice
+            cell_cell = self.table_data[i].cell_cell
+            cell_expression = self.table_data[i].cell_expression
+            msg = f"{cell_id:s}\t{strain:s}\t{Group:s}\t{reporters:s}\t{age:s}\t{sex:s}\t{dob:s}\t{animal_id:s}\t{slice_slice:s}\t{cell_cell:s}\t{cell_expression:s}"
             FUNCS.textappend(msg)
         print("Table exported in Report")
