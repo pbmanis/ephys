@@ -23,15 +23,15 @@ termcolor
 jinja2==3.1.2
 python-docx==1.1.0  # for writing Word docx files. Maybe used by associated programs
 
-pyabf  # for reading axon binary files
-meegkit # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
+pyabf==2.3.8  # for reading axon binary files
+meegkit==0.1.7 # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
 lmfit==1.2.2
 obspy==1.4.0  # for resampling and filtering
 
-matplotlib>=3.8.3
+matplotlib>=3.9.0
 matplotlib-scalebar>=0.8.1
 nose==1.3.7
-numba # ==0.50.1
+numba==0.60.0 # ==0.50.1
 numpy>=1.26
 pandas>=2.2.0
 pandas_parallel_apply==2.2
@@ -40,11 +40,11 @@ openpyxl
 XlsxWriter>=3.0
 psutil==5.6.7
 pyparsing==2.4.0
-tables
+tables==3.9.2
 pypdf2
 pingouin==0.5.4
 resampy==0.4.2
-scipy>=1.12.0
+scipy>=1.14.0
 statsmodels==0.14.1
 scikit_posthocs==0.9.0
 sympy
@@ -52,23 +52,24 @@ deepdiff
 
 pyqt6
 pyqt6-sip
-pyqtgraph
+pyqtgraph==0.13.7
 pyqt6-webengine
 
 seaborn>=0.13.2
-tifffile
+tifffile==2024.06.18
 
 
 # specific for Allen SDK:
 ruamel.yaml<1,>=0.15
-imageio>=2.3.0  # scikit image
+imageio>=2.34  # scikit image
 networkx>=2.0  # scikit image
-PyWavelets>=0.4.0  # scikit image
+PyWavelets>=1.6.0  # scikit image
 nest_asyncio==1.2.0  # allensdk 2.11.2
 # jinja2<2.12.0,>=2.7.3  # allensdk2.11.2
-hdmf # ==2.5.6. Allen SDK may need specific version... 
+hdmf==3.14.1 
+isodate==0.6.1
 #========================
-
+# nwbinspector==0.4.37
 xlrd>=1.0.0
 # required for 3d display in pyqtgraph
 PyOpenGL>=3.1.5
@@ -80,6 +81,7 @@ PyOpenGL>=3.1.5
 #-e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
 -e /Users/pbmanis/Desktop/Python/pylibrary
 -e /Users/pbmanis/Desktop/Python/MetaArray
+-e /Users/pbmanis/Desktop/Python/nwbinspector
 
 imreg_dft>=2.0
 descartes
