@@ -1429,8 +1429,13 @@ class Functions:
                     if "fit" in datadict.keys() and len(datadict["fit"][0]) > 0:
                         fit = datadict["fit"][0][0]
                         ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
-                    max_fr[selected.Group].append(np.max(datadict["FI_Curve1"][1]))
-                    
+                    try:
+                        max_fr[selected.Group].append(np.nanmax(datadict["FI_Curve1"][1]))
+                    except:
+                        print("Fi curve: ", datadict['FI_Curve1'])
+                        print("cell, group: ", selected.cell_id, selected.Group)
+                        print(selected)
+
                     if max_I > 1000:
                         ax[0, 0].plot(
                             np.array(datadict["FI_Curve4"][0]) * 1e12,
