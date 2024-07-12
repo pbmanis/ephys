@@ -535,7 +535,7 @@ class acq4_reader:
         # indices correspond to info[0][cols]
         self.primary_trace_index = 0
         self.secondary_trace_index = 1
-        self.command_trace_index = 2
+        self.command_trace_index = 1
         # print("\nparse clamp info, Clamp state: \n", info[1]) # ["ClampState"])
 
         # try:  # old acq4 files may not have this
@@ -853,7 +853,7 @@ class acq4_reader:
                         "r",
                         f"acq4_reader.getData: File not found:  {str(fn):s}, {str(self.dataname):s}",
                     )
-                    raise ValueError
+                    return False
                 return True  # just note we found the first file
 
             if (
@@ -897,6 +897,9 @@ class acq4_reader:
             if tr.hasColumn("Channel", "command"):
                 self.cmd_wave.append(tr["Channel":"command"])
             else:
+                print("cmd wave len: ", len(self.cmd_wave))
+                print("tr view shape: ", tr.view(np.ndarray).shape)
+                print("cmd trace index: ", self.command_trace_index)
                 self.cmd_wave.append(tr.view(np.ndarray)[self.command_trace_index])
 
             if sequence_values is not None:
@@ -1125,14 +1128,48 @@ class acq4_reader:
                 raise ValueError("Cannot read index....")
         # print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
         if "LED-Blue" not in list(supindex["."]["devices"].keys()):
+            print(f"LED-BLue not in device list: {list(supindex['.']["devices"].keys())!s}")
             return False
         stimuli = supindex["."]["devices"]["LED-Blue"]["channels"]["Command"]
-        real_stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
-        self.LEDTimes = self._getPulses(real_stimuli)
+        self.LEDTimes = None
+        if "stimuli" in stimuli["waveGeneratorWidget"]:
+            real_stimuli = stimuli["waveGeneratorWidget"]["stimuli"]
+            self.LEDTimes = self._getPulses(real_stimuli)
+        elif 'function' in stimuli["waveGeneratorWidget"]:
+            cmd = stimuli["waveGeneratorWidget"]['function']
+            # print 'function'
+            # clean up the command text to evaluate
+            pulse = cmd.split('\n ')
+            pulse[0] = pulse[0].strip('\'')
+            # print("pulse: ", pulse[0])
+            # here we get the paramaters, and clean up the text so we can
+            # eval them. Not very clean... 
+            pulsestart = eval(pulse[1][7:-1].strip())
+            pulsedur = eval(pulse[2][8:-1].strip().replace("*ms", ""))
+            amplitudes = eval(pulse[3][8:-1].strip())
+            # print("pulsestart: ", pulsestart, type(pulsestart))
+            # now build the dictionary that we expect (similar to _getPulses below)
+            real_stimuli = {}
+            real_stimuli["start"] = pulsestart
+            real_stimuli["duration"] = [pulsedur]*len(pulsestart)
+            real_stimuli["amplitude"] = amplitudes
+            real_stimuli["period"] = []
+            real_stimuli["type"] = "pulse"
+            real_stimuli["npulses"] = len(pulsestart)
+            self.LEDTimes = real_stimuli
+        else:
+            raise ValueError(f"Unable to parse LED command from {stimuli!s}")
+
+        if ("Scanner", "targets") in supindex["."]['sequenceParams']:
+            target = supindex["."]['sequenceParams'][("Scanner", "targets")][0]  # only one target with LED
+        else:
+            target = [0,0]
+        self.LED_target = target  # nominal LED position - center of the FOV
+
         for i, d in enumerate(dirs):
             fn = Path(d, "LED-Blue.ma")
             if not fn.is_file():
-                print(" acq4_reader.getLEDData, File not found: ", fn)
+                print(" acq4_reader.getLEDCommand, File not found: ", fn)
                 return False
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
@@ -1305,7 +1342,7 @@ class acq4_reader:
         for i, d in enumerate(dirs):
             fn = Path(d, "Laser-Blue-raw.ma")
             if not fn.is_file():
-                print(" acq4_reader.getLaserBlueCommand: File not found: ", fn)
+                # print(" acq4_reader.getLaserBlueCommand: File not found: ", fn)
                 return False
             lbr = EM.MetaArray(file=fn)
             info = lbr[0].infoCopy()
@@ -1410,7 +1447,7 @@ class acq4_reader:
         # shutter["duration"] = stimuli["Pulse"]["length"]["value"]
         # shutter["type"] = stimuli["Pulse"]["type"]
         # return shutter
-
+    
     def getScannerPositions(self, dataname: str = "Laser-Blue-raw.ma") -> bool:
         dirs = self.subDirs(self.protocol)
         self.scanner_positions = np.zeros((len(dirs), 2))
