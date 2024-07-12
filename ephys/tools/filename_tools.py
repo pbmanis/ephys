@@ -230,7 +230,7 @@ def make_cell(icell: int, df: pd.DataFrame = None):
     except ValueError:
         CP("r", f"Failed to get date string from dataframe with icell={icell:d}")
         return None, None, None
-    # print("make_cell: datestr = ", datestr, "icell: ", icell)
+    print("make_cell: datestr = ", datestr, "icell: ", icell)
     slicestr = str(Path(df.iloc[icell]["slice_slice"]).parts[-1])
     cellstr = str(Path(df.iloc[icell]["cell_cell"]).parts[-1])
     return (datestr, slicestr, cellstr)
@@ -330,7 +330,8 @@ def compare_slice_cell(
         True if the slice and cell match, False otherwise
 
     """
-
+    print('compare_slice_cell datestr: ', datestr)
+    print('compare_slice_cell slicestr: ', str)
     dsday, nx = Path(datestr).name.split("_")
     # check dates
     thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
@@ -341,11 +342,13 @@ def compare_slice_cell(
                 f"Day {datestr:s} is not in range {after_dt!s} to {before_dt!s}",
             )
             return (False, "", "", "")
+
     # check slice/cell:
     slicecell3 = f"S{int(slicestr[-3:]):02d}C{int(cellstr[-3:]):02d}"  # recognize that slices and cells may be more than 10 (# 9)
     slicecell2 = f"S{int(slicestr[-3:]):01d}C{int(cellstr[-3:]):01d}"  # recognize that slices and cells may be more than 10 (# 9)
     slicecell1 = f"{int(slicestr[-3:]):1d}{int(cellstr[-3:]):1d}"  # only for 0-9
     compareslice = ""
+    print(slicecell, slicecell3, slicecell2, slicecell1)
     if slicecell is not None:  # limiting to a particular cell?
         match = False
         if len(slicecell) == 2:  # 01
