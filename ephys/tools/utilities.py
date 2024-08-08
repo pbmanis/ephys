@@ -1715,7 +1715,7 @@ class Utility:
                 break
         # print(ip*dt, len(I_psc)*dt)
         if all(np.isnan(I_psc)):
-            print("trace was reduced to nothing")
+            print("Utility.trim_psc: trace was reduced to nothing")
             exit()
         return I_psc
 
