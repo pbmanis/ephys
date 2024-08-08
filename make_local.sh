@@ -10,12 +10,12 @@ then
 else
     echo "No previous environment - ok to proceed"
 fi
-
-python3.12 -m venv $ENVNAME
+PYTHONVER="python3.11"
+$PYTHONVER -m venv $ENVNAME
 source $ENVNAME/bin/activate
 pip3 install --upgrade pip  # be sure pip is up to date in the new env.
 pip3 install wheel  # seems to be missing (note singular)
-python3.12 -m pip install Cython
+$PYTHONVER -m pip install Cython
 #pip3 install h5py --no-build-isolation
 # brew install hdf5
 # pip3 install h5py --no-build-isolation
