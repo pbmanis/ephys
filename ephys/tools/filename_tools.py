@@ -194,7 +194,7 @@ def change_pickle_filename(original_name, slicecell):
         return None
 
 
-def make_pickle_filename(dpath: Union[str, Path], thisday: str, celltype: str, slicecell: str):
+def make_pickle_filename(dpath: Union[str, Path], thisday: str, celltype: str, slicecell: str, analysistype:str="IVs", makedir:bool=False):
     """make_pickle_filename make a fully qualified path to a pickle file for a cell
 
     Parameters
@@ -206,19 +206,25 @@ def make_pickle_filename(dpath: Union[str, Path], thisday: str, celltype: str, s
     celltype : str
         cell name ("pyramidal", for example)
     slicecell : str
-        slice and cell number (S00C01 or S0C0, for example)
+        slice and cell number (S00C01 or S0C0, for example, or slice_000/cell_001)
+    analysistype : str, optional
+        type of data in the file (IVs, maps, etc), by default "IVs"
 
     Returns
     -------
     Path
         Path to the pickle file
     """
-
-    pklname = make_cell_filename(thisday, celltype=celltype, slicecell=slicecell)
+    if slicecell.find('/') > 0:
+        sc = Path(slicecell).parts
+        slicecell = make_slicecell(sc[0], sc[1])
+    if thisday.find("_000") > 0:
+        thisday = thisday.split("_000")[0]
+    pklname = make_cell_filename(thisday, celltype=celltype, slicecell=slicecell, analysistype=analysistype)
     pklname = Path(pklname)
     # check to see if we have a sorted directory with this cell type
     pkldir = Path(dpath, celltype)
-    if not pkldir.is_dir():
+    if not pkldir.is_dir() and makedir:
         pkldir.mkdir()
     return Path(pkldir, pklname.stem).with_suffix(".pkl")
 
