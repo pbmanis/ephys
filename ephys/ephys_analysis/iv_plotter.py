@@ -147,10 +147,11 @@ class IVPlotter(object):
                 "labelpos": (x, y),
                 "noaxes": False,
             },
-            "B": {"pos": [0.62, 0.30, 0.74, 0.17], "labelpos": (x, y), "noaxes": False},
-            "C": {"pos": [0.75, 0.17, 0.50, 0.17], "labelpos": (x, y)},
-            "D": {"pos": [0.62, 0.30, 0.30, 0.17], "labelpos": (x, y)},
-            "E": {"pos": [0.62, 0.30, 0.08, 0.17], "labelpos": (x, y)},
+            "B": {"pos": [0.62, 0.30, 0.78, 0.13], "labelpos": (x, y), "noaxes": False},
+            "C": {"pos": [0.75, 0.17, 0.62, 0.13], "labelpos": (x, y)},
+            "D1": {"pos": [0.62, 0.30, 0.40, 0.12], "labelpos": (x, y)},
+            "D2": {"pos": [0.62, 0.30, 0.24, 0.12], "labelpos": (x, y)},
+            "E": {"pos": [0.62, 0.30, 0.08, 0.12], "labelpos": (x, y)},
         }
         # dict pos elements are [left, width, bottom, height] for the axes in the plot.
         gr = [
@@ -173,7 +174,7 @@ class IVPlotter(object):
         self.AR = acq4_reader.acq4_reader(Path(self.plot_df["data_directory"], protocol))
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
 
-        P.figure_handle.suptitle(f"{str(Path(self.plot_df["data_directory"], protocol)):s}\n{infostr:s}", fontsize=8)
+        P.figure_handle.suptitle(f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}", fontsize=8)
         dv = 50.0
         jsp = 0
 
@@ -371,7 +372,7 @@ class IVPlotter(object):
 
             P.axdict["C"].text(
                 0.54,
-                0.68,
+                0.72,
                 tstr,
                 transform=P.figure_handle.transFigure,
                 horizontalalignment="left",
@@ -403,45 +404,96 @@ class IVPlotter(object):
 
         # Plot the spike intervals as a function of time into the stimulus
         for i, spike_tr in enumerate(spikes):  # this is the trace number
+            # print("Spike tr: ", i, spike_tr)
             spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
             if (len(spk_tr) == 0) or (spk_tr[0] is None):
                 continue
             spk_tr = np.array([spk for spk in spk_tr if spk is not None])
+            # print("spk_tr: ", i, spike_tr, spk_tr)
+            # print("    tstart, end: ", self.AR.tstart, self.AR.tend)
             spx = np.nonzero(  # get the spikes that are in the stimulus window
                 (spk_tr > self.AR.tstart) & (spk_tr <= self.AR.tend)
             )
             spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
-            # print(spkl)
+            # print("    spkl: ", spkl)
             if len(spkl) == 1:
-                P.axdict["D"].plot(spkl[0], spkl[0], "o", color=trace_colors[i], markersize=4)
+                P.axdict["D1"].plot(spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4)
             else:
-                # print("spkl shape: ", spkl.shape)
+                # print("spkl shape: " , spkl.shape)
                 spk_isi = np.diff(spkl)
                 spk_isit = spkl[:len(spk_isi)]
-                P.axdict["D"].plot(
+                P.axdict["D1"].plot(
                     spk_isit,
                     spk_isi,
                     "o-",
-                    color=trace_colors[i],
+                    color=trace_colors[spike_tr],
                     markersize=3,
                     linewidth=0.5,
                 )
 
         PH.talbotTicks(P.axdict["C"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 1, "y": 0})
-        P.axdict["D"].set_yscale("log")
-        P.axdict["D"].set_ylim((1.0, P.axdict["D"].get_ylim()[1]))
-        P.axdict["D"].set_xlabel("Latency (ms)")
-        P.axdict["D"].set_ylabel("ISI (ms)")
-        P.axdict["D"].text(
+        P.axdict["D1"].set_yscale("log")
+        P.axdict["D1"].set_ylim((1.0, P.axdict["D1"].get_ylim()[1]))
+        P.axdict["D1"].set_xlabel("Latency (ms)")
+        P.axdict["D1"].set_ylabel("ISI (ms)")
+        P.axdict["D1"].text(
             1.00,
             0.05,
             "Adapt Ratio: {0:.3f}".format(self.plot_df["Spikes"][protocol]["AdaptRatio"]),
             fontsize=9,
-            transform=P.axdict["D"].transAxes,
+            transform=P.axdict["D1"].transAxes,
             horizontalalignment="right",
             verticalalignment="bottom",
         )
+        
+        if len(spk_isi > 7):
+            mode_thr = 1.5
+            fi_currents = spike_dict["FI_Curve"][0] * 1e9
+            # print("fi_currents: ", fi_currents)
+            # isi_mode = np.zeros(len(fi_currents))*np.nan
+            # isi_skips = np.zeros(len(fi_currents))*np.nan
+            # isi_curr = np.zeros(len(fi_currents))*np.nan
+            # c = []
+            # for i, spike_tr in enumerate(spikes):  # this is the trace number
+            # # print("Spike tr: ", i, spike_tr)
+            #     spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
+            #     spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
+            #     if (len(spk_tr) <= 6) or (spk_tr[0] is None ):
+            #         continue
+            #     spk_isi = np.diff(spk_tr)
+            #     isi_mode[spike_tr] = np.median(spk_isi[4:])
+            #     isi_skips[spike_tr] = np.count_nonzero(spk_isi[4:] > mode_thr*isi_mode[spike_tr])
+            #     isi_curr[spike_tr] = fi_currents[i]
+            for i, spike_tr in enumerate(spikes):  # this is the trace number
+                spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
+                spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
+                if (len(spk_tr) <= 7) or (spk_tr[0] is None):
+                    continue
+                spk_isi = np.diff(spk_tr)
+                # plot joint isi
+                P.axdict["D2"].scatter(spk_isi[2:-1], spk_isi[3:],  s=6, c=trace_colors[spike_tr], marker='o', alpha=0.5)
+                P.axdict["D2"].scatter(spk_isi[0], spk_isi[1],  s=16, c=trace_colors[spike_tr], marker='+', alpha=1)  # mark first spike
+                P.axdict["D2"].scatter(spk_isi[1], spk_isi[2],  s=6, c=trace_colors[spike_tr], marker='^', alpha=1)  # mark first spike
+            # plot lines with slope of 1, 2 and 3
+            axmax = np.max([P.axdict["D2"].get_xlim()[1], P.axdict["D2"].get_ylim()[1]])
+            xb = np.linspace(0, axmax, 100)
+            y1 = xb
+            y2 = 2*xb
+            y3 = 3*xb
+            y4 = 4*xb
+            P.axdict["D2"].plot(xb, y1, 'k--', linewidth=0.5)
+            P.axdict["D2"].plot(xb, y2, 'b--', linewidth=0.5)
+            P.axdict["D2"].plot(xb, y3, 'r--', linewidth=0.5)
+            P.axdict["D2"].plot(xb, y4, 'c--', linewidth=0.5)
+
+            # P.axdict["D2"].plot(isi_curr, isi_mode, "o", markersize=4)
+            P.axdict["D2"].set_xlim((0, axmax))
+            P.axdict["D2"].set_ylim((0, axmax))
+            P.axdict["D2"].set_xlabel("ISI(n)")
+            P.axdict["D2"].set_ylabel("ISI(n+1)")
+
+        
 
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
@@ -480,7 +532,7 @@ class IVPlotter(object):
         P.resize(sizer)  # perform positioning magic
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
         P.figure_handle.suptitle(
-            f"{str(Path(self.plot_df["data_directory"], protocol)):s}\n{infostr:s}",
+            f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}",
             fontsize=8,
         )
         dv = 0.0
