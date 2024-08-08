@@ -531,16 +531,16 @@ class Analysis:
                 raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
                 return None
             CP.cprint("c", f"  ... [Analysis:run] Retrieved day:\n    {day:s}")
-            cell_indices = cells_in_day.index
+            cell_indices = [c+1 for c in cells_in_day.index]
             print("Cells in day: ", cell_indices)
             cellprots = []
-            return None
+            print("Parallel mode: ", self.parallel_mode)
             if self.parallel_mode != "day":
                 # just loop through the selected cells
                 print(f"Doing day: {day!s}  with parallel mode: {self.parallel_mode!s}")
                 for icell in cell_indices:
                     # for all the cells in the day (but will check for slice_cell too)
-                    cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
+                    cell_ok = self.do_cell(icell-1, pdf=self.pdfFilename)
                     print("Cell ok: ", cell_ok)
                     # now generate pdf files from the pkl files
                     # if cell_ok:
@@ -599,7 +599,7 @@ class Analysis:
                         # tasker.results[cells_in_day[i]] = result
 
                 if self.pdfFilename is None:
-                    for n, icell in enumerate(range(len(self.df.index))):
+                    for n, icell in enumerate(self.df.index):
                         print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
                         cell_ok = self.do_cell(icell, pdf=None)
                         # generate pdf files from the pkl files
@@ -1078,7 +1078,7 @@ class Analysis:
         success: bool
 
         """
-        CP.cprint("c", f"Entering do_cell with icell = {icell:d} (dataframe index, not table index)")
+        CP.cprint("c", f"Entering do_cell with icell = {icell:d} (dataframe index, not table index), cellid: {self.df.iloc[icell].cell_id:s}")
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
         CP.cprint(
             "c",
@@ -1095,7 +1095,7 @@ class Analysis:
         )
         CP.cprint("y", f"Match cell: {matchcell!s}")
         if not matchcell:
-            CP.cprint("r", f"Failed to match cell: {matchcell!s}")
+            CP.cprint("r", f"Failed to match cell")
             return False
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)

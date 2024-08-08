@@ -930,13 +930,12 @@ class DataTables:
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
 
-                            for selected in index_rows:
-                                if selected is None:
+                            for selected_row in index_rows:
+                                if selected_row is None:
                                     print("selected was None")
                                     break
-                                FUNCS.textappend(selected.cell_id)
-                                pathparts = Path(selected.cell_id).parts
-                                print("len pathparts: ", len(pathparts))
+                                FUNCS.textappend(selected_row.cell_id)
+                                pathparts = Path(selected_row.cell_id).parts
                                 slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
                                 day = str(Path(*pathparts[0:-2]))
 
@@ -1365,6 +1364,7 @@ class DataTables:
                                         "fontsize": self.infobox_fontsize,
                                     },
                                 )
+                                print(f.result())
                                 self.fidata_plot = f.result()
                             print("Plotting selected FI's Done")
                             
