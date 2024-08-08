@@ -304,7 +304,7 @@ class SpikeAnalysis:
         self.adapt_ratio = np.nan
         if len(adapt_ratio[iAR]) > 0:
             self.adapt_ratio = np.mean(adapt_ratio[iAR])  # only where we made the measurement
-        self.ar = adapt_ratio  # stores all the ar values
+        self.ar = adapt_ratio  # stores *all* the ar values
         self.analysis_summary["AdaptRatio"] = self.adapt_ratio  # only the valid values
         self.nospk = np.where(self.spikecount == 0)
         self.spk = np.where(self.spikecount > 0)[0]

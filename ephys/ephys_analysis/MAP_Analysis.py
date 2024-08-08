@@ -97,7 +97,7 @@ class MAP_Analysis(Analysis):
             f"    {str(file):s}\n          at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
-        print(f"    Celltype: {celltype:s}  with {len(allprots["Maps"]):4d} protocols")
+        print(f"    Celltype: {celltype:s}  with {len(allprots['Maps']):4d} protocols")
         self.markers = mapanalysistools.get_markers.get_markers(fullfile=file, verbose=False)
 
         # print(allprots["Maps"])
@@ -722,10 +722,10 @@ class MAP_Analysis(Analysis):
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
         self.map_name = allprots["Maps"][i_protocol]
         if len(self.map_name) == 0:
-            Logger.warning(f"No map name found! for {str(allprots["Maps"][i_protocol]):s}")
+            Logger.warning(f"No map name found! for {str(allprots['Maps'][i_protocol]):s}")
             return None
 
-        msg = f"    Map protocol: {str(allprots["Maps"][i_protocol]):s} map name: {self.map_name}"
+        msg = f"    Map protocol: {str(allprots['Maps'][i_protocol]):s} map name: {self.map_name}"
         print(msg)
         Logger.info(msg)
         mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)

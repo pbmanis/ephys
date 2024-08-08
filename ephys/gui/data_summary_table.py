@@ -74,6 +74,7 @@ class IndexData:
     ephys_hash: str = ephys_git_hash  # save hash for the model code
     date: str = ""
     cell_id: str = ""
+    cell_type: str = ""
     important: str = ""
     description: str = ""
     notes: str = ""
@@ -89,7 +90,6 @@ class IndexData:
     slice_orientation: str = ""
     cell_cell: str = ""
     slice_slice: str = ""
-    cell_type: str = ""
     cell_location: str = ""
     cell_layer: str = ""
     data_complete: List = field(default_factory=defemptylist)
@@ -129,6 +129,7 @@ class TableManager:
         Index_data.project_code_hash = git_head_hash  # this repository!
         Index_data.date = str(row.date)
         Index_data.cell_id = str(row.cell_id)
+        Index_data.cell_type = str(row.cell_type)
         Index_data.important = str(row.important)
         Index_data.description = textwrap.fill(str(row.description), width=40)
         Index_data.notes = textwrap.fill(str(row.notes), width=40)
@@ -144,7 +145,6 @@ class TableManager:
         Index_data.slice_orientation = textwrap.fill(str(row.slice_orientation), width=15)
         Index_data.cell_cell = str(row.cell_cell)
         Index_data.slice_slice = str(row.slice_slice)
-        Index_data.cell_type = str(row.cell_type)
         Index_data.cell_location = textwrap.fill(str(row.cell_location), width=10)
         Index_data.cell_layer = str(row.cell_layer)
         Index_data.data_complete = textwrap.fill(str(row.data_complete), width=40)
@@ -178,6 +178,7 @@ class TableManager:
             [
                 (
                     indxs[i].cell_id,
+                    indxs[i].cell_type,
                     indxs[i].important,
                     indxs[i].description,
                     indxs[i].notes,
@@ -193,7 +194,6 @@ class TableManager:
                     indxs[i].slice_orientation,
                     indxs[i].cell_cell,
                     indxs[i].slice_slice,
-                    indxs[i].cell_type,
                     indxs[i].cell_location,
                     indxs[i].cell_layer,
                     indxs[i].data_complete,
@@ -204,22 +204,22 @@ class TableManager:
             ],
             dtype=[
                 ("cell_id", object),  # 0
-                ("important", object),  # 1
-                ("description", object),  # 2
-                ("notes", object),  # 3
-                ("species", object),  # 4
-                ("strain", object),  # 5
-                ("genotype", object),  # 6
-                ("solution", object),  # 7
-                ("internal", object),  # 8
-                ("sex", object),  # 9
-                ("age", object),  # 10
-                ("weight", object),  # 11
-                ("temperature", object),  # 12
-                ("slice_orientation", object),  # 13
-                ("cell_cell", object),  # 14
-                ("slice_slice", object),  # 15
-                ("cell_type", object),  # 16
+                ("cell_type", object),  # 1
+                ("important", object),  # 2
+                ("description", object),  # 3
+                ("notes", object),  # 4
+                ("species", object),  # 5
+                ("strain", object),  # 6
+                ("genotype", object),  # 7
+                ("solution", object),  # 8
+                ("internal", object),  # 9
+                ("sex", object),  # 10
+                ("age", object),  # 11
+                ("weight", object),  # 12
+                ("temperature", object),  # 13
+                ("slice_orientation", object),  # 14
+                ("cell_cell", object),  # 15
+                ("slice_slice", object),  # 16
                 ("cell_location", object),  # 17
                 ("cell_layer", object),  # 18
                 ("data_complete", object),  # 19
@@ -326,25 +326,27 @@ class TableManager:
         elif isinstance(index_row, IndexData):
             value = index_row
         else:
-            value = index_row.row()
+            value = index_row.row()+1
             return value
 
     def get_table_data(self, selected_row):
         """
         Regardless of the sort, read the current index row and map it back to
         the data in the table.
-        This is because the table might be sorted, but the data itself is not.
+        We do this because the visible table might be sorted,
+        but the pandas database is not necessarily, so we just
+        look it up.
 
         """
         # print("get_table_data")
         # print("  index row: ", index_row)
 
         ind = self.get_table_data_index(selected_row)
-        # print("  ind: ", ind)
+        print("  ind: ", ind)
         for i, td in enumerate(self.table_data):
-            if self.table_data[ind].cell_id == td.cell_id:
-                # print("  found: ", i, self.table_data[i].cell_id)
-                return self.table_data[ind]
+            if self.table_data[ind-1].cell_id == td.cell_id:
+                print("  found: ", i, ind, self.table_data[i].cell_id, td.cell_id)
+                return self.table_data[ind-1]
         return None
 
         # if ind is not None:

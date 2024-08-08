@@ -276,18 +276,19 @@ def concurrent_selected_fidata_data_plotting(
     #     "pick_event",
     #     lambda event: PSI_.pick_handler(event, picker_funcs2),
     # )
-    P2.figure_handle.text(
-        infobox["x"],
-        infobox["y"],
-        header,
-        fontdict={
-            "fontsize": infobox["fontsize"],
-            "fontstyle": "normal",
-            "font": "helvetica",
-        },
-    )
+    if P2 is not None:
+        P2.figure_handle.text(
+            infobox["x"],
+            infobox["y"],
+            header,
+            fontdict={
+                "fontsize": infobox["fontsize"],
+                "fontstyle": "normal",
+                "font": "helvetica",
+            },
+        )
 
-    P2.figure_handle.show()
+        P2.figure_handle.show()
     return P2
 
 
