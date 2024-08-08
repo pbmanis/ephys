@@ -1128,7 +1128,7 @@ class acq4_reader:
                 raise ValueError("Cannot read index....")
         # print(supindex['.']['devices']['PockelCell']['channels']['Switch'].keys())
         if "LED-Blue" not in list(supindex["."]["devices"].keys()):
-            print(f"LED-BLue not in device list: {list(supindex['.']["devices"].keys())!s}")
+            print(f"LED-BLue not in device list: {list(supindex['.']['devices'].keys())!s}")
             return False
         stimuli = supindex["."]["devices"]["LED-Blue"]["channels"]["Command"]
         self.LEDTimes = None
