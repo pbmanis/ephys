@@ -455,7 +455,7 @@ class GetAllIVs:
         """
         # print("colnames: ", df_accum.columns)
 
-        df_accum = df_accum.rename(columns={"animal identifier": "Animal_ID"})
+        df_accum = df_accum.rename(columns={"animal_identifier": "Animal_ID"})
         # ident = list(set(df_accum["Animal_ID"].values))
         print("Census columns: ", df_accum.columns)
         cell_ids = list(set(df_accum["Cell_ID"].values))
@@ -1441,7 +1441,7 @@ class GetAllIVs:
         assert mode in ["OU", "EU"]
         # print("get_iv_info")
         Accumulator = pd.DataFrame(iv_measures)
-        self.dfs = self.dfs.rename(columns={"animal identifier": "Animal_ID"})
+        self.dfs = self.dfs.rename(columns={"animal_identifier": "Animal_ID"})
         # print("dfs head: \n", self.dfs.head())
         # print("dfs columns: ", self.dfs.columns)
         # print(self.dfs.date)

@@ -1285,7 +1285,9 @@ class PlotSpikeInfo(QObject):
         else:
             columns = [xname, hue_category]
         columns.extend(measures)
-        ensure_cols = ["animal identifier", "Group", "age", "sex", "cell_type", "Subject"]
+        if "animal identifier" in columns:
+            df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
+        ensure_cols = ["animal_identifier", "Group", "age", "sex", "cell_type", "Subject"]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
@@ -1839,7 +1841,7 @@ class PlotSpikeInfo(QObject):
                 # df = df.apply(apply_scale, axis=1, measure=measure, scale=yscale)
                 axp = P.axdict[f"{let:s}{j+1:d}"]
                 # print("    enable picking: ", enable_picking)
-                print("xname: ", xname, "hue cat: ", hue_category, "plot_order", plot_order, df['age_category'].unique())
+                # print("xname: ", xname, "hue cat: ", hue_category, "plot_order", plot_order, df['age_category'].unique())
                 picker_funcs[axp] = self.create_one_plot_categorical(
                     data=df,
                     xname=xname,
@@ -2593,14 +2595,17 @@ class PlotSpikeInfo(QObject):
         if cell_id_match is None:
             return ""
         if cell_id_match is not None:
-            row["animal identifier"] = df_summary.loc[df_summary.cell_id == cell_id_match][
-                "animal identifier"
+            idname = "animal_identifier"  # handle with and without underscore
+            if idname not in row.keys():
+                idname = "animal identifier"
+            row[idname] = df_summary.loc[df_summary.cell_id == cell_id_match][
+                idname
             ].values[0]
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
             raise ValueError(f"Cell id {cell_id} not found in summary")
-        return row["animal identifier"]
+        return row[idname]
 
     def get_cell_layer(self, row, df_summary):
         cell_id = row.cell_id
@@ -2679,7 +2684,7 @@ class PlotSpikeInfo(QObject):
     def preprocess_data(self, df, experiment):
         """preprocess_data Clean up the data, add columns, etc."""
         df_summary = get_datasummary(experiment)
-        df["animal identifier"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
+        df["animal_identifier"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
 
         if "cell_layer" not in df.columns:
             layers = df_summary.cell_layer.unique()

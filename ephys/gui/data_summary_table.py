@@ -38,7 +38,7 @@ ephys_git_hash = process.communicate()[0].strip()
 
 """ The Data summary database has the following:
 Index(['date', 'description', 'notes', 'species', 'strain', 'genotype',
-    'reporters', 'age', 'animal identifier', 'sex', 'weight', 'reporters.1',
+    'reporters', 'age', 'animal_identifier', 'sex', 'weight', 'reporters.1',
     'solution', 'internal', 'temperature', 'important', 'expUnit',
     'slice_slice', 'slice_notes', 'slice_location', 'slice_orientation',
     'important.1', 'cell_cell', 'cell_notes', 'cell_type', 'cell_location',
@@ -342,10 +342,10 @@ class TableManager:
         # print("  index row: ", index_row)
 
         ind = self.get_table_data_index(selected_row)
-        print("  ind: ", ind)
+        # print("  ind: ", ind)
         for i, td in enumerate(self.table_data):
             if self.table_data[ind-1].cell_id == td.cell_id:
-                print("  found: ", i, ind, self.table_data[i].cell_id, td.cell_id)
+                # print("  found: ", i, ind, self.table_data[i].cell_id, td.cell_id)
                 return self.table_data[ind-1]
         return None
 
@@ -484,7 +484,7 @@ class TableManager:
             reporters = row.reporters
             age = row.age
             dob = "" # row.dob
-            animal_id = row['animal identifier']  # animal_id
+            animal_id = row['animal_identifier']  # animal_id
             sex = row.sex
             slice_slice = row.slice_slice
             cell_cell = row.cell_cell

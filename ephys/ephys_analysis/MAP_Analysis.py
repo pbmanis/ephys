@@ -864,9 +864,9 @@ class MAP_Analysis(Analysis):
                 results["FittingResults"] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
                 infostr = ""
                 colnames = self.df.columns
-                if "animal identifier" in colnames:
-                    if isinstance(self.df.at[icell, "animal identifier"], str):
-                        infostr += f"ID: {self.df.at[icell, 'animal identifier']:s} "
+                if "animal_identifier" in colnames:
+                    if isinstance(self.df.at[icell, "animal_identifier"], str):
+                        infostr += f"ID: {self.df.at[icell, 'animal_identifier']:s} "
                     else:
                         infostr += f"ID: None "
                 if "cell_location" in colnames:
