@@ -553,7 +553,7 @@ class ProcessSpikeAnalysis:
             "cell_expression",
             "cell_cell",
             "slice_slice",
-            "animal identifier",
+            "animal_identifier",
             "important",
             "reporters",
             "strain",
