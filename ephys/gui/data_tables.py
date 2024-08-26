@@ -292,8 +292,12 @@ class DataTables:
             "DataSummary", size=(right_docks_width, right_docks_height)
         )
         self.Dock_IV_Table = PGD.Dock("IV Data Table", size=(right_docks_width, right_docks_height))
-        self.Dock_Map_Table = PGD.Dock("Map Data Table", size=(right_docks_width, right_docks_height))
-        self.Dock_Minis_Table = PGD.Dock("Mini Data Table", size=(right_docks_width, right_docks_height))
+        self.Dock_Map_Table = PGD.Dock(
+            "Map Data Table", size=(right_docks_width, right_docks_height)
+        )
+        self.Dock_Minis_Table = PGD.Dock(
+            "Mini Data Table", size=(right_docks_width, right_docks_height)
+        )
         self.Dock_Traces = PGD.Dock("Traces", size=(right_docks_width, right_docks_height))
 
         self.Dock_PDFView = PGD.Dock("PDFs", size=(right_docks_width, right_docks_height))
@@ -406,9 +410,12 @@ class DataTables:
             {"name": "Load DataSummary", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
             {"name": "Save Assembled Data", "type": "action"},
-            {"name": "Parallel Mode", "type": "list", 
-                        "limits": ["cell", "day", "trace", "map", "off"],
-                        "value": "cell"},
+            {
+                "name": "Parallel Mode",
+                "type": "list",
+                "limits": ["cell", "day", "trace", "map", "off"],
+                "value": "cell",
+            },
             {"name": "Dry run (test)", "type": "bool", "value": False},
             {"name": "Only Analyze Important Flagged Data", "type": "bool", "value": False},
             {
@@ -678,7 +685,7 @@ class DataTables:
         self.update_assembled_data()
 
         self.DS_table_manager = data_summary_table.TableManager(
-            parent=self, 
+            parent=self,
             table=self.DS_table,
             experiment=self.experiment,
             selvals=self.selvals,
@@ -691,7 +698,9 @@ class DataTables:
         if self.datasummary is None:
             self.load_data_summary()
             # self.Dock_DataSummary.raiseDock()
-        self.DS_table.cellDoubleClicked.connect(functools.partial(self.DSTable_show_cell_on_double_click, self.DS_table))
+        self.DS_table.cellDoubleClicked.connect(
+            functools.partial(self.DSTable_show_cell_on_double_click, self.DS_table)
+        )
 
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
@@ -739,16 +748,15 @@ class DataTables:
             case "IV" | "IVs" | "iv" | "ivs":
                 self.DS_table_manager.select_row_by_row(i_row)
                 self.display_from_table(mode=mode)
-        
+
             case "maps" | "map" | "Map" | "Maps":
-                self.DS_table_manager.select_row_by_row(i_row) 
+                self.DS_table_manager.select_row_by_row(i_row)
                 self.display_from_table(mode=mode)
             case _:
                 print("Invalid mode")
                 raise ValueError(f"Invalid mode for display from table: got {mode}")
 
-
-    def display_from_table_by_cell_id(self, cell_id, mode:str="IV", pickable:bool=True):
+    def display_from_table_by_cell_id(self, cell_id, mode: str = "IV", pickable: bool = True):
         """
         Display the selected cell_id from the table
         """
@@ -762,7 +770,7 @@ class DataTables:
         else:
             FUNCS.textappend(f"Cell {cell_id:s} not found in table")
 
-    def DSTable_show_pdf_on_control_click(self,w):
+    def DSTable_show_pdf_on_control_click(self, w):
         """
         Control click gets the selected row and then displays the associated PDF (IV or Map)
         """
@@ -802,11 +810,6 @@ class DataTables:
         print("cell_id: ", cell_id)
         self.display_from_table_by_row(row, mode=mode)
         return
-
-        
-
-
-
 
     def handleSortIndicatorChanged(self, index, order):
         """
@@ -912,19 +915,28 @@ class DataTables:
                 case "Exclude unimportant in assembly":
                     self.exclude_unimportant = data
 
-
                 case "IV Analysis":
-                    match path[1]:
 
+                    def _do_row(row, mode: str = "selected"):
+                        pathparts = Path(row.cell_id).parts
+                        slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
+                        day = str(Path(*pathparts[0:-2]))
+
+                        FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                        print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
+                        self.analyze_ivs(
+                            mode=mode, day=day, slicecell=slicecell, cell_id=row.cell_id
+                        )
+
+                    match path[1]:
                         case "Analyze ALL IVs":
-                            self.analyze_ivs("all")
+                            self.DS_table_manager.dataframe.apply(_do_row, mode="selected", axis=1)
 
                         case "Analyze ALL IVs m/Important":
-                            self.analyze_ivs("important")
+                            self.DS_table_manager.dataframe.apply(_do_row, mode="important", axis=1)
 
-                        case (
-                            "Analyze Selected IVs"
-                        ):  # work from the *datasummary* table, not the Assembled table.
+                        # analyze the selected cells, working from the *datasummary* table, not the Assembled table.
+                        case "Analyze Selected IVs":
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
@@ -932,7 +944,7 @@ class DataTables:
 
                             for selected_row in index_rows:
                                 if selected_row is None:
-                                    print("selected was None")
+                                    print("No selected rows")
                                     break
                                 FUNCS.textappend(selected_row.cell_id)
                                 pathparts = Path(selected_row.cell_id).parts
@@ -940,32 +952,37 @@ class DataTables:
                                 day = str(Path(*pathparts[0:-2]))
 
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
-                                print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
-                                self.analyze_ivs(mode="selected", day=day, slicecell=slicecell)
+                                print((f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {selected_row.cell_id!s}"))
+                                self.analyze_ivs(
+                                    mode="selected",
+                                    day=day,
+                                    slicecell=slicecell,
+                                    cell_id=selected_row.cell_id,
+                                )
                             self.iv_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Plot from Selected IVs":
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            msg = f"Plot from selected cell(s) at rows: {index_rows!s}"
                             FUNCS.textappend(
-                                f"Plot from selected cell(s) at rows: {len(index_rows)!s}"
+                                msg
                             )
-                            print(f"Plot from selected cell(s) at rows: {len(index_rows)!s}")
+                            print(msg)
                             # self.Dock_Report.raiseDock()  # so we can monitor progress
-                            dspath = Path(
-                                self.experiment["analyzeddatapath"], self.experiment["directory"]
-                            )
-                            if self.parallel_mode == 'off':
+                            dspath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
+                            if self.parallel_mode == "off":
                                 for selected in index_rows:
                                     if selected is None:
                                         print("Selection was None!")
                                         break
+                                    print("dspath: ", dspath)
+                                    print("selected: ", selected)
                                     self.plot_selected(selected, dspath)
 
-                                    
                             else:
                                 nworkers = self.experiment["NWORKERS"][self.computer_name]
-                                # chunksize = nworkers  # try chunking this... 
+                                # chunksize = nworkers  # try chunking this...
                                 # all_tasks = list(range(len(index_rows)))
                                 # n_tasks = len(all_tasks)
                                 # n_runs = n_tasks//chunksize
@@ -984,8 +1001,10 @@ class DataTables:
 
                                 tasks = range(len(index_rows))
                                 results = {}
-                                result = [None]*len(tasks)
-                                with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
+                                result = [None] * len(tasks)
+                                with MP.Parallelize(
+                                    enumerate(tasks), results=results, workers=nworkers
+                                ) as tasker:
                                     for i, x in tasker:
                                         # result= self.plot_selected(index_rows[i+run*chunksize], dspath)
                                         result = self.plot_selected(index_rows[i], dspath)
@@ -1014,7 +1033,11 @@ class DataTables:
                                 slicecell = f"S{pathparts[1][-1]:s}C{pathparts[2][-1:]:s}"
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
                                 self.analyze_ivs(
-                                    mode="selected", important=True, day=day, slicecell=slicecell
+                                    mode="selected",
+                                    important=True,
+                                    day=day,
+                                    slicecell=slicecell,
+                                    cell_id=selected.cell_id,
                                 )
                                 self.iv_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
@@ -1053,7 +1076,7 @@ class DataTables:
                             pass
                         case "Analyze Selected Maps":
 
-                        # work from the *datasummary* table, not the Assembled table.
+                            # work from the *datasummary* table, not the Assembled table.
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all LSPS maps from selected cell(s) at rows: {len(index_rows)!s}"
@@ -1075,7 +1098,6 @@ class DataTables:
 
                         case "Analyze Selected Maps m/Important":
                             pass
-                        
 
                 case "Plotting":
                     match path[1]:
@@ -1136,7 +1158,7 @@ class DataTables:
                                 "group_by": group_by,
                                 "colors": colors,
                                 "hue_category": hue_category,
-                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                                "pick_display_function": None,  # self.display_from_table_by_cell_id
                             }
                             with concurrent.futures.ProcessPoolExecutor() as executor:
                                 f = executor.submit(
@@ -1168,7 +1190,7 @@ class DataTables:
                                 "group_by": group_by,
                                 "colors": colors,
                                 "hue_category": hue_category,
-                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                                "pick_display_function": None,  # self.display_from_table_by_cell_id
                             }
                             with concurrent.futures.ProcessPoolExecutor() as executor:
                                 f = executor.submit(
@@ -1205,7 +1227,7 @@ class DataTables:
                                 "plot_order": plot_order,
                                 "colors": colors,
                                 "hue_category": hue_category,
-                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                                "pick_display_function": None,  # self.display_from_table_by_cell_id
                             }
                             with concurrent.futures.ProcessPoolExecutor() as executor:
                                 f = executor.submit(
@@ -1220,7 +1242,6 @@ class DataTables:
                                     },
                                 )
                                 self.rmtau_plot = f.result()
-                            
 
                         case "Plot FIData Data categorical":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1241,7 +1262,7 @@ class DataTables:
                                 "plot_order": plot_order,
                                 "colors": colors,
                                 "hue_category": hue_category,
-                                "pick_display_function": None, # self.display_from_table_by_cell_id
+                                "pick_display_function": None,  # self.display_from_table_by_cell_id
                             }
                             with concurrent.futures.ProcessPoolExecutor() as executor:
                                 f = executor.submit(
@@ -1256,7 +1277,6 @@ class DataTables:
                                     },
                                 )
                                 self.fidata_plot = f.result()
-
 
                         case "Plot FICurves":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1312,7 +1332,7 @@ class DataTables:
                         case "Plot Selected FI Fitting":
                             if self.assembleddata is None:
                                 raise ValueError("Must load assembled data file first")
-                            
+
                             fn = self.PSI.get_assembled_filename(self.experiment)
                             print("Loading fn: ", fn)
                             group_by = self.ptreedata.child("Plotting").child("Group By").value()
@@ -1333,7 +1353,7 @@ class DataTables:
                                 "header": header,
                                 "experiment": self.experiment,
                                 "datasummary": self.datasummary,
-                                "assembleddata": table_data,  # only the 
+                                "assembleddata": table_data,  # only the
                                 "group_by": group_by,
                                 "plot_order": plot_order,
                                 "colors": colors,
@@ -1350,7 +1370,7 @@ class DataTables:
                             #             "fontsize": self.infobox_fontsize,
                             #         },
                             #     )
-                            
+
                             with concurrent.futures.ProcessPoolExecutor() as executor:
                                 print("executing")
                                 f = executor.submit(
@@ -1367,7 +1387,6 @@ class DataTables:
                                 print(f.result())
                                 self.fidata_plot = f.result()
                             print("Plotting selected FI's Done")
-                            
 
                         case "Print Stats on IVs and Spikes":
                             (
@@ -1448,7 +1467,7 @@ class DataTables:
                             if path[2] in ["Apply"]:
                                 self.filters["Use Filter"] = True
                                 self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
-                                self.DS_table_manager.apply_filter(QtCore=QtCore,  QtGui=QtGui)
+                                self.DS_table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
                             elif path[2] in ["Clear"]:
                                 self.filters["Use Filter"] = False
                                 self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
@@ -1539,22 +1558,20 @@ class DataTables:
                                 return
                             self.print_file_info(selected)
                         case "Export Brief Table":
-                            self.DS_table_manager.export_brief_table(self.textbox, dataframe=self.datasummary)
+                            self.DS_table_manager.export_brief_table(
+                                self.textbox, dataframe=self.datasummary
+                            )
 
     def plot_selected(self, selected, dspath):
         # selected = self.table_manager.get_table_data(index_row)
         FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
-        pkl_file = filename_tools.get_pickle_filename_from_row(
-            selected, dspath
-        )
+        pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
 
         print("Reading from pkl_file: ", pkl_file)
         FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
         tempdir = Path(dspath, "temppdfs")
         decorate = True
-        self.pdfFilename = Path(
-            dspath, self.experiment["pdfFilename"]
-        ).with_suffix(".pdf")
+        self.pdfFilename = Path(dspath, self.experiment["pdfFilename"]).with_suffix(".pdf")
         # use concurrent futures to prevent issue with multiprocessing
         # when using matplotlib.
         with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -1570,19 +1587,24 @@ class DataTables:
             ret = f.result()
 
     def analyze_ivs(
-        self, mode="all", important: bool = False, day: str = None, slicecell: str = None
+        self,
+        mode="all",
+        important: bool = False,
+        day: str = None,
+        slicecell: str = None,
+        cell_id: str = None,
     ):
         """
         Analyze the IVs for the selected cell
         Parameters
         mode can be: "all", "selected", "important"
         If all, all protocols are analyzed.
-        if selected, only the selected protocols are analyzed for the day/slicecell
-        if important, only the "important" protocols are analyzed for the day/slicecell
+        if selected, only the selected cells are analyzed for the day/slicecell.
+        if important, only the "important" protocols are analyzed for the day/slicecell.
 
         important: bool
             if True, we pay attention to the "Important" flag in the data.
-            Otherwise, we just analyze everything.
+            Otherwise, we just analyze whatever comes our way.
 
         """
         args = analysis_common.cmdargs  # get from default class
@@ -1614,6 +1636,9 @@ class DataTables:
         if mode == "selected":
             args.day = day
             args.slicecell = slicecell
+            args.cell_id = cell_id
+        else:
+            args.cell_id = None
 
         # args.after= "2021.07.01"
         # this is to handle an old config file structure that related to
@@ -1639,13 +1664,13 @@ class DataTables:
             "g",
             f"Starting IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
-        print("\n" * 3)
+        print("\n" * 2)
         CP.cprint("g", "=" * 80)
-        IV = iv_analysis.IVAnalysis(args)
+        IV = iv_analysis.IVAnalysis(args)  # all args are passed
         IV.set_experiment(self.experiment)
-        CP.cprint("c", "analyze_ivs datatables: experiment set")
-        if 'excludeIVs' in self.experiment.keys():
-            IV.set_exclusions(self.experiment['excludeIVs'])
+        CP.cprint("c", " datatables: experiment set")
+        if "excludeIVs" in self.experiment.keys():
+            IV.set_exclusions(self.experiment["excludeIVs"])
             # CP.cprint("y", self.experiment['excludeIVs'])
         else:
             CP.cprint("y", "No IV exclusions set")
@@ -1678,9 +1703,11 @@ class DataTables:
         )
         CP.cprint("r", "=" * 80)
 
-
-    def analyze_maps(self, mode="all", important: bool = False, day: str = None, slicecell: str = None):
+    def analyze_maps(
+        self, mode="all", important: bool = False, day: str = None, slicecell: str = None
+    ):
         import numpy as np
+
         args = analysis_common.cmdargs  # get from default class
         args.dry_run = False
         args.autoout = True
@@ -1693,8 +1720,8 @@ class DataTables:
 
         args.plotmode = "document"
         args.recalculate_events = True
-        args.artifact_filename = self.experiment['artifactFilename']
-        args.artifact_path = self.experiment['artifactPath']
+        args.artifact_filename = self.experiment["artifactFilename"]
+        args.artifact_path = self.experiment["artifactPath"]
 
         args.artifact_suppression = True
         args.artifact_derivative = False
@@ -1706,7 +1733,7 @@ class DataTables:
         # args.HPF = 0.
 
         args.detector = "aj"
-        args.spike_threshold = -0.020 # always in Volts
+        args.spike_threshold = -0.020  # always in Volts
         # args.threshold = 7
 
         if mode == "selected":
@@ -1714,11 +1741,13 @@ class DataTables:
             args.slicecell = slicecell
 
         args.notchfilter = True
-        odds = np.arange(1, 43, 2)*60.  # odd harmonics
-        nf = np.hstack((odds, [30, 15, 120., 240., 360.]))  # default values - replaced by what is in table
-        str_nf = "[]" # "[" + ", ".join(str(f) for f in nf) + "]"
-        args.notchfreqs = str_nf # "[60., 120., 180., 240., 300., 360., 600., 4000]"
-        args.notchQ = 90.
+        odds = np.arange(1, 43, 2) * 60.0  # odd harmonics
+        nf = np.hstack(
+            (odds, [30, 15, 120.0, 240.0, 360.0])
+        )  # default values - replaced by what is in table
+        str_nf = "[]"  # "[" + ", ".join(str(f) for f in nf) + "]"
+        args.notchfreqs = str_nf  # "[60., 120., 180., 240., 300., 360., 600., 4000]"
+        args.notchQ = 90.0
 
         # if args.configfile is not None:
         #     config = None
@@ -1728,11 +1757,11 @@ class DataTables:
         #         elif ".toml" in args.configfile:
         #             config = toml.load(open(args.configfile))
 
-            # vargs = vars(args)  # reach into the dict to change values in namespace
-            # for c in config:
-            #     if c in args:
-            #         # print("c: ", c)
-            #         vargs[c] = config[c]
+        # vargs = vars(args)  # reach into the dict to change values in namespace
+        # for c in config:
+        #     if c in args:
+        #         # print("c: ", c)
+        #         vargs[c] = config[c]
         CP.cprint(
             "cyan",
             f"Starting MAP analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
@@ -1744,12 +1773,12 @@ class DataTables:
         MAP.set_experiment(self.experiment)
         # MAP.set_exclusions(self.experiment.exclusions)
         MAP.AM.set_artifact_suppression(args.artifact_suppression)
-        MAP.AM.set_artifact_path(self.experiment['artifactPath'])
-        MAP.AM.set_artifact_filename(self.experiment['artifactFilename'])
+        MAP.AM.set_artifact_path(self.experiment["artifactPath"])
+        MAP.AM.set_artifact_filename(self.experiment["artifactFilename"])
         MAP.AM.set_post_analysis_artifact_rejection(args.post_analysis_artifact_rejection)
         MAP.AM.set_template_parameters(tmax=0.009, pre_time=0.001)
         MAP.AM.set_shutter_artifact_time(0.050)
-    
+
         CP.cprint("b", "=" * 80)
         MAP.setup()
 
@@ -2025,7 +2054,6 @@ class DataTables:
             return
         self.PLT.plot_VC(self.selected_index_rows)
 
-
     def display_from_table(self, mode="IVs"):
         """
         display the data in the PDF dock
@@ -2050,15 +2078,17 @@ class DataTables:
                 modename = "maps"
             case _:
                 raise ValueError(f"Invalid mode: {mode!s}")
-        
+
         cell_type = selected.cell_type
         if cell_type == " " or len(cell_type) == 0:
             cell_type = "unknown"
 
         datapath = self.experiment["databasepath"]
         directory = self.experiment["directory"]
-  
-        filename = filename_tools.get_pickle_filename_from_row(selected, Path(datapath, directory), mode=modename)
+
+        filename = filename_tools.get_pickle_filename_from_row(
+            selected, Path(datapath, directory), mode=modename
+        )
         filename = Path(filename).with_suffix(".pdf")
         url = "file://" + str(filename)
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
@@ -2074,10 +2104,9 @@ class DataTables:
             # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
             msg.exec()
             return
-        
+
         self.PDFView.setUrl(pg.QtCore.QUrl(url))  # +"#zoom=80"))
         self.Dock_PDFView.raiseDock()
-
 
 
 def main():
