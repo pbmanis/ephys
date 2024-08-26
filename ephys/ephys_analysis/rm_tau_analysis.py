@@ -25,7 +25,11 @@ for acq4
 """
 
 import numpy as np
+from scipy.signal import savgol_filter  # for smoothing
 import ephys.tools.fitting as fitting
+from pathlib import Path
+import pyqtgraph as pg
+import ephys.tools.exp_estimator_lmfit as exp_estimator_lmfit
 
 
 class RmTauAnalysis:
@@ -42,9 +46,9 @@ class RmTauAnalysis:
     """
 
     def __init__(self):
-        
+
         self.reset()
-        
+
     def reset(self):
         self.Clamps = None
         self.Spikes = None
@@ -62,7 +66,7 @@ class RmTauAnalysis:
         dataplot=None,
         baseline=[0, 0.001],
         bridge_offset=0,
-        taumbounds=[0.001, 0.050],
+        taum_bounds=[0.001, 0.050],
         tauhvoltage=-0.08,
     ):
         """
@@ -82,7 +86,7 @@ class RmTauAnalysis:
         baseline : list (2 elements)
             times over which baseline is measured (in seconds)
 
-        taumbounds : list (2 elements)
+        taum_bounds : list (2 elements)
             Lower and upper bounds of the allowable taum fitting range (in seconds).
 
         bridge_offset : float (default:  0.0 Ohms)
@@ -90,9 +94,7 @@ class RmTauAnalysis:
         """
 
         if clamps is None or spikes is None:
-            raise ValueError(
-                "RmTau analysis requires defined clamps and spike analysis"
-            )
+            raise ValueError("RmTau analysis requires defined clamps and spike analysis")
         self.Clamps = clamps
         self.Spikes = spikes
         self.dataPlot = dataplot
@@ -100,16 +102,14 @@ class RmTauAnalysis:
         self.bridge_offset = bridge_offset
         self.taum_fitted = {}
         self.tauh_fitted = {}
-        self.taum_bounds = taumbounds
+        self.taum_bounds = taum_bounds
         self.tauh_voltage = tauhvoltage
         self.analysis_summary["holding"] = self.Clamps.holding
         self.analysis_summary["WCComp"] = self.Clamps.WCComp
         self.analysis_summary["CCComp"] = self.Clamps.CCComp
         if self.bridge_offset != 0.0:
             self.bridge_adjust()
-        self.analysis_summary[
-            "BridgeAdjust"
-        ] = self.bridge_offset  # save the bridge offset value
+        self.analysis_summary["BridgeAdjust"] = self.bridge_offset  # save the bridge offset value
 
     def bridge_adjust(self):
         """
@@ -117,32 +117,40 @@ class RmTauAnalysis:
         """
         print("RmTau adjusting bridge...")
         self.Clamps.traces = (
-            self.Clamps.traces
-            - self.Clamps.cmd_wave.view(np.ndarray) * self.bridge_offset
+            self.Clamps.traces - self.Clamps.cmd_wave.view(np.ndarray) * self.bridge_offset
         )
 
     def analyze(
-        self, rmpregion=[0.0, 0.05], tauregion=[0.1, 0.125], to_peak=False, tgap=0.0005
+        self,
+        rmpregion=[0.0, 0.05],
+        tauregion=[0.1, 0.125],
+        to_peak=False,
+        tgap=0.0005,
+        average_flag: bool = False,
     ):
 
         # print("rmpregion: ", rmpregion)
         # print("tauregion: ", tauregion)
         if tauregion[1] > self.Clamps.tend:
             tauregion[1] = self.Clamps.tend
-        stepdur = (self.Clamps.tend - self.Clamps.tstart)
+        stepdur = self.Clamps.tend - self.Clamps.tstart
         self.rmp_analysis(time_window=rmpregion)
-        self.tau_membrane(time_window=tauregion, peak_time=to_peak, tgap=tgap)
-        r_pk = self.Clamps.tstart + 0.4 * stepdur
-        r_ss = self.Clamps.tstart + 0.9 * stepdur  # steady-state region
-        self.ivss_analysis(time_window=[r_ss, self.Clamps.tend])
-        self.ivpk_analysis(time_window=[self.Clamps.tstart, r_pk])  # peak region
-        # print("r_ss: ", r_ss, self.Clamps.tend)
-        self.tau_h(
-            self.tauh_voltage,
-            peak_timewindow=[r_pk, r_ss], # self.Clamps.tstart, r_pk],
-            steadystate_timewindow=[r_ss, self.Clamps.tend],
-            printWindow=False,
+        self.tau_membrane(
+            time_window=tauregion, peak_time=to_peak, tgap=tgap, average_flag=average_flag
         )
+        # print("IN rmtauanalysis, analyze, average_flag: ", average_flag)
+        if not average_flag:
+            r_pk = self.Clamps.tstart + 0.4 * stepdur
+            r_ss = self.Clamps.tstart + 0.9 * stepdur  # steady-state region
+            self.ivss_analysis(time_window=[r_ss, self.Clamps.tend])
+            self.ivpk_analysis(time_window=[self.Clamps.tstart, r_pk])  # peak region
+            # print("r_ss: ", r_ss, self.Clamps.tend)
+            self.tau_h(
+                self.tauh_voltage,
+                peak_timewindow=[r_pk, r_ss],  # self.Clamps.tstart, r_pk],
+                steadystate_timewindow=[r_ss, self.Clamps.tend],
+                printWindow=False,
+            )
 
     def tau_membrane(
         self,
@@ -152,6 +160,7 @@ class RmTauAnalysis:
         whichTau: int = 1,
         vrange: list = [-0.002, -0.050],
         tgap: float = 0.0,
+        average_flag: bool = False,
     ):
         r"""
         Compute time constant (single exponential) from the onset of the response to a current step
@@ -177,6 +186,10 @@ class RmTauAnalysis:
         tgap: float (sec)
             gap for the fitting to start (e.g., duration of initial points to ignore)
 
+        average_flag: bool (default: False)
+            If True, the routine will average the traces before fitting. This is useful for
+            noisy data with a single current injection,
+            but may not be appropriate for data with multiple current levels.
         Return
         ------
             Nothing
@@ -184,10 +197,12 @@ class RmTauAnalysis:
         Class variables with a leading taum\_ are set by this routine, to return results.
 
         """
-
         assert len(time_window) == 2
+        USE_OLD_FIT = False  # fitting prior to 8/25/2024 - works, but new method might be better
+        USE_NEW_FIT_8_24 = True
         debug = False
-        # print("Time Window0: ", time_window)
+
+        # print("rm_tau_analysis: tau_membrane Time Window: ", time_window)
         Func = "exp1"  # single exponential fit with DC offset.
         self.taum_func = Func
         self.analysis_summary["taum"] = np.nan
@@ -203,165 +218,448 @@ class RmTauAnalysis:
             self.rmp_analysis(time_window=self.baseline)
 
         Fits = fitting.Fitting()  # get a fitting instance
-        initpars = [self.rmp * 1e-3, -0.010, 0.010]  # rmp is in units of mV
-        ineg_valid = self.Clamps.commandLevels < -10e-12
-        if len(ineg_valid) != len(self.Spikes.spikecount):
-            return # somehow is invalid...
-        ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
-        if not any(ineg_valid):
-            return
-        
+        initpars = [self.rmp * 1e-3, -0.010, 0.020]  # rmp is in units of mV
+
+        # determine which current injection levels to use for the measurements.
+        # We need to exclude traces with spikes on them either befor or during
+        # the current pulse (it happens). Probably don't care about rebound spikes?
+        baselinespikes = [False] * len(self.Spikes.analysis_summary["baseline_spikes"])
+        for i, bspk in enumerate(self.Spikes.analysis_summary["baseline_spikes"]):
+            baselinespikes[i] = len(bspk) > 0
+        poststimulusspikes = [False] * len(self.Spikes.analysis_summary["poststimulus_spikes"])
+        for i, pspk in enumerate(self.Spikes.analysis_summary["poststimulus_spikes"]):
+            poststimulusspikes[i] = len(pspk) > 0
+        if not average_flag and USE_OLD_FIT:  # unless we are averaging for a single command level!
+            ineg_valid = self.Clamps.commandLevels < -10e-12
+            assert len(ineg_valid) == len(self.Spikes.spikecount)
+            ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
+
+            if not any(ineg_valid):  # no valid traces to use
+                print("rm_tau_analysis: No valid traces for taum measure in this protocol")
+                return
+        if not average_flag and USE_NEW_FIT_8_24:
+            # include traces with no baseline spikes or stimulus-time spikes;
+            # post stimulus spikes are ok.
+            ineg_valid = [
+                not baselinespikes[i] and (self.Spikes.spikecount[i] == 0)
+                # and not poststimulusspikes[i]
+                for i in range(len(self.Spikes.spikecount))
+            ]
+        if average_flag:  # averaging for a single command level
+            # establish valid traces for averaging
+            # Note there may be only ONE command level listed above, so we need to
+            # include ALL the traces in the average, but only those with no
+            # detected spikes.
+            ineg_valid = [
+                not baselinespikes[i]
+                and (self.Spikes.spikecount[i] == 0)
+                and not poststimulusspikes[i]
+                for i in range(len(self.Spikes.spikecount))
+            ]
+
+        # print("ineg valid: ", ineg_valid)
+        # assert 1 == 0
         if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
 
         if debug:
-            print('command levels: ', self.Clamps.commandLevels)
-            print("ineg: ", ineg)
+            print("command levels: ", self.Clamps.commandLevels * 1e12)
+            print("valid traces with negative commands: ", ineg_valid)
         # if peak_time is not None and ineg != np.array([]):
         #     rgnpk[1] = np.max(peak_time[ineg[0]])
         dt = self.Clamps.sample_interval
         time_base = self.Clamps.time_base.view(np.ndarray)
-        time_base_fit = time_base[int(time_window[0]/dt) : int(time_window[1]/dt)]
+        i_fitwin = [int(time_window[0] / dt), int(time_window[1] / dt)]
+        time_base_fit = time_base[int(time_window[0] / dt) : int(time_window[1] / dt)]
         traces = self.Clamps.traces.view(np.ndarray)
-        vrange = np.sort(vrange)         # vrange is in mV
+        vrange = [-0.01, -0.001]
+        vrange = np.sort(vrange)  # vrange is in mV
         vmeans = (  # mean of trace at the last 1 msec the measurment time window, as difference from baseline
-            np.mean(traces[:, int((time_window[1]-0.001)/dt) : int(time_window[1]/dt)], axis=1)
-                - self.ivbaseline
+            np.mean(
+                traces[:, int((time_window[1] - 0.001) / dt) : int(time_window[1] / dt)], axis=1
+            )
+            - self.ivbaseline
         )
         vbl = (  # mean of trace at the last 2 msec prior to the start of the measurement step
-            np.mean(traces[:, int((time_window[0]-0.002)/dt) : int(time_window[0]/dt)], axis=1)
+            np.mean(
+                traces[:, int((time_window[0] - 0.002) / dt) : int(time_window[0] / dt)], axis=1
+            )
         )
+        # print("VBL: ", vbl, traces.shape[0])
+        # print("vmeans: ", vmeans.shape)
+        # print("VMEANS: ", vmeans)
+        # print("vranges: ", vrange)
+        # print("ineg_valud: ", ineg_valid)
+        if not average_flag:
+            indxs = []
+            # for indxs = [i for i, x in enumerate(vmeans) if (x >= vrange[0]) and (x <= vrange[1]) and (i in ineg_valid)]
+            for i, x in enumerate(vmeans):
+                # print(x, vrange, ineg_valid[i])
+                if (x >= vrange[0]) and (x <= vrange[1]) and ineg_valid[i]:
+                    indxs.append(i)
+                    # print("appended: ", i)
+            # print(indxs)
 
-        indxs = np.where(
-            np.logical_and((vmeans[ineg_valid] >= vrange[0]), (vmeans[ineg_valid] <= vrange[1]))
-        )
+        else:
+            indxs = [[0]]
 
+        # debug = True
         if debug:
-            print('baseline: ', self.ivbaseline)
-            print('vrange: ', vrange)
-            print('vmeans: ', vmeans.view(np.ndarray))
+            print("baseline: ", self.ivbaseline)
+            print("vrange: ", vrange)
+            print("vmeans: ", vmeans.view(np.ndarray))
             print("Vbl: ", vbl.view(np.ndarray))
-            print('indxs: ', indxs)
-            print('ineg: ', ineg_valid)
-            print('self.Clamps.commandLevels', self.Clamps.commandLevels.view(np.ndarray))
+            print("indxs: ", indxs)
+            print("ineg: ", ineg_valid)
+            print("self.Clamps.commandLevels", self.Clamps.commandLevels.view(np.ndarray))
+            print("twindow: ", time_window)
             print("IV baseline: ", self.ivbaseline)
-            print( 'vrange: ', vrange)
-            print( 'vmeans[ineg_valid]: ', vmeans[ineg_valid].view(np.ndarray))
-            print( 'indxs: ', indxs)
-        indxs = list(indxs[0])
+            print("vrange: ", vrange)
+            print("vmeans[ineg_valid]: ", vmeans[ineg_valid].view(np.ndarray))
+            print("indxs: ", indxs)
+        # indxs = list(indxs[0])
         # exit()
         whichdata = indxs  # restricts to valid values
 
-        itaucmd = self.Clamps.commandLevels[ineg_valid]
+        if not average_flag:
+            itaucmd = self.Clamps.commandLevels[ineg_valid]
+        else:
+            itaucmd = self.Clamps.commandLevels[0]  # just use the first one for the average
         whichaxis = 0
         fpar = []
         names = []
         okdata = []
- 
-        whichdata = whichdata[-1:]
+
+        # ------------------------------------------------------------------
+        # Fit Averaged Traces
+        # ------------------------------------------------------------------
+        if average_flag:  # just fit the average of all traces
+            mean_trace = np.mean(traces[ineg_valid], axis=0)
+            data_to_fit = mean_trace[i_fitwin[0] : i_fitwin[1]]
+            LME = exp_estimator_lmfit.LMexpFit()
+            t_fit = time_base_fit - time_base_fit[0]
+            LME.initial_estimator(t_fit, data_to_fit, verbose=False)
+            # print(f"estm: DC: {LME.DC:8.3f}, A1: {LME.A1:8.3f}, R1: {LME.R1:8.3f}")
+            fit = LME.fit1(t_fit, data_to_fit, plot=False, verbose=False)
+            # print(f"Fit:  DC: {fit.params['DC'].value:8.3f}, A1: {fit.params['A1'].value:8.3f}, R1: {fit.params['R1'].value:8.3f}")
+            fit_curve = LME.exp_decay1(
+                t_fit,
+                DC=fit.params["DC"].value,
+                A1=fit.params["A1"].value,
+                R1=fit.params["R1"].value,
+            )
+            debug = False
+            if debug:
+                pw = pg.plot(
+                    time_base, mean_trace, pen="g", title=f"Averaged Fit: {self.Clamps.protocol!s}"
+                )
+                pw.plot(x=time_base_fit, y=fit_curve, pen=pg.mkPen("r", width=4, linestyle="--"))
+
+            xf, yf = time_base_fit, fit_curve
+            fparx = [fit.params["DC"].value, fit.params["A1"].value, 1.0 / fit.params["R1"].value]
+            namesx = ["DC", "A", "taum"]
+            fpar.append(fparx)
+            names.append(namesx)
+            okdata.append(0)
+            self.taum_fitted = {0: [xf, yf]}
+
+            if debug:
+                print("Fpar: ", fpar)
+            self.taum_pars = fpar
+            self.taum_win = time_window
+            self.taum_func = Func
+            self.taum_whichdata = okdata
+            # raise ValueError("checking taus in average fit")
+            self.taum_taum = fparx[2]
+            self.analysis_summary["taum"] = self.taum_taum
+            self.analysis_summary["taupars"] = fpar
+            self.analysis_summary["taufunc"] = self.taum_func
+            self.analysis_summary["taum_fitted"] = self.taum_fitted
+            self.analysis_summary["taum_fitmode"] = "average"
+            self.analysis_summary["taum_traces"] = ineg_valid
+            return
+
+        # Otherwise we fit only those traces in a certain current range/voltage range,
+        # and pay attention to the peak negativity if needed.
+
+        # whichdata = whichdata[-1:]
         if debug:
             print("whichdata: ", whichdata)
-        for j, k in enumerate(whichdata):
-            if debug:
-                import matplotlib.pyplot as mpl
-                n = "w_%03d" % j
-                fig, ax = mpl.subplots(3,1)
-                ax[0].plot(
-                    time_base, traces[k], "k-"
-                )
-                xspan = ax[0].get_xlim()
-            taubounds = self.taum_bounds.copy()
-            initpars[2] = np.mean(taubounds)
-            if debug:
-                print("Fitting for k: ", k, self.Clamps.commandLevels[k])
-                import matplotlib.pyplot as mpl
-                print(peak_time)
-                print(time_window, dt, time_window[0]/dt, time_window[1]/dt)
-                ax[1].plot(time_base_fit,
-                    traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)], 'b-')
-                ax[1].set_xlim(xspan)
-            
 
+        # ------------------------------------------------------------------
+        # Fit single traces, new way
+        # ------------------------------------------------------------------
+
+        if USE_NEW_FIT_8_24:
+            debug = False
+            # use an estimator from the average of the traces to be fit
+            # also exclude traces with APs before the current step
+            # limit whichdata to traces where icmd is betwwen 0 and -200 pA.
+            # implemented 8/24/2024. 
+
+            whichdata = [
+                i
+                for i in whichdata
+                if (self.Clamps.commandLevels[i] >= -200e-12)
+                and (self.Clamps.commandLevels[i] < 0.0)
+            ]
+            if debug:
+                print("\n\nNot averaging: TAU estimates with traces: ", whichdata)
+                print("   icmds: ", self.Clamps.commandLevels[whichdata] * 1e12)
+                print("   whichdata: ", whichdata)
+                print("   shape of all trace data: ", traces.shape)
+                # print(len(ineg_valid), ineg_valid)
+                # print("Spikes: ", len(self.Spikes.spikecount), self.Spikes.spikecount)
+
+            if len(whichdata) == 0:
+                self.taum_pars = fpar
+                self.taum_win = time_window
+                self.taum_func = Func
+                self.taum_whichdata = okdata
+                self.taum_taum = np.nan
+                self.analysis_summary["taum"] = self.taum_taum
+                self.analysis_summary["taupars"] = fpar
+                self.analysis_summary["taufunc"] = self.taum_func
+                self.analysis_summary["taum_fitted"] = self.taum_fitted
+                self.analysis_summary["taum_fitmode"] = "multiple"
+                self.analysis_summary["taum_traces"] = ineg_valid
+                return  # no available taum data from this protocol.
+
+            mean_trace = np.mean(traces[whichdata], axis=0)
+            it0 = int(time_window[0] / dt)
+            it1 = int(time_window[1] / dt)
+            data_to_fit = mean_trace[it0:it1]
+            t_fit = time_base[it0:it1] - time_base[i_fitwin[0]]
+            igap = int(tgap / dt)
+            ipeak = it1
             if peak_time:
-                # find the peak of the hyperpolarization of the trace to do the fit. 
-                # We account for a short time after the pulse (tgap) before actually
-                # finding the minimum, then reset the end time of the fit to the following
-                # peak negativity.
-                vtr1 = traces[k][int((time_window[0]+tgap) / dt) : int(time_window[1] / dt)]
-                ipeak = np.argmin(vtr1)+int(tgap/dt)
-                if ipeak * dt < 0.002:  # force a minimum fit window of 2 msec
-                    ipeak = 0.002/dt
-                    time_window[1] = 0.002 + time_window[0]
+                # find the peak of the hyperpolarization of the trace.
+                # This is set as the END of the fit
+                # We also account for a short time after the pulse (tgap) before actually
+                # finding the minimum
+                ipeak = (
+                    int(np.argmin(savgol_filter(data_to_fit[igap:], window_length=5, polyorder=3)))
+                    + igap
+                )  # relative to start of the fit window
+                if debug:
+                    print("   ipeak: ", ipeak * dt)
+                if ipeak * dt <= 0.020:  # at least the defined duration of 20 ms, but could be longer.
+                    ipeak = int(0.020 / dt)
+                data_to_fit = data_to_fit[:ipeak]
+                t_fit = t_fit[:ipeak]
+
+            LME = exp_estimator_lmfit.LMexpFit()
+            LME.initial_estimator(t_fit[igap:], data_to_fit[igap:], verbose=False)
+            # print(f"   Init: DC: {LME.DC:8.3f}, A1: {LME.A1:8.3f}, R1: {LME.R1:8.3f}")
+            if debug:
+                pass
+                # Generate 2 plots: one for the fit to the mean accepted trace (ineg_valid)
+                # and a set for the individual traces
+                # print(dir(self.Clamps))
+                # pw = pg.plot(
+                #     time_base, mean_trace, pen="g", title=f"New Fit all traces: {self.Clamps.protocol!s}"
+                # )
+                # pw = pg.plot(
+                #     x=t_fit[igap:] + time_window[0],
+                #     y=data_to_fit[igap:],
+                #     pen=pg.mkPen("r", width=4, linestyle="--"),
+                #     title=f"New Fit, mean data from: {self.Clamps.protocol!s}",
+                # )
+
+                # for i in range(traces.shape[0]):
+                #     if ineg_valid[i]:
+                #         width = 3.0
+                #         lcolor = 'g'
+                #         style = pg.QtCore.Qt.PenStyle.SolidLine
+                #         ppen = pg.mkPen(color=lcolor, width=width, style=style)
+                #     else:
+                #         width = 0.5
+                #         lcolor = 'w'
+                #         style = pg.QtCore.Qt.PenStyle.DashLine
+                #         ppen = pg.mkPen(color=lcolor, width=width, style=style)
+                #     if i == 0:
+                #         pw2 = pg.plot(
+                #             time_base,
+                #             traces[i],
+                #             pen=ppen,
+                #             title=f"Which: {self.Clamps.protocol!s}",
+                #         )
+                #     else:
+                #         pw2.plot(time_base, traces[i], pen=ppen, width=width)
+
+            # now for each trace, fit multiple traces
+            # print("  Fitting multiple traces", len(whichdata))
+            # print("    traces: ", whichdata)
+            pw = []
+            fparx = [np.nan, np.nan, np.nan]
+            xf = None
+            yf = None
+
+            for i, k in enumerate(whichdata):
+                data_to_fit = traces[k][it0 + igap : it0 + ipeak]
+                t_fit = time_base[it0 + igap : it0 + ipeak] - time_base[it0]
+                if debug:
+                    print("      trace number: ", k)
+                    print("      tfit shape, data_to_fit shape: ", t_fit.shape, data_to_fit.shape)
+                if debug:
+                    if i == 0:
+                        pwa = pg.plot(
+                            t_fit + time_window[0],
+                            data_to_fit,
+                            pen=pg.mkPen(pg.intColor(i + 1), width=1),
+                            title=f"Fitted Traces: {str(Path(*Path(self.Clamps.protocol).parts[-4:]))!s}",
+                        )
+                        pw.append(pwa)
+                # update the estimates for the tau
+                LME.initial_estimator(t_fit, data_to_fit, verbose=False)
+                fit = LME.fit1(t_fit, data_to_fit, plot=False, verbose=False)
+                fit_curve = LME.exp_decay1(
+                    t_fit,
+                    DC=fit.params["DC"].value,
+                    A1=fit.params["A1"].value,
+                    R1=fit.params["R1"].value,
+                )
+                if debug:
+                    if i == 0:
+                        pw[-1].plot(
+                            x=t_fit + time_window[0],
+                            y=fit_curve,
+                            pen=pg.mkPen("r", width=2, linestyle="--"),
+                        )
+
+                    else:
+                        pw[-1].plot(
+                            t_fit + time_window[0],
+                            data_to_fit,
+                            pen=pg.mkPen(pg.intColor(i + 1), width=1),
+                            title=f"Fitted Traces: {self.Clamps.protocol!s}",
+                        )
+                        pw[-1].plot(
+                            x=t_fit + time_window[0],
+                            y=fit_curve,
+                            pen=pg.mkPen("r", width=2, linestyle="--"),
+                        )
+
+                xf, yf = t_fit + time_window[0], fit_curve
+                fparx = [
+                    fit.params["DC"].value,
+                    fit.params["A1"].value,
+                    1.0 / fit.params["R1"].value,
+                ]
+                namesx = ["DC", "A", "taum"]
+                if fparx is None:
+                    fpar.append([np.nan, np.nan, np.nan])
                 else:
-                    time_window[1] = (ipeak+1)*dt + time_window[0]
-                vtr2 = traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)]
-                v0 = vtr2[0]
-                v1 = vtr2[-1] - v0
-                for m in range(len(vtr2)):
-                    if vtr2[m] - v0 <= 0.63 * v1:
-                        break
+                    fpar.append(fparx)
+                names.append(namesx)
+                okdata.append(k)
+                self.taum_fitted[k] = [xf, yf]
+            self.taum_pars = fpar
+            self.taum_win = time_window
+            self.taum_func = Func
+            self.taum_whichdata = okdata
+            self.taum_taum = fparx[2]
+            self.analysis_summary["taum"] = self.taum_taum
+            self.analysis_summary["taupars"] = fpar
+            self.analysis_summary["taufunc"] = self.taum_func
+            self.analysis_summary["taum_fitted"] = self.taum_fitted
+            self.analysis_summary["taum_fitmode"] = "multiple"
+            self.analysis_summary["taum_traces"] = ineg_valid
+        #
+        # ------------------------------------------------------------------
+        # Fit single traces, old way
+        # ------------------------------------------------------------------
+        #
+        elif USE_OLD_FIT:
+            for j, k in enumerate(whichdata):
+                taubounds = self.taum_bounds.copy()
+                initpars[2] = np.mean(taubounds)
+
+                if peak_time:
+                    # find the peak of the hyperpolarization of the trace to do the fit.
+                    # We account for a short time after the pulse (tgap) before actually
+                    # finding the minimum, then reset the end time of the fit to the following
+                    # peak negativity.
+                    vtr1 = traces[k][int((time_window[0] + tgap) / dt) : int(time_window[1] / dt)]
+                    ipeak = np.argmin(vtr1) + int(tgap / dt)
+                    if ipeak * dt < 0.002:  # force a minimum fit window of 2 msec
+                        ipeak = 0.002 / dt
+                        time_window[1] = 0.002 + time_window[0]
+                    else:
+                        time_window[1] = (ipeak + 1) * dt + time_window[0]
+                    vtr2 = traces[k][int(time_window[0] / dt) : int(time_window[1] / dt)]
+                    v0 = vtr2[0]
+                    v1 = vtr2[-1] - v0
+                    for m in range(len(vtr2)):
+                        if vtr2[m] - v0 <= 0.63 * v1:
+                            break
+                    if debug:
+                        print("peak time true, fit window = ", time_window)
+                        print("initial estimate for tau: (pts, time)", m, m * dt)
+                    taubounds[0] = 0.0002
+                    taubounds[1] = np.min((time_window[1] - time_window[0], 100.0))
+                    # ensure that the bounds are ordered and have some range
+                    if taubounds[1] < 10.0 * taubounds[0]:
+                        taubounds[1] = taubounds[0] * 10.0
+                    if debug:
+                        print("timewindow: ", time_window)
+                        print("taubounds: ", taubounds)
+
+                    tau_init = m * dt
+                    if tau_init >= taubounds[0] and tau_init <= taubounds[1]:
+                        initpars[2] = tau_init
+                    else:
+                        initpars[2] = 0.5 * ipeak * dt
+                    # print('inits: ', initpars)
+
                 if debug:
-                    print("peak time true, fit window = ", time_window)
-                    print("initial estimate for tau: (pts, time)", m, m*dt)
-                taubounds[0] = 0.0002
-                taubounds[1] = np.min((time_window[1]-time_window[0], 100.))
-                # ensure that the bounds are ordered and have some range
-                if taubounds[1] < 10.0*taubounds[0]:
-                    taubounds[1] = taubounds[0]*10.0
-                if debug:
-                    print("timewindow: ", time_window)
+                    print(
+                        "times: ", time_window, len(time_base), np.min(time_base), np.max(time_base)
+                    )
                     print("taubounds: ", taubounds)
 
-                tau_init = m * dt
-                if tau_init >= taubounds[0] and tau_init <= taubounds[1]:
-                    initpars[2] = tau_init
-                else:
-                    initpars[2] = 0.5 * ipeak * dt
-                # print('inits: ', initpars)
-
-            if debug:
-                print("times: ", time_window, len(time_base), np.min(time_base), np.max(time_base))
-                print('taubounds: ', taubounds)
-
-            (fparx, xf, yf, namesx) = Fits.FitRegion(
-                [k],
-                thisaxis=whichaxis,
-                tdat=time_base,
-                ydat=traces,
-                dataType="2d",
-                t0=time_window[0],
-                t1=time_window[1],
-                fitFunc=Func,
-                fitPars=initpars,
-                fixedPars=[tgap],
-                tgap = tgap,
-                method="SLSQP",
-                # 11/8/2023: tighten up the baseline bounds and use the trace's own baseline for fit
-                bounds=[(vbl[k]-0.005, vbl[k]+0.005), (0, 0.05), (taubounds)],
-                capture_error = True,
-            )
- 
-            if debug:
-                import matplotlib.pyplot as mpl
-                print(self.ivbaseline)
-                mpl.plot(self.Clamps.time_base, np.array(self.Clamps.traces[k]), 'k-')
-                mpl.plot(xf[0], yf[0], 'r--', linewidth=1)
-                mpl.plot([np.min(xf[0]), np.max(xf[0])], [vbl[k], vbl[k]], 'k--', linewidth=0.5)
-                mpl.show()
-            # exit(1)
-    
-            if not fparx:
-                raise Exception(
-                    "IVCurve::update_Tau_membrane: Charging tau fitting failed - see log"
+                (fparx, xf, yf, namesx) = Fits.FitRegion(
+                    [k],
+                    thisaxis=whichaxis,
+                    tdat=time_base,
+                    ydat=traces,
+                    dataType="2d",
+                    t0=time_window[0],
+                    t1=time_window[1],
+                    fitFunc=Func,
+                    fitPars=initpars,
+                    fixedPars=[tgap],
+                    tgap=tgap,
+                    method="SLSQP",
+                    # 11/8/2023: tighten up the baseline bounds and use the trace's own baseline for fit
+                    bounds=[(vbl[k] - 0.005, vbl[k] + 0.005), (0, 0.05), (taubounds)],
+                    capture_error=True,
                 )
-            # print 'j: ', j, len(fpar)
-            # if fparx[0][1] < 2.5e-3:  # amplitude must be > 2.5 mV to be useful
-            #     continue
-            fpar.append(fparx[0])
-            names.append(namesx[0])
-            okdata.append(k)
-            self.taum_fitted[k] = [xf[0], yf[0]]
+                debug = True
+                if debug:
+                    pw = pg.plot(
+                        self.Clamps.time_base,
+                        np.array(self.Clamps.traces[k]),
+                        "k-",
+                        title=f"Old method Tau Membrane Fit: {self.Clamps.protocol!s}",
+                    )
+                    pw.plot(xf[0], yf[0], "r--", linewidth=1)
+                    pw.plot([np.min(xf[0]), np.max(xf[0])], [vbl[k], vbl[k]], "b--", linewidth=0.5)
+
+                # exit(1)
+
+                if not fparx:
+                    raise Exception(
+                        "IVCurve::update_Tau_membrane: Charging tau fitting failed - see log"
+                    )
+                # print 'j: ', j, len(fpar)
+                # if fparx[0][1] < 2.5e-3:  # amplitude must be > 2.5 mV to be useful
+                #     continue
+                fpar.append(fparx[0])
+                names.append(namesx[0])
+                okdata.append(k)
+                self.taum_fitted[k] = [xf[0], yf[0]]
 
         if debug:
             print("Fpar: ", fpar)
@@ -376,12 +674,7 @@ class RmTauAnalysis:
             for i in range(0, len(names[j])):
                 outstr += "%s = %f, " % (names[j][i], fpar[j][i])
             if printWindow:
-                print(
-                    (
-                        "FIT(%d, %.1f pA): %s "
-                        % (whichdata[j], itaucmd[j] * 1e12, outstr)
-                    )
-                )
+                print(("FIT(%d, %.1f pA): %s " % (whichdata[j], itaucmd[j] * 1e12, outstr)))
         if len(taus) > 0:
             self.taum_taum = np.nanmean(taus)
             self.analysis_summary["taum"] = self.taum_taum
@@ -389,14 +682,19 @@ class RmTauAnalysis:
             self.taum_taum = np.NaN
             self.analysis_summary["taum"] = np.NaN
         if len(self.taum_pars) > 0:
-            self.analysis_summary["taupars"] = self.taum_pars[0].tolist()
+            if isinstance(self.taum_pars, list):
+                self.analysis_summary["taupars"] = self.taum_pars[0]
+            else:
+                self.analysis_summary["taupars"] = self.taum_pars[0].tolist()
+
         else:
             self.analysis_summary["taupars"] = self.taum_pars
         self.analysis_summary["taufunc"] = self.taum_func
         self.analysis_summary["taum_fitted"] = self.taum_fitted
+        self.analysis_summary["taum_fitmode"] = "multiple"
+        self.analysis_summary["taum_traces"] = ineg_valid
 
-
-    def rmp_analysis(self, time_window:list=[]):
+    def rmp_analysis(self, time_window: list = []):
         """
         Get the resting membrane potential
 
@@ -413,7 +711,7 @@ class RmTauAnalysis:
         Stores computed RMP in mV in the class variable rmp.
         """
         assert len(time_window) == 2
- 
+
         data1 = self.Clamps.traces["Time" : time_window[0] : time_window[1]]
         data1 = data1.view(np.ndarray)
         self.ivbaseline = data1.mean(axis=1)  # all traces
@@ -427,7 +725,7 @@ class RmTauAnalysis:
         self.analysis_summary["RMPs"] = self.ivbaseline.tolist()  # save raw baselines as well
         self.analysis_summary["Irmp"] = self.irmp.tolist()
 
-    def ivss_analysis(self, time_window:list=[]):
+    def ivss_analysis(self, time_window: list = []):
         """
         compute steady-state IV curve - from the mean voltage
         across the stimulus set over the defined time region
@@ -464,7 +762,7 @@ class RmTauAnalysis:
             # than some of those with no spikes.
             ivss_valid = self.Clamps.commandLevels < 0.5e-9
             if len(ivss_valid) != len(self.Spikes.spikecount):
-                return # somehow is invalid...
+                return  # somehow is invalid...
             ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
             if not any(ivss_valid):
                 return
@@ -492,13 +790,16 @@ class RmTauAnalysis:
                     w=None,
                     cov=False,
                 )
+
                 def pderiv(pf, x):
-                    y = 3*pf[0]*x**2 + 2*pf[1]*x + pf[2]
+                    y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
                     return y
-                
+
                 # pval = np.polyval(pf, self.ivss_cmd)
 
-                slope = pderiv(pf, np.array(self.ivss_cmd)) # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
+                slope = pderiv(
+                    pf, np.array(self.ivss_cmd)
+                )  # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.0)
                 self.rss_fit = {"I": imids, "V": np.polyval(pf, imids)}
                 # print('fit V: ', self.rss_fit['V'])
@@ -531,7 +832,7 @@ class RmTauAnalysis:
                 self.analysis_summary["ivss_bl"] = self.ivss_bl
                 self.analysis_summary["ivss_fit"] = self.rss_fit
 
-    def ivpk_analysis(self, time_window:list = []):
+    def ivpk_analysis(self, time_window: list = []):
         """
         compute peak IV curve - from the minimum voltage
         across the stimulus set
@@ -562,6 +863,8 @@ class RmTauAnalysis:
 
         self.ivpk_v_all = data1.min(axis=1)  # all traces, minimum voltage found
         if len(self.Spikes.nospk) >= 1:
+            # print("ivpk_analysis: nospk: ", self.Spikes.nospk)
+            # print("ivpk_analysis: ivpk_v_all: ", self.ivpk_v_all)
             # Steady-state IV where there are no spikes
             self.ivpk_v = self.ivpk_v_all[self.Spikes.nospk]
             self.ivpk_cmd_all = self.Clamps.commandLevels
@@ -586,12 +889,12 @@ class RmTauAnalysis:
                 )
 
                 def pderiv(pf, x):
-                    y = 3*pf[0]*x**2 + 2*pf[1]*x + pf[2]
+                    y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
                     return y
-                
+
                 # pval = np.polyval(pf, self.ivss_cmd)
 
-                slope = pderiv(pf, np.array(self.ivpk_cmd)) 
+                slope = pderiv(pf, np.array(self.ivpk_cmd))
                 # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 # pval = np.polyval(pf, self.ivpk_cmd)
                 # slope = np.diff(pval) / np.diff(self.ivpk_cmd)
@@ -621,7 +924,6 @@ class RmTauAnalysis:
                 self.analysis_summary["ivpk_v"] = self.ivpk_v
                 self.analysis_summary["ivpk_bl"] = self.ivpk_bl
                 self.analysis_summary["ivpk_fit"] = self.rpk_fit
-                
 
     def leak_subtract(self):
         self.yleak = np.zeros(len(self.ivss_v))
@@ -644,7 +946,13 @@ class RmTauAnalysis:
         #     except:
         #         raise ValueError('IVCurve Leak subtraction: no valid points to correct')
 
-    def tau_h(self, v_steadystate, peak_timewindow:list=[], steadystate_timewindow:list=[], printWindow=False):
+    def tau_h(
+        self,
+        v_steadystate,
+        peak_timewindow: list = [],
+        steadystate_timewindow: list = [],
+        printWindow=False,
+    ):
         """
         Measure the time constant associated with activation of the hyperpolarization-
         activated current, Ih. The tau is measured from the peak of the response to the
@@ -712,8 +1020,10 @@ class RmTauAnalysis:
         )
         pk_voltages_tr = pk_voltages.min(axis=1)
         ipk_start = pk_voltages[itrace].argmin()
-        ipk_start += int(peak_timewindow[0] / self.Clamps.sample_rate[itrace])  # get starting index as well
-        pk_time = self.Clamps.time_base[ipk_start]+self.Clamps.tstart
+        ipk_start += int(
+            peak_timewindow[0] / self.Clamps.sample_rate[itrace]
+        )  # get starting index as well
+        pk_time = self.Clamps.time_base[ipk_start] + self.Clamps.tstart
         if pk_time > self.Clamps.tend:
             pk_time = self.Clamps.tend - 0.050
         if not self.Spikes.spikes_counted:
@@ -741,7 +1051,7 @@ class RmTauAnalysis:
             t1=steadystate_timewindow[1],
             fitFunc=Func,
             fitPars=initpars,
-            method="Nelder-Mead", # "SLSQP",
+            method="Nelder-Mead",  # "SLSQP",
             bounds=[
                 (-0.120, 0.05),
                 (-0.1, 0.1),
@@ -758,24 +1068,17 @@ class RmTauAnalysis:
             for i in range(0, len(names[j])):
                 outstr += "%s = %f, " % (names[j][i], fpar[j][i])
             if printWindow:
-                print(
-                    (
-                        "Ih FIT(%d, %.1f pA): %s "
-                        % (whichdata[j], itaucmd[j] * 1e12, outstr)
-                    )
-                )
+                print(("Ih FIT(%d, %.1f pA): %s " % (whichdata[j], itaucmd[j] * 1e12, outstr)))
         self.tauh_fitted[itrace] = [xf[0], yf[0]]
         self.tauh_vrmp = self.ivbaseline[itrace]
         self.tauh_vss = ss_voltages[itrace]
         self.tauh_vpk = pk_voltages_tr[itrace]
-        self.tauh_neg_ss = (self.tauh_vss - self.tauh_vrmp)
-        self.tauh_neg_pk = (self.tauh_vpk - self.tauh_vrmp)
+        self.tauh_neg_ss = self.tauh_vss - self.tauh_vrmp
+        self.tauh_neg_pk = self.tauh_vpk - self.tauh_vrmp
         self.tauh_xf = xf
         self.tauh_yf = yf
         self.tauh_meantau = np.mean(taus)
-        self.tauh_bovera = (self.tauh_vss - self.tauh_vrmp) / (
-            self.tauh_vpk - self.tauh_vrmp
-        )
+        self.tauh_bovera = (self.tauh_vss - self.tauh_vrmp) / (self.tauh_vpk - self.tauh_vrmp)
         if self.tauh_bovera > 1.0:
             self.tauh_bovera = 1.0
         # print("Gh: ", itaucmd, self.tauh_neg_ss)

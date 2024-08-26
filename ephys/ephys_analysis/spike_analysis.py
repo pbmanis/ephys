@@ -207,7 +207,7 @@ class SpikeAnalysis:
         ]
         self.spike_detector = detector
 
-    def analyzeSpikes(self, reset=True):
+    def analyzeSpikes(self, reset=True, track:bool=False):
         """
         analyzeSpikes: Using the threshold set in the control panel, count the
         number of spikes in the stimulation window (self.Clamps.tstart, self.Clamps.tend)
@@ -251,10 +251,13 @@ class SpikeAnalysis:
         lastspikecount = 0
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         # maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
+        if track:
+            print("in analyze spikes")
         for trace_number in range(ntraces):  # this is where we would parallelize the analysis for spikes
             # if we could, but can only have ONE parallelization at a time (using top level)
             # The question is whether this would be faster? 
-            # CP.cprint("r", f"AnalyzeSpikes: 2: trace: {i:d}")
+            if track:
+                CP.cprint("r", f"AnalyzeSpikes: 2: trace: {trace_number:03d}", end="\r")
             spikes = self.U.findspikes(
                 self.Clamps.time_base,
                 np.array(self.Clamps.traces[trace_number]),
@@ -274,7 +277,7 @@ class SpikeAnalysis:
                 debug=False,
             )
             if len(spikes) == 0:
-                # print ('no spikes found')
+                CP.cprint("b", f'   no spikes found, tr={trace_number:03d}', end="\r")
                 continue
             spikes = np.array(spikes)
             # if len(spikes) > 1:
@@ -299,7 +302,7 @@ class SpikeAnalysis:
                     misi = np.mean(np.diff(sp_for_ar[-2:])) * 1e3  # last ISIs in the interval
                     adapt_ratio[trace_number] = misi / self.fisi[trace_number]
             lastspikecount = self.spikecount[trace_number]  # update rate (sets max rate)
-
+        print()
         iAR = np.where(adapt_ratio > 0)  # valid AR and monotonically rising
         self.adapt_ratio = np.nan
         if len(adapt_ratio[iAR]) > 0:
@@ -313,6 +316,7 @@ class SpikeAnalysis:
             twin
         )
         self.spikes_counted = True
+        print("spike analysis: AnalyzeSpikes finished")
 
     def analyzeSpikes_brief(self, mode="baseline"):
         """
@@ -701,7 +705,7 @@ class SpikeAnalysis:
         # only up to the max slope of the spike
         kthresholds = np.argwhere(dvdt[kbegin:km] < spike_begin_dV)
         if len(kthresholds) == 0:
-            print(f"No spike found: trace: {trace_number:d}")
+            # print(f"No spike found: trace: {trace_number:d}")
             # {kthresh!s}\n     {len(kthresh):d}, {len(dvdt):d}, {kbegin:d}, {kprevious:d}, {kpeak:d}, {spike_begin_dV:.3f}")
             # import pyqtgraph as pg
             # pg.plot(self.Clamps.time_base, self.Clamps.traces[trace_number], pen=pg.mkPen('b', width=1))

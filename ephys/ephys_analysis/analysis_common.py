@@ -45,6 +45,7 @@ import ephys.ephys_analysis as EP
 import ephys.mapanalysistools as mapanalysistools
 import ephys.mini_analyses as MINIS
 import ephys.tools.build_info_string as BIS
+import ephys.tools.filename_tools as filename_tools
 
 from . import analysis_parameters as AnalysisParams
 
@@ -114,6 +115,7 @@ class cmdargs:
     after: str = "1970.1.1"
     before: str = "2266.1.1"
     slicecell: Union[str, None] = None
+    cell_id: Union[str, None] = None
     protocol: Union[str, None] = None
     configfile: Union[str, None] = None
     important_flag_check: bool = False
@@ -211,6 +213,7 @@ class Analysis:
         self.after = DUP.parse(args.after)
         self.after_str = args.after
         self.slicecell = args.slicecell
+        self.cell_id = args.cell_id
         self.protocol = args.protocol
         self.celltype = args.celltype
 
@@ -302,7 +305,16 @@ class Analysis:
         else:
             raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc]")
         # print("args: ", args)
-        super().__init__()
+        try:
+            super().__init__()
+        except:
+            print("Failed first super init")
+            try:
+                super().__init__(args)
+                print("pased second")
+            except:
+                raise RuntimeError("Failed second super init")
+        
 
     def set_exclusions(self, exclusions: dict):
         """Set the datasets that will be excluded
@@ -486,21 +498,16 @@ class Analysis:
             print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
     def run(self):
-        """Perform analysis on one day, a range of days, one cell, or everything.
-
-        self.day is a string that can be:
-            "all" : all days in the database
-            "2020.01.01" : a specific day
-            "2020.01.01_000" : a specific day (formatted)
+        """Perform analysis on one cell
 
         Returns:
             nothing
         """
-        CP.cprint("r", "\nStarting Analysis run")
+        CP.cprint("r", f"\nStarting Analysis run, self.day = {self.day!s}, slicecell= {self.cell_id!s}")
+        # raise ValueError()
         self.n_analyzed = 0
-        self.prots_done = (
-            []
-        )  # keep track of all protocols run, so we can print a summary at the end and also check for duplicates
+        # keep track of all protocols run, so we can print a summary at the end and also check for duplicates
+        self.prots_done = []
 
         def _add_day(row):
             row.day = str(Path(row.date).name)
@@ -514,12 +521,44 @@ class Analysis:
         self.df = self.df.assign(day="")
         self.df = self.df.apply(_add_day, axis=1)  # add a day (short name)
         day = str(self.day)
+        # find table entry:
+        print(f"Looking for {self.cell_id!s} in database from {str(self.inputFilename)!s}")
+        cell_entry = self.df.loc[(self.df.cell_id == self.cell_id)]
+        if cell_entry.empty:
+            CP.cprint("r", f"Date not found: {day:s} {self.cell_id:s}")
+            # for dx in self.df.date.values:
+            #     CP.cprint("r", f"    day: {dx:s}")
+            raise FileNotFoundError(f"Cell: {self.cell_id!s} was not found in database")
 
-        if day != "all":  # specified day
+        CP.cprint("c", f"  ... [Analysis:run] Retrieved cell:\n       {self.cell_id:s}")
+        icell = cell_entry.index
+        print(
+            "Cell in day: ", icell, "which is: ", self.df.iloc[icell].cell_id, 
+              " with: self.pdffilename", self.pdfFilename)
+        
+        print("Parallel mode (testing): ", self.parallel_mode)
+        
+        if self.parallel_mode.lower() == "off":  # don't use parallel processing
+            # if self.pdfFilename is None:
+            print(" Doing cell: ", self.df.iloc[icell].cell_id)
+            cell_ok = self.do_cell(icell, pdf=None)
+            # generate pdf files from the pkl files
+            if cell_ok:
+                self.plot_data(icell)
+        
+        # do parallel only on all the selected cell
+        elif self.parallel_mode in ["cell" ]: 
+                # Protocols are the parallel tasks
+                cell_ok = self.do_cell(icell, pdf=None)
+                        # generate pdf files from the pkl files
+                if cell_ok:
+                    self.plot_data(icell)
+
+        else:  # specified day
             print(f"Looking for day: {day:s} in database from {str(self.inputFilename):s}")
-            if "_" not in day:
+            if "_" not in day:  # append proper ending
                 day = day + "_000"
-            # try simple day
+            # try looking for all entries with this day designator
             cells_in_day = self.df.loc[self.df.day == day]
             # if not, try one with leading path information
             if cells_in_day.empty:
@@ -531,109 +570,63 @@ class Analysis:
                 raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
                 return None
             CP.cprint("c", f"  ... [Analysis:run] Retrieved day:\n    {day:s}")
-            cell_indices = [c+1 for c in cells_in_day.index]
+            cell_indices = [c for c in cells_in_day.index]
             print("Cells in day: ", cell_indices)
             cellprots = []
-            print("Parallel mode: ", self.parallel_mode)
-            if self.parallel_mode != "day":
+            print("Parallel mode (else): ", self.parallel_mode)
+            if self.parallel_mode in ["day", "cell"]:
+                if cells_in_day.empty:
+                    cells_in_day = self.df.loc[self.df.date == day]
+                if cells_in_day.empty:
+                    CP.cprint("r", f"Date not found: {day:s}")
+                    # for dx in self.df.date.values:
+                    #     CP.cprint("r", f"    day: {dx:s}")
+                    raise FileNotFoundError(f"Day: {self.df.day!s} not found in database")
+                    return None
+                CP.cprint("c", f"  ... [Analysis:run] Retrieved day:\n    {day:s}")
+                cell_indices = [c + 1 for c in cells_in_day.index]
+                print("Cells in day: ", cell_indices)
+                cells_in_day = self.df.loc[self.df.date == day]
                 # just loop through the selected cells
-                print(f"Doing day: {day!s}  with parallel mode: {self.parallel_mode!s}")
+                print(
+                    f"Doing day: {day!s}  with parallel mode: {self.parallel_mode!s}, {cell_indices!s}"
+                )
                 for icell in cell_indices:
                     # for all the cells in the day (but will check for slice_cell too)
-                    cell_ok = self.do_cell(icell-1, pdf=self.pdfFilename)
+                    cell_ok = self.do_cell(icell, pdf=self.pdfFilename)
                     print("Cell ok: ", cell_ok)
                     # now generate pdf files from the pkl files
                     # if cell_ok:
                     #     self.plot_data(icell)
                 return None  # get the complete protocols:
-            else:
-                # do the selected days in parallel mode here
-                tasks = range(len(cells_in_day))  # number of tasks that will be needed
-                results: dict = {}
-                result = [None] * len(tasks)  # likewise
-                with MP.Parallelize(
-                    enumerate(tasks), results=results, workers=self.nworkers
-                ) as tasker:
-                    for icell, x in tasker:
-                        print("i: ", icell, "x: ", x)
-                        result = self.do_cell(icell, pdf=self.pdfFilename)
-                        # tasker.results[cells_in_day[i]] = result
-                return None
+
+        if day == "whoknows":
+            # do the selected days in parallel mode here
+            tasks = range(len(cells_in_day))  # number of tasks that will be needed
+            results: dict = {}
+            result = [None] * len(tasks)  # likewise
+            with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
+                for icell, x in tasker:
+                    print("i: ", icell, "x: ", x)
+                    result = self.do_cell(icell, pdf=self.pdfFilename)
+                    # tasker.results[cells_in_day[i]] = result
+            return None
         # Only returns a dataframe if there is more than one entry
         # Otherwise, it is like a series or dict
-        else:  # ALL cells in the index
-            if self.parallel_mode == "off":
-                if self.pdfFilename is None:
-                    for n, icell in enumerate(range(len(self.df.index))):
-                        print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
-                        cell_ok = self.do_cell(icell, pdf=None)
-                        # generate pdf files from the pkl files
-                        if cell_ok:
-                            self.plot_data(icell)
-                # else:
-                #     with PdfPages(self.pdfFilename) as pdf:
-                #         for n, icell in enumerate(range(len(self.df.index))):
-                #             CP.cprint("g", f"Cell type(s): {self.celltype!s}")
-                #             if self.celltype == "all":
-                #                 cell_ok = self.do_cell(icell, pdf=pdf)
-                #                 if cell_ok:
-                #                     self.plot_data(icell)
-                #                 # CP.cprint("r", f"***** All")
-                #             else:  # only do a select cell type
-                #                 if self.celltype == self.df.iloc[icell]["cell_type"]:
-                #                     CP.cprint("r", f"***** selected: {self.celltype:s}")
-                #                     cell_ok = self.do_cell(icell, pdf=pdf)
-                #                     # generate pdf files from the pkl files
-                #                     if cell_ok:
-                #                         self.plot_data(icell)
-            elif self.parallel_mode == "day":
-                tasks = range(len(range(len(self.df.index))))  # number of tasks that will be needed
-                results: dict = {}
-                result = [None] * len(tasks)  # likewise
-                with MP.Parallelize(
-                    enumerate(tasks), results=results, workers=self.nworkers
-                ) as tasker:
-                    for icell, x in tasker:
-                        print("Cell #: ", icell, "tasker: ", x)
-                        result = self.do_cell(icell, pdf=self.pdfFilename)
-                        # tasker.results[cells_in_day[i]] = result
 
-                if self.pdfFilename is None:
-                    for n, icell in enumerate(self.df.index):
-                        print("(All cells: ) Doing cell: ", n, self.df.iloc[icell].cell_id)
-                        cell_ok = self.do_cell(icell, pdf=None)
-                        # generate pdf files from the pkl files
-                        if cell_ok:
-                            self.plot_data(icell)
-                # else:
-                #     with PdfPages(self.pdfFilename) as pdf:
-                #         for n, icell in enumerate(range(len(self.df.index))):
-                #             CP.cprint("g", f"Cell type(s): {self.celltype!s}")
-                #             if self.celltype == "all":
-                #                 cell_ok = self.do_cell(icell, pdf=pdf)
-                #                 if cell_ok:
-                #                     self.plot_data(icell)
-                #                 # CP.cprint("r", f"***** All")
-                #             else:  # only do a select cell type
-                #                 if self.celltype == self.df.iloc[icell]["cell_type"]:
-                #                     CP.cprint("r", f"***** selected: {self.celltype:s}")
-                #                     cell_ok = self.do_cell(icell, pdf=pdf)
-                #                     # generate pdf files from the pkl files
-                #                     if cell_ok:
-                #                         self.plot_data(icell)
-            if self.iv_analysisFilename is None:
-                msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
-                Logger.warning(msg)
-            else:
-                if not self.dry_run:
-                    CP.cprint(
-                        "c",
-                        f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
+        if self.iv_analysisFilename is None:
+            msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
+            Logger.warning(msg)
+        else:
+            if not self.dry_run:
+                CP.cprint(
+                    "c",
+                    f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
+                )
+                with open(self.iv_analysisFilename, "wb") as fh:
+                    self.df.to_pickle(
+                        fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
                     )
-                    with open(self.iv_analysisFilename, "wb") as fh:
-                        self.df.to_pickle(
-                            fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
-                        )
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -945,11 +938,11 @@ class Analysis:
     def get_celltype(self, icell):
         """Find the type of the cell associated with this entry
         This checks for re-identification of cell type in the "annotation table" and the "map_annotation" table.
-        The "annotation table" is an early table that was used to annotate/update mislabeled cell types. 
+        The "annotation table" is an early table that was used to annotate/update mislabeled cell types.
         The "map annotation table" contains more information, and is used to drive the analyses (specific filtering,
-        event shape parameters, etc). 
+        event shape parameters, etc).
         To be confident of the assignment for cell types, we check the cell type in the original data against
-        both tables. 
+        both tables.
         To do this, we get the type listed in each of the 3 sources.
         Test 5 conditions:
         1. If the map annotation table and the annotation table have different types (and neither of them
@@ -960,7 +953,7 @@ class Analysis:
         3. If there is no entry in the annotathio table, but an entry in the map_annotation table,
             we compare and update the celltype with the new value from the map_annotation table.
             If the cell has a type, but there is no entry "map_annotation" table, then keep the designated type.
-        4. If the cell has no type, and is not in either the "map_annotation" or the annotation table, 
+        4. If the cell has no type, and is not in either the "map_annotation" or the annotation table,
             then keep (or set) the type as "unknown".
 
         Parameters
@@ -975,6 +968,7 @@ class Analysis:
             If the celltype changed in annotation, the bool value will be True,
             otherwise False
         """
+
         original_celltype = self.df.at[icell, "cell_type"]
         original_celltype = filenametools.check_celltype(original_celltype)
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
@@ -1008,7 +1002,7 @@ class Analysis:
             if self.parallel_mode not in ["day"]:
                 Logger.info(msg)
             return original_celltype, False  # no annotations, so use the original cell type
-        
+
         # mismatch in annotated types:
         if not pd.isnull(map_annotated_celltype) and not pd.isnull(annotated_celltype):
             if map_annotated_celltype != annotated_celltype:
@@ -1016,9 +1010,13 @@ class Analysis:
                 if self.parallel_mode not in ["day"]:
                     Logger.critical(msg)
                 raise ValueError(msg)
-        
-        # check map annotation when no entry in the annotation file 
-        if pd.isnull(annotated_celltype) and not pd.isnull(map_annotated_celltype) and isinstance(map_annotated_celltype, str):
+
+        # check map annotation when no entry in the annotation file
+        if (
+            pd.isnull(annotated_celltype)
+            and not pd.isnull(map_annotated_celltype)
+            and isinstance(map_annotated_celltype, str)
+        ):
             if map_annotated_celltype != original_celltype:
                 msg = f"   Cell type was re-annotated in map_annotation file from: <{original_celltype:s}> to: {map_annotated_celltype:s})"
                 CP.cprint(
@@ -1036,9 +1034,13 @@ class Analysis:
                 )
                 Logger.info(msg)
                 return original_celltype, False
-            
+
         # check reverse: in annotation file, but not in map annotation file
-        if pd.isnull(map_annotated_celltype) and not pd.isnull(annotated_celltype) and isinstance(annotated_celltype, str):
+        if (
+            pd.isnull(map_annotated_celltype)
+            and not pd.isnull(annotated_celltype)
+            and isinstance(annotated_celltype, str)
+        ):
             if annotated_celltype != original_celltype:
                 msg = f"   Cell type was re-annotated in annotation file from: <{original_celltype:s}> to: {annotated_celltype:s})"
                 CP.cprint(
@@ -1056,8 +1058,6 @@ class Analysis:
                 )
                 Logger.info(msg)
                 return original_celltype, False
-
-        
 
     def do_cell(self, icell: int, pdf=None) -> bool:
         """
@@ -1078,11 +1078,16 @@ class Analysis:
         success: bool
 
         """
-        CP.cprint("c", f"Entering do_cell with icell = {icell:d} (dataframe index, not table index), cellid: {self.df.iloc[icell].cell_id:s}")
+        CP.cprint(
+            "c",
+            f"Entering do_cell with icell = {icell} (dataframe index, not table index), cell_id: {self.df.iloc[icell].cell_id}",
+        )
+        if not isinstance(icell, int):
+            icell = icell.item()
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
         CP.cprint(
             "c",
-            f"icell: {icell:d}, slice: {self.slicecell!s} date: {datestr!s} slicestr: {slicestr:s} cellstr: {cellstr:s}",
+            f"icell: {icell}, slice: {self.slicecell!s} date: {datestr!s} slicestr: {slicestr:s} cellstr: {cellstr:s}",
         )
         print("after, before: ", self.after, self.before)
         matchcell, slicecell3, slicecell2, slicecell1 = filenametools.compare_slice_cell(
@@ -1096,6 +1101,7 @@ class Analysis:
         CP.cprint("y", f"Match cell: {matchcell!s}")
         if not matchcell:
             CP.cprint("r", f"Failed to match cell")
+            raise ValueError(f"Failed to match cell!!!!!")
             return False
         # reassign cell type if the annotation table changes it.
         celltype, celltypechanged = self.get_celltype(icell)
@@ -1257,10 +1263,12 @@ class Analysis:
                 # except:
                 #     pass
 
-            # pp = pprint.PrettyPrinter(indent=4)
-            # pp.pprint(self.df.iloc[icell]["IV"])
-
-            with open(self.cell_pklFilename, "wb") as fh:
+            # be sure that we have a directory to write to - test for presence
+            # and create if needed
+            fo = Path(self.cell_pklFilename)
+            if not fo.parent.is_dir():
+                fo.parent.mkdir(parents=True, exist_ok=True)
+            with open(fo, "wb") as fh:
                 self.df.iloc[icell].to_pickle(
                     fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
                 )

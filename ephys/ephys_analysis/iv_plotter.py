@@ -25,6 +25,7 @@ def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, deco
             file_out_path=file_out_path,
             decorate=decorate,
         )
+        print("Plotting for: ", df_selected)
         plotter.plot_ivs(df_selected)
 
 
@@ -76,21 +77,26 @@ class IVPlotter(object):
         # check to see if this one is in the exclusion list:
         # print(df_selected.cell_id, self.experiment["excludeIVs"])
         protocols = df_selected["IV"].keys()
-        protocols = FUNCS.remove_excluded_protocols(self.experiment, df_selected.cell_id, protocols=protocols)
+        if not isinstance(df_selected.cell_id, str):
+            cell_id = df_selected.cell_id.item()  # convert series to str
+        else:
+            cell_id = df_selected.cell_id
+        protocols = FUNCS.remove_excluded_protocols(self.experiment, cell_id=cell_id, protocols=protocols)
         if len(protocols) == 0:
-            CP("y", f"Excluding {df_selected.cell_id} from the plotting")
+            CP("y", f"Excluding {cell_id} from the plotting; no valid protocols")
             return
-
         try:
             # find the cell in the main index
-            index = self.df_summary.index[self.df_summary["cell_id"] == df_selected.cell_id].values[0]
+            # print("summary id: ", self.df_summary["cell_id"])
+            # print("selected id: ", df_selected.cell_id)
+            index = self.df_summary[self.df_summary["cell_id"] == cell_id].index[0]
         except IndexError:
-            CP("r", f"Could not find cell: {df_selected.cell_id} in the summary table")
-            raise IndexError(f"Could not find cell: {df_selected.cell_id} in the summary table")
-        
+            CP("r", f"Could not find cell: {cell_id} in the summary table")
+            raise IndexError(f"Could not find cell: {cell_id} in the summary table")
+
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
         if datestr is None:
-            CP("r", f"Could not make filename partition for cell: {self.df_summary.cell_id:s}")
+            CP("r", f"Could not make filename partition for cell: {self.df_summary.cell_id!s}")
             return False
         slicecell = filename_tools.make_slicecell(slicestr, cellstr)
         matchcell, slicecell3, slicecell2, slicecell1 = filename_tools.compare_slice_cell(
@@ -98,23 +104,23 @@ class IVPlotter(object):
         )
         if not matchcell:
             return False
-        # print("datestr, clicecel, slice, cell, celltype: ", datestr, slicecell, slicestr, cellstr, df_selected['cell_type'])
         thisday = datestr.replace(".", "_").split("_")
         thisday = "_".join(thisday[:-1])
-        # print("df_summary in plot ivs:\n", self.df_summary.columns)
-        # print("df_selected in plot ivs:\n", df_selected.keys())
         self.plot_df, _tmp = filename_tools.get_cell(
-            experiment=self.experiment, df=self.df_summary, cell_id=df_selected.cell_id
+            experiment=self.experiment, df=self.df_summary, cell_id=cell_id
         )
         if self.plot_df is None: # likely no spike or IV protocols for this cell
-            CP("r", f"Cell had no spike or IV protocol cell: {self.df_summary.cell_id:s}")
+            CP("r", f"Cell had no spike or IV protocol cell: {cell_id!s}")
             return
-        
+        if isinstance(df_selected["cell_type"], str):
+            celltype = df_selected["cell_type"]
+        else:
+            celltype = df_selected["cell_type"].item()
         self.nfiles = 0
         pdffile = filename_tools.make_pdf_filename(
             self.file_out_path,
             thisday=thisday,
-            celltype=df_selected["cell_type"],
+            celltype=celltype,
             analysistype="IVs",
             slicecell=slicecell,
         )
@@ -192,73 +198,92 @@ class IVPlotter(object):
             cmap(float(i) / self.AR.traces.shape[0]) for i in range(self.AR.traces.shape[0])
         ]
 
-        for trace_number in range(self.AR.traces.shape[0]):
-            if self.plotting_alternation > 1:
-                if i % self.plotting_alternation != 0:
-                    continue
+        if str(protocol).find("_taum") < 0:  # plot all traces (if doing taum, then only plot the mean)
+            for trace_number in range(self.AR.traces.shape[0]):
+                if self.plotting_alternation > 1:
+                    if i % self.plotting_alternation != 0:
+                        continue
 
-            if spikes is not None and trace_number in list(spikes.keys()):
-                idv = float(jsp) * dv
-                jsp += 1
-            else:
-                idv = 0.0
+                if spikes is not None and trace_number in list(spikes.keys()):
+                    idv = float(jsp) * dv
+                    jsp += 1
+                else:
+                    idv = 0.0
+                P.axdict["A"].plot(
+                    self.AR.time_base * 1e3,
+                    idv + self.AR.traces[trace_number, :].view(np.ndarray) * 1e3,
+                    "-",
+                    color=trace_colors[trace_number],
+                    linewidth=0.35,
+                )
+                P.axdict["A1"].plot(
+                    self.AR.time_base * 1e3,
+                    self.AR.cmd_wave[trace_number, :].view(np.ndarray) * 1e9,
+                    "-",
+                    color=trace_colors[trace_number],
+                    linewidth=0.35,
+                )
+
+                # mark spikes inside the stimulus window
+                ptps = np.array([])
+                paps = np.array([])
+                if (spikes is not None) and (trace_number in list(spikes.keys())) and self.decorate:
+                    for j in list(spikes[trace_number].keys()):
+                        paps = np.append(paps, spikes[trace_number][j].peak_V * 1e3)
+                        ptps = np.append(ptps, spikes[trace_number][j].peak_T * 1e3)
+                        # print("spikes ij ", i, j, spikes[i][j])
+                    P.axdict["A"].plot(ptps, idv + paps, "ro", markersize=0.5)
+
+                # mark spikes outside the stimlulus window if we ask for them
+                if self.decorate:
+
+                    clist = ["g", "b"]
+                    windows = ["baseline_spikes", "poststimulus_spikes"] 
+                    for window_number, window in enumerate(windows):
+                        ptps = spike_dict[window]
+                        if len(ptps[trace_number]) == 0:
+                            continue
+                        uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[trace_number]]
+                        spike_times = ptps[trace_number] # np.array(self.AR.time_base[uindx])
+                        peak_aps = np.array(self.AR.traces[trace_number, uindx])
+                        P.axdict["A"].plot(
+                            spike_times * 1e3,
+                            idv + peak_aps * 1e3,
+                            "o",
+                            color=clist[window_number],
+                            markersize=0.5,
+                        )
+        else:  # taum measure: plot the mean trace
+            # print("taum traces for taum measure: ", ivs["taum_traces"])
+            itr = [i for i, flag in enumerate(ivs["taum_traces"] ) if flag]
+            # print(self.AR.traces.view(np.ndarray).shape)
             P.axdict["A"].plot(
-                self.AR.time_base * 1e3,
-                idv + self.AR.traces[trace_number, :].view(np.ndarray) * 1e3,
-                "-",
-                color=trace_colors[trace_number],
-                linewidth=0.35,
-            )
+                    self.AR.time_base * 1e3,
+                    np.mean(self.AR.traces.view(np.ndarray)[itr,:], axis=0) * 1e3,
+                    "-",
+                    color=trace_colors[0],
+                    linewidth=0.35,
+                )
             P.axdict["A1"].plot(
                 self.AR.time_base * 1e3,
-                self.AR.cmd_wave[trace_number, :].view(np.ndarray) * 1e9,
+                np.mean(self.AR.cmd_wave.view(np.ndarray)[itr,:], axis=0) * 1e9,
                 "-",
-                color=trace_colors[trace_number],
+                color=trace_colors[0],
                 linewidth=0.35,
             )
-
-            # mark spikes inside the stimulus window
-            ptps = np.array([])
-            paps = np.array([])
-            if (spikes is not None) and (trace_number in list(spikes.keys())) and self.decorate:
-                for j in list(spikes[trace_number].keys()):
-                    paps = np.append(paps, spikes[trace_number][j].peak_V * 1e3)
-                    ptps = np.append(ptps, spikes[trace_number][j].peak_T * 1e3)
-                    # print("spikes ij ", i, j, spikes[i][j])
-                P.axdict["A"].plot(ptps, idv + paps, "ro", markersize=0.5)
-
-            # mark spikes outside the stimlulus window if we ask for them
-            if self.decorate:
-
-                clist = ["g", "b"]
-                windows = ["baseline_spikes", "poststimulus_spikes"] 
-                for window_number, window in enumerate(windows):
-                    ptps = spike_dict[window]
-                    if len(ptps[trace_number]) == 0:
-                        continue
-                    uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[trace_number]]
-                    spike_times = ptps[trace_number] # np.array(self.AR.time_base[uindx])
-                    peak_aps = np.array(self.AR.traces[trace_number, uindx])
-                    P.axdict["A"].plot(
-                        spike_times * 1e3,
-                        idv + peak_aps * 1e3,
-                        "o",
-                        color=clist[window_number],
-                        markersize=0.5,
-                    )
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
-                CP('y', f"taum fitted is not in the ivs: {ivs.keys()!s}")
+                CP('y', f"iv_plotter: taum fitted is not in the ivs: {ivs.keys()!s}")
             if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
                 for fit_number in ivs["taum_fitted"].keys():
                     # CP('g', f"tau fitted keys: {str(k):s}")
                     P.axdict["A"].plot(
                         ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
                         ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
-                        "--g",
-                        linewidth=1.0,
+                        "--k",
+                        linewidth=1.5,
                     )
-            if ivs["tauh_tau"] != np.nan and "tauh_fitted" in ivs.keys():
+            if ("tauh_tau" in ivs.keys()) and (ivs["tauh_tau"] != np.nan) and ("tauh_fitted" in ivs.keys()):
                 for fit_number in ivs["tauh_fitted"].keys():
                     # CP('r', f"tau fitted keys: {str(k):s}")
                     P.axdict["A"].plot(
@@ -290,7 +315,7 @@ class IVPlotter(object):
         P.axdict["B"].scatter(
             spike_dict["FI_Curve"][0] * 1e9,
             spike_dict["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
-            c=trace_colors,
+            color=trace_colors,
             s=16,
             linewidth=0.5,
         )
@@ -319,10 +344,10 @@ class IVPlotter(object):
         if n > 0:
             P.axdict["B"].legend(fontsize=6)
         if "ivss_cmd" not in ivs.keys():
-            print("\nNo ivss_cmd found in the iv keys")
+            print("\niv_plotter: No ivss_cmd found in the iv keys")
             print("    cell, protocol: ", self.plot_df["cell_id"], protocol)
-            print("\n    Ivs: ", ivs, "\n")
-            print("    Keys in the ivs: ", ivs.keys())
+            # print("\n    Ivs: ", ivs), "\n")
+            # print("    Keys in the ivs: ", ivs.keys())
 
         else:
             P.axdict["C"].plot(
@@ -335,7 +360,7 @@ class IVPlotter(object):
             P.axdict["C"].scatter(
                 np.array(ivs["ivss_cmd"]) * 1e9,
                 np.array(ivs["ivss_v"]) * 1e3,
-                c=trace_colors[0 : len(ivs["ivss_cmd"])],
+                color=trace_colors[0 : len(ivs["ivss_cmd"])],
                 s=16,
             )
         if not pubmode:
@@ -364,10 +389,28 @@ class IVPlotter(object):
             tstr += f"  Pipette Offset: {cccomp:.1f} mV\n"          
             tstr += "Measures:"
             tstr += f"  RMP: {ivs['RMP']:.1f} mV\n"
-            tstr += f"  ${{R_{{in}}}}$: {ivs['Rin']:.1f} M{omega:s}\n"
-            tstr += f"  {taum:s}: {ivs['taum']*1e3:.2f} ms\n"
-            tstr += f"  {tauh:s}: {ivs['tauh_tau']*1e3:.3f} ms\n"
-            tstr += f"  ${{G_h}}$: {ivs['tauh_Gh'] *1e9:.3f} nS\n"
+            if "Rin" in ivs.keys():
+                tstr += f"  ${{R_{{in}}}}$: {ivs['Rin']:.1f} M{omega:s}\n"
+            # print("IV plotter: ivs.keys: ", ivs.keys())
+            # print("ivs['taum']: ", ivs['taum'])
+            # print("ivs['taupars': ", ivs['taupars'])
+            # determine the structure of taupars:
+            # len = 3 means taupars is a list of 3 values, assuming taupars[0] is a float and not a list
+            # if taupars[0] is a list, then use the 0th element from the list.
+            
+            if len(ivs['taupars']) > 0:
+                if isinstance(ivs['taupars'][0], list) and len(ivs['taupars'][0]) == 3:
+                    tau_value = ivs['taupars'][0][2]
+                elif len(ivs['taupars']) == 3:
+                    tau_value = ivs['taupars'][2]
+                tstr += f"  {taum:s}: {tau_value*1e3:.2f} ms\n"
+            else:
+                tstr += f"  {taum:s}: <no measure>\n"
+            if "tauh_tau" in ivs.keys():
+                tstr += f"  {tauh:s}: {ivs['tauh_tau']*1e3:.3f} ms\n"
+                tstr += f"  ${{G_h}}$: {ivs['tauh_Gh'] *1e9:.3f} nS\n"
+            else:
+                tstr += f"  {tauh:s}: <no measure>\n"
             tstr += f"  Holding: {np.mean(ivs['Irmp']) * 1e12:.1f} pA\n"
 
             P.axdict["C"].text(
@@ -403,6 +446,7 @@ class IVPlotter(object):
         P.axdict["C"].set_ylabel("V (mV)")
 
         # Plot the spike intervals as a function of time into the stimulus
+        spk_isi = None
         for i, spike_tr in enumerate(spikes):  # this is the trace number
             # print("Spike tr: ", i, spike_tr)
             spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
@@ -419,6 +463,7 @@ class IVPlotter(object):
             # print("    spkl: ", spkl)
             if len(spkl) == 1:
                 P.axdict["D1"].plot(spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4)
+                spk_isi = None
             else:
                 # print("spkl shape: " , spkl.shape)
                 spk_isi = np.diff(spkl)
@@ -447,7 +492,7 @@ class IVPlotter(object):
             verticalalignment="bottom",
         )
         
-        if len(spk_isi > 7):
+        if (spk_isi is not None) and len(spk_isi > 7):
             mode_thr = 1.5
             fi_currents = spike_dict["FI_Curve"][0] * 1e9
             # print("fi_currents: ", fi_currents)
@@ -468,13 +513,13 @@ class IVPlotter(object):
             for i, spike_tr in enumerate(spikes):  # this is the trace number
                 spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
                 spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
-                if (len(spk_tr) <= 7) or (spk_tr[0] is None):
+                if (None in spk_tr) or (len(spk_tr) <= 7):
                     continue
                 spk_isi = np.diff(spk_tr)
                 # plot joint isi
-                P.axdict["D2"].scatter(spk_isi[2:-1], spk_isi[3:],  s=6, c=trace_colors[spike_tr], marker='o', alpha=0.5)
-                P.axdict["D2"].scatter(spk_isi[0], spk_isi[1],  s=16, c=trace_colors[spike_tr], marker='+', alpha=1)  # mark first spike
-                P.axdict["D2"].scatter(spk_isi[1], spk_isi[2],  s=6, c=trace_colors[spike_tr], marker='^', alpha=1)  # mark first spike
+                P.axdict["D2"].scatter(spk_isi[2:-1], spk_isi[3:],  s=6, color=trace_colors[spike_tr], marker='o', alpha=0.5)
+                P.axdict["D2"].scatter(spk_isi[0], spk_isi[1],  s=16, color=trace_colors[spike_tr], marker='+', alpha=1)  # mark first spike
+                P.axdict["D2"].scatter(spk_isi[1], spk_isi[2],  s=6, color=trace_colors[spike_tr], marker='^', alpha=1)  # mark first spike
             # plot lines with slope of 1, 2 and 3
             axmax = np.max([P.axdict["D2"].get_xlim()[1], P.axdict["D2"].get_ylim()[1]])
             xb = np.linspace(0, axmax, 100)
@@ -562,8 +607,8 @@ class IVPlotter(object):
             P.axdict["A"].plot(
                 self.RM.taum_fitted[k][0] * 1e3,
                 self.RM.taum_fitted[k][1] * 1e3,
-                "-g",
-                linewidth=1.0,
+                "--k",
+                linewidth=0.75,
             )
         for k in self.RM.tauh_fitted.keys():
             P.axdict["A"].plot(

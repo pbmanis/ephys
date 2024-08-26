@@ -5,6 +5,7 @@ Compute IV Information
 """
 
 import datetime
+import concurrent.futures
 import gc
 import logging
 from pathlib import Path
@@ -67,6 +68,11 @@ logging_sh.setFormatter(CustomFormatter())  # log_formatter)
 Logger.addHandler(logging_fh)
 # Logger.addHandler(logging_sh)
 # setFileConfig(filename="iv_analysis.log", encoding='utf=8')
+
+
+def concurrent_iv_analysis(ivanalysis: object, icell, i, x, cell_directory, validivs, nfiles):
+    result = ivanalysis.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+    return result
 
 
 class IVAnalysis(Analysis):
@@ -197,13 +203,13 @@ class IVAnalysis(Analysis):
         -------
         Nothing - generates pdfs and updates the pickled database file.
         """
-        if self.parallel_mode not in ['day']:
-            Logger.info("Starting iv_analysis")
+        if self.parallel_mode in ["day"]:
+            raise ValueError("Parallel mode for 'DAY' is not supported in iv_analysis")
+        Logger.info("Starting iv_analysis")
         msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
         msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
         CP.cprint("c", msg)
-        if self.parallel_mode not in ['day']:
-            Logger.info(msg)
+        Logger.info(msg)
         cell_directory = Path(
             # self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
             self.df.iloc[icell].data_directory,
@@ -235,11 +241,11 @@ class IVAnalysis(Analysis):
         if "Spikes" not in self.df.columns.values:
             self.df = self.df.assign(Spikes=None)
         msg = f"      Cell: {str(cell_directory):s}\n           at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}"
-        # CP.cprint(
-        #     "c", msg,
-        # )
-        if self.parallel_mode not in ['day']:
-            Logger.info(msg)
+        CP.cprint(
+            "c",
+            msg,
+        )
+        Logger.info(msg)
 
         # clean up data in IV and Spikes : remove Posix
         def _cleanup_ivdata(results: dict):
@@ -315,7 +321,7 @@ class IVAnalysis(Analysis):
         cciv_protocols = list(self.experiment["protocols"]["CCIV"].keys())
         for protoname in allprots["CCIV"]:  # check all the protocols
             protocol_type = str(Path(protoname).name)[:-4]
-            print(" protocol type: ", protocol_type, end="")
+            print(" protocol: ", protocol_type, end="")
             if (
                 protocol_type in cciv_protocols
             ):  # ["stdIVs", "CCIV_long", "CCIV_posonly", "CCIV_GC"]:  # just CCIV types
@@ -326,8 +332,7 @@ class IVAnalysis(Analysis):
         if len(allivs) == 0:
             msg = "No protocols matching the CCIV protocol list in the configuration file were identified"
             CP.cprint("r", msg)
-            if self.parallel_mode not in ['day']:
-                Logger.info(msg)
+            Logger.info(msg)
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
         print("iv_analysis:analyze_ivs: allivs: ", allivs)
@@ -335,16 +340,26 @@ class IVAnalysis(Analysis):
         if self.exclusions is not None:
             if cell_id in self.exclusions:
                 print("cell_id is in exclusions")
+                # exclude ALL protocols for this cell
                 if self.exclusions[cell_id] in ["all", ["all"]]:
                     msg = "All protocols for this cell are excluded from analysis in the configuration file."
                     CP.cprint("r", msg)
-                    if self.parallel_mode not in ['day']:
-                        Logger.info(msg)
-                    return # nothing to do - entire cell is excluded.
+                    Logger.info(msg)
+                    return  # nothing to do - entire cell is excluded.
+                # exclude all protocols except those in the "exceptions" key
+                elif self.exclusions[cell_id] in ["allexcept", ["allexcept"]]:
+                    if (
+                        "exceptions" not in self.exclusions[cell_id].keys()
+                    ):  # confirm that there is an exceptions key
+                        raise ValueError("No 'exceptions' key in the 'allexcept' exclusion")
+                    print("appending excepted protocols from 'allexcept': ")
+                    for protocol in allivs:
+                        if Path(protocol).name in self.exclusions[cell_id]["exceptions"]:
+                            validivs.append(protocol)
                 else:
                     print("appending valid protocols: ")
                     for protocol in allivs:
-                        if Path(protocol).name not in self.exclusions[cell_id]['protocols']:
+                        if Path(protocol).name not in self.exclusions[cell_id]["protocols"]:
                             validivs.append(protocol)
                     # validivs.append([protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']])
             else:
@@ -364,18 +379,34 @@ class IVAnalysis(Analysis):
         # for iv_proto in exclude_ivs:
         #     if iv_proto in validivs:
         #         validivs.remove(iv_proto)
-        print("Valid IVs: ", validivs)
+        CP.cprint("m", f"Valid IVs: {validivs!s}")
 
-        if self.parallel_mode in ["cell", "day"]:
-            CP.cprint("y", f"iv_analysis: Parallel processing enabled (mode={self.parallel_mode:s}), nworkers = {self.nworkers:d}")
+        # only update IVs if the there is a new IV class to analysis for this cell
+        # e.g., taum or ramp analyses
+
+        reanalyze = True
+        # reanalyze = False
+        # for prot in validivs:
+        #     if prot.find("_taum") > 0:
+        #         reanalyze = True
+        #         break
+        # if not reanalyze:
+        #     print("Now new protocol to analyze")
+        #     return
+        if self.parallel_mode in ["cell"]:
+            CP.cprint(
+                "y",
+                f"iv_analysis: Parallel processing enabled (mode={self.parallel_mode:s}), nworkers = {self.nworkers:d}",
+            )
         else:
-            CP.cprint("m", "iv_analysis: Parallel processing disabled")
+            CP.cprint("m", "iv_analysis: Parallel processing disabled for 'off' and 'day'")
         tasks = range(len(validivs))  # number of tasks that will be needed
-        results: dict = dict(
-            [("IV", {}), ("Spikes", {})]
-        )  # storage for results; predefine the dicts.
+
 
         if self.parallel_mode in ["off", "day"]:  # just serial at this level
+            results: dict = dict(
+                [("IV", {}), ("Spikes", {})]
+                )  # storage for results; predefine the dicts.
             print("iv analysis: parallel mode in 'off' or 'day'")
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
@@ -405,28 +436,39 @@ class IVAnalysis(Analysis):
         #            print(self.df.at[icell, 'IV'])
         elif self.parallel_mode == "cell":
             print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
-            result = [None] * len(tasks)  # likewise
-            # import sys # not available when using pyqtgraph.multiprocess
-            # if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
-            #     MP.set_start_method('spawn')
+            results:dict = {}
+            result = [None] * len(tasks)
+            riv = {}  # iv result, keys are protocols (validiv names)
+            rsp = {}  # ditto for spikes.
             with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
                 for i, x in tasker:
-                    result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+                    # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+                    # tasker.results[validivs[i]] = result
+ 
+                    with concurrent.futures.ProcessPoolExecutor() as executor:
+                        print("   submitting execution to concurrent futures")
+                        f = executor.submit(
+                            concurrent_iv_analysis,
+                            self, icell, i, x, cell_directory, validivs, nfiles,
+                        )
+                    result, nfiles = f.result()
                     tasker.results[validivs[i]] = result
-            # reform the results for our database
-            if self.dry_run:
+                if len(results) == 0 or self.dry_run:
+                    return
+                
+                # reform the results for our database
+                for f in results.keys():
+                    if "IV" in results[f].keys():
+                        riv[f] = _cleanup_ivdata(results[f]["IV"])
+                    if "Spikes" in results[f].keys():
+                        rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
+            
+                        # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+                        # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
+                        # print('analyze_ivs: riv: ', riv)
+            if len(riv) == 0:
+                print("Empty IV?")
                 return
-            riv = {}
-            rsp = {}
-            for f in list(results.keys()):
-                if "IV" in results[f]:
-                    riv[f] = _cleanup_ivdata(results[f]["IV"])
-                if "Spikes" in results[f]:
-                    rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
-                # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-                # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
-                # print('analyze_ivs: riv: ', riv)
-
             self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
             self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
 
@@ -454,7 +496,7 @@ class IVAnalysis(Analysis):
                 "m",
                 msg,
             )
-            if self.parallel_mode not in ['day']:
+            if self.parallel_mode not in ["day", "cell"]:
                 Logger.info(msg)
             # with hdf5:
             day, slice, cell = filename_tools.make_cell(icell=icell, df=self.df)
@@ -486,7 +528,7 @@ class IVAnalysis(Analysis):
                 "b",
                 msg,
             )
-            if self.parallel_mode not in ['day']:
+            if self.parallel_mode not in ["day", "cell"]:
                 Logger.info(msg)
             with open(self.iv_analysisFilename, "wb") as fh:
                 self.df.to_feather(fh)
@@ -526,15 +568,22 @@ class IVAnalysis(Analysis):
         print("analyze_iv: cell directory: ", cell_directory)
         print("analyze_iv: protocol: ", protocol)
         protocol_directory = Path(cell_directory, protocol)
+        average_flag = False
+        if str(protocol).find("_taum") > 0:
+            average_flag = True  # average ALL traces in the protocol to compute the tau_m
+        # print(protocol, average_flag)
+        # if average_flag is False:
+        #     print('temporary skip')
+        #     return(None, 0)
+        print("Average flag in analyze_iv is True")
         if not protocol_directory.is_dir():
             msg = f"analyze_iv: Protocol directory not found (A): {str(protocol_directory):s}"
             CP.cprint(
                 "r",
                 msg,
             )
-            if self.parallel_mode not in ['day']:
-                Logger.error(msg)
-            exit()
+            return (None, 0)
+
         if self.important_flag_check:
             if not self.AR.checkProtocolImportant(protocol_directory):
                 msg = f"Skipping protocol marked as not important: {str(protocol_directory):s}"
@@ -542,7 +591,7 @@ class IVAnalysis(Analysis):
                     "r",
                     msg,
                 )
-                if self.parallel_mode not in ['day']:
+                if self.parallel_mode not in ["day", "cell"]:
                     Logger.info(msg)
                 return (None, 0)
 
@@ -553,11 +602,14 @@ class IVAnalysis(Analysis):
             spikeanalyzer=self.SP,
             rmtauanalyzer=self.RM,
         )
+
         if self.iv_select["duration"] > 0.0:
             check = self.iv_check(duration=self.iv_select["duration"])
+            print("Duration check: ", check)
             if check is False:
                 gc.collect()
                 return (None, 0)  # skip analysis
+
         if not self.dry_run:
             msg = f"      IV analysis for: {str(protocol_directory):s}"
             print(msg)
@@ -572,7 +624,7 @@ class IVAnalysis(Analysis):
                     self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
                 )
                 print(msg)
-                if self.parallel_mode not in ['day']:
+                if self.parallel_mode not in ["day", "cell"]:
                     Logger.info(msg)
 
             ctype = self.df.at[icell, "cell_type"].lower()
@@ -594,12 +646,15 @@ class IVAnalysis(Analysis):
                 max_spike_look=self.max_spike_look,
                 plotiv=True,
                 full_spike_analysis=True,
+                average_flag=average_flag,
             )
+
             iv_result = self.RM.analysis_summary
             sp_result = self.SP.analysis_summary
             result["IV"] = iv_result
             result["Spikes"] = sp_result
             ctype = self.df.at[icell, "cell_type"]
+            # print("result IV: ", result["IV"])
             # annot = self.df.at[icell, "annotated"]
             nfiles += 1
             # print("Checking for figure, plothandle is: ", plot_handle)
@@ -612,6 +667,7 @@ class IVAnalysis(Analysis):
         else:
             print(f"Dry Run: would analyze {str(protocol_directory):s}")
             br_offset = 0
+            print("self.df.at[icell, 'IV']", icell, self.df.at[icell, "IV"])
             if self.df.at[icell, "IV"] == {} or pd.isnull(self.df.at[icell, "IV"]):
                 print("   current database has no IV data set for this file")
             elif protocol not in list(self.df.at[icell, "IV"].keys()):
@@ -636,6 +692,7 @@ class IVAnalysis(Analysis):
         fit_gap: float = 0.0005,  # should be set from configuration file
         plotiv: bool = False,
         full_spike_analysis: bool = True,
+        average_flag: bool = False,
         max_spikeshape: int = 2,
         max_spike_look: float = 0.010,  # time in seconds to look for AHPs
         to_peak: bool = True,
@@ -644,8 +701,11 @@ class IVAnalysis(Analysis):
         Simple computation of spikes, FI and subthreshold IV for one protocol
 
         """
+        track = True
         if self.mode == "acq4":
             self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
+        if track:
+            print("protocol set")
         if self.AR.getData():  # get that data.
             if self.important_flag_check:
                 if not self.AR.protocol_important:
@@ -658,7 +718,12 @@ class IVAnalysis(Analysis):
                 self.AR.time_base = functions.downsample(
                     self.AR.time_base, n=self.downsample, axis=0
                 )
-            self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset)
+            if track:
+                print("getdata - done")
+            taum_bounds = [0.0, 0.050]
+            if str(self.datapath).find("_taum"):
+                taum_bounds = [0.000, 0.100]
+            self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset, taum_bounds=taum_bounds)
             self.SP.setup(
                 clamps=self.AR,
                 threshold=threshold,
@@ -669,22 +734,29 @@ class IVAnalysis(Analysis):
                 mode="schmitt",
                 max_spike_look=max_spike_look,
             )
-            self.SP.analyzeSpikes()
+            if track:
+                print("setup complete, now analyze spikes", full_spike_analysis)
+            self.SP.analyzeSpikes(track=track)
             if full_spike_analysis:
                 self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
                 # self.SP.analyzeSpikes_brief(mode="evoked")
                 self.SP.analyzeSpikes_brief(mode="baseline")
                 self.SP.analyzeSpikes_brief(mode="poststimulus")
             # self.SP.fitOne(function='fitOneOriginal')
+            if track:
+                print("   brief spike analysis completed", full_spike_analysis)
+            tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
+            if str(self.datapath).find("_taum"):
+                tau_end = self.AR.tstart + self.AR.tend
+            print("Starting RM analyze")
             self.RM.analyze(
                 rmpregion=[0.0, self.AR.tstart - 0.001],
-                tauregion=[
-                    self.AR.tstart,
-                    self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0,
-                ],
+                tauregion=[self.AR.tstart, tau_end],
                 to_peak=to_peak,
                 tgap=fit_gap,
+                average_flag=average_flag,
             )
+            print("     RM analyze finished")
             return True
 
         else:
@@ -692,6 +764,6 @@ class IVAnalysis(Analysis):
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
             print(msg)
-            if self.parallel_mode not in ['day']:
+            if self.parallel_mode not in ["day", "cell"]:
                 Logger.error(msg)
         return None
