@@ -239,7 +239,7 @@ class Functions:
             rows = []
             for row in self.selected_index_rows:
                 # index_row = self.selected_index_rows[0]
-                print(dir(row))
+                # print(dir(row))
                 selected = table_manager.get_table_data(row)  # table_data[index_row]
                 if selected is None:
                     return None
@@ -488,6 +488,7 @@ class Functions:
             protocols = [p for p in protocols.split(",")]  # turn into a list
         if experiment["excludeIVs"] is None:  # no protocols to exclude
             return protocols
+        # cell_id = cell_id.item()
         if cell_id in experiment["excludeIVs"].keys():  # consider excluding some or all protocols
             if experiment["excludeIVs"][cell_id]["protocols"] == ["all"]:
                 return []
