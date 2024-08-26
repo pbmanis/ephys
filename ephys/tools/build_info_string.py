@@ -16,8 +16,8 @@ def build_info_string(AR, path_to_cell):
 
     slice_info_keys = list(slice_info.keys())
     cell_info_keys = list(cell_info.keys())
-    if "animal identifier" in info_keys:
-        infostr += f"ID: {info['animal identifier']:s}, "
+    if "animal_identifier" in info_keys:
+        infostr += f"ID: {info['animal_identifier']:s}, "
     # if "sex" in info_keys:
     #     infostr += f"{info["sex"].upper():s}, "
     # if "age" in info_keys:
