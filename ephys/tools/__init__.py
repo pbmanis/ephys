@@ -14,6 +14,7 @@ from . import tifffile
 from . import fitting
 from . import utilities
 from . import get_configuration
+from . import exp_estimator_lmfit
 
 
 
