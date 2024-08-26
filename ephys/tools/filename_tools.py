@@ -23,8 +23,12 @@ def check_celltype(celltype: Union[str, None] = None):
 
     if isinstance(celltype, str):
         celltype = celltype.strip()
-    if celltype in [None, "", "?", " ", "  ", "\t"] or len(celltype) == 0:
-        CP("y", f"check_celltype:: Changing Cell type to unknown from <{celltype:s}>")
+    # print("celltype: ", celltype, type(celltype))
+    celltype = str(celltype)
+    if len(celltype) == 0:
+        celltype = 'unknown'
+    if celltype in [None, "", "?", " ", "  ", "\t"]:
+        # CP("y", f"check_celltype:: Changing Cell type to unknown from <{celltype:s}>")
         celltype = "unknown"
     return celltype
 
