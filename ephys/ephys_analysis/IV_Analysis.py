@@ -435,42 +435,79 @@ class IVAnalysis(Analysis):
                 ]  # everything in the SP analysus_summary structure
         #            print(self.df.at[icell, 'IV'])
         elif self.parallel_mode == "cell":
-            print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
-            results:dict = {}
-            result = [None] * len(tasks)
-            riv = {}  # iv result, keys are protocols (validiv names)
-            rsp = {}  # ditto for spikes.
-            with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
-                for i, x in tasker:
-                    # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
-                    # tasker.results[validivs[i]] = result
- 
-                    with concurrent.futures.ProcessPoolExecutor() as executor:
-                        print("   submitting execution to concurrent futures")
-                        f = executor.submit(
-                            concurrent_iv_analysis,
-                            self, icell, i, x, cell_directory, validivs, nfiles,
-                        )
-                    result, nfiles = f.result()
-                    tasker.results[validivs[i]] = result
-                if len(results) == 0 or self.dry_run:
-                    return
+            try:
+                print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
+                results:dict = {}
+                result = [None] * len(tasks)
+                riv = {}  # iv result, keys are protocols (validiv names)
+                rsp = {}  # ditto for spikes.
+                with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
+                    for i, x in tasker:
+                        # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+                        # tasker.results[validivs[i]] = result
+    
+                        with concurrent.futures.ProcessPoolExecutor() as executor:
+                            print("   submitting execution to concurrent futures")
+                            f = executor.submit(
+                                concurrent_iv_analysis,
+                                self, icell, i, x, cell_directory, validivs, nfiles,
+                            )
+                        result, nfiles = f.result()
+                        tasker.results[validivs[i]] = result
+                    if len(results) == 0 or self.dry_run:
+                        return
+                    
+                    # reform the results for our database
+                    for f in results.keys():
+                        if "IV" in results[f].keys():
+                            riv[f] = _cleanup_ivdata(results[f]["IV"])
+                        if "Spikes" in results[f].keys():
+                            rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
                 
-                # reform the results for our database
-                for f in results.keys():
-                    if "IV" in results[f].keys():
-                        riv[f] = _cleanup_ivdata(results[f]["IV"])
-                    if "Spikes" in results[f].keys():
-                        rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
-            
-                        # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-                        # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
-                        # print('analyze_ivs: riv: ', riv)
-            if len(riv) == 0:
-                print("Empty IV?")
-                return
-            self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
-            self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
+                            # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+                            # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
+                            # print('analyze_ivs: riv: ', riv)
+                if len(riv) == 0:
+                    print("Empty IV?")
+                    return
+                self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
+                self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
+
+            except Exception as e:
+                print("Error in parallel processing: ", e)
+                print("Trying serial processing")
+                # do with non-parallel processing. Slower, but gets the job done.
+                results: dict = dict(
+                    [("IV", {}), ("Spikes", {})]
+                    )  # storage for results; predefine the dicts.
+                print("iv analysis: parallel mode in 'off' or 'day'")
+                for i, x in enumerate(tasks):
+                    r, nfiles = self.analyze_iv(
+                        icell=icell,
+                        i=i,
+                        x=x,
+                        cell_directory=cell_directory,
+                        allivs=validivs,
+                        nfiles=nfiles,
+                        # pdf=pdf,
+                    )
+                    if self.dry_run:
+                        continue
+                    if r is None:
+                        continue
+                    results["IV"][validivs[i]] = r["IV"]
+                    results["Spikes"][validivs[i]] = r["Spikes"]
+                results["IV"] = _cleanup_ivdata(results["IV"])
+                results["Spikes"] = _cleanup_ivdata(results["Spikes"])
+
+                if not self.dry_run:
+                    self.df.at[icell, "IV"] = results[
+                        "IV"
+                    ]  # everything in the RM analysis_summary structure
+                    self.df.at[icell, "Spikes"] = results[
+                        "Spikes"
+                    ]  # everything in the SP analysus_summary structure
+            #            print(self.df.at[icell, 'IV'])
 
         self.df["annotated"] = self.df["annotated"].astype(int)
 
@@ -591,8 +628,8 @@ class IVAnalysis(Analysis):
                     "r",
                     msg,
                 )
-                if self.parallel_mode not in ["day", "cell"]:
-                    Logger.info(msg)
+                # if self.parallel_mode not in ["day", "cell"]:
+                #     Logger.info(msg)
                 return (None, 0)
 
         self.configure(
@@ -624,8 +661,8 @@ class IVAnalysis(Analysis):
                     self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
                 )
                 print(msg)
-                if self.parallel_mode not in ["day", "cell"]:
-                    Logger.info(msg)
+                # if self.parallel_mode not in ["day", "cell"]:
+                #     Logger.info(msg)
 
             ctype = self.df.at[icell, "cell_type"].lower()
             if ctype in self.experiment["fit_gap"].keys():
@@ -764,6 +801,6 @@ class IVAnalysis(Analysis):
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
             print(msg)
-            if self.parallel_mode not in ["day", "cell"]:
-                Logger.error(msg)
+            # if self.parallel_mode not in ["day", "cell"]:
+            #     Logger.error(msg)
         return None
