@@ -26,6 +26,7 @@ for Acq4 (and beyond)
 import pprint
 from collections import OrderedDict
 from dataclasses import dataclass
+import datetime
 from typing import Union
 import multiprocessing as MP
 from pyqtgraph import multiprocess as mproc
@@ -235,6 +236,7 @@ class SpikeAnalysis:
         """
         if reset:
             self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
+        self.analysis_summary['analysistimestamp'] = datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
         # CP.cprint("r", "AnalyzeSpikes: 1")
         self.U = utilities.Utility()
         maxspkrate = 50  # max rate to count in adaptation is 50 spikes/second
@@ -1301,7 +1303,7 @@ class SpikeAnalysis:
             )
 
             function = "piecewiselinear3"
-            f = fitting.Fitting().fitfuncmap[func]
+            f = fitting.Fitting().fitfuncmap[function]
             # now fit the full data set
             (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
                 [1],
@@ -1383,3 +1385,5 @@ class SpikeAnalysis:
                 "fit_at_data_points": [np.array(i_inj), np.array(yfit)],
             }
         )
+    #     print("LIGHT AS A FEATHER")
+    # print("RETURN TO FOREVER")
