@@ -134,6 +134,10 @@ class IVPlotter(object):
                 )
 
     def plot_one_iv(self, protocol, pubmode=False) -> Union[None, object]:
+        # print(self.plot_df["Spikes"][protocol])
+        if isinstance(self.plot_df["Spikes"][protocol], str):
+            CP("r", f"Spikes for {protocol} is a string: {self.plot_df['Spikes'][protocol]!s}")
+            return None, None
         if "spikes" in self.plot_df["Spikes"][protocol].keys():
             spikes = self.plot_df["Spikes"][protocol]["spikes"]
         else:
