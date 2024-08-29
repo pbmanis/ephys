@@ -23,7 +23,7 @@ Paul B. Manis, 2015-2019
 for acq4
 
 """
-
+import datetime
 import numpy as np
 from scipy.signal import savgol_filter  # for smoothing
 import ephys.tools.fitting as fitting
@@ -131,6 +131,7 @@ class RmTauAnalysis:
 
         # print("rmpregion: ", rmpregion)
         # print("tauregion: ", tauregion)
+        self.analysis_summary['analysistimestamp'] = datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
         if tauregion[1] > self.Clamps.tend:
             tauregion[1] = self.Clamps.tend
         stepdur = self.Clamps.tend - self.Clamps.tstart
@@ -231,7 +232,10 @@ class RmTauAnalysis:
             poststimulusspikes[i] = len(pspk) > 0
         if not average_flag and USE_OLD_FIT:  # unless we are averaging for a single command level!
             ineg_valid = self.Clamps.commandLevels < -10e-12
-            assert len(ineg_valid) == len(self.Spikes.spikecount)
+            if len(ineg_valid) != len(self.Spikes.spikecount):
+                print("rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
+                print(len(ineg_valid), len(self.Spikes.spikecount))
+                assert len(ineg_valid) == len(self.Spikes.spikecount)
             ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
 
             if not any(ineg_valid):  # no valid traces to use
@@ -240,10 +244,20 @@ class RmTauAnalysis:
         if not average_flag and USE_NEW_FIT_8_24:
             # include traces with no baseline spikes or stimulus-time spikes;
             # post stimulus spikes are ok.
-            ineg_valid = [
+            ineg_valid = self.Clamps.commandLevels < 0.0
+
+            if len(ineg_valid) != len(self.Spikes.spikecount):
+                print("Clamp traces: ", self.Clamps.traces.shape)
+                print("Command levels: ", self.Clamps.commandLevels.shape)
+                print("rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
+                print(len(ineg_valid), len(self.Spikes.spikecount))
+                print("len baseline spikes: ", len(baselinespikes))
+                print("len poststimulus spikes: ", len(poststimulusspikes))
+                assert len(ineg_valid) == len(self.Spikes.spikecount)
+            ineg_valid = [ineg_valid[i] and
                 not baselinespikes[i] and (self.Spikes.spikecount[i] == 0)
                 # and not poststimulusspikes[i]
-                for i in range(len(self.Spikes.spikecount))
+                for i in range(len(ineg_valid))
             ]
         if average_flag:  # averaging for a single command level
             # establish valid traces for averaging
@@ -489,8 +503,7 @@ class RmTauAnalysis:
                 #         pw2.plot(time_base, traces[i], pen=ppen, width=width)
 
             # now for each trace, fit multiple traces
-            # print("  Fitting multiple traces", len(whichdata))
-            # print("    traces: ", whichdata)
+
             pw = []
             fparx = [np.nan, np.nan, np.nan]
             xf = None
@@ -555,12 +568,20 @@ class RmTauAnalysis:
                 names.append(namesx)
                 okdata.append(k)
                 self.taum_fitted[k] = [xf, yf]
+            taus = []
+            for j in range(len(fpar)):
+                taus.append(fpar[j][2])
+            if len(taus) > 0:
+                self.taum_taum = np.nanmean(taus)
+                self.analysis_summary["taum"] = self.taum_taum
+            else:
+                self.taum_taum = np.NaN
+                self.analysis_summary["taum"] = np.NaN
+
             self.taum_pars = fpar
             self.taum_win = time_window
             self.taum_func = Func
             self.taum_whichdata = okdata
-            self.taum_taum = fparx[2]
-            self.analysis_summary["taum"] = self.taum_taum
             self.analysis_summary["taupars"] = fpar
             self.analysis_summary["taufunc"] = self.taum_func
             self.analysis_summary["taum_fitted"] = self.taum_fitted
@@ -719,8 +740,14 @@ class RmTauAnalysis:
         self.rmp = np.mean(self.ivbaseline) * 1e3  # convert to mV
         self.rmp_sd = np.std(self.ivbaseline) * 1e3
         data2 = self.Clamps.cmd_wave["Time" : time_window[0] : time_window[1]]
-        self.irmp = data2.view(np.ndarray).mean(axis=1)
+        self.irmp = np.mean(data2.view(np.ndarray).mean(axis=1))
+        # get the RMP_Zero from any runs where the injected current is < 10 pA from 0
         self.analysis_summary["RMP"] = self.rmp
+        # get the RMP_Zero from any runs where the injected current is < 10 pA from 0
+        if self.irmp >= -10e-12 and self.irmp >= -10e-12:
+            self.analysis_summary["RMP_Zero"] = self.rmp
+        else:
+            self.analysis_summary["RMP_Zero"] = np.nan
         self.analysis_summary["RMP_SD"] = self.rmp_sd
         self.analysis_summary["RMPs"] = self.ivbaseline.tolist()  # save raw baselines as well
         self.analysis_summary["Irmp"] = self.irmp.tolist()
