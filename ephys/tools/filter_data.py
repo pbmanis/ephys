@@ -16,6 +16,9 @@ import numpy as np
 from typing import List
 from dataclasses import dataclass, field, asdict
 from pylibrary.tools import cprint as CP
+from ephys.gui import data_table_functions as functions
+
+FUNCS = functions.Functions()
 
 
 def def_empty_list():
@@ -131,12 +134,15 @@ class FilterDataset:
         CP.cprint("y", "Filtering data entries")
         if remove_groups is not None:
             for group in remove_groups:
-                CP.cprint("y", f"    Filtering out group: {group:s}")
+                msg = f"    Filtering out group: {group:s}"
+                CP.cprint("y", msg)
+                FUNCS.textappend(msg)
                 df.drop(df.loc[df["Group"] == group].index, inplace=True)
 
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
         if excludeIVs is None:
             excludeIVs = []
+            FUNCS.textappend("    No IVs to exclude")
         CP.cprint("y", f"Excluding some cells or specific IVs")
         for fns in excludeIVs:
             fn = fns.split(":")[0]  # remove the comment
@@ -147,7 +153,9 @@ class FilterDataset:
                 continue
             CP.cprint("y", f"    cell id: {fn!s}")
             if prots == ['all']:
-                CP.cprint("y", f"        Excluding ALL of {fn:s} from analysis, reason = {excludeIVs[fns]['reason']:s}")
+                msg =  f"        Excluding ALL of {fn:s} from analysis, reason = {excludeIVs[fns]['reason']:s}"
+                CP.cprint("r", msg)
+                FUNCS.textappend(msg)
                 df.drop(df.loc[df.cell_id == fn].index, inplace=True)
                 continue
             else:  # specified protocols; need to rewrite the data_complete list by removing the protocol
@@ -155,10 +163,12 @@ class FilterDataset:
                 for prot in prots:
                     data_prots = data_prots.replace(prot, '')
                     data_prots = data_prots.replace(", , ", ", ")
+                    msg =f"        Excluding {fn:s}/{prot:s} from analysis, reason = {excludeIVs[fns]['reason']:s}"
                     CP.cprint(
                         "y",
-                        f"        Excluding {fn:s}/{prot:s} from analysis, reason = {excludeIVs[fns]['reason']:s}",
+                        msg
                     )
+                    FUNCS.textappend(msg)
                 df.loc[df.cell_id == fn, "data_complete"] = data_prots
 
         # exclude certain internal solutions
