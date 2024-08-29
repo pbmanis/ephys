@@ -35,6 +35,7 @@ import pandas as pd
 from pylibrary.tools import cprint as CP
 
 from ephys.tools import win_print as WP
+from ephys.tools import filename_tools
 
 # import vcnmodel.util.fixpicklemodule as FPM
 FUNCS = functions.Functions()
@@ -355,31 +356,36 @@ class TableManager:
         """
         Print the values in the index file
         """
+        return
+    # this is broken.
         print("=" * 80)
         print("\nIndex file and data file params")
         cprint("c", f"Index row: {str(indexrow.row):s}")
         data = self.get_table_data(indexrow)
-        print("Data: ", data)
-        for f in data.files:
-            with open(f, "rb") as fh:
-                fdata = pickle.load(
-                    fh, fix_imports=True
-                )  # FPM.pickle_load(fh) # , encoding="latin1")
-                print("*" * 80)
-                cprint("c", f)
-                cprint("y", "File Data Keys")
-                print(fdata.keys())
-                # print(dir(fdata['Params']))
-                cprint("y", "Parameters")
-                PP.pprint(fdata["Params"].__dict__)  # , sort_dicts=True)
-                print("-" * 80)
-                cprint("y", "RunInfo")
-                PP.pprint(fdata["runInfo"].__dict__)  # , sort_dicts=True
-                print("-" * 80)
-                cprint("y", "ModelPars")
-                PP.pprint(fdata["modelPars"])  # , sort_dicts=True
+        print(data)
+        print(self.parent.datasummary.cell_id)
+        d = filename_tools.get_cell(self.experiment,  df=self.parent.datasummary,  cell_id = data.cell_id)
+        print("Cell ID: ", data.cell_id)
+        print("d: ", d)
+        taum = []
+        rin = []
+        rmp = []
 
-                print("*" * 80)
+        for k, v in d["IV"].items():
+            # print(k, v)
+            print("k: ", k)
+            if isinstance(v, dict):
+                print(v.keys())
+                print("taum: ", v["taum"])
+                print("taupars: ", v["taupars"])
+                taum.append(v["taum"])
+                rin.append(v["Rin"])
+                rmp.append(v["RMP"])
+                if 'analysistimestamp' in v.keys():
+                    print("analysistime: ", v["analysistimestamp"])
+        print(taum, np.nanmean(taum))
+        print(rin, np.nanmean(rin))
+        print(rmp, np.nanmean(rmp))
 
     def select_dates(self, rundirs, mode="D"):
         """

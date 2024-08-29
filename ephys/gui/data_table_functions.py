@@ -503,20 +503,22 @@ class Functions:
         if experiment["excludeIVs"] is None:
             return False
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
-        print("    IV is in exclusion table: ", exclude_flag)
+        if exclude_flag:
+            CP("r", f"Cell has entries in exclusion table: {exclude_flag!s}")
         if exclude_flag:
             exclude_table = experiment["excludeIVs"][day_slice_cell]
-            print("    excluded table data: ", exclude_table)
-            print("    testing protocol: ", protocol)
+            CP("r", f"    excluded table data: {exclude_table!s}")
+            CP("r", f"    testing protocol: {protocol!s}")
             proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
             if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"]:
                 CP(
                     "y",
-                    f"Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
+                    f"    Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
                 )
-                Logger.info(
-                    f"Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
-                )
+                # cannot log when multiprocessing.
+                # Logger.info(
+                #     f"    Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
+                # )
                 return True
         print("    Protocol passed: ", protocol)
         return False
@@ -974,7 +976,7 @@ class Functions:
             pp = PrettyPrinter(indent=4)
 
             if min_protocol is None:
-                CP.cprint("r", f"No protocol found with a small current spike!: {protocols!s} ")
+                CP("r", f"No protocol found with a small current spike!: {protocols!s} ")
                 continue
             try:
                 # print("min protocol: ", min_protocol)
@@ -982,7 +984,7 @@ class Functions:
                 # print("min trace #: ", min_trace)
                 low_spike = cell_df["Spikes"][min_protocol]["spikes"][min_trace][0]
             except KeyError:
-                CP.cprint("Failed to get min spike")
+                CP("Failed to get min spike")
                 print("min protocol spikes: ", cell_df["Spikes"][min_protocol].keys())
                 print("V: ", min_trace)
                 print("Min index: ", min_index)
@@ -1378,111 +1380,91 @@ class Functions:
                 dropout_threshold = experiment["firing_failure_analysis"]["test_time"]
                 max_failure_test_current = experiment["firing_failure_analysis"]["max_current"]
 
-        if "Max_FI_I" in experiment.keys():
-            max_I = experiment["Max_FI_I"]
-        fcol = {"+/+": "green", "-/-": "orange"}
-        max_fr = {"+/+": [], "-/-": []}
-        dropout = np.zeros((2, N))
-        cellids = ["None"] * N
-        expression = ["None"] * N
-        genotype = ["None"] * N
-        # cmap = mpl.cm.get_cmap("tab20", N)
-        # colors = [matplotlib.colors.to_hex(cmap(i)) for i in range(N)]
-        colors = colormaps.sinebow_dark.discrete(N)
-        xpalette = sns.xkcd_palette(
-            ["teal", "crimson", "light violet", "faded green", "dusty purple"]
-        )
-        nplots = 0
-        expression_list = []
-        # arrays for summary histograms
-        #
-        drop_out_currents = pd.DataFrame(
-            columns=["cell", "genotype", "expression", "current", "time"]
-        )  # current at which cell drops out, dict by genotype, expression
-
-        pos_expression = ["+", "GFP+", "EYFP", "EYFP+"]
-        neg_expression = ["-", "GFP-", "EYFP-", "EGFP-"]
-        for selected in assembleddata.itertuples():
-            pcolor = colors[nplots].colors
-
-            day = selected.date[:-4]
-            slicecell = selected.cell_id[-4:]
-            # we need to reach into the main data set to get the expression,
-            # as it is not carried into the assembled data.
-            cell_df, _ = filename_tools.get_cell(
-                experiment, assembleddata, cell_id=selected.cell_id
+            if "Max_FI_I" in experiment.keys():
+                max_I = experiment["Max_FI_I"]
+            fcol = {"+/+": "green", "-/-": "orange"}
+            max_fr = {"+/+": [], "-/-": []}
+            dropout = np.zeros((2, N))
+            cellids = ["None"] * N
+            expression = ["None"] * N
+            genotype = ["None"] * N
+            # cmap = mpl.cm.get_cmap("tab20", N)
+            # colors = [matplotlib.colors.to_hex(cmap(i)) for i in range(N)]
+            colors = colormaps.sinebow_dark.discrete(N)
+            xpalette = sns.xkcd_palette(
+                ["teal", "crimson", "light violet", "faded green", "dusty purple"]
             )
-            if cell_df.cell_expression is None:
-                continue
-            if cell_df.cell_expression not in expression_list:
-                expression_list.append(cell_df.cell_expression)
-            # print(cell_df.keys())
-            # print(cell_df.cell_expression)
-            # print(cell_df['IV'].keys())
-            datadict = self.compute_FI_Fits(
-                experiment,
-                assembleddata,
-                selected.cell_id,
-                protodurs=experiment["FI_protocols"],
-            )
-            # designate symbols:
-            # s for +/+ genotype
-            # o for -/- genotype
-            # filled for GFP+ or EYFP+
-            # open for GFP- or EYFP-
-            print("expression: ", cell_df.cell_expression)
-            match selected.Group:
-                case "+/+":
-                    symbol = "s"
-                case "-/-":
-                    symbol = "o"
-                case "+/-" | "-/+":
-                    symbol = "D"
-                case _:
-                    symbol = "X"
-            match cell_df.cell_expression:
-                case "+" | "GFP+" | "EYFP" | "EYFP+":
-                    fillstyle = "full"
-                    facecolor = pcolor
-                case "-" | "GFP-" | "EYFP-" | "EGFP-":
-                    fillstyle = "full"
-                    facecolor = "white"
-                case _:
-                    fillstyle = "full"
-                    facecolor = "lightgrey"
-            # print(cell_df.cell_expression, selected.Group)
-            # print(symbol, fillstyle, facecolor, pcolor)
-            if datadict is not None:
-                try:
-                    fit = datadict["fit"][0][0]
-                except:
-                    print("No fit? : ")
-                    print("     datadict keys: ", datadict.keys())
-                    print("     fit keys: ", datadict["fit"])
-                ax[0, 0].plot(
-                    np.array(datadict["FI_Curve1"][0]) * 1e12,
-                    datadict["FI_Curve1"][1],
-                    marker=symbol,
-                    linestyle="-",
-                    markersize=4,
-                    fillstyle=fillstyle,
-                    markerfacecolor=facecolor,
-                    color=pcolor,
+            nplots = 0
+            expression_list = []
+            # arrays for summary histograms
+            #
+            drop_out_currents = pd.DataFrame(
+                columns=["cell", "genotype", "sex", "expression", "current", "time"]
+            )  # current at which cell drops out by the selected time, dict by genotype, expression
+
+            pos_expression = ["+", "GFP+", "EYFP", "EYFP+"]
+            neg_expression = ["-", "GFP-", "EYFP-", "EGFP-"]
+            for selected in assembleddata.itertuples():
+                pcolor = colors[nplots].colors
+
+                day = selected.date[:-4]
+                slicecell = selected.cell_id[-4:]
+                # we need to reach into the main data set to get the expression,
+                # as it is not carried into the assembled data.
+                cell_df, _ = filename_tools.get_cell(
+                    experiment, assembleddata, cell_id=selected.cell_id
                 )
-                if "fit" in datadict.keys() and len(datadict["fit"][0]) > 0:
-                    fit = datadict["fit"][0][0]
-                    ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
-                try:
-                    max_fr[selected.Group].append(np.nanmax(datadict["FI_Curve1"][1]))
-                except:
-                    print("FI curve: ", datadict["FI_Curve1"])
-                    print("cell, group: ", selected.cell_id, selected.Group)
-                    print(selected)
-
-                if max_failure_test_current > 1000:  # add the 4 nA data
+                sex = cell_df.sex
+                if cell_df.cell_expression is None:
+                    continue
+                if cell_df.cell_expression not in expression_list:
+                    expression_list.append(cell_df.cell_expression)
+                # print(cell_df.keys())
+                # print(cell_df.cell_expression)
+                # print(cell_df['IV'].keys())
+                datadict = self.compute_FI_Fits(
+                    experiment,
+                    assembleddata,
+                    selected.cell_id,
+                    protodurs=experiment["FI_protocols"],
+                )
+                # designate symbols:
+                # s for +/+ genotype
+                # o for -/- genotype
+                # filled for GFP+ or EYFP+
+                # open for GFP- or EYFP-
+                print("expression: ", cell_df.cell_expression)
+                match selected.Group:
+                    case "+/+":
+                        symbol = "s"
+                    case "-/-":
+                        symbol = "o"
+                    case "+/-" | "-/+":
+                        symbol = "D"
+                    case _:
+                        symbol = "X"
+                match cell_df.cell_expression:
+                    case "+" | "GFP+" | "EYFP" | "EYFP+":
+                        fillstyle = "full"
+                        facecolor = pcolor
+                    case "-" | "GFP-" | "EYFP-" | "EGFP-":
+                        fillstyle = "full"
+                        facecolor = "white"
+                    case _:
+                        fillstyle = "full"
+                        facecolor = "lightgrey"
+                # print(cell_df.cell_expression, selected.Group)
+                # print(symbol, fillstyle, facecolor, pcolor)
+                if datadict is not None:
+                    try:
+                        fit = datadict["fit"][0][0]
+                    except:
+                        print("No fit? : ")
+                        print("     datadict keys: ", datadict.keys())
+                        print("     fit keys: ", datadict["fit"])
                     ax[0, 0].plot(
-                        np.array(datadict["FI_Curve4"][0]) * 1e12,
-                        np.array(datadict["FI_Curve4"][1]),
+                        np.array(datadict["FI_Curve1"][0]) * 1e12,
+                        datadict["FI_Curve1"][1],
                         marker=symbol,
                         linestyle="-",
                         markersize=4,
@@ -1490,111 +1472,138 @@ class Functions:
                         markerfacecolor=facecolor,
                         color=pcolor,
                     )
+                    if "fit" in datadict.keys() and len(datadict["fit"][0]) > 0:
+                        fit = datadict["fit"][0][0]
+                        ax[0, 0].plot(np.array(fit[0][0]) * 1e12, fit[1][0], "b--")
+                    try:
+                        max_fr[selected.Group].append(np.nanmax(datadict["FI_Curve1"][1]))
+                    except:
+                        print("FI curve: ", datadict["FI_Curve1"])
+                        print("cell, group: ", selected.cell_id, selected.Group)
+                        print(selected)
 
-                if datadict["firing_currents"] is not None:
-                    ax[1, 0].plot(
-                        np.array(datadict["firing_currents"]) * 1e12,
-                        datadict["firing_rates"],
-                        marker=symbol,
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=facecolor,
-                        color=pcolor,
-                    )
-                    ax[0, 1].plot(
-                        np.array(datadict["firing_currents"]) * 1e12,
-                        datadict["last_spikes"],
-                        marker=symbol,
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=facecolor,
-                        color=pcolor,
-                    )
-                    # plot maximal firing rate
-
-                # compute "dropout" time to the last spike in a train.
-                # if the FI curve is non-monotonic, this will be the time of the
-                # last spike that occurs in a train.
-                if datadict["last_spikes"] is not None and firing_failure_calculation:
-                    # find the largest current where cell fires that is above the dropuout threshold
-                    do_pts = np.nonzero(np.array(datadict["last_spikes"]) >= dropout_threshold)[0]
-                    if len(do_pts) > 0:
-                        idrop = np.argmax(datadict["firing_currents"][do_pts]) + do_pts[0]
-                        dropout[1, nplots] = datadict["firing_currents"][idrop] * 1e12
-                        dropout[0, nplots] = datadict["last_spikes"][idrop] * 1e3
-                    else:
-                        dropout[1, nplots] = datadict["firing_currents"][0] * 1e12
-                        dropout[0, nplots] = 0
-                    if (
-                        cell_df.cell_expression in pos_expression
-                        or cell_df.cell_expression in neg_expression
-                    ):
-                        do_curr = pd.DataFrame(
-                            {
-                                "cell": [Path(selected.cell_id).name],
-                                "genotype": [selected.Group],
-                                "expression": [cell_df.cell_expression],
-                                "current": [dropout[1, nplots]],
-                                "time": [dropout[0, nplots]],
-                            }
-                        )
-                        drop_out_currents = pd.concat(
-                            [drop_out_currents, do_curr], ignore_index=True
+                    if max_failure_test_current > 1000:  # add the 4 nA data
+                        ax[0, 0].plot(
+                            np.array(datadict["FI_Curve4"][0]) * 1e12,
+                            np.array(datadict["FI_Curve4"][1]),
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
+                            color=pcolor,
                         )
 
-                    cellids[nplots] = selected.cell_id
-                    expression[nplots] = cell_df.cell_expression
-                    genotype[nplots] = selected.Group
-                    print(
-                        "Dropout info: ", selected.cell_id, dropout[0, nplots], dropout[1, nplots]
-                    )
-                    ax[1, 1].plot(
-                        [0, max_failure_test_current],
-                        [dropout_threshold, dropout_threshold],
-                        color="gray",
-                        linestyle="--",
-                        linewidth=0.33,
-                    )
-                    ax[1, 1].plot(
-                        dropout[1, nplots],
-                        dropout[0, nplots],
-                        marker=symbol,
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=facecolor,
-                        color=pcolor,
-                        clip_on=False,
-                    )
-                    ax[1, 1].text(
-                        x=dropout[1, nplots],
-                        y=dropout[0, nplots],
-                        s=str(Path(selected.cell_id).name),
-                        fontsize=6,
-                        horizontalalignment="right",
-                        color=fcol[cell_df.genotype],
-                    )
-                iplot += 1
-                nplots += 1
+                    if datadict["firing_currents"] is not None:
+                        ax[1, 0].plot(
+                            np.array(datadict["firing_currents"]) * 1e12,
+                            datadict["firing_rates"],
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
+                            color=pcolor,
+                        )
+                        ax[0, 1].plot(
+                            np.array(datadict["firing_currents"]) * 1e12,
+                            datadict["last_spikes"],
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
+                            color=pcolor,
+                        )
+                        # plot maximal firing rate
+
+                    # compute "dropout" time to the last spike in a train.
+                    # if the FI curve is non-monotonic, this will be the time of the
+                    # last spike that occurs in a train.
+                    if datadict["last_spikes"] is not None and firing_failure_calculation:
+                        # find the largest current where cell fires that is above the dropuout threshold
+                        do_pts = np.nonzero(np.array(datadict["last_spikes"]) == dropout_threshold)[
+                            0
+                        ]
+                        if len(do_pts) > 0:
+                            idrop = np.argmax(datadict["firing_currents"][do_pts]) + do_pts[0]
+                            dropout[1, nplots] = datadict["firing_currents"][idrop] * 1e12
+                            dropout[0, nplots] = datadict["last_spikes"][idrop] * 1e3
+                        else:
+                            dropout[1, nplots] = datadict["firing_currents"][0] * 1e12
+                            dropout[0, nplots] = 0
+                        if (
+                            cell_df.cell_expression in pos_expression
+                            or cell_df.cell_expression in neg_expression
+                        ):
+                            do_curr = pd.DataFrame(
+                                {
+                                    "cell": [Path(selected.cell_id).name],
+                                    "genotype": [selected.Group],
+                                    "sex": [cell_df.sex],
+                                    "expression": [cell_df.cell_expression],
+                                    "current": [dropout[1, nplots]],
+                                    "time": [dropout[0, nplots]],
+                                }
+                            )
+                            drop_out_currents = pd.concat(
+                                [drop_out_currents, do_curr], ignore_index=True
+                            )
+
+                        cellids[nplots] = selected.cell_id
+                        expression[nplots] = cell_df.cell_expression
+                        genotype[nplots] = selected.Group
+                        print(
+                            "Dropout info: ",
+                            selected.cell_id,
+                            dropout[0, nplots],
+                            dropout[1, nplots],
+                        )
+                        ax[1, 1].plot(
+                            [0, max_failure_test_current],
+                            [dropout_threshold, dropout_threshold],
+                            color="gray",
+                            linestyle="--",
+                            linewidth=0.33,
+                        )
+                        ax[1, 1].plot(
+                            dropout[1, nplots],
+                            dropout[0, nplots],
+                            marker=symbol,
+                            linestyle="-",
+                            markersize=4,
+                            fillstyle=fillstyle,
+                            markerfacecolor=facecolor,
+                            color=pcolor,
+                            clip_on=False,
+                        )
+                        ax[1, 1].text(
+                            x=dropout[1, nplots],
+                            y=dropout[0, nplots],
+                            s=str(Path(selected.cell_id).name),
+                            fontsize=6,
+                            horizontalalignment="right",
+                            color=fcol[cell_df.genotype],
+                        )
+                    iplot += 1
+                    nplots += 1
         # plot some summary stuff
-        sns.jointplot(
-            x="time",
-            y="current",
-            hue="expression",
-            data=drop_out_currents,
-            palette="tab10",
-            ax=ax[2, 0],
-        )
-        sns.jointplot(
-            x="time",
-            y="current",
-            hue="genotype",
-            data=drop_out_currents,
-            palette=xpalette,
-            ax=ax[2, 1],
-        )
+        # sns.jointplot(
+        #     x="time",
+        #     y="current",
+        #     hue="expression",
+        #     data=drop_out_currents,
+        #     palette="tab10",
+        #     ax=ax[2, 0],
+        # )
+        # sns.jointplot(
+        #     x="time",
+        #     y="current",
+        #     hue="genotype",
+        #     data=drop_out_currents,
+        #     palette=xpalette,
+        #     ax=ax[2, 1],
+        # )
         sns.ecdfplot(
             data=drop_out_currents, x="current", hue="genotype", palette=xpalette, ax=ax[2, 0]
         )
@@ -2083,7 +2092,8 @@ class Functions:
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
         datadict["current"] = FI_Data_I1
         datadict["spsec"] = FI_Data_FR1
-        datadict["Subject"] = df_tmp.cell_id.values[0]
+        # datadict["Subject"] = df_tmp.cell_id.values[0]
+        datadict["animal_identifier"] = df_tmp.cell_id.values[0]
         # datadict["Group"] = df_tmp.Group.values[0]
         datadict["sex"] = df_tmp.sex.values[0]
         datadict["celltype"] = df_tmp.cell_type.values[0]
@@ -2129,9 +2139,11 @@ class Functions:
             datadict["firing_currents"] = scipy.stats.binned_statistic(
                 fc, fc, bins=bins, statistic=np.nanmean
             ).statistic
+        if len(fr) > 0 and len(fc) > 0:
             datadict["firing_rates"] = scipy.stats.binned_statistic(
                 fc, fr, bins=bins, statistic=np.nanmean
             ).statistic
+        if len(fc) > 0 and len(fs) > 0:
             datadict["last_spikes"] = scipy.stats.binned_statistic(
                 fc, fs, bins=bins, statistic=np.nanmean
             ).statistic
@@ -2284,8 +2296,24 @@ class Functions:
         if measure in iv_keys:
             for protocol in protocols:
                 if measure in df_cell.IV[protocol].keys():
-                    m.append(df_cell.IV[protocol][measure])
-
+                    if measure != "taum":
+                        m.append(df_cell.IV[protocol][measure])
+                    else:  # handle taum by building array from the tau in taupars array
+                        if len(df_cell.IV[protocol]["taupars"]) == 0:
+                            m.append(np.nan)   # no fit data
+                        elif len(df_cell.IV[protocol]["taupars"]) == 3 and isinstance(
+                            df_cell.IV[protocol]["taupars"][2], float
+                        ):  # get the value from the fit, single nested
+                            m.append(df_cell.IV[protocol]["taupars"][2])
+                        elif (  # get value from fit, nested list
+                            len(df_cell.IV[protocol]["taupars"]) == 1
+                            and isinstance(df_cell.IV[protocol]["taupars"], list)
+                            and len(df_cell.IV[protocol]["taupars"][0] == 3)
+                        ): 
+                            m.append(df_cell.IV[protocol]["taupars"][0][2])
+                        else:  # def a coding error
+                            print("what is wrong with taupars: ", df_cell.IV[protocol]["taupars"])
+                            exit()
         elif measure in iv_mapper.keys() and iv_mapper[measure] in iv_keys:
             for protocol in protocols:
                 if iv_mapper[measure] in df_cell.IV[protocol].keys():
@@ -2432,6 +2460,7 @@ class Functions:
         #         f"measure {measure:s} not found in either IV or Spikes keys. Skipping"
         #     )
         #     raise ValueError(f"measure {measure:s} not found in either IV or Spikes keys. Skipping")
+        print("measures: ", measure, m)
         for i, xm in enumerate(m):
             if xm is None:
                 m[i] = np.nan
