@@ -45,13 +45,16 @@ Fitter = fitting.Fitting()
 # and were orginally in data_tables.py, associated with the 
 # parametertree parsing.
 
-
-def concurrent_spike_data_plotting(
+def concurrent_categorical_data_plotting(
     filename: str,
+    mode: str,  # continous or categorical
+    plot_title: str = "My Title",
     parameters: dict = None,
+    data_class: str = "spike_measures",  # what kind of data to plot
     picker_active: bool = False,
     infobox: dict = None,
 ):
+    assert mode in ["categorical", "continuous"]
     # unpack parameters:
     header = parameters["header"]
     experiment = parameters["experiment"]
@@ -64,27 +67,38 @@ def concurrent_spike_data_plotting(
     PSI_ = PlotSpikeInfo(datasummary, experiment, pick_display=picker_active,
                          pick_display_function=pick_display_function)
     df = PSI_.preload(filename)
-    (
-        spike_plot,
-        picker_funcs1,
-    ) = PSI_.summary_plot_spike_parameters_categorical(
-        df,
-        xname=group_by,
-        hue_category=hue_category,
-        plot_order=experiment["plot_order"][group_by],
-        measures=experiment["spike_measures"],
-        colors=colors,
-        enable_picking=picker_active,
-    )
-    spike_plot.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
+    if mode == "categorical":
+        (
+            cc_plot,
+            picker_funcs1,
+        ) = PSI_.summary_plot_spike_parameters_categorical(
+            df,
+            xname=group_by,
+            hue_category=hue_category,
+            plot_order=experiment["plot_order"][group_by],
+            measures=experiment[data_class],
+            colors=colors,
+            enable_picking=picker_active,
+        )
+    elif mode == "continuous":
+        df = PSI_.preload(filename)
+        (
+            cc_plot,
+            picker_funcs1,
+        ) = PSI_.summary_plot_spike_parameters_continuous(
+            df,
+            xname=group_by,
+            measures=experiment[data_class],
+        )
+    cc_plot.figure_handle.suptitle(plot_title, fontweight="bold", fontsize=18)
     picked_cellid = (
-        spike_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
+        cc_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
             "pick_event",
             lambda event: PSI_.pick_handler(event, picker_funcs1),
         )
     )
 
-    spike_plot.figure_handle.text(
+    cc_plot.figure_handle.text(
         infobox["x"],
         infobox["y"],
         header,
@@ -94,158 +108,9 @@ def concurrent_spike_data_plotting(
             "font": "Courier",
         },
     )
-    spike_plot.figure_handle.show()
+    cc_plot.figure_handle.show()
     mpl.show()
-    return spike_plot
-
-def concurrent_spike_data_plotting_continuous(
-    filename: str,
-    parameters: dict = None,
-    picker_active: bool = False,
-    infobox: dict = None,
-):
-    # unpack parameters:
-    header = parameters["header"]
-    experiment = parameters["experiment"]
-    datasummary = parameters["datasummary"]
-    group_by = parameters["group_by"]
-    colors = parameters["colors"]
-    hue_category = parameters["hue_category"]
-    pick_display_function = parameters["pick_display_function"]
-
-    PSI_ = PlotSpikeInfo(datasummary, experiment, pick_display=picker_active,
-                         pick_display_function=pick_display_function)
-    df = PSI_.preload(filename)
-    (
-        spike_plot,
-        picker_funcs1,
-    ) = PSI_.summary_plot_spike_parameters_continuous(
-        df,
-        xname=group_by,
-        measures=experiment["spike_measures"],
-    )
-    spike_plot.figure_handle.suptitle("Spike Shape", fontweight="bold", fontsize=18)
-    picked_cellid = (
-        spike_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-            "pick_event",
-            lambda event: PSI_.pick_handler(event, picker_funcs1),
-        )
-    )
-
-    spike_plot.figure_handle.text(
-        infobox["x"],
-        infobox["y"],
-        header,
-        fontdict={
-            "fontsize": infobox["fontsize"],
-            "fontstyle": "normal",
-            "font": "Courier",
-        },
-    )
-    spike_plot.figure_handle.show()
-    mpl.show()
-    return spike_plot
-
-
-def concurrent_rmtau_data_plotting(
-    filename: str,
-    parameters: dict = None,
-    picker_active: bool = False,
-    infobox: dict = None,
-):
-    # unpack parameters:
-    header = parameters["header"]
-    experiment = parameters["experiment"]
-    datasummary = parameters["datasummary"]
-    group_by = parameters["group_by"]
-    plot_order = parameters["plot_order"]
-    colors = parameters["colors"]
-    hue_category = parameters["hue_category"]
-    pick_display_function = parameters["pick_display_function"]
-
-    PSI_ = PlotSpikeInfo(datasummary, experiment, pick_display=picker_active,
-                         pick_display_function=pick_display_function)
-    df = PSI_.preload(filename)
-    (
-        P3,
-        picker_funcs,
-    ) = PSI_.summary_plot_rm_tau_categorical(
-        df,
-        xname=group_by,
-        hue_category=hue_category,
-        plot_order=plot_order,
-        colors=colors,
-        enable_picking=picker_active,
-        measures=experiment["rmtau_measures"],
-    )
-    P3.figure_handle.suptitle("Membrane Properties", fontweight="bold", fontsize=18)
-    picked_cellid = P3.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-        "pick_event",
-        lambda event: PSI_.pick_handler(event, picker_funcs),
-    )
-    P3.figure_handle.text(
-        infobox["x"],
-        infobox["y"],
-        header,
-        fontdict={
-            "fontsize": infobox["fontsize"],
-            "fontstyle": "normal",
-            "font": "helvetica",
-        },
-    )
-    mpl.show()
-    P3.figure_handle.show()
-    return P3
-
-
-def concurrent_fidata_data_plotting(
-    filename: str,
-    parameters: dict = None,
-    picker_active: bool = False,
-    infobox: dict = None,
-):
-    # unpack parameters:
-    header = parameters["header"]
-    experiment = parameters["experiment"]
-    datasummary = parameters["datasummary"]
-    group_by = parameters["group_by"]
-    plot_order = parameters["plot_order"]
-    hue_category = parameters["hue_category"]
-    pick_display_function = parameters["pick_display_function"]
-
-    PSI_ = PlotSpikeInfo(datasummary, experiment, pick_display=picker_active,
-                         pick_display_function=pick_display_function)
-    df = PSI_.preload(filename)
-    (
-        P2,
-        picker_funcs2,
-    ) = PSI_.summary_plot_spike_parameters_categorical(
-        df,
-        xname=group_by,
-        hue_category=hue_category,
-        measures=experiment["FI_measures"],
-        plot_order=plot_order,
-        colors=experiment["plot_colors"],
-        enable_picking=picker_active,
-    )
-    P2.figure_handle.suptitle("Firing Rate", fontweight="bold", fontsize=18)
-    picked_cellid = P2.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-        "pick_event",
-        lambda event: PSI_.pick_handler(event, picker_funcs2),
-    )
-    P2.figure_handle.text(
-        infobox["x"],
-        infobox["y"],
-        header,
-        fontdict={
-            "fontsize": infobox["fontsize"],
-            "fontstyle": "normal",
-            "font": "helvetica",
-        },
-    )
-    mpl.show()
-    P2.figure_handle.show()
-    return P2
+    return cc_plot
 
 
 def concurrent_selected_fidata_data_plotting(
@@ -587,6 +452,7 @@ def get_datasummary(experiment):
     if not datasummary.exists():
         raise ValueError(f"Data summary file {datasummary!s} does not exist")
     df_summary = pd.read_pickle(datasummary)
+    df_summary.rename({'Subject': "animal_identifier", "animal identifier": "animal_identifier"}, axis=1, inplace=True)
     return df_summary
 
 
@@ -909,6 +775,10 @@ class PlotSpikeInfo(QObject):
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
         cell_list = list(set(df.cell_id))
+        
+        # print("cell_list: ", cell_list)
+        # cell_list = ["2024.05.16_000_S0C0"]
+        # cell_list = ["2024.05.15_000_S6C1"]
         cell_list = sorted(cell_list)
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
@@ -930,7 +800,7 @@ class PlotSpikeInfo(QObject):
         tasks = range(len(cells_to_do))
         result = [None] * len(tasks)
         results = dfdict
-        parallel = False
+        parallel = True
         if parallel:
             with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
                 for i, x in tasker:
@@ -1089,7 +959,7 @@ class PlotSpikeInfo(QObject):
         # must use scatterplot if you want to use picking.
         if enable_picking:
             # print("xname, uniqe xnames: ", xname, df_x[xname].unique())
-            print("hue category: ", hue_category)
+            # print("hue category: ", hue_category)
             sns.swarmplot(
                 x=xname,
                 y=yname,
@@ -1287,12 +1157,13 @@ class PlotSpikeInfo(QObject):
         columns.extend(measures)
         if "animal identifier" in columns:
             df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
-        ensure_cols = ["animal_identifier", "Group", "age", "sex", "cell_type", "Subject"]
+        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_id"]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
 
         df_R = df[columns]
+        CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
 
     def summary_plot_spike_parameters_categorical(
@@ -1525,7 +1396,7 @@ class PlotSpikeInfo(QObject):
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
         if ylims is not None:
-            print(ylims[celltype])
+            # print(ylims[celltype])
             ax.set_ylim(ylims[celltype][y])
         if xlims is not None:
             ax.set_xlim(xlims)
@@ -1632,6 +1503,17 @@ class PlotSpikeInfo(QObject):
             row.RMP = np.nan
         return row.RMP
 
+    def clean_rmp_zero(self, row):
+        min_RMP = -55.0
+        if "data_inclusion_criteria" in self.experiment.keys():
+            if row.cell_type in self.experiment["data_inclusion_criteria"].keys():
+                min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
+            else:
+                min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
+        if row.RMP_Zero > min_RMP:
+            row.RMP_Zero = np.nan
+        return row.RMP_Zero
+    
     def summary_plot_spike_parameters_continuous(
         self,
         df,
@@ -1710,7 +1592,7 @@ class PlotSpikeInfo(QObject):
                 else:
                     tf = None
                 axp = P.axdict[f"{let:s}{icol+1:d}"]
-                print("ylims: ", self.ylims)
+                # print("ylims: ", self.ylims)
                 picker_funcs[axp] = self.create_one_plot_continuous(
                     data=dfp,
                     x="age",
@@ -1804,7 +1686,7 @@ class PlotSpikeInfo(QObject):
         df = df.copy()
         print("len df: ", len(df))
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-        measures = ["RMP", "Rin", "taum"]
+        measures = ["RMP", "RMP_Zero", "Rin", "taum"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))]
         self.rescale_values(df)
         picker_funcs = {}
@@ -2549,8 +2431,8 @@ class PlotSpikeInfo(QObject):
         print("Protocols: ", df["protocol"].unique())
 
         df = self.combine_by_cell(df)
-        print("Writing assembled data to : ", fn)
-        print("Assembled groups: DF groups: ", df.Group.unique())
+        print("\nWriting assembled data to : ", fn)
+        print("Assembled groups: datafram Groups: ", df.Group.unique())
         df.to_pickle(fn)
 
     def categorize_ages(self, row):
@@ -2590,21 +2472,46 @@ class PlotSpikeInfo(QObject):
         return row.AHP_trough_T
 
     def get_animal_id(self, row, df_summary):
+        """get_animal_id get the animal ID from df_summary
+        The result goes in the "Subject" column of the calling dataframe
+        The value in df_summary is "animal_identifier"
+        The animal ID is the value in the cell_id column of the calling dataframe
+
+        This is meant to be called in a df.apply... statement
+        Parameters
+        ----------
+        row : pandas Series
+            current row
+        df_summary : pandas DataFrame
+            The summary dataframe generated from dataSummary.py
+
+        Returns
+        -------
+        animal_id / subject
+            string
+
+        Raises
+        ------
+        ValueError
+            _description_
+        ValueError
+            _description_
+        """
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
         if cell_id_match is None:
-            return ""
-        if cell_id_match is not None:
-            idname = "animal_identifier"  # handle with and without underscore
-            if idname not in row.keys():
-                idname = "animal identifier"
+            return ""  # no match, leave empty
+        if cell_id_match is not None:  # we have a match, so save as the Subject
+            # handle variations in the column name (historical changes)
+            idname = "Subject"
             row[idname] = df_summary.loc[df_summary.cell_id == cell_id_match][
-                idname
-            ].values[0]
-        else:
-            print("cell id not found: ", cell_id)
-            print("values: ", df_summary.cell_id.values.tolist())
-            raise ValueError(f"Cell id {cell_id} not found in summary")
+                    "animal_identifier"
+                ].values[0]  
+            # else: 
+            #     print("row keys: ", sorted(row.keys()))
+            #     if "Subject" in row.keys():
+            #         print("Found subject column but not animal[_]identifier: ", row["Subject"])
+            #     raise ValueError("could not match animal id/Subject with column")
         return row[idname]
 
     def get_cell_layer(self, row, df_summary):
@@ -2684,7 +2591,9 @@ class PlotSpikeInfo(QObject):
     def preprocess_data(self, df, experiment):
         """preprocess_data Clean up the data, add columns, etc."""
         df_summary = get_datasummary(experiment)
-        df["animal_identifier"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
+        print("df_summary column names: ", sorted(df_summary.columns))
+        print("df column names: ", sorted(df.columns))
+        df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
 
         if "cell_layer" not in df.columns:
             layers = df_summary.cell_layer.unique()
@@ -2708,6 +2617,10 @@ class PlotSpikeInfo(QObject):
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
         df["RMP"] = df.apply(self.clean_rmp, axis=1)
+        if "RMP_Zero" in df.columns:
+            df["RMP_Zero"] = df.apply(self.clean_rmp_zero, axis=1)
+        else:
+            df["RMP_Zero"] = np.nan  # not determined... 
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
         df["age_category"] = df.apply(self.categorize_ages, axis=1)
@@ -2805,7 +2718,7 @@ class PlotSpikeInfo(QObject):
                 print("   Filtering on: ", key, values)
                 df = df[df[key].isin(values)]
 
-        print("age categories: ", df.age_category.unique())
+        # print("age categories: ", df.age_category.unique())
         # print("preload returns with Group list: ", df.Group.unique())
         return df
 
@@ -2836,6 +2749,7 @@ class PlotSpikeInfo(QObject):
                 "FIMax_1",
                 # "FIMax_4",
                 "RMP",
+                "RMP_Zero",
                 "Rin",
                 "taum",
             ]:

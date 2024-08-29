@@ -243,6 +243,10 @@ class DataTables:
             pick_display=self.show_pdf_on_pick,
             pick_display_function=self.display_from_table_by_cell_id,
         )
+        self.spike_plot = None
+        self.rmtau_plot = None
+        self.fidata_plot = None
+        self.ficurve_plot = None
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
         self.table_manager = None  # get this later
@@ -474,10 +478,10 @@ class DataTables:
                     {"name": "Use Picker", "type": "bool", "value": False},
                     {"name": "Show PDF on Pick", "type": "bool", "value": False},
                     {"name": "Plot Spike Data categorical", "type": "action"},
-                    {"name": "Plot Rmtau Data categorical", "type": "action"},
-                    {"name": "Plot FIData Data categorical", "type": "action"},
                     {"name": "Plot Spike Data continuous", "type": "action"},
+                    {"name": "Plot Rmtau Data categorical", "type": "action"},
                     {"name": "Plot Rmtau Data continuous", "type": "action"},
+                    {"name": "Plot FIData Data categorical", "type": "action"},
                     {"name": "Plot FIData Data continuous", "type": "action"},
                     {"name": "Plot FICurves", "type": "action"},
                     {
@@ -952,7 +956,11 @@ class DataTables:
                                 day = str(Path(*pathparts[0:-2]))
 
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
-                                print((f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {selected_row.cell_id!s}"))
+                                print(
+                                    (
+                                        f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {selected_row.cell_id!s}"
+                                    )
+                                )
                                 self.analyze_ivs(
                                     mode="selected",
                                     day=day,
@@ -965,12 +973,12 @@ class DataTables:
                         case "Plot from Selected IVs":
                             index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             msg = f"Plot from selected cell(s) at rows: {index_rows!s}"
-                            FUNCS.textappend(
-                                msg
-                            )
+                            FUNCS.textappend(msg)
                             print(msg)
                             # self.Dock_Report.raiseDock()  # so we can monitor progress
-                            dspath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
+                            dspath = Path(
+                                self.experiment["analyzeddatapath"], self.experiment["directory"]
+                            )
                             if self.parallel_mode == "off":
                                 for selected in index_rows:
                                     if selected is None:
@@ -1143,140 +1151,58 @@ class DataTables:
                             self.show_pdf_on_pick = data
 
                         case "Plot Spike Data categorical":
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            hue_category = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            self.spike_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="categorical",
+                                title="Spike Data",
+                                data_class="spike_measures",
+                                colors=colors,
                             )
-                            if hue_category == "None":
-                                hue_category = None
-                            header = self.get_analysis_info(fn)
-                            parameters = {
-                                "header": header,
-                                "experiment": self.experiment,
-                                "datasummary": self.datasummary,
-                                "group_by": group_by,
-                                "colors": colors,
-                                "hue_category": hue_category,
-                                "pick_display_function": None,  # self.display_from_table_by_cell_id
-                            }
-                            with concurrent.futures.ProcessPoolExecutor() as executor:
-                                f = executor.submit(
-                                    plot_spike_info.concurrent_spike_data_plotting,
-                                    fn,
-                                    parameters,
-                                    self.picker_active,
-                                    infobox={
-                                        "x": self.infobox_x,
-                                        "y": self.infobox_y,
-                                        "fontsize": self.infobox_fontsize,
-                                    },
-                                )
-                                self.spike_plot = f.result()
 
                         case "Plot Spike Data continuous":
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            hue_category = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            self.spike_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="continuous",
+                                title="Spike Data",
+                                data_class="spike_measures",
+                                colors=colors,
                             )
-                            if hue_category == "None":
-                                hue_category = None
-                            header = self.get_analysis_info(fn)
-                            parameters = {
-                                "header": header,
-                                "experiment": self.experiment,
-                                "datasummary": self.datasummary,
-                                "group_by": group_by,
-                                "colors": colors,
-                                "hue_category": hue_category,
-                                "pick_display_function": None,  # self.display_from_table_by_cell_id
-                            }
-                            with concurrent.futures.ProcessPoolExecutor() as executor:
-                                f = executor.submit(
-                                    plot_spike_info.concurrent_spike_data_plotting_continuous,
-                                    fn,
-                                    parameters,
-                                    self.picker_active,
-                                    infobox={
-                                        "x": self.infobox_x,
-                                        "y": self.infobox_y,
-                                        "fontsize": self.infobox_fontsize,
-                                    },
-                                )
-                                self.spike_plot = f.result()
 
                         case "Plot Rmtau Data categorical":
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("RmTau Plotting: \n    Loading fn: ", fn)
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            print("    group_by: ", group_by)
-                            hue_category = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            self.rmtau_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="categorical",
+                                title="RmTau Data",
+                                data_class="rmtau_measures",
+                                colors=colors,
                             )
-                            if hue_category == "None":
-                                hue_category = None
-                                # hue_category = self.experiment["plot_order"][group_by]
-                            plot_order = self.experiment["plot_order"][group_by]
-                            header = self.get_analysis_info(fn)
-                            parameters = {
-                                "header": header,
-                                "experiment": self.experiment,
-                                "datasummary": self.datasummary,
-                                "group_by": group_by,
-                                "plot_order": plot_order,
-                                "colors": colors,
-                                "hue_category": hue_category,
-                                "pick_display_function": None,  # self.display_from_table_by_cell_id
-                            }
-                            with concurrent.futures.ProcessPoolExecutor() as executor:
-                                f = executor.submit(
-                                    plot_spike_info.concurrent_rmtau_data_plotting,
-                                    fn,
-                                    parameters,
-                                    self.picker_active,
-                                    infobox={
-                                        "x": self.infobox_x,
-                                        "y": self.infobox_y,
-                                        "fontsize": self.infobox_fontsize,
-                                    },
-                                )
-                                self.rmtau_plot = f.result()
+
+                        case "Plot Rmtau Data continuous":
+                            self.rmtau_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="continuous",
+                                title="RmTau Data",
+                                data_class="rmtau_measures",
+                                colors=colors,
+                            )
 
                         case "Plot FIData Data categorical":
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("Loading fn: ", fn)
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            hue_category = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
+                            self.fidata_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="categorical",
+                                title="FI Data",
+                                data_class="FI_measures",
+                                colors=colors,
                             )
-                            if hue_category == "None":
-                                hue_category = None
-                            plot_order = self.experiment["plot_order"][group_by]
-                            header = self.get_analysis_info(fn)
-                            parameters = {
-                                "header": header,
-                                "experiment": self.experiment,
-                                "datasummary": self.datasummary,
-                                "group_by": group_by,
-                                "plot_order": plot_order,
-                                "colors": colors,
-                                "hue_category": hue_category,
-                                "pick_display_function": None,  # self.display_from_table_by_cell_id
-                            }
-                            with concurrent.futures.ProcessPoolExecutor() as executor:
-                                f = executor.submit(
-                                    plot_spike_info.concurrent_fidata_data_plotting,
-                                    fn,
-                                    parameters,
-                                    self.picker_active,
-                                    infobox={
-                                        "x": self.infobox_x,
-                                        "y": self.infobox_y,
-                                        "fontsize": self.infobox_fontsize,
-                                    },
-                                )
-                                self.fidata_plot = f.result()
+
+                        case "Plot FIData Data continuous":
+                            self.fidata_plot = self.generate_summary_plot(
+                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                mode="continuous",
+                                title="FI Data",
+                                data_class="FI_measures",
+                                colors=colors,
+                            )
 
                         case "Plot FICurves":
                             fn = self.PSI.get_assembled_filename(self.experiment)
@@ -1360,7 +1286,7 @@ class DataTables:
                                 "hue_category": hue_category,
                                 "pick_display_function": None,  # self.display_from_table_by_cell_id
                             }
-                            # plot_spike_info.concurrent_selected_fidata_data_plotting(
+                           # plot_spike_info.concurrent_selected_fidata_data_plotting(
                             #         fn,
                             #         parameters,
                             #         self.picker_active,
@@ -1547,11 +1473,11 @@ class DataTables:
                             self.doing_reload = False
 
                         case "View IndexFile":
-                            selected = self.table.selectionModel().selectedRows()
+                            selected = self.DS_table.selectionModel().selectedRows()
                             if selected is None:
                                 return
                             index_row = selected[0]
-                            self.table_manager.print_indexfile(index_row)
+                            self.DS_table_manager.print_indexfile(index_row)
                         case "Print File Info":
                             selected = self.table.selectionModel().selectedRows()
                             if selected is None:
@@ -1640,26 +1566,6 @@ class DataTables:
         else:
             args.cell_id = None
 
-        # args.after= "2021.07.01"
-        # this is to handle an old config file structure that related to
-        # specific cell types etc. Pretty sure it does not work anymore
-        # if args.configfile is not None:
-        #     config = None
-        #     if args.configfile is not None:
-        #         if ".json" in args.configfile:
-        #             # The escaping of "\t" in the config file is necesarry as
-        #             # otherwise Python will try to treat is as the string escape
-        #             # sequence for ASCII Horizontal Tab when it encounters it
-        #             # during json.load
-        #             config = json.load(open(args.configfile))
-        #         elif ".toml" in args.configfile:
-        #             config = toml.load(open(args.configfile))
-
-        #     vargs = vars(args)  # reach into the dict to change values in namespace
-        #     for c in config:
-        #         if c in args:
-        #             # print("c: ", c)
-        #             vargs[c] = config[c]
         CP.cprint(
             "g",
             f"Starting IV analysis at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
@@ -1702,6 +1608,51 @@ class DataTables:
             "r", f"Then try the plotting functions to plot summaries and get statistical results"
         )
         CP.cprint("r", "=" * 80)
+
+    def generate_summary_plot(
+        self, plotting_function: object, mode: str = "categorical", data_class:str="spike_measures",
+         title:str="My Title", colors: dict = {}
+    ):
+        # data class must be in the experimeng configuration file, top level keys.
+        # e.g.:
+        # spike_measures: ["dvdt_rising", "dvdt_falling", "AP_HW", "AP_thr_V", "AHP_depth_V", "AHP_trough_T"]
+        # rmtau_measures: ["RMP", "Rin", "taum"]
+        # FI_measures: ["AdaptRatio",  "maxHillSlope", "I_maxHillSlope", "FIMax_1", "FIMax_4"]
+
+        assert data_class in self.experiment.keys()
+        fn = self.PSI.get_assembled_filename(self.experiment)
+        group_by = self.ptreedata.child("Plotting").child("Group By").value()
+        plot_order = self.experiment["plot_order"][group_by]
+        hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
+        if hue_category == "None":
+            hue_category = None
+        header = self.get_analysis_info(fn)
+        parameters = {
+            "header": header,
+            "experiment": self.experiment,
+            "datasummary": self.datasummary,
+            "group_by": group_by,
+            "colors": colors,
+            "hue_category": hue_category,
+            "plot_order": plot_order,
+            "pick_display_function": None,  # self.display_from_table_by_cell_id
+        }
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            f = executor.submit(
+                plotting_function,
+                filename=fn,
+                parameters=parameters,
+                mode=mode,
+                plot_title = title,
+                data_class=data_class,
+                picker_active=self.picker_active,
+                infobox={
+                    "x": self.infobox_x,
+                    "y": self.infobox_y,
+                    "fontsize": self.infobox_fontsize,
+                },
+            )
+        return f.result()
 
     def analyze_maps(
         self, mode="all", important: bool = False, day: str = None, slicecell: str = None
