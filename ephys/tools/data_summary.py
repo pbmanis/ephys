@@ -384,7 +384,7 @@ class DataSummary:
                 ("directory", "{4:s}"),
             ]
         )
-        self.coldefs = "Date \tDescription \tNotes \tGenotype \tAge \tAnimal Identifier\tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t"
+        self.coldefs = "Date \tDescription \tNotes \tGenotype \tAge \tAnimal_Identifier\tSex \tWeight \tTemp \tElapsed T \tSlice \tSlice Notes \t"
         self.coldefs += "Cell \t Cell Notes \t \tProtocols \tImages \t"
 
         self.AR = acq4_reader.acq4_reader()  # instance of the reader

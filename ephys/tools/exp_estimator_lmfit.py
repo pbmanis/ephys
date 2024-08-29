@@ -201,7 +201,7 @@ class LMexpFit:
     # single exponential fit
     def fit1(self, x_data: np.ndarray, y_data: np.ndarray, plot=False, verbose=False):
         assert x_data.ndim == 1
-        self.initial_estimator(x_data, y_data, verbose=True)  # results stored in class variables
+        self.initial_estimator(x_data, y_data, verbose=verbose)  # results stored in class variables
         assert y_data.ndim == 1
         # Create a model for exponential decay
         model = lmfit.Model(self.exp_decay1)
