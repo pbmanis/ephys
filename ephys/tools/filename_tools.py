@@ -385,7 +385,7 @@ def compare_slice_cell(
         return (True, slicecell3, slicecell2, slicecell1)
 
 
-def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
+def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
     """get_cell get the pickled data file for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
@@ -476,6 +476,38 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         raise ValueError
         return None, None
+    return datapath
+
+def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
+    """get_cell get the pickled data file for this cell - this is an analyzed file,
+    usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
+
+    Parameters
+    ----------
+    experiment : dictionary
+        configuration dictionary
+    df : pd.DataFrame
+        main data summary dataframe
+    cell : str
+        the cell_id for this cell (typically, a partial path to the cell file)
+        For example: Rig2/2022.01.01_000/slice_000/cell_000
+
+    Returns
+    -------
+    a pandas df (series) with the pickled data
+        _description_
+        returns None, None if the cell is not found, or if the file
+        does not have a Spikes entry.
+
+    Raises
+    ------
+    ValueError
+        no matching file
+    ValueError
+        failed to read the compressed pickle file
+    """
+    datapath = get_cell_pkl_filename(experiment, df, cell_id)
+    df_tmp = df[df.cell_id == cell_id]
     try:
         df_cell = pd.read_pickle(datapath, compression="gzip")
     except ValueError:
