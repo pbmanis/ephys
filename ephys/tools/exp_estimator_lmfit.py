@@ -17,7 +17,7 @@
 
 pbm 8/24/2024. How many times have I done this?
 """
-
+from typing import Union
 import numpy as np
 import pyqtgraph as pg
 from scipy.signal import savgol_filter
@@ -199,7 +199,7 @@ class LMexpFit:
         return y - self.exp_decay2(x, dc, a1, t1, a2, t2)
 
     # single exponential fit
-    def fit1(self, x_data: np.ndarray, y_data: np.ndarray, plot=False, verbose=False):
+    def fit1(self, x_data: np.ndarray, y_data: np.ndarray, taum_bounds:Union[list, None] = None, plot=False, verbose=False):
         assert x_data.ndim == 1
         self.initial_estimator(x_data, y_data, verbose=verbose)  # results stored in class variables
         assert y_data.ndim == 1
@@ -211,6 +211,13 @@ class LMexpFit:
             A1=self.A1,
             R1=self.R1,
         )
+        if taum_bounds is None:
+            params["R1"].min = 0.  # require positive time constant at least
+        else:
+            print("taum_bounds: ", taum_bounds)
+            params["R1"].min = 1./taum_bounds[1]
+            params["R1"].max = 1./taum_bounds[0]
+
         # set up lmfit
         mini = lmfit.Minimizer(self.residual1, params, fcn_args=(x_data, y_data))
         # Fit the model to the data
