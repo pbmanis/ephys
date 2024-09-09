@@ -1129,7 +1129,7 @@ class DataSummary:
             "unipolar brush cell": "sienna",
             "chestnut": "saddlebrown",
             "giant": "sandybrown",
-            "giant?": "sandybrown",
+            "giant_maybe": "sandybrown",
             "giant cell": "sandybrown",
             "Unknown": "white",
             "unknown": "white",

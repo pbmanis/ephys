@@ -25,6 +25,7 @@ re_cartwheel = re.compile(r"^cartwheel[ _]*[cell]*", re.IGNORECASE)
 re_unipolar_brush = re.compile(r"^unipolar[ _]*brush[ _]*[cell]*", re.IGNORECASE)
 re_multipolar = re.compile(r"^multipolar[ _]*[cell]*", re.IGNORECASE)
 re_giant = re.compile(r"^giant[ _]*[cell]*", re.IGNORECASE)
+re_giant_maybe = re.compile(r"^giant_maybe", re.IGNORECASE)
 re_tuberculoventral = re.compile(r"^[tuberculoventral|TV][ _]*[cell]*", re.IGNORECASE)
 
 all_types = [
@@ -48,6 +49,7 @@ all_types = [
     [re_unipolar_brush, "unipolar brush"],
     [re_multipolar, "multipolar"],
     [re_giant, "giant"],
+    [re_giant_maybe, "giant_maybe"],
     [re_tuberculoventral, "tuberculoventral"],
 ]
 
@@ -137,6 +139,7 @@ def test():
         "unipolar brush": ["Unipolar brush", "unipolar brush cell", "Unipolar brush cell"],
         "multipolar": ["Multipolar", "multipolar cell", "Multipolar cell"],
         "giant": ["Giant", "giant cell", "Giant cell"],
+        "giant_maybe": ["giant_maybe", "Giant_maybe",  "Giant_Maybe"],
         "failed": ["Failed", "failed cell", "Failed cell"],
     }
     for ct in variants.keys():

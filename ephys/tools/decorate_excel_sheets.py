@@ -10,7 +10,8 @@ def highlight_by_cell_type(row):
               "bushy": "lightslategray",
               "unipolar brush cell": "sienna",
               "giant": "sandybrown",
-              "giant?": "sandybrown",
+              "giant_maybe": "sandybrown",
+              "giant_maybe": "sandybrown",
               "t-stellate": "thistle",
               "stellate": "thistle",
     }
