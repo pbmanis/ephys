@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Union
 import pyqtgraph as pg
 import pprint
 import inspect # to get path to standard_configurations files
@@ -9,7 +10,7 @@ CP = cprint.cprint
 PP = pprint.PrettyPrinter(indent=4)
 
 
-def get_configuration(configfile: str = "experiments.cfg"):
+def get_configuration(configfile: Union[str, None] = None):
     """get_configuration : retrieve the configuration file from the current
     working directory, and return the datasets and experiments
     Note: if some keys are missing, we will attempt to get them from the
@@ -32,19 +33,32 @@ def get_configuration(configfile: str = "experiments.cfg"):
     FileNotFoundError
         _description_
     """
-    try:
-        abspath = Path().absolute()
-        if abspath.name == 'nb':
-            abspath = Path(*abspath.parts[:-1])
-        print("Getting Configuration file from: ", Path().absolute())
-        cpath = Path(Path().absolute(), "config", configfile)
-        config = pg.configfile.readConfigFile(cpath)
+    if configfile is None:
+        # get a local config file
+        print("No configuration file specified")
+        return None, None
+        # try:
+        #     abspath = Path().absolute()
+        #     if abspath.name == 'nb':
+        #         abspath = Path(*abspath.parts[:-1])
+        #     print("Getting Configuration file from: ", Path().absolute())
+        #     print("abspath.name: ", abspath.name)
+        #     if abspath.name == 'ephys':
+        #         return None, None  # we are in the ephys directory, so we don't need to get the configuration file
+        #     print("configfile:::", configfile)
+        #     cpath = Path(Path().absolute(), "config", configfile)
+        #     print("Cpath: ", cpath)
+        #     config = pg.configfile.readConfigFile(cpath)
+        #     experiments = config["experiments"]
+        # except FileNotFoundError as exc:
+        #     raise FileNotFoundError(
+        #         f"No config file found, expected in the top-level config directory, named '{cpath!s}'"
+        #     ) from exc
+    else:
+        print("configfile: ", configfile)
+        config = pg.configfile.readConfigFile(configfile)
         experiments = config["experiments"]
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(
-            f"No config file found, expected in the top-level config directory, named '{cpath!s}'"
-        ) from exc
-
+    
     datasets = list(experiments.keys())
     retrieve_standard_values(experiments, datasets)
 
@@ -134,6 +148,9 @@ def validate_configuration(experiments, datasets):
         "FI_measures",
         "spike_detector",
         "fit_gap",
+        "taum_current_range",
+        "taum_bounds",
+        "tauh_voltage",
         
         "group_by",
         "group_map",
@@ -165,6 +182,7 @@ def validate_configuration(experiments, datasets):
             raise ValueError(
                     f"Dataset '{dataset}' has missing entries - please fix!"
                 )
-            
+        else:
+            CP("c", f"Configuration for dataset '{dataset}' is compliant")
     
 
