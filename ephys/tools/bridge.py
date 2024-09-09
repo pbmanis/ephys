@@ -503,6 +503,7 @@ class Bridge():
                     self.AR.tstart,
                     self.AR.tstart + (self.AR.tend - self.AR.tstart) / 5.0,
                 ],
+                average_flag=False
             )
             self.cmd = 1e9 * self.AR.cmd_wave.view(np.ndarray)
             self.draw_traces()
