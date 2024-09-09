@@ -1725,8 +1725,8 @@ def get_protocols_from_datasheet(
                     data[col] = dfm[col][index]
                 else:
                     data["protocol"] = prot  # add the protocol
-            if data["cell_type"] not in ["Pyramidal", "pyramidal"]:
-                continue
+            # if data["cell_type"] not in ["Pyramidal", "pyramidal"]:
+            #     continue
             if data["age"].strip() in ["", " ", "?"]:
                 continue
             a = ""
@@ -1778,6 +1778,7 @@ def main():
             "cartwheel",
             "tuberculoventral",
             "giant",
+            "giant_maybe",
             "bushy",
             "t-stellate",
             "d-stellate",

@@ -68,6 +68,8 @@ def concurrent_categorical_data_plotting(
                          pick_display_function=pick_display_function)
     df = PSI_.preload(filename)
     if mode == "categorical":
+        print("categorical")
+
         (
             cc_plot,
             picker_funcs1,
@@ -207,6 +209,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 250],
         }
@@ -223,6 +226,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
@@ -239,6 +243,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 200],
         }
@@ -256,9 +261,28 @@ def set_ylims(experiment):
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
+        ylims_giant_maybe = {
+            "dvdt_rising": [0, 800],
+            "dvdt_falling": [0, 800],
+            "AP_HW": [0, 1000],
+            "AHP_depth_V": [-75, -40],
+            "AP_thr_V": [-75, 0],
+            "AdaptRatio": [0, 2],
+            "FISlope": [0, 1000],
+            "maxHillSlope": [0, 1000],
+            "I_maxHillSlope": [0, 1.0],
+            "FIMax_1": [0, 800],
+            "FIMax_4": [0, 800],
+            "taum": [0, None],
+            "taum_averaged": [0, None],
+            "RMP": [-80, -40],
+            "Rin": [0, 400],
+        }
+
         ylims_bushy = {
             "dvdt_rising": [0, 200],
             "dvdt_falling": [0, 200],
@@ -272,6 +296,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
@@ -289,6 +314,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
@@ -306,6 +332,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
@@ -323,6 +350,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, None],
             "FIMax_4": [0, None],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, 400],
         }
@@ -339,6 +367,7 @@ def set_ylims(experiment):
             "FIMax_1": [0, 800],
             "FIMax_4": [0, 800],
             "taum": [0, None],
+            "taum_averaged": [0, None],
             "RMP": [-80, -40],
             "Rin": [0, None],
         }
@@ -348,6 +377,7 @@ def set_ylims(experiment):
             "tuberculoventral": ylims_tv,
             "cartwheel": ylims_cw,
             "giant": ylims_giant,
+            "giant_maybe": ylims_giant_maybe,
             "bushy": ylims_bushy,
             "t-stellate": ylims_tstellate,
             "d-stellate": ylims_dstellate,
@@ -453,6 +483,8 @@ def get_datasummary(experiment):
         raise ValueError(f"Data summary file {datasummary!s} does not exist")
     df_summary = pd.read_pickle(datasummary)
     df_summary.rename({'Subject': "animal_identifier", "animal identifier": "animal_identifier"}, axis=1, inplace=True)
+    print(df_summary.columns)
+    print(df_summary.cell_type.unique())
     return df_summary
 
 
@@ -797,10 +829,22 @@ class PlotSpikeInfo(QObject):
         )
         already_done = already_done.cell_id.unique()
         # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
-        tasks = range(len(cells_to_do))
+        # instrument up to to a limited set of the data for testing
+        # The limit numbers refer to the IV data table.
+        ilimit = None # list(range(67, 78))
+        if ilimit is None:
+            limit = len(cells_to_do)
+            tasks = range(limit)
+        elif isinstance(ilimit, int):
+            limit = min(ilimit, len(cells_to_do))
+            tasks = range(limit)
+        elif isinstance(ilimit, list):
+            limit = ilimit
+            tasks = limit
+
         result = [None] * len(tasks)
         results = dfdict
-        parallel = True
+        parallel = False
         if parallel:
             with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
                 for i, x in tasker:
@@ -809,12 +853,19 @@ class PlotSpikeInfo(QObject):
                     )
                     tasker.results[cell_list[i]] = result
 
-            for r in results:
+            for r in results: 
                 df_new = pd.concat([df_new, pd.Series(results[r]).to_frame().T], ignore_index=True)
         else:
 
             # do each cell in the database
             for icell, cell in enumerate(cell_list):
+                print("icell: ", icell)
+                if not isinstance(ilimit, list):
+                    if ilimit is not None and icell > ilimit:
+                        break
+                elif isinstance(ilimit, list):
+                    if icell not in ilimit:
+                        continue
                 if cell is None:
                     CP("r", f"Cell # {icell:d} in the database is None")
                     continue
@@ -1099,7 +1150,11 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
-            row[measure] = row[measure] * scale
+            if isinstance(row[measure], list):
+                row[measure] = np.nanmean(row[measure]) * scale
+            else:
+                row[measure] = row[measure]*scale
+
         return row[measure]
 
     def rescale_values(self, df):
@@ -1126,6 +1181,23 @@ class PlotSpikeInfo(QObject):
             )
         return df
 
+    def average_Rs(self, row):
+        rs = []
+        # print("Rs row: ", row['Rs'])
+        # for protocol in row['Rs'].keys():
+        #     rs.append(row['Rs'][protocol])
+        rsa = np.mean(row['Rs'])
+        row['Rs'] = rsa
+        return row
+    
+    def average_CNeut(self, row):
+        rs = []
+        # for protocol in row['CNeut'].keys():
+        #     rs.append(row['CNeut'][protocol])
+        rsa = np.mean(row['CNeut'])
+        row['CNeut'] = rsa
+        return row
+    
     def place_legend(self, P):
         legend_text = {
             "Ctl: Control (sham)  (P56)": "g",
@@ -1143,11 +1215,18 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
 
+
+    def make_subject_name(self, row):
+        sn = Path(row.cell_id).name
+        sn = sn.split("_")[0]
+        row["Subject"] = sn
+        return row
+    
     def export_r(
         self, df: pd.DataFrame, xname: str, measures: str, hue_category: str, filename: str
     ):
         """export_r _summary_
-        Export just the relevant data to a csv file to read in R for further analysis.
+        Export  the relevant data to a csv file to read in R for further analysis.
         """
         # print("Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
         if hue_category is None:
@@ -1157,12 +1236,19 @@ class PlotSpikeInfo(QObject):
         columns.extend(measures)
         if "animal identifier" in columns:
             df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
-        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_id"]
+        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_id", "Rs", "CNeut", "Subject", "protocol"]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
+        if "Subject" not in df.columns:
+            df_R = df_R.apply(self.make_subject_name, axis=1)
 
         df_R = df[columns]
+        if 'Rs' in df_R.columns:
+            df_R = df_R.apply(self.average_Rs, axis=1)
+        if 'CNeut' in df_R.columns:
+            df_R = df_R.apply(self.average_CNeut, axis=1)
+
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
 
@@ -1188,7 +1274,7 @@ class PlotSpikeInfo(QObject):
             enable_picking: bool, optional: enable picking of data points
         """
         df = df.copy()  # make sure we don't modifiy the incoming
-        print("summary plot incomding x : ", df[xname].unique())
+        print("summary plot incoming x : ", df[xname].unique())
                                                 
         # Remove cells for which the FI Hill slope is maximal at 0 nA:
         #    These have spont.
@@ -1222,6 +1308,7 @@ class PlotSpikeInfo(QObject):
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
+        print(df.cell_type.unique())
         df = self.rescale_values(df)
         # print("plot order: ", plot_order)
         for icol, measure in enumerate(measures):
@@ -1233,14 +1320,18 @@ class PlotSpikeInfo(QObject):
                 tf = self.transforms[measure]
             else:
                 tf = None
-
+            print(":: cell types ::", self.experiment["celltypes"])
             for i, celltype in enumerate(self.experiment["celltypes"]):
-                # print("measure: ", measure, "celltype: ", celltype)
+                print("measure y: ", measure, "celltype: ", celltype)
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
                 if celltype not in self.ylims.keys():
                     ycell = "default"
                 else:
                     ycell = celltype
+                if measure not in self.ylims[ycell]:
+                    continue
+                if measure not in df.columns:
+                    continue
                 try:
                     picker_func = self.create_one_plot_categorical(
                         data=df,
@@ -1294,8 +1385,10 @@ class PlotSpikeInfo(QObject):
         )
         if "dvdt_rising" in measures:
             fn = "spike_shapes.csv"
-        else:
+        elif "AdaptRatio" in measures:
             fn = "firing_parameters.csv"
+        elif "RMP" in measures:
+            fn = "rmtau.csv"
         self.export_r(df, xname, measures, hue_category, filename=fn)
         return P, picker_funcs
 
@@ -1407,7 +1500,10 @@ class PlotSpikeInfo(QObject):
 
     def apply_scale(self, row, measure, scale):
         if measure in row.keys():
-            row[measure] = row[measure] * scale
+            if isinstance(row[measure], list):
+                row[measure] = np.nanmean(row[measure]) * scale
+            else:
+                row[measure] = row[measure] * scale
         return row
 
     def create_one_plot_categorical(
@@ -1452,6 +1548,7 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data.copy()
+        print("database celltypes: ", dfp.cell_type.unique())
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
@@ -1478,7 +1575,8 @@ class PlotSpikeInfo(QObject):
             ax.set_xlim(xlims)
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
-
+        print("Plotted measure: ", y, "for celltype: ", celltype)
+        # print("dfp: ", dfp)
         return picker_func
 
     def clean_rin(self, row):
@@ -1488,8 +1586,11 @@ class PlotSpikeInfo(QObject):
                 min_Rin = self.experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
             else:
                 min_Rin = self.experiment["data_inclusion_criteria"]["default"]["Rin_min"]
-        if row.Rin < min_Rin:
-            row.Rin = np.nan
+        # print("rowrin: ", row.Rin)
+        for i, rin in enumerate(row.Rin):
+            # print("rin: ", rin)
+            if row.Rin[i] < min_Rin:
+                row.Rin[i] = np.nan
         return row.Rin
 
     def clean_rmp(self, row):
@@ -1499,8 +1600,9 @@ class PlotSpikeInfo(QObject):
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
-        if row.RMP > min_RMP:
-            row.RMP = np.nan
+        for i, rmp in enumerate(row.RMP):
+            if rmp > min_RMP:
+                row.RMP[i] = np.nan
         return row.RMP
 
     def clean_rmp_zero(self, row):
@@ -1510,8 +1612,9 @@ class PlotSpikeInfo(QObject):
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
-        if row.RMP_Zero > min_RMP:
-            row.RMP_Zero = np.nan
+        for i, r0 in enumerate(row.RMP_Zero):
+            if r0 > min_RMP:
+                row.RMP_Zero[i] = np.nan
         return row.RMP_Zero
     
     def summary_plot_spike_parameters_continuous(
@@ -1711,6 +1814,7 @@ class PlotSpikeInfo(QObject):
 
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+        print("self.experiment celltypes: ", self.experiment["celltypes"])
         for i, celltype in enumerate(self.experiment["celltypes"]):
             let = letters[i]
 
@@ -1875,6 +1979,7 @@ class PlotSpikeInfo(QObject):
             "t-stellate": [0.6, 0.4],
             "d-stellate": [0.6, 0.4],
             "giant": [0.6, 0.4],
+            "giant_maybe": [0.6, 0.4],
             "default": [0.4, 0.15],
         }
 
@@ -2114,6 +2219,7 @@ class PlotSpikeInfo(QObject):
             "cartwheel": "g",
             "tuberculoventral": "m",
             "giant": "k",
+            "giant_maybe": "k",
         }
         if celltype not in cellcolors.keys():
             cellcolors[celltype] = "r"
@@ -2454,10 +2560,13 @@ class PlotSpikeInfo(QObject):
         # recalculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
         if "LowestCurrentSpike" not in row.keys():
-            row.AHP_depth_V = row.AHP_trough_V * 1e3 - row.AP_thr_V
-            if row.AHP_depth_V > 0:
-                row.AHP_depth_V = np.nan
-            return row.AHP_depth_V
+            print("len: thr, trough: ", len(row.AP_thr_V), len(row.AHP_trough_V))
+            for i, apv in enumerate(row.AHP_trough_V):
+                # print("trough, thr: ", row.AHP_trough_V, row.AP_thr_V)
+                row.AHP_depth_V[i] = row.AHP_trough_V[i] * 1e3 - row.AP_thr_V[i]
+                if row.AHP_depth_V[i] > 0:
+                    row.AHP_depth_V[i] = np.nan
+            return row.AHP_depth_V[i]
         else:
             CP("c", "LowestCurrentSpike in row keys")
 
@@ -2466,9 +2575,11 @@ class PlotSpikeInfo(QObject):
         # if the depth is positive, then the trough is above threshold, so set to nan.
         if "AHP_trough_T" not in row.keys():
             return np.nan
-        row.AHP_trough_T = row.AHP_trough_T - row.AP_thr_T * 1e-3
-        if row.AHP_trough_T < 0:
-            row.AHP_trough_T = np.nan
+        return np.nan
+        for i, att in enumerate(row.AHP_trough_T):
+            row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i]* 1e-3
+            if row.AHP_trough_T[i] < 0:
+                row.AHP_trough_T[i] = np.nan
         return row.AHP_trough_T
 
     def get_animal_id(self, row, df_summary):

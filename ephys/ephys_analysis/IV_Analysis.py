@@ -140,7 +140,7 @@ class IVAnalysis(Analysis):
             return True
         if self.mode == "acq4":
             self.AR.setProtocol(self.datapath)
-        if self.AR.getData():
+        if self.AR.getData(silent=False):
             dur = self.AR.tend - self.AR.tstart
             if np.fabs(dur - duration) < 1e-4:
                 return True
@@ -402,11 +402,10 @@ class IVAnalysis(Analysis):
             CP.cprint("m", "iv_analysis: Parallel processing disabled for 'off' and 'day'")
         tasks = range(len(validivs))  # number of tasks that will be needed
 
-
         if self.parallel_mode in ["off", "day"]:  # just serial at this level
             results: dict = dict(
                 [("IV", {}), ("Spikes", {})]
-                )  # storage for results; predefine the dicts.
+            )  # storage for results; predefine the dicts.
             print("iv analysis: parallel mode in 'off' or 'day'")
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
@@ -437,33 +436,41 @@ class IVAnalysis(Analysis):
         elif self.parallel_mode == "cell":
             try:
                 print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
-                results:dict = {}
+                results: dict = {}
                 result = [None] * len(tasks)
                 riv = {}  # iv result, keys are protocols (validiv names)
                 rsp = {}  # ditto for spikes.
-                with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
+                with MP.Parallelize(
+                    enumerate(tasks), results=results, workers=self.nworkers
+                ) as tasker:
                     for i, x in tasker:
                         # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
                         # tasker.results[validivs[i]] = result
-    
+
                         with concurrent.futures.ProcessPoolExecutor() as executor:
                             print("   submitting execution to concurrent futures")
                             f = executor.submit(
                                 concurrent_iv_analysis,
-                                self, icell, i, x, cell_directory, validivs, nfiles,
+                                self,
+                                icell,
+                                i,
+                                x,
+                                cell_directory,
+                                validivs,
+                                nfiles,
                             )
                         result, nfiles = f.result()
                         tasker.results[validivs[i]] = result
                     if len(results) == 0 or self.dry_run:
                         return
-                    
+
                     # reform the results for our database
                     for f in results.keys():
                         if "IV" in results[f].keys():
                             riv[f] = _cleanup_ivdata(results[f]["IV"])
                         if "Spikes" in results[f].keys():
                             rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
-                
+
                             # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
                             # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
                             # print('analyze_ivs: riv: ', riv)
@@ -479,7 +486,7 @@ class IVAnalysis(Analysis):
                 # do with non-parallel processing. Slower, but gets the job done.
                 results: dict = dict(
                     [("IV", {}), ("Spikes", {})]
-                    )  # storage for results; predefine the dicts.
+                )  # storage for results; predefine the dicts.
                 print("iv analysis: parallel mode in 'off' or 'day'")
                 for i, x in enumerate(tasks):
                     r, nfiles = self.analyze_iv(
@@ -570,6 +577,11 @@ class IVAnalysis(Analysis):
             with open(self.iv_analysisFilename, "wb") as fh:
                 self.df.to_feather(fh)
 
+    def get_tau_fitting_adjustment(self, datapath):
+        """
+        Get the tau fitting adjustment for the IV protocol
+        """
+
     def analyze_iv(
         self,
         icell: int,
@@ -647,61 +659,7 @@ class IVAnalysis(Analysis):
                 gc.collect()
                 return (None, 0)  # skip analysis
 
-        if not self.dry_run:
-            msg = f"      IV analysis for: {str(protocol_directory):s}"
-            print(msg)
-            # Logger.info(msg)
-            br_offset = 0.0
-            if (
-                not pd.isnull(self.df.at[icell, "IV"])
-                and protocol in self.df.at[icell, "IV"]
-                and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
-            ):
-                msg = "Bridge: {0:.2f} Mohm".format(
-                    self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
-                )
-                print(msg)
-                # if self.parallel_mode not in ["day", "cell"]:
-                #     Logger.info(msg)
-
-            ctype = self.df.at[icell, "cell_type"].lower()
-            if ctype in self.experiment["fit_gap"].keys():
-                fit_gap = self.experiment["fit_gap"][ctype]
-            elif "default" in self.experiment["fit_gap"].keys():
-                fit_gap = self.experiment["fit_gap"]["default"]
-            else:
-                raise ValueError("No 'default' fit_gap in experiment.cfg file")
-
-            self.plot_mode(mode=self.IV_pubmode)
-            print("analyze iv: calling compute_iv")
-            self.compute_iv(
-                threshold=self.spike_threshold,
-                refractory=self.refractory,
-                bridge_offset=br_offset,
-                fit_gap=fit_gap,
-                max_spikeshape=self.max_spikeshape,
-                max_spike_look=self.max_spike_look,
-                plotiv=True,
-                full_spike_analysis=True,
-                average_flag=average_flag,
-            )
-
-            iv_result = self.RM.analysis_summary
-            sp_result = self.SP.analysis_summary
-            result["IV"] = iv_result
-            result["Spikes"] = sp_result
-            ctype = self.df.at[icell, "cell_type"]
-            # print("result IV: ", result["IV"])
-            # annot = self.df.at[icell, "annotated"]
-            nfiles += 1
-            # print("Checking for figure, plothandle is: ", plot_handle)
-
-            del iv_result
-            del sp_result
-            gc.collect()
-            return result, nfiles
-
-        else:
+        if self.dry_run:
             print(f"Dry Run: would analyze {str(protocol_directory):s}")
             br_offset = 0
             print("self.df.at[icell, 'IV']", icell, self.df.at[icell, "IV"])
@@ -721,6 +679,87 @@ class IVAnalysis(Analysis):
             gc.collect()
             return None, 0
 
+        msg = f"      IV analysis for: {str(protocol_directory):s}"
+        print(msg)
+        # Logger.info(msg)
+        br_offset = 0.0
+        if (
+            not pd.isnull(self.df.at[icell, "IV"])
+            and protocol in self.df.at[icell, "IV"]
+            and "--Adjust" in self.df.at[icell, protocol]["BridgeAdjust"]
+        ):
+            msg = "Bridge: {0:.2f} Mohm".format(
+                self.df.at[icell, "IV"][protocol]["BridgeAdjust"] / 1e6
+            )
+            print(msg)
+            # if self.parallel_mode not in ["day", "cell"]:
+            #     Logger.info(msg)
+
+        ctype = self.df.at[icell, "cell_type"].lower()
+        if ctype in self.experiment["fit_gap"].keys():
+            fit_gap = self.experiment["fit_gap"][ctype]
+        elif "default" in self.experiment["fit_gap"].keys():
+            fit_gap = self.experiment["fit_gap"]["default"]
+        else:
+            raise ValueError("No 'default' fit_gap in experiment.cfg file")
+
+        if "taum_current_range" in self.experiment.keys():
+            taum_current_range = self.experiment["taum_current_range"]
+        else:
+            raise ValueError("No taum_current_range defined in configuration")
+        # taum_current_range = [-10.0e-12, 100e-12]
+        if "taum_bounds" in self.experiment.keys():
+            taum_bounds = self.experiment["taum_bounds"]
+        else:
+            raise ValueError("No taum_bounds (time constant bounds) defined in configuration")
+            # taum_bounds = [0.0002, 0.050]
+        if "tauh_voltage" in self.experiment.keys():
+            tauh_voltage = self.experiment["tauh_voltage"]
+        else:
+            raise ValueError("No tauh_voltage (steady-state voltage when measuring tauh) defined in configuration")
+        
+        if "fitting_adjustments" in self.experiment.keys():
+            cell_id = self.df.at[icell, "cell_id"]
+            if cell_id in self.experiment["fitting_adjustments"].keys():
+                taum_bounds = self.experiment["fitting_adjustments"][cell_id]["taum_bounds"]
+                taum_current_range = self.experiment["fitting_adjustments"][cell_id][
+                    "taum_current_range"
+                ]
+
+
+
+        self.plot_mode(mode=self.IV_pubmode)
+        print("analyze iv: calling compute_iv")
+        self.compute_iv(
+            threshold=self.spike_threshold,
+            refractory=self.refractory,
+            bridge_offset=br_offset,
+            fit_gap=fit_gap,
+            max_spikeshape=self.max_spikeshape,
+            max_spike_look=self.max_spike_look,
+            plotiv=True,
+            full_spike_analysis=True,
+            average_flag=average_flag,
+            tauh_voltage=tauh_voltage,
+            taum_bounds=taum_bounds,
+            taum_current_range=taum_current_range,
+        )
+
+        iv_result = self.RM.analysis_summary
+        sp_result = self.SP.analysis_summary
+        result["IV"] = iv_result
+        result["Spikes"] = sp_result
+        ctype = self.df.at[icell, "cell_type"]
+        # print("result IV: ", result["IV"])
+        # annot = self.df.at[icell, "annotated"]
+        nfiles += 1
+        # print("Checking for figure, plothandle is: ", plot_handle)
+
+        del iv_result
+        del sp_result
+        gc.collect()
+        return result, nfiles
+
     def compute_iv(
         self,
         threshold: float = -0.010,
@@ -733,6 +772,9 @@ class IVAnalysis(Analysis):
         max_spikeshape: int = 2,
         max_spike_look: float = 0.010,  # time in seconds to look for AHPs
         to_peak: bool = True,
+        tauh_voltage: float = -80.0,
+        taum_bounds: List = [0.0002, 0.050],
+        taum_current_range: List = [-10.0e-12, 200e-12],
     ) -> bool:
         """
         Simple computation of spikes, FI and subthreshold IV for one protocol
@@ -743,64 +785,92 @@ class IVAnalysis(Analysis):
             self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if track:
             print("protocol set")
-        if self.AR.getData():  # get that data.
-            if self.important_flag_check:
-                if not self.AR.protocol_important:
-                    return None  # skip this protocol
-            # downsample, but also change the data in the acq4Reader
-            if self.downsample > 1 and self.AR.sample_rate > 1e4:
-                print("Decimating with: ", self.decimate)
-                self.AR.traces = functions.downsample(self.AR.traces, n=self.downsample, axis=1)
-                self.AR.cmd_wave = functions.downsample(self.AR.cmd_wave, n=self.downsample, axis=1)
-                self.AR.time_base = functions.downsample(
-                    self.AR.time_base, n=self.downsample, axis=0
-                )
-            if track:
-                print("getdata - done")
-            taum_bounds = [0.0, 0.050]
-            if str(self.datapath).find("_taum"):
-                taum_bounds = [0.000, 0.100]
-            self.RM.setup(self.AR, self.SP, bridge_offset=bridge_offset, taum_bounds=taum_bounds)
-            self.SP.setup(
-                clamps=self.AR,
-                threshold=threshold,
-                refractory=refractory,
-                peakwidth=0.001,
-                interpolate=True,
-                verify=False,
-                mode="schmitt",
-                max_spike_look=max_spike_look,
-            )
-            if track:
-                print("setup complete, now analyze spikes", full_spike_analysis)
-            self.SP.analyzeSpikes(track=track)
-            if full_spike_analysis:
-                self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
-                # self.SP.analyzeSpikes_brief(mode="evoked")
-                self.SP.analyzeSpikes_brief(mode="baseline")
-                self.SP.analyzeSpikes_brief(mode="poststimulus")
-            # self.SP.fitOne(function='fitOneOriginal')
-            if track:
-                print("   brief spike analysis completed", full_spike_analysis)
-            tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
-            if str(self.datapath).find("_taum"):
-                tau_end = self.AR.tstart + self.AR.tend
-            print("Starting RM analyze")
-            self.RM.analyze(
-                rmpregion=[0.0, self.AR.tstart - 0.001],
-                tauregion=[self.AR.tstart, tau_end],
-                to_peak=to_peak,
-                tgap=fit_gap,
-                average_flag=average_flag,
-            )
-            print("     RM analyze finished")
-            return True
-
-        else:
+        if not self.AR.getData(silent=True):  # get that data.
             msg = (
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
-            print(msg)
+            CP.cprint("r", msg)
             # if self.parallel_mode not in ["day", "cell"]:
             #     Logger.error(msg)
-        return None
+            return None
+    
+        if self.important_flag_check:
+            if not self.AR.protocol_important:
+                return None  # skip this protocol
+        # downsample, but also change the data in the acq4Reader
+        if self.downsample > 1 and self.AR.sample_rate > 1e4:
+            print("Decimating with: ", self.decimate)
+            self.AR.traces = functions.downsample(self.AR.traces, n=self.downsample, axis=1)
+            self.AR.cmd_wave = functions.downsample(self.AR.cmd_wave, n=self.downsample, axis=1)
+            self.AR.time_base = functions.downsample(
+                self.AR.time_base, n=self.downsample, axis=0
+            )
+        if track:
+            print("getdata - done")
+
+        # protocol = str(Path(self.datapath)).name
+        # # check if this protocol needs if "fitting_adjustments" in self.experiment.keys():
+        # adjust = self.get_tau_fitting_adjustment(self.datapath)
+        # if adjust and ((protocol in self.experiment["fitting_adjustments"].keys()) or protocol in ["all", "[all]"]):
+        #         print("Setting fitting adjustments for protocol: ", protocol)
+        #         taum_bounds = self.experiment["fitting_adjustments"][protocol]["taum_bounds"]
+        #         taum_current_range = self.experiment["fitting_adjustments"][protocol]["taum_current_range"]
+        # if "taum_bounds" in self.experiment.keys():
+        #     taum_bounds = self.experiment["taum_bounds"]
+        #     print("setting taum_bounds from configuration: ", taum_bounds)
+        # else:
+        #     taum_bounds = [0.0002, 0.050]
+        #     print("setting taum_bounds from defaults: ", taum_bounds)
+
+        # if str(self.datapath).find("_taum")>0:
+        #     taum_bounds = [0.0002, 0.100]
+        #     print("setting taum_bounds from configuration for CCIV_taum protocols: ", taum_bounds)
+
+        # if 'taum_current_range' in self.experiment.keys():
+        #     taum_current_range = self.experiment['taum_current_range']
+        #     print("SET TAUM current RANGE TO: ", taum_current_range)
+        # else:
+        #     taum_current_range = [0.0, 200e-12]  # in A
+
+        self.RM.setup(
+            self.AR,
+            self.SP,
+            bridge_offset=bridge_offset,
+            taum_bounds=taum_bounds,
+            taum_current_range=taum_current_range,
+            tauh_voltage=tauh_voltage,
+        )
+        self.SP.setup(
+            clamps=self.AR,
+            threshold=threshold,
+            refractory=refractory,
+            peakwidth=0.001,
+            interpolate=True,
+            verify=False,
+            mode="schmitt",
+            max_spike_look=max_spike_look,
+        )
+        if track:
+            print("setup complete, now analyze spikes", full_spike_analysis)
+        self.SP.analyzeSpikes(track=track)
+        if full_spike_analysis:
+            self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
+            # self.SP.analyzeSpikes_brief(mode="evoked")
+            self.SP.analyzeSpikes_brief(mode="baseline")
+            self.SP.analyzeSpikes_brief(mode="poststimulus")
+        # self.SP.fitOne(function='fitOneOriginal')
+        if track:
+            print("   brief spike analysis completed", full_spike_analysis)
+        tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
+        if str(self.datapath).find("_taum"):
+            tau_end = self.AR.tstart + self.AR.tend
+        print("Starting RM analyze")
+        self.RM.analyze(
+            rmpregion=[0.0, self.AR.tstart - 0.001],
+            tauregion=[self.AR.tstart, tau_end],
+            to_peak=to_peak,
+            tgap=fit_gap,
+            average_flag=average_flag,
+        )
+        print("     RM analyze finished")
+        return True

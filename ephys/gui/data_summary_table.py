@@ -38,7 +38,7 @@ ephys_git_hash = process.communicate()[0].strip()
 
 """ The Data summary database has the following:
 Index(['date', 'description', 'notes', 'species', 'strain', 'genotype',
-    'reporters', 'age', 'animal_identifier', 'sex', 'weight', 'reporters.1',
+    'reporters', 'age', 'subject', 'sex', 'weight', 'reporters.1',
     'solution', 'internal', 'temperature', 'important', 'expUnit',
     'slice_slice', 'slice_notes', 'slice_location', 'slice_orientation',
     'important.1', 'cell_cell', 'cell_notes', 'cell_type', 'cell_location',
@@ -83,6 +83,7 @@ class IndexData:
     genotype: str = ""
     solution: str = ""
     internal: str = ""
+    subject: str = ""
     sex: str = ""
     age: str = ""
     weight: str = ""
@@ -138,6 +139,7 @@ class TableManager:
         Index_data.genotype = str(row.genotype)
         Index_data.solution = str(row.solution)
         Index_data.internal = str(row.internal)
+        Index_data.subject = str(row["animal_identifier"])
         Index_data.sex = str(row.sex)
         Index_data.age = str(row.age)
         Index_data.weight = str(row.weight)
@@ -187,11 +189,12 @@ class TableManager:
                     indxs[i].genotype,
                     indxs[i].solution,
                     indxs[i].internal,
+                    indxs[i].subject,
                     indxs[i].sex,
                     indxs[i].age,
                     indxs[i].weight,
                     indxs[i].temperature,
-                    indxs[i].slice_orientation,
+                     indxs[i].slice_orientation,
                     indxs[i].cell_cell,
                     indxs[i].slice_slice,
                     indxs[i].cell_location,
@@ -213,18 +216,19 @@ class TableManager:
                 ("genotype", object),  # 7
                 ("solution", object),  # 8
                 ("internal", object),  # 9
-                ("sex", object),  # 10
-                ("age", object),  # 11
-                ("weight", object),  # 12
-                ("temperature", object),  # 13
-                ("slice_orientation", object),  # 14
-                ("cell_cell", object),  # 15
-                ("slice_slice", object),  # 16
-                ("cell_location", object),  # 17
-                ("cell_layer", object),  # 18
-                ("data_complete", object),  # 19
-                ("data_directory", object),  # 20
-                ("flag", bool),  # 21
+                ("subject", object),  # 10
+                ("sex", object),  # 11  $$$$$
+                ("age", object),  # 12
+                ("weight", object),  # 13
+                ("temperature", object),  # 14
+                ("slice_orientation", object),  # 15
+                ("cell_cell", object),  # 16
+                ("slice_slice", object),  # 17
+                ("cell_location", object),  # 18
+                ("cell_layer", object),  # 19
+                ("data_complete", object),  # 20
+                ("data_directory", object),  # 21
+                ("flag", bool),  # 22
             ],
         )
         self.update_table(self.data)
@@ -329,7 +333,8 @@ class TableManager:
             value = index_row.row()+1
             return value
 
-    def get_table_data(self, selected_row):
+
+    def get_selected_cellid_from_table(self, selected_row):
         """
         Regardless of the sort, read the current index row and map it back to
         the data in the table.
@@ -340,20 +345,56 @@ class TableManager:
         """
         # print("get_table_data")
         # print("  index row: ", index_row)
-
         ind = self.get_table_data_index(selected_row)
-        # print("  ind: ", ind)
+        if ind is None:
+            print("ind is none")
+            return None
+        cell_id = self.table.item(ind-1, 0).text()
+        if cell_id is None:
+            print("cell is is none")
+            return None
+        return cell_id
+
+    def get_table_data(self, selected_row):
+        """
+        Regardless of the sort, read the current index row and map it back to
+        the data in the table.
+        We do this because the visible table might be sorted,
+        but the pandas database is not necessarily, so we just
+        look it up.
+
+        """
+        ind = self.get_table_data_index(selected_row)
+        
         for i, td in enumerate(self.table_data):
             if self.table_data[ind-1].cell_id == td.cell_id:
                 # print("  found: ", i, ind, self.table_data[i].cell_id, td.cell_id)
                 return self.table_data[ind-1]
         return None
 
-        # if ind is not None:
-        #     return self.table_data[ind]
-        # else:
-        #     return None
+        if ind is not None:
+            return self.table_data[ind]
+        else:
+            return None
 
+    def get_table_data_by_cell_id(self, cell_id):
+        """get_table_data_by_cell_id
+
+        Parameters
+        ----------
+        cell_id : string
+            cell id in the form 'yyyy.mm.dd_nnn/slice_mmm/cell_xxx'
+
+        Returns
+        -------
+        IndexData
+            data for the cell_id
+        """
+        for i, td in enumerate(self.table_data):
+            if cell_id == td.cell_id:
+                return self.table_data[i]
+        return None
+    
     def select_row_by_cell_id(self, cell_id):
         """select_row_by_cell_id Select a row by the cell_id
 
@@ -484,7 +525,7 @@ class TableManager:
             reporters = row.reporters
             age = row.age
             dob = "" # row.dob
-            animal_id = row['animal_identifier']  # animal_id
+            animal_id = row['subject']  # animal_id
             sex = row.sex
             slice_slice = row.slice_slice
             cell_cell = row.cell_cell
@@ -492,3 +533,37 @@ class TableManager:
             msg = f"{cell_id:s}\t{strain:s}\t{Group:s}\t{reporters:s}\t{age:s}\t{dob:s}\t{animal_id:s}\t{sex:s}\t{slice_slice:s}\t{cell_cell:s}\t{cell_expression:s}"
             FUNCS.textappend(msg)
         print("Table exported in Report")
+    
+    def print_indexfile(self, dataframe:pd.DataFrame, indexrow:IndexData):
+        """
+        Print the values in the index file
+        """
+        return  # this is broken.
+        print("=" * 80)
+        print("\nIndex file and data file params")
+        cprint("c", f"Index row: {str(indexrow.row):s}")
+        data = self.get_table_data(indexrow)
+        print(data)
+        print(self.parent.datasummary.cell_id)
+        d = filename_tools.get_cell(self.experiment,  df=self.parent.datasummary,  cell_id = data.cell_id)
+        print("Cell ID: ", data.cell_id)
+        print("d: ", d)
+        taum = []
+        rin = []
+        rmp = []
+
+        for k, v in d["IV"].items():
+            # print(k, v)
+            print("k: ", k)
+            if isinstance(v, dict):
+                print(v.keys())
+                print("taum: ", v["taum"])
+                print("taupars: ", v["taupars"])
+                taum.append(v["taum"])
+                rin.append(v["Rin"])
+                rmp.append(v["RMP"])
+                if 'analysistimestamp' in v.keys():
+                    print("analysistime: ", v["analysistimestamp"])
+        print(taum, np.nanmean(taum))
+        print(rin, np.nanmean(rin))
+        print(rmp, np.nanmean(rmp))

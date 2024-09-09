@@ -17,7 +17,8 @@ import colorcet
 FUNCS = data_table_functions.Functions()
 
 def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, decorate):
-    with open(pkl_file, "rb") as fh:
+   print("pkl_file: ", pkl_file)
+   with open(pkl_file, "rb") as fh:
         df_selected = pd.read_pickle(fh, compression="gzip")
         plotter = IVPlotter(
             experiment=experiment,
@@ -25,7 +26,7 @@ def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, deco
             file_out_path=file_out_path,
             decorate=decorate,
         )
-        print("Plotting for: ", df_selected)
+        # print("Plotting for: ", df_selected)
         plotter.plot_ivs(df_selected)
 
 
@@ -93,7 +94,7 @@ class IVPlotter(object):
         except IndexError:
             CP("r", f"Could not find cell: {cell_id} in the summary table")
             raise IndexError(f"Could not find cell: {cell_id} in the summary table")
-
+        print("INDEX: ", index)
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
         if datestr is None:
             CP("r", f"Could not make filename partition for cell: {self.df_summary.cell_id!s}")
@@ -151,12 +152,13 @@ class IVPlotter(object):
         x = -0.08  # label position offsets
         y = 1.02
         sizer = {
-            "A": {"pos": [0.05, 0.50, 0.2, 0.71], "labelpos": (x, y), "noaxes": False},
+            "A": {"pos": [0.05, 0.50, 0.3, 0.61], "labelpos": (x, y), "noaxes": False},
             "A1": {
-                "pos": [0.05, 0.50, 0.08, 0.05],
+                "pos": [0.05, 0.50, 0.21, 0.04],
                 "labelpos": (x, y),
                 "noaxes": False,
             },
+            "A2": {"pos": [0.05, 0.50, 0.05, 0.12], "labelpos": (x, y), "noaxes": False},
             "B": {"pos": [0.62, 0.30, 0.78, 0.13], "labelpos": (x, y), "noaxes": False},
             "C": {"pos": [0.75, 0.17, 0.62, 0.13], "labelpos": (x, y)},
             "D1": {"pos": [0.62, 0.30, 0.40, 0.12], "labelpos": (x, y)},
@@ -201,8 +203,8 @@ class IVPlotter(object):
         trace_colors = [
             cmap(float(i) / self.AR.traces.shape[0]) for i in range(self.AR.traces.shape[0])
         ]
-
-        if str(protocol).find("_taum") < 0:  # plot all traces (if doing taum, then only plot the mean)
+        cc_taum_protocol = str(protocol).find("_taum") > 1
+        if not cc_taum_protocol:  # plot all traces (if doing taum, then only plot the mean)
             for trace_number in range(self.AR.traces.shape[0]):
                 if self.plotting_alternation > 1:
                     if i % self.plotting_alternation != 0:
@@ -220,6 +222,7 @@ class IVPlotter(object):
                     color=trace_colors[trace_number],
                     linewidth=0.35,
                 )
+                
                 P.axdict["A1"].plot(
                     self.AR.time_base * 1e3,
                     self.AR.cmd_wave[trace_number, :].view(np.ndarray) * 1e9,
@@ -257,20 +260,38 @@ class IVPlotter(object):
                             color=clist[window_number],
                             markersize=0.5,
                         )
-        else:  # taum measure: plot the mean trace
+        else:  # taum measure: plot the mean trace from CC_taum protocol
             # print("taum traces for taum measure: ", ivs["taum_traces"])
-            itr = [i for i, flag in enumerate(ivs["taum_traces"] ) if flag]
+            print("protocol: ", protocol)
+            print("TAUM TRACES: ", ivs["taum_traces"])
+
+            print(self.AR.traces.view(np.ndarray).shape)
             # print(self.AR.traces.view(np.ndarray).shape)
             P.axdict["A"].plot(
                     self.AR.time_base * 1e3,
-                    np.mean(self.AR.traces.view(np.ndarray)[itr,:], axis=0) * 1e3,
+                    np.mean(self.AR.traces.view(np.ndarray), axis=0) * 1e3,
                     "-",
                     color=trace_colors[0],
                     linewidth=0.35,
                 )
+            if "ivss_cmd" in ivs.keys():
+                # plot the fit
+                fitn = list(ivs["taum_fitted"].keys())
+                if len(fitn) > 0:
+                    first_fn = fitn[0]
+                    t0 = np.min(ivs["taum_fitted"][first_fn][0]) - 0.003
+                    t1 = np.max(ivs["taum_fitted"][first_fn][0]) + 0.003
+                    for fit_number in ivs["taum_fitted"].keys():
+                        # CP('g', f"tau fitted keys: {str(k):s}")
+                        P.axdict["A"].plot(
+                            ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
+                            ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
+                            "--k",
+                            linewidth=1.,
+                        )
             P.axdict["A1"].plot(
                 self.AR.time_base * 1e3,
-                np.mean(self.AR.cmd_wave.view(np.ndarray)[itr,:], axis=0) * 1e9,
+                np.mean(self.AR.cmd_wave.view(np.ndarray), axis=0) * 1e9,
                 "-",
                 color=trace_colors[0],
                 linewidth=0.35,
@@ -279,14 +300,37 @@ class IVPlotter(object):
             if "taum_fitted" not in ivs.keys():
                 CP('y', f"iv_plotter: taum fitted is not in the ivs: {ivs.keys()!s}")
             if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
-                for fit_number in ivs["taum_fitted"].keys():
-                    # CP('g', f"tau fitted keys: {str(k):s}")
-                    P.axdict["A"].plot(
-                        ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
-                        ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
-                        "--k",
-                        linewidth=1.5,
-                    )
+                # plot the taum trace fit magnified and on the relevant traces
+                # print(ivs.keys())
+                # print(ivs["taum_fitted"].keys())
+                if "ivss_cmd" in ivs.keys() and not cc_taum_protocol:
+                    # plot the fit
+                    fitn = list(ivs["taum_fitted"].keys())
+                    if len(fitn) > 0:
+                        first_fn = fitn[0]
+                        t0 = np.min(ivs["taum_fitted"][first_fn][0]) - 0.003
+                        t1 = np.max(ivs["taum_fitted"][first_fn][0]) + 0.003
+                        for fit_number in ivs["taum_fitted"].keys():
+                            # CP('g', f"tau fitted keys: {str(k):s}")
+                            P.axdict["A2"].plot(
+                                ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
+                                ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
+                                "--k",
+                                linewidth=1.,
+                            )
+                        # plot the traces that were in the fit
+                        for itr in ivs["taum_fitted"].keys():
+                            it0 = np.argmin(np.abs(self.AR.time_base - t0))
+                            it1 = np.argmin(np.abs(self.AR.time_base - t1))
+                            # print(itr, it0, it1, t0, t1)
+                            P.axdict["A2"].plot(
+                                self.AR.time_base[it0:it1] * 1e3,
+                                self.AR.traces[itr, it0:it1].view(np.ndarray) * 1e3,
+                                "-",
+                                color=trace_colors[itr],
+                                linewidth=0.35,
+                            )
+
             if ("tauh_tau" in ivs.keys()) and (ivs["tauh_tau"] != np.nan) and ("tauh_fitted" in ivs.keys()):
                 for fit_number in ivs["tauh_fitted"].keys():
                     # CP('r', f"tau fitted keys: {str(k):s}")
@@ -353,7 +397,7 @@ class IVPlotter(object):
             # print("\n    Ivs: ", ivs), "\n")
             # print("    Keys in the ivs: ", ivs.keys())
 
-        else:
+        elif str(protocol).find("_taum") < 0:  # not a taum protocol
             P.axdict["C"].plot(
                 np.array(ivs["ivss_cmd"]) * 1e9,
                 np.array(ivs["ivss_v"]) * 1e3,

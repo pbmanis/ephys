@@ -111,6 +111,7 @@ datacols = [
     "RMP_SD",
     "Rin",
     "taum",
+    "taum_averaged",
     "dvdt_rising",
     "dvdt_falling",
     "current",
@@ -139,6 +140,7 @@ iv_keys: list = [
     "taum",
     "taupars",
     "taufunc",
+    "taum_averaged",
     "Rin",
     "Rin_peak",
     "tauh_tau",
@@ -192,6 +194,7 @@ iv_mapper: dict = {
     "tauh": "tauh_tau",
     "Gh": "tauh_Gh",
     "taum": "taum",
+    "taum_averaged": "taum_averaged",
     "Rin": "Rin",
     "RMP": "RMP",
 }
@@ -230,13 +233,14 @@ class Functions:
         """
         Find the selected rows in the currently managed table, and if there is a valid selection,
         return a list of indexs from the selected rows.
-        Note that we offset by -1 to correct for Pandas indexing versus the row indexing in the visible table
+
         """
         self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
         if self.selected_index_rows is None:
             return None
         else:
             rows = []
+            print(self.selected_index_rows)
             for row in self.selected_index_rows:
                 # index_row = self.selected_index_rows[0]
                 # print(dir(row))
@@ -289,7 +293,9 @@ class Functions:
         ncciv = 0
         prots_used = []
         for i, prot in enumerate(allprots):
-            if "CCIV".casefold() in prot.casefold():
+            if (
+                "CCIV".casefold() in prot.casefold() or "CC_".casefold() in prot.casefold()
+            ):  # includes CC_taum
                 computes = "['RmTau', 'IV', 'Spikes', 'FI']"
                 if "posonly".casefold() in prot.casefold():  # cannot compute rmtau for posonly
                     computes = "['IV', 'Spikes', 'FI']"
@@ -1857,6 +1863,34 @@ class Functions:
         cell: str,
         protodurs: dict = None,
     ):
+        """compute_FI_Fits
+        Assemble data from multiple protocols to compute the FI curve for a cell.
+        This allows us to splice together data from multiple protocols to get a complete FI curve.
+        We also assemble other data (input resistances, etc).
+
+        Parameters
+        ----------
+        experiment : _type_
+            _description_
+        df : pd.DataFrame
+            _description_
+        cell : str
+            _description_
+        protodurs : dict, optional
+            _description_, by default None
+
+        Returns
+        -------
+        _type_
+            _description_
+
+        Raises
+        ------
+        ValueError
+            _description_
+        ValueError
+            _description_
+        """
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
         cell_group = df[df.cell_id == cell].Group.values[0]
@@ -1877,10 +1911,13 @@ class Functions:
         for protocol in protocol_list:
             if not self.check_excluded_dataset(day_slice_cell, experiment, protocol):
                 protocols.append(protocol)
-        srs = {}
-        dur = {}
-        important = {}
+        srs = []
+        dur = []
+        Rs = []
+        CNeut = []
+        important = []
         # for each CCIV type of protocol that was run:
+        valid_prots = []
         for nprot, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
@@ -1899,20 +1936,23 @@ class Functions:
                         continue
                     sample_rate = AR.sample_rate[0]
                     duration = AR.tend - AR.tstart
-                    srs[protocol] = sample_rate
-                    dur[protocol] = duration
-                    important[protocol] = AR.checkProtocolImportant(fullpath)
+                    srs.append(sample_rate)
+                    Rs.append(AR.CCComp["CCBridgeResistance"])
+                    CNeut.append(AR.CCComp["CCNeutralizationCap"])
+                    dur.append(duration)
+                    important.append(AR.checkProtocolImportant(fullpath))
                     CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                    valid_prots.append(protocol)
                 except ValueError:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
-        protocols = list(srs.keys())  # only count valid protocols
+        protocols = valid_prots  # only count valid protocols
         CP("c", f"Valid Protocols: {protocols!s}")
         if len(protocols) > 1:
-            protname = "combined"
+            protname = protocols
         elif len(protocols) == 1:
-            protname = protocols[0]
+            protname = [protocols[0]]
         else:
             return None
         # CP("r", f"ccif cellid: {df_tmp.cell_id.values!s} ccif group: {group!s}")
@@ -1933,10 +1973,16 @@ class Functions:
             "protocols": list(df_cell.IV),
             "sample_rate": srs,
             "duration": dur,
+            "Rs": Rs,
+            "CNeut": CNeut,
+            "holding": None,
             "currents": None,
             "firing_rates": None,
             "last_spikes": None,
         }
+        for colname in datacols:
+            if colname not in datadict.keys():
+                datadict[colname] = None
 
         # get the measures for the fixed values from the measure list
         for measure in datacols:
@@ -1947,6 +1993,7 @@ class Functions:
                 protocols,
                 threshold_slope=experiment["AP_threshold_dvdt"],
             )
+            # print("datadict: ", datadict)
         # now combine the FI data across protocols for this cell
         FI_Data_I1_: list = []
         FI_Data_FR1_: list = []  # firing rate
@@ -1964,7 +2011,7 @@ class Functions:
         latencies: list = []
         protofails = 0
         # check the protocols
-        for protocol in protocols:
+        for ip, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
             short_proto_name = Path(protocol).name[:-4]
@@ -1981,16 +2028,16 @@ class Functions:
                     short_proto_name
                 ]:  # check if the duration is within the acceptable limits
                     # print("    >>>> Protocol: ", protocol, "duration of proto: ", dur[protocol],  "dur to test: ", duration)
-                    if not np.isclose(dur[protocol], duration):
+                    if not np.isclose(dur[ip], duration):
                         durflag = True
                 if durflag:
-                    CP("y", f"    >>>> Protocol {protocol:s} has duration of {dur[protocol]:e}")
+                    CP("y", f"    >>>> Protocol {protocol:s} has duration of {dur[ip]:e}")
                     CP("y", f"               This is not in accepted limits of: {protodurs!s}")
                     continue
                 else:
                     CP(
                         "g",
-                        f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[protocol]:e}",
+                        f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[ip]:e}",
                     )
             # print("protocol: ", protocol, "spikes: ", df_cell.Spikes[protocol]['spikes'])
             if len(df_cell.Spikes[protocol]["spikes"]) == 0:
@@ -2049,10 +2096,10 @@ class Functions:
                     last_spike.append(np.nan)
             if np.max(fidata[0]) > 1.01e-9:  # accumulate high-current protocols
                 FI_Data_I4_.extend(fidata[0])
-                FI_Data_FR4_.extend(fidata[1] / dur[protocol])
+                FI_Data_FR4_.extend(fidata[1] / dur[ip])
             else:  # accumulate other protocols <= 1 nA
                 FI_Data_I1_.extend(fidata[0])
-                FI_Data_FR1_.extend(fidata[1] / dur[protocol])
+                FI_Data_FR1_.extend(fidata[1] / dur[ip])
                 # accumulate this other information as well.
                 firing_currents.extend(current)
                 firing_rates.extend(rate)
@@ -2129,24 +2176,24 @@ class Functions:
         fc = np.array(firing_currents)[i_curr]
         fr = np.array(firing_rates)[i_curr]
         fs = np.array(firing_last_spikes)[i_curr]
-        bins = b = np.linspace(
-            -25e-12, 1025e-12, 22, endpoint=True
-        )  # 50 pA bins centered on 0, 50, 100, etc.
-        # print("fc len: ", len(fc), "fr: ", len(fr), "fs: ", len(fs))
-        # for i in range(len(fc)):
-        #     print(fc[i], fr[i], fs[i])
-        if len(fc) > 0:
-            datadict["firing_currents"] = scipy.stats.binned_statistic(
-                fc, fc, bins=bins, statistic=np.nanmean
-            ).statistic
-        if len(fr) > 0 and len(fc) > 0:
-            datadict["firing_rates"] = scipy.stats.binned_statistic(
-                fc, fr, bins=bins, statistic=np.nanmean
-            ).statistic
-        if len(fc) > 0 and len(fs) > 0:
-            datadict["last_spikes"] = scipy.stats.binned_statistic(
-                fc, fs, bins=bins, statistic=np.nanmean
-            ).statistic
+        # bins = np.linspace(
+        #     -25e-12, 1025e-12, 22, endpoint=True
+        # )  # 50 pA bins centered on 0, 50, 100, etc.
+        # # print("fc len: ", len(fc), "fr: ", len(fr), "fs: ", len(fs))
+        # # for i in range(len(fc)):
+        # #     print(fc[i], fr[i], fs[i])
+        # if len(fc) > 0:
+        #     datadict["firing_currents"] = scipy.stats.binned_statistic(
+        #         fc, fc, bins=bins, statistic=np.nanmean
+        #     ).statistic
+        # if len(fr) > 0 and len(fc) > 0:
+        #     datadict["firing_rates"] = scipy.stats.binned_statistic(
+        #         fc, fr, bins=bins, statistic=np.nanmean
+        #     ).statistic
+        # if len(fc) > 0 and len(fs) > 0:
+        #     datadict["last_spikes"] = scipy.stats.binned_statistic(
+        #         fc, fs, bins=bins, statistic=np.nanmean
+        #     ).statistic
         return datadict
 
     def compare_cell_id(self, cell_id: str, cell_ids: list):
@@ -2273,6 +2320,12 @@ class Functions:
         FI_data = np.array(FI_data)
         return FI_data
 
+    def add_measure(self, proto, measure, value, trace=None):
+        self.measures["protocol"].append(proto)
+        self.measures["measure"].append(measure)
+        self.measures["value"].append(value)
+        self.measures["trace"].append(trace)
+
     def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope: float = 20.0):
         """get_measure : for the given cell, get the measure from the protocols
 
@@ -2292,77 +2345,93 @@ class Functions:
         _type_
             _description_
         """
-        m = []
+        self.measures = {"protocol": [], "measure": [], "value": [], "trace": []}
         if measure in iv_keys:
             for protocol in protocols:
                 if measure in df_cell.IV[protocol].keys():
+                    value = np.nan
                     if measure != "taum":
-                        m.append(df_cell.IV[protocol][measure])
+                        value = df_cell.IV[protocol][measure]
+                    # self.add_measure(protocol, measure, value=df_cell.IV[protocol][measure])
                     else:  # handle taum by building array from the tau in taupars array
                         if len(df_cell.IV[protocol]["taupars"]) == 0:
-                            m.append(np.nan)   # no fit data
+                            value = (
+                                np.nan
+                            )  # self.add_measure(protocol, measure, value=np.nan)  # no fit data
                         elif len(df_cell.IV[protocol]["taupars"]) == 3 and isinstance(
                             df_cell.IV[protocol]["taupars"][2], float
                         ):  # get the value from the fit, single nested
-                            m.append(df_cell.IV[protocol]["taupars"][2])
+                            value = df_cell.IV[protocol]["taupars"][2]
+                            # self.add_measure(
+                            #     protocol, measure, value=df_cell.IV[protocol]["taupars"][2]
+                            # )
                         elif (  # get value from fit, nested list
                             len(df_cell.IV[protocol]["taupars"]) == 1
                             and isinstance(df_cell.IV[protocol]["taupars"], list)
-                            and len(df_cell.IV[protocol]["taupars"][0] == 3)
-                        ): 
-                            m.append(df_cell.IV[protocol]["taupars"][0][2])
+                            and len(df_cell.IV[protocol]["taupars"][0]) == 3
+                        ):
+                            value = df_cell.IV[protocol]["taupars"][0][2]
+                            # self.add_measure(
+                            #     protocol, measure, value=df_cell.IV[protocol]["taupars"][0][2]
+                            # )
                         else:  # def a coding error
                             print("what is wrong with taupars: ", df_cell.IV[protocol]["taupars"])
                             exit()
+                    self.add_measure(protocol, measure, value=value)
         elif measure in iv_mapper.keys() and iv_mapper[measure] in iv_keys:
             for protocol in protocols:
                 if iv_mapper[measure] in df_cell.IV[protocol].keys():
-                    m.append(df_cell.IV[protocol][iv_mapper[measure]])
+                    self.add_measure(
+                        protocol, measure, value=df_cell.IV[protocol][iv_mapper[measure]]
+                    )
         elif measure in spike_keys:
             maxadapt = 0
             for protocol in protocols:
                 # print("p: ", p)
-                if measure == "AdaptRatio":
-                    if df_cell.Spikes[protocol][mapper1[measure]] > 8.0:
-                        continue
-                        # print("\nprot, measure: ", protocol, measure, df_cell.Spikes[protocol][mapper1[measure]])
-                        # print(df_cell.Spikes[protocol].keys())
-                        # maxadapt = np.max([maxadapt, df_cell.Spikes[protocol][mapper1['AdaptRatio']]])
+                # if measure == "AdaptRatio":
+                # if df_cell.Spikes[protocol][mapper1[measure]] > 8.0:
+                #     continue
+                # print("\nprot, measure: ", protocol, measure, df_cell.Spikes[protocol][mapper1[measure]])
+                # print(df_cell.Spikes[protocol].keys())
+                # maxadapt = np.max([maxadapt, df_cell.Spikes[protocol][mapper1['AdaptRatio']]])
 
                 if measure in df_cell.Spikes[protocol].keys():
-                    m.append(df_cell.Spikes[protocol][measure])
+                    self.add_measure(protocol, measure, value=df_cell.Spikes[protocol][measure])
             # if maxadapt > 8:
             #     exit()
 
         elif measure in mapper1.keys() and mapper1[measure] in spike_keys:
             for protocol in protocols:
                 if mapper1[measure] in df_cell.Spikes[protocol].keys():
-                    m.append(df_cell.Spikes[protocol][mapper1[measure]])
+                    self.add_measure(
+                        protocol, measure, value=df_cell.Spikes[protocol][mapper1[measure]]
+                    )
         elif measure == "current":
             for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 if "spikes" not in df_cell.Spikes[protocol].keys():
-                    continue
+                    self.add_measure(protocol, measure, value=np.nan)
                 # we need to get the first spike evoked by the lowest current level ...
                 min_current_index, current, trace = self.find_lowest_current_trace(
                     df_cell.Spikes[protocol]
                 )
                 if not np.isnan(min_current_index):
-                    m.append(current)
+                    self.add_measure(protocol, measure, value=current)
                 else:
-                    m.append(np.nan)
+                    self.add_measure(protocol, measure, value=np.nan)
 
         else:
             for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 # we need to get the first spike evoked by the lowest current level ...
                 prot_spike_count = 0
                 if "spikes" not in df_cell.Spikes[protocol].keys():
-                    continue
+                    self.add_measure(protocol, measure, value=np.nan)
                 spike_data = df_cell.Spikes[protocol]["spikes"]
                 if measure in [
                     "dvdt_rising",
                     "dvdt_falling",
                     "AP_HW",
                     "AP_begin_V",
+                    "AP_thr_V",
                     "AP_peak_V",
                     "AP_peak_T",
                     "AHP_trough_V",
@@ -2376,9 +2445,9 @@ class Functions:
                     if not np.isnan(min_current_index):
                         spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
                         # print("spike data ", spike_data['dvdt_rising'])
-                        m.append(spike_data[mapper[measure]])
+                        self.add_measure(protocol, measure, value=spike_data[mapper[measure]])
                     else:
-                        m.append(np.nan)
+                        self.add_measure(protocol, measure, value=np.nan)
                     # print("spike data: ", spike_data.keys())
 
                 elif "LowestCurrentSpike" in df_cell.Spikes[protocol].keys() and (
@@ -2387,13 +2456,14 @@ class Functions:
                 ):
                     CP("r", "Lowest Current spike is None")
                 elif measure in ["AP_thr_V", "AP_begin_V"]:
+                    value = np.nan
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
                         if "AP_thr_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
                             Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
-                            m.append(Vthr)
+                            value = Vthr
                         elif "AP_begin_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
                             Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_begin_V"]
-                            m.append(Vthr)
+                            value = Vthr
 
                         else:
                             print(
@@ -2402,7 +2472,7 @@ class Functions:
                                 measure,
                             )
                             print("LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys())
-                            continue
+                            value = np.nan
                     else:
                         df_cell.Spikes[protocol][
                             "LowestCurrentSpike"
@@ -2411,13 +2481,15 @@ class Functions:
                             "r",
                             f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
                         )
+                        value = np.nan
+                    self.add_measure(protocol, measure, value=np.nan)
 
                 elif measure in ["AP_thr_T"]:
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
                         Vthr_time = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_T"]
-                        m.append(Vthr_time)
-                    else:
-                        print(df_cell.Spikes[protocol].keys())
+                        self.add_measure(protocol, measure, value=Vthr_time)
+                    # else:
+                    #     print(df_cell.Spikes[protocol].keys())
                     # min_current_index, current, trace = self.find_lowest_current_trace(
                     #     df_cell.Spikes[protocol]
                     # )
@@ -2438,7 +2510,7 @@ class Functions:
                 elif (
                     measure in mapper.keys() and mapper[measure] in spike_data.keys()
                 ):  # if the measure exists for this sweep
-                    m.append(spike_data[mapper[measure]])
+                    self.add_measure(protocol, measure, value=spike_data[mapper[measure]][0])
                 else:
                     # print(measure in mapper.keys())
                     # print(spike_data.keys())
@@ -2460,17 +2532,23 @@ class Functions:
         #         f"measure {measure:s} not found in either IV or Spikes keys. Skipping"
         #     )
         #     raise ValueError(f"measure {measure:s} not found in either IV or Spikes keys. Skipping")
-        print("measures: ", measure, m)
-        for i, xm in enumerate(m):
-            if xm is None:
-                m[i] = np.nan
+        # print("measures: ", measure, m)
+        # print("self.measures: ", self.measures)
+        for i, xm in enumerate(self.measures["value"]):
+            if self.measures["value"][i] is None:
+                self.measures["value"][i] = np.nan
             # m = [u for u in m if u is not None else np.nan] # sanitize data
-        N = np.count_nonzero(~np.isnan(m))
+        N = np.count_nonzero(~np.isnan(self.measures["value"]))
         # print("N: ", N)
+        # print("datadict: ", datadict)
+        # print("measure: ", measure)
+        # print(self.measures["value"])
+        if datadict[measure] is None:
+            datadict[measure] = []
         if N > 0:
-            datadict[measure] = np.nanmean(m)
+            datadict[measure].extend(self.measures["value"])  # = np.nanmean(m)
         else:
-            datadict[measure] = np.nan
+            datadict[measure].append(np.nan)
         return datadict
 
     def textbox_setup(self, textbox):

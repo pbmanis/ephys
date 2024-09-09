@@ -58,6 +58,7 @@ class MAP_Analysis(Analysis):
                 "cartwheel",
                 "tuberculoventral",
                 "giant",
+                "giant_maybe"
             ]:
                 oktype = True
             elif self.celltype == "VCN" and celltype in [

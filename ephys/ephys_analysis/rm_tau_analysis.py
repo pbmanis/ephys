@@ -23,6 +23,7 @@ Paul B. Manis, 2015-2019
 for acq4
 
 """
+
 import datetime
 import numpy as np
 from scipy.signal import savgol_filter  # for smoothing
@@ -57,6 +58,7 @@ class RmTauAnalysis:
         self.rmp = None
         self.taum_fitted = {}
         self.taum_bounds = []
+        self.taum_current_range = [0, -200e-12]  # in A
         self.analysis_summary = {}
 
     def setup(
@@ -64,10 +66,11 @@ class RmTauAnalysis:
         clamps=None,
         spikes=None,
         dataplot=None,
-        baseline=[0, 0.001],
-        bridge_offset=0,
-        taum_bounds=[0.001, 0.050],
-        tauhvoltage=-0.08,
+        baseline: list = [0, 0.001],
+        bridge_offset: float = 0,
+        taum_bounds: list = [0.001, 0.050],
+        taum_current_range: list = [0, -200e-12],  # in A
+        tauh_voltage: float = -0.08,
     ):
         """
         Set up for the fitting
@@ -103,7 +106,8 @@ class RmTauAnalysis:
         self.taum_fitted = {}
         self.tauh_fitted = {}
         self.taum_bounds = taum_bounds
-        self.tauh_voltage = tauhvoltage
+        self.taum_current_range = taum_current_range
+        self.tauh_voltage = tauh_voltage
         self.analysis_summary["holding"] = self.Clamps.holding
         self.analysis_summary["WCComp"] = self.Clamps.WCComp
         self.analysis_summary["CCComp"] = self.Clamps.CCComp
@@ -128,10 +132,12 @@ class RmTauAnalysis:
         tgap=0.0005,
         average_flag: bool = False,
     ):
-
+        # print("self.clamps: ", self.Clamps)
         # print("rmpregion: ", rmpregion)
         # print("tauregion: ", tauregion)
-        self.analysis_summary['analysistimestamp'] = datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
+        self.analysis_summary["analysistimestamp"] = datetime.datetime.now().strftime(
+            "%m/%d/%Y, %H:%M:%S"
+        )
         if tauregion[1] > self.Clamps.tend:
             tauregion[1] = self.Clamps.tend
         stepdur = self.Clamps.tend - self.Clamps.tstart
@@ -247,6 +253,7 @@ class RmTauAnalysis:
             ineg_valid = self.Clamps.commandLevels < 0.0
 
             if len(ineg_valid) != len(self.Spikes.spikecount):
+                print("ERROR: # traces in ineg_valid bool array is not the same as the number of traces in spikecount")
                 print("Clamp traces: ", self.Clamps.traces.shape)
                 print("Command levels: ", self.Clamps.commandLevels.shape)
                 print("rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
@@ -254,8 +261,8 @@ class RmTauAnalysis:
                 print("len baseline spikes: ", len(baselinespikes))
                 print("len poststimulus spikes: ", len(poststimulusspikes))
                 assert len(ineg_valid) == len(self.Spikes.spikecount)
-            ineg_valid = [ineg_valid[i] and
-                not baselinespikes[i] and (self.Spikes.spikecount[i] == 0)
+            ineg_valid = [
+                ineg_valid[i] and not baselinespikes[i] and (self.Spikes.spikecount[i] == 0)
                 # and not poststimulusspikes[i]
                 for i in range(len(ineg_valid))
             ]
@@ -391,7 +398,8 @@ class RmTauAnalysis:
             self.analysis_summary["taufunc"] = self.taum_func
             self.analysis_summary["taum_fitted"] = self.taum_fitted
             self.analysis_summary["taum_fitmode"] = "average"
-            self.analysis_summary["taum_traces"] = ineg_valid
+            self.analysis_summary["taum_traces"] = self.taum_whichdata
+            self.analysis_summary["ivss_cmd"] = self.Clamps.commandLevels[self.taum_whichdata]
             return
 
         # Otherwise we fit only those traces in a certain current range/voltage range,
@@ -410,23 +418,33 @@ class RmTauAnalysis:
             # use an estimator from the average of the traces to be fit
             # also exclude traces with APs before the current step
             # limit whichdata to traces where icmd is betwwen 0 and -200 pA.
-            # implemented 8/24/2024. 
-
-            whichdata = [
-                i
-                for i in whichdata
-                if (self.Clamps.commandLevels[i] >= -200e-12)
-                and (self.Clamps.commandLevels[i] < 0.0)
-            ]
+            # implemented 8/24/2024.
+            c_range = np.sort(self.taum_current_range)  # make sure [0] is less than [1]
+            whichdata = np.argwhere(
+                (self.Clamps.commandLevels >= c_range[0])
+                & (self.Clamps.commandLevels <= c_range[1])
+            )
+            whichdata = whichdata.flatten()
+           
+            for i in whichdata:
+                print("command levels to test:", i, self.Clamps.commandLevels[i] * 1e12)
             if debug:
                 print("\n\nNot averaging: TAU estimates with traces: ", whichdata)
-                print("   icmds: ", self.Clamps.commandLevels[whichdata] * 1e12)
-                print("   whichdata: ", whichdata)
+                print("c_range: ", c_range * 1e12)
+                print(self.Clamps.commandLevels * 1e12)
+                print((self.Clamps.commandLevels >= c_range[0]) )
+                print((self.Clamps.commandLevels <= c_range[1]))
+                print((self.Clamps.commandLevels >= c_range[0]) & (self.Clamps.commandLevels <= c_range[1]))
+
+                print("taum_current_range: ", self.taum_current_range)
+                print([l for l in self.Clamps.commandLevels * 1e12])
                 print("   shape of all trace data: ", traces.shape)
                 # print(len(ineg_valid), ineg_valid)
                 # print("Spikes: ", len(self.Spikes.spikecount), self.Spikes.spikecount)
 
             if len(whichdata) == 0:
+                if debug:
+                    print("No data available for taum measurement")
                 self.taum_pars = fpar
                 self.taum_win = time_window
                 self.taum_func = Func
@@ -437,7 +455,7 @@ class RmTauAnalysis:
                 self.analysis_summary["taufunc"] = self.taum_func
                 self.analysis_summary["taum_fitted"] = self.taum_fitted
                 self.analysis_summary["taum_fitmode"] = "multiple"
-                self.analysis_summary["taum_traces"] = ineg_valid
+                self.analysis_summary["taum_traces"] = self.taum_whichdata
                 return  # no available taum data from this protocol.
 
             mean_trace = np.mean(traces[whichdata], axis=0)
@@ -458,7 +476,9 @@ class RmTauAnalysis:
                 )  # relative to start of the fit window
                 if debug:
                     print("   ipeak: ", ipeak * dt)
-                if ipeak * dt <= 0.020:  # at least the defined duration of 20 ms, but could be longer.
+                if (
+                    ipeak * dt <= 0.020
+                ):  # at least the defined duration of 20 ms, but could be longer.
                     ipeak = int(0.020 / dt)
                 data_to_fit = data_to_fit[:ipeak]
                 t_fit = t_fit[:ipeak]
@@ -508,7 +528,6 @@ class RmTauAnalysis:
             fparx = [np.nan, np.nan, np.nan]
             xf = None
             yf = None
-
             for i, k in enumerate(whichdata):
                 data_to_fit = traces[k][it0 + igap : it0 + ipeak]
                 t_fit = time_base[it0 + igap : it0 + ipeak] - time_base[it0]
@@ -526,7 +545,9 @@ class RmTauAnalysis:
                         pw.append(pwa)
                 # update the estimates for the tau
                 LME.initial_estimator(t_fit, data_to_fit, verbose=False)
-                fit = LME.fit1(t_fit, data_to_fit, plot=False, verbose=False)
+                fit = LME.fit1(
+                    t_fit, data_to_fit, taum_bounds=self.taum_bounds, plot=False, verbose=False
+                )
                 fit_curve = LME.exp_decay1(
                     t_fit,
                     DC=fit.params["DC"].value,
@@ -555,6 +576,11 @@ class RmTauAnalysis:
                         )
 
                 xf, yf = t_fit + time_window[0], fit_curve
+                if (
+                    1.0 / fit.params["R1"].value < 0.0
+                ):  # bounds on LME.fit1 should prevent this, but you never know
+                    print("Negative tau: ", 1.0 / fit.params["R1"].value)
+                    continue
                 fparx = [
                     fit.params["DC"].value,
                     fit.params["A1"].value,
@@ -586,7 +612,8 @@ class RmTauAnalysis:
             self.analysis_summary["taufunc"] = self.taum_func
             self.analysis_summary["taum_fitted"] = self.taum_fitted
             self.analysis_summary["taum_fitmode"] = "multiple"
-            self.analysis_summary["taum_traces"] = ineg_valid
+            self.analysis_summary["taum_traces"] = self.taum_whichdata
+            print("WHICH: ", self.taum_whichdata)
         #
         # ------------------------------------------------------------------
         # Fit single traces, old way
@@ -713,7 +740,7 @@ class RmTauAnalysis:
         self.analysis_summary["taufunc"] = self.taum_func
         self.analysis_summary["taum_fitted"] = self.taum_fitted
         self.analysis_summary["taum_fitmode"] = "multiple"
-        self.analysis_summary["taum_traces"] = ineg_valid
+        self.analysis_summary["taum_traces"] = self.taum_whichdata
 
     def rmp_analysis(self, time_window: list = []):
         """

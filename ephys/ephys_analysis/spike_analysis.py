@@ -259,7 +259,7 @@ class SpikeAnalysis:
             # if we could, but can only have ONE parallelization at a time (using top level)
             # The question is whether this would be faster? 
             if track:
-                CP.cprint("r", f"AnalyzeSpikes: 2: trace: {trace_number:03d}", end="\r")
+                CP.cprint("r", f"AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
             spikes = self.U.findspikes(
                 self.Clamps.time_base,
                 np.array(self.Clamps.traces[trace_number]),
@@ -279,7 +279,7 @@ class SpikeAnalysis:
                 debug=False,
             )
             if len(spikes) == 0:
-                CP.cprint("b", f'   no spikes found, tr={trace_number:03d}', end="\r")
+                CP.cprint("b", f"    No spikes found, tr: {trace_number:04d}", end="\r")
                 continue
             spikes = np.array(spikes)
             # if len(spikes) > 1:

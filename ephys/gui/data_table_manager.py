@@ -99,6 +99,7 @@ class TableManager:
         assert parent is not None
         self.parent = parent
         self.table = table
+        self.persistent_index = None
         self.experiment = experiment
         self.selvals = selvals
         self.alt_colors = altcolormethod
@@ -281,16 +282,17 @@ class TableManager:
         Index_data.sex = str(row.sex)
         Index_data.weight = str(row.weight)
         # Index_data.temperature = str(row.temperature)
-
+        print(list(row.keys()))
         Index_data.Group = str(row.Group)
-        Index_data.RMP = f"{row.RMP:6.2f}"
-        Index_data.RMP_SD = f"{row.RMP_SD:6.2f}"
+        print("row.RMP", row.RMP)
+        Index_data.RMP = f"{np.nanmean(row.RMP):6.2f}"
+        Index_data.RMP_SD = f"{np.nanmean(row.RMP_SD):6.2f}"
         Index_data.flag = False
-        if row.RMP_SD > 2.0:
+        if np.nanmean(row.RMP_SD) > 2.0:
             Index_data.flag = True
-        Index_data.Rin = f"{row.Rin:6.2f}"
-        Index_data.taum = f"{row.taum*1e3:6.2f}"  # convert to ms
-        Index_data.holding = f"{row.holding*1e12:6.2f}"  # convert to pA
+        Index_data.Rin = f"{np.nanmean(row.Rin):6.2f}"
+        Index_data.taum = f"{np.nanmean(row.taum)*1e3:6.2f}"  # convert to ms
+        Index_data.holding = f"{np.nanmean(row.holding)*1e12:6.2f}"  # convert to pA
         # print("row.cellid: ", row.cell_id)
         # print("row.protocols: ", row.protocols)
         prots = "; ".join([Path(prot).name for prot in row.protocols])
@@ -419,7 +421,7 @@ class TableManager:
                 fdate = d.datestr[-19:-9].replace("-", "")
             else:
                 raise ValueError("table manager select_dates: bad mode in call: ", mode)
-            if fdate[:4] not in ["2020", "2021", "2022"]:
+            if fdate[:4] not in ["2020", "2021", "2022", "2023", "2024", "2025"]:
                 continue
             idate = int(fdate)
             if idate >= sd and idate <= ed:

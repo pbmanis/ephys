@@ -163,8 +163,12 @@ class acq4_reader:
         """
         p = Path(p)  # convert if not already
         dirs = [d for d in list(p.glob("*")) if d.is_dir()]
+        CP.cprint("c", f"Found {len(dirs):d} directories under {str(p):s}")
+        # CP.cprint("c", f"   all dirs: {str(dirs)!s}")
         # dirs = filter(Path.is_dir, list(Path(p).glob("*")))
         dirs = sorted(list(dirs))  # make sure these are in proper order...
+        # for i, dir in enumerate(dirs):
+        #     CP.cprint("c", f"   {i:04d} {str(dir.name)!s}")
         return dirs
 
     def checkProtocol(
@@ -717,6 +721,7 @@ class acq4_reader:
 
         self.error_info = None  # clear any previous error info
         dirs = self.subDirs(self.protocol)
+        # CP.cprint("c", f"acq4_read: Found {len(dirs):d} directories under {self.protocol:s}")
         if len(dirs) == 0:
             if Path(self.protocol).is_dir():
                 self.error_info = f"Protocol dir exists, but is empty or has malformed structure: {self.protocol!s}"
@@ -726,6 +731,9 @@ class acq4_reader:
                 CP.cprint("r", self.error_info)
             return False
         index = self._readIndex()
+        self.info = self.getIndex(self.protocol)  # self.protocol)
+        # print("info: ", self.info)
+        # CP.cprint("c", f"acq4_read: Found {len(dirs):d} directories in {self.protocol:s}")
         self.clampInfo["dirs"] = dirs
         self.clampInfo["missingData"] = []
         self.traces = []
@@ -866,16 +874,17 @@ class acq4_reader:
                 tr = EM.MetaArray(file=fn)
             except:
                 if allow_partial:  # just get what we can
+                    CP.cprint("r", f"acq4_reader: Failed to read traces in file: {str(fn):s}, but allowing partial read")
                     continue
-                elif not silent:
+                if not silent:
                     # print(allow_partial)
                     msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
                     CP.cprint("r", msg)
                     # raise ValueError(f"file failed: {str(fn):s}")
-                    print(f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
-                    continue
-                else:
-                    pass
+                    CP.cprint("r", f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
+                    raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
+                return False
+                # continue
 
             tr_info = tr[0].infoCopy()
             self.parseClampInfo(tr_info)

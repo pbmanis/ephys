@@ -131,6 +131,7 @@ import sys
 # if sys.version_info.major >= 3 and sys.version_info.minor >= 4:
 #     multiprocessing.set_start_method('spawn')
 
+config_file_path = "./config/experiments.cfg"
 
 PSI_2 = plot_spike_info  # reference to non-class routines in the module.
 PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
@@ -512,6 +513,8 @@ class DataTables:
                             "octopus",
                             "pyramidal",
                             "cartwheel",
+                            "giant",
+                            "giant_maybe",
                             "golgi",
                             "glial",
                             "granule",
@@ -890,7 +893,9 @@ class DataTables:
                     self.set_experiment(data)
 
                 case "Reload Configuration":
-                    self.datasets, self.experiments = get_configuration()
+                    self.datasets, self.experiments = get_configuration(config_file_path)
+                    if self.datasets is None:
+                        print("Unable to get configuration file from: ", config_file_path)
                     if self.experimentname not in self.datasets:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
@@ -941,73 +946,86 @@ class DataTables:
 
                         # analyze the selected cells, working from the *datasummary* table, not the Assembled table.
                         case "Analyze Selected IVs":
-                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            # FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
-
-                            for selected_row in index_rows:
-                                if selected_row is None:
+                            # print("Index rows: ", index_rows)
+                            for selected_row_number in index_rows:
+                                if selected_row_number is None:
                                     print("No selected rows")
                                     break
-                                FUNCS.textappend(selected_row.cell_id)
-                                pathparts = Path(selected_row.cell_id).parts
+                                # print("selected row: ", selected_row_number)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row_number)
+                                if cell_id is None:
+                                    # print("cell id is none?")
+                                    continue
+                                # print("selected cell: ", cell_id)
+                                FUNCS.textappend(cell_id)
+                                pathparts = Path(cell_id).parts
                                 slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
                                 day = str(Path(*pathparts[0:-2]))
 
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
                                 print(
                                     (
-                                        f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {selected_row.cell_id!s}"
+                                        f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {cell_id!s}"
                                     )
                                 )
-                                self.analyze_ivs(
-                                    mode="selected",
-                                    day=day,
-                                    slicecell=slicecell,
-                                    cell_id=selected_row.cell_id,
-                                )
+                                if self.dry_run:
+                                    print(f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}")
+                                else:
+                                    self.analyze_ivs(
+                                        mode="selected",
+                                        day=day,
+                                        slicecell=slicecell,
+                                        cell_id=cell_id,
+                                    )
                             self.iv_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Plot from Selected IVs":
-                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
-                            msg = f"Plot from selected cell(s) at rows: {index_rows!s}"
-                            FUNCS.textappend(msg)
-                            print(msg)
-                            # self.Dock_Report.raiseDock()  # so we can monitor progress
-                            dspath = Path(
-                                self.experiment["analyzeddatapath"], self.experiment["directory"]
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            # FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            FUNCS.textappend(
+                                f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
                             )
+                            # print("Index rows: ", index_rows)
+                            selections = {"selected": []}
+                            for selected_row_number in index_rows:
+                                if selected_row_number is None:
+                                    print("No selected rows")
+                                    break
+                                # print("selected row: ", selected_row_number)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row_number)
+                                if cell_id is None:
+                                    # print("cell id is none?")
+                                    continue
+                                # print("selected cell: ", cell_id)
+                                FUNCS.textappend(cell_id)
+                                pathparts = Path(cell_id).parts
+                                slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
+                                day = str(Path(*pathparts[0:-2]))
+                                selections[cell_id] = {"day": day, "slicecell": slicecell}
+                                FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                                print(
+                                    (
+                                        f"datatables:plotselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {cell_id!s}"
+                                    )
+                                )
                             if self.parallel_mode == "off":
-                                for selected in index_rows:
-                                    if selected is None:
+                                for selection in selections.keys():
+                                    if selection is None:
                                         print("Selection was None!")
                                         break
-                                    print("dspath: ", dspath)
-                                    print("selected: ", selected)
-                                    self.plot_selected(selected, dspath)
+                                    print("Plotting selected cell: ", cell_id)
+                                    self.plot_selected(cell_id)
 
                             else:
                                 nworkers = self.experiment["NWORKERS"][self.computer_name]
-                                # chunksize = nworkers  # try chunking this...
-                                # all_tasks = list(range(len(index_rows)))
-                                # n_tasks = len(all_tasks)
-                                # n_runs = n_tasks//chunksize
-                                # leftover = n_tasks%chunksize
-                                # if leftover > 0:
-                                #     n_runs += 1
-                                # for run in range(n_runs):
-                                #     if run < n_runs-1:
-                                #         result = [None] * chunksize  # likewise
-                                #         tasks = range(chunksize)
-                                #         results={}
-                                #     else:
-                                #         result = [None] * leftover
-                                #         tasks = range(leftover)
-                                #         results={}
-
                                 tasks = range(len(index_rows))
+                                task_cell = [self.DS_table_manager.get_selected_cellid_from_table(i) for i in index_rows]
                                 results = {}
                                 result = [None] * len(tasks)
                                 with MP.Parallelize(
@@ -1015,7 +1033,7 @@ class DataTables:
                                 ) as tasker:
                                     for i, x in tasker:
                                         # result= self.plot_selected(index_rows[i+run*chunksize], dspath)
-                                        result = self.plot_selected(index_rows[i], dspath)
+                                        result = self.plot_selected(task_cell[i])
                                         tasker.results[i] = result
                                 # reform the results for our database
 
@@ -1488,16 +1506,20 @@ class DataTables:
                                 self.textbox, dataframe=self.datasummary
                             )
 
-    def plot_selected(self, selected, dspath):
-        # selected = self.table_manager.get_table_data(index_row)
-        FUNCS.textappend(f"    Selected: {selected.cell_id!s}")
-        pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
+    def plot_selected(self, cell_id):
+        dspath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
+        FUNCS.textappend(f"    Selected: {cell_id!s}")
+        print("Selected for plot: ", cell_id)
+        pkl_file = filename_tools.get_cell_pkl_filename(self.experiment, self.datasummary, cell_id=cell_id)
+        # pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
 
-        print("Reading from pkl_file: ", pkl_file)
+        # print("Reading from pkl_file: ", pkl_file)
         FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
+
         tempdir = Path(dspath, "temppdfs")
         decorate = True
         self.pdfFilename = Path(dspath, self.experiment["pdfFilename"]).with_suffix(".pdf")
+        print(f"Plotting would write to: {self.pdfFilename!s}")
         # use concurrent futures to prevent issue with multiprocessing
         # when using matplotlib.
         with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -2066,7 +2088,7 @@ def main():
     (
         datasets,
         experiments,
-    ) = get_configuration()  # retrieves the configuration file from the running directory
+    ) = get_configuration(config_file_path)  # retrieves the configuration file from the running directory
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
