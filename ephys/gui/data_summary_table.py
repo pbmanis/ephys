@@ -126,6 +126,7 @@ class TableManager:
         if pd.isnull(row.cell_id):
             return None
         Index_data = IndexData()
+        print("row: ", row.keys())
         Index_data.ephys_hash = ephys_git_hash  # save hash for the model code
         Index_data.project_code_hash = git_head_hash  # this repository!
         Index_data.date = str(row.date)
@@ -139,7 +140,10 @@ class TableManager:
         Index_data.genotype = str(row.genotype)
         Index_data.solution = str(row.solution)
         Index_data.internal = str(row.internal)
-        Index_data.subject = str(row["animal_identifier"])
+        if "animal_identifier" in row.keys():
+            Index_data.subject = str(row["animal_identifier"])
+        elif "animal identifier" in row.keys():
+            Index_data.subject = str(row["animal identifier"])
         Index_data.sex = str(row.sex)
         Index_data.age = str(row.age)
         Index_data.weight = str(row.weight)
