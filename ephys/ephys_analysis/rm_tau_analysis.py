@@ -215,6 +215,10 @@ class RmTauAnalysis:
         self.analysis_summary["taum"] = np.nan
         self.analysis_summary["taupars"] = []
         self.analysis_summary["taufunc"] = self.taum_func
+        self.analysis_summary["taum_fitted"] = []
+        self.analysis_summary["taum_fitmode"] = "average"
+        self.analysis_summary["taum_traces"] = []
+        self.analysis_summary["ivss_cmd"] =[]
 
         if debug:
             print("taum")
@@ -353,7 +357,7 @@ class RmTauAnalysis:
         okdata = []
 
         # ------------------------------------------------------------------
-        # Fit Averaged Traces
+        # Fit Averaged Traces  (CC_taum: all traces averaged)
         # ------------------------------------------------------------------
         if average_flag:  # just fit the average of all traces
             mean_trace = np.mean(traces[ineg_valid], axis=0)
@@ -393,6 +397,7 @@ class RmTauAnalysis:
             self.taum_whichdata = okdata
             # raise ValueError("checking taus in average fit")
             self.taum_taum = fparx[2]
+
             self.analysis_summary["taum"] = self.taum_taum
             self.analysis_summary["taupars"] = fpar
             self.analysis_summary["taufunc"] = self.taum_func
@@ -603,7 +608,10 @@ class RmTauAnalysis:
             else:
                 self.taum_taum = np.NaN
                 self.analysis_summary["taum"] = np.NaN
-
+            # if fit is against boundary, declare it invalid
+            if self.taum_taum in self.taum_bounds:
+                self.taum_taum = np.nan
+                self.analysis_summary["taum"] = np.nan
             self.taum_pars = fpar
             self.taum_win = time_window
             self.taum_func = Func
@@ -704,6 +712,9 @@ class RmTauAnalysis:
                 # print 'j: ', j, len(fpar)
                 # if fparx[0][1] < 2.5e-3:  # amplitude must be > 2.5 mV to be useful
                 #     continue
+                # if fit time constant is against boundary, declare it invalid
+                if fparx[0][2] in taubounds:
+                    fparx[0][2] = np.nan
                 fpar.append(fparx[0])
                 names.append(namesx[0])
                 okdata.append(k)
@@ -717,6 +728,8 @@ class RmTauAnalysis:
         self.taum_whichdata = okdata
         taus = []
         for j in range(len(fpar)):
+            if  np.isnan(fpar[j][2]): 
+                continue
             outstr = ""
             taus.append(fpar[j][2])
             for i in range(0, len(names[j])):
@@ -729,6 +742,9 @@ class RmTauAnalysis:
         else:
             self.taum_taum = np.NaN
             self.analysis_summary["taum"] = np.NaN
+        
+
+
         if len(self.taum_pars) > 0:
             if isinstance(self.taum_pars, list):
                 self.analysis_summary["taupars"] = self.taum_pars[0]
@@ -885,6 +901,12 @@ class RmTauAnalysis:
                 self.analysis_summary["ivss_v"] = self.ivss_v
                 self.analysis_summary["ivss_bl"] = self.ivss_bl
                 self.analysis_summary["ivss_fit"] = self.rss_fit
+            else:
+                self.analysis_summary["Rin"] = np.nan
+                self.analysis_summary["ivss_cmd"] = []
+                self.analysis_summary["ivss_v"] = []
+                self.analysis_summary["ivss_bl"] = np.nan
+                self.analysis_summary["ivss_fit"] = []
 
     def ivpk_analysis(self, time_window: list = []):
         """
