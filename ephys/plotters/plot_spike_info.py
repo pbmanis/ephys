@@ -109,6 +109,8 @@ def concurrent_categorical_data_plotting(
             "fontstyle": "normal",
             "font": "Courier",
         },
+        verticalalignment="top",
+        horizontalalignment="left",
     )
     cc_plot.figure_handle.show()
     mpl.show()
@@ -153,6 +155,8 @@ def concurrent_selected_fidata_data_plotting(
                 "fontstyle": "normal",
                 "font": "helvetica",
             },
+            verticalalignment="top",
+            horizontalalignment="left",
         )
 
         P2.figure_handle.show()
@@ -1139,10 +1143,12 @@ class PlotSpikeInfo(QObject):
     def relabel_xaxes(self, axp):
         if "new_xlabels" in self.experiment.keys():
             xlabels = axp.get_xticklabels()
+            xticks = axp.get_xticks()
             for i, label in enumerate(xlabels):
                 labeltext = label.get_text()
                 if labeltext in self.experiment["new_xlabels"]:
                     xlabels[i] = self.experiment["new_xlabels"][labeltext]
+            axp.set_xticks(xticks)  # we have to reset the ticks to avoid warning in matplotlib
             axp.set_xticklabels(xlabels)  # we just replace them...
         else:
             pass
@@ -1243,7 +1249,7 @@ class PlotSpikeInfo(QObject):
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
 
-        df_R = df[columns]
+        df_R = df[[c for c in columns if c != "AP_peak_V"]]
         if 'Rs' in df_R.columns:
             df_R = df_R.apply(self.average_Rs, axis=1)
         if 'CNeut' in df_R.columns:
@@ -1612,7 +1618,11 @@ class PlotSpikeInfo(QObject):
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
-        for i, r0 in enumerate(row.RMP_Zero):
+        if isinstance(row.RMP_Zero, float):
+            r0 = [row.RMP_Zero] # handle case where there is only one float value
+        else:
+            r0 = row.RMP_Zero
+        for i, r0 in enumerate(r0):
             if r0 > min_RMP:
                 row.RMP_Zero[i] = np.nan
         return row.RMP_Zero
@@ -1948,14 +1958,14 @@ class PlotSpikeInfo(QObject):
         # in the combine_fi_curves function.
         # if "protocol" not in df.columns:
         #     df = df.rename({"iv_name": "protocol"}, axis="columns")
-        print("unique protocols: ", df["protocol"].unique())
+        # print("unique protocols: ", df["protocol"].unique())
         # print("protocols: ", df["protocols"])
-        plabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+        plabels = ["A1", "A2", "A3", "B1", "B2", "B3", "G", "H", "I", "J"]
         P = PH.regular_grid(
-            1,
-            len(self.experiment["celltypes"]),
+            rows=len(self.experiment["celltypes"]),
+            cols=3,
             order="rowsfirst",
-            figsize=(3 * len(self.experiment["celltypes"]) + 1.0, 3),
+            figsize=(8 + 1.0, 3 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
             labelposition=(0.01, 0.95),
             margins={
@@ -1964,10 +1974,11 @@ class PlotSpikeInfo(QObject):
                 "leftmargin": 0.12,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.1,
+            verticalspacing=0.2,
             horizontalspacing=0.1,
             fontsize={"label": 12, "tick": 8, "panel": 16},
         )
+        print(P.axdict)
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         pos = {
@@ -1983,6 +1994,7 @@ class PlotSpikeInfo(QObject):
             "default": [0.4, 0.15],
         }
 
+        mode= "mean" # "individual"
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
         if mode == "mean":
             P.figure_handle.suptitle("FI Mean, SEM ", fontweight="normal", fontsize=18)
@@ -1992,111 +2004,143 @@ class PlotSpikeInfo(QObject):
         NCells: Dict[tuple] = {}
         picker_funcs: Dict = {}
         found_groups = []
-        for i, celltype in enumerate(self.experiment["celltypes"]):
-            ax = P.axdict[plabels[i]]
-            ax.set_title(celltype.title(), y=1.05)
-            ax.set_xlabel("I$_{inj}$ (nA)")
-            ax.set_ylabel("Rate (sp/s)")
-            if celltype != "all":
-                cdd = df[df["cell_type"] == celltype]
-            else:
-                cdd = df.copy()
-
-            N = self.experiment["group_map"]
-
-            if "mean" in mode:  # set up arrays to compute mean
-                FIy_all: dict = {k: [] for k in N.keys()}
-                FIx_all: dict = {k: [] for k in N.keys()}
-            for index in cdd.index:
-                group = cdd[group_by][index]
-                if (celltype, group) not in NCells.keys():
-                    NCells[(celltype, group)] = 0
-
-                # if cdd["protocol"][index].startswith("CCIV_"):
-                #     this_protocol = "CCIV_"
-                # else:
-                # this_protocol = cdd["protocol"][index]  # # not meaningful if protocols are combined[
-                #                    :-4
-                #               ]  # get protocol, strip number
-                # print("This protocol: ", this_protocol, "sel: ", protosel, cdd["protocol"][index])
-                # exit()
-                # if this_protocol not in protosel:
-                #     continue
-                if pd.isnull(cdd["cell_id"][index]):
-                    print("No cell ids")
-                    continue
-                try:
-                    FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
-                except:
-                    print("No FI data", cdd.cell_id[index])
-                    print(cdd.columns)
-                    print("Did you run the assembly on the final IV analysis files?")
-                    continue
-                #raise KeyError("No FI data")
-                
-                if len(FI_data[0]) == 0:
-                    print("FI data is empty", cdd.cell_id[index])
-
-                    continue
-
-                FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
-                if FI_data.shape == (2, 0):  # no fi data from the excel table....
-                    print("No FI data from excel table?")
-                    continue
-
-                if "max_FI" in self.experiment.keys():
-                    max_fi = self.experiment["max_FI"] * 1e-9
+        fi_group_sum = {}
+        fi_dat = {}  # save raw fi
+        for ic, ptype in enumerate(["mean", "individual", "sum"]):
+            for ir, celltype in enumerate(self.experiment["celltypes"]):
+                ax = P.axarr[ir, ic]
+                ax.set_title(celltype.title(), y=1.05)
+                ax.set_xlabel("I$_{inj}$ (nA)")
+                if ic in [0, 1]: 
+                    ax.set_ylabel("Rate (sp/s)")
+                elif ic == 2:
+                    ax.set_ylabel("Firing 'Area' (pA*Hz)")
+                if celltype != "all":
+                    cdd = df[df["cell_type"] == celltype]
                 else:
-                    max_fi = 1.05e-9
-                FI_data = self.limit_to_max_rate_and_current(
-                    FI_data, imax=max_fi, id=cdd["cell_id"][index]
-                )
-                NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                if group not in found_groups:
-                    found_groups.append(group)
+                    cdd = df.copy()
 
-                if "individual" in mode:
-                    fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
+                N = self.experiment["group_map"]
 
-                    ax.plot(
-                        fix * 1e9,
-                        fiy,
-                        color=colors[group],
-                        marker="o",
-                        markersize=2.5,
-                        linewidth=0.5,
-                        clip_on=False,
-                        alpha=0.35,
-                    )
-                if "mean" in mode:
-                    if group in FIy_all.keys():
-                        FIy_all[group].append(np.array(FI_data[1]))
-                        FIx_all[group].append(np.array(FI_data[0]) * 1e9)
+                if ptype == "mean":  # set up arrays to compute mean
+                    FIy_all: dict = {k: [] for k in N.keys()}
+                    FIx_all: dict = {k: [] for k in N.keys()}
+                for index in cdd.index:
+                    group = cdd[group_by][index]
+                    if (celltype, group) not in NCells.keys():
+                        NCells[(celltype, group)] = 0
 
-            if "mean" in mode:
-                max_FI = 1.0
-                for i, group in enumerate(FIy_all.keys()):
-                    fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
-                    if len(fx) == 0:
-                        print("unable to get average")
+                    # if cdd["protocol"][index].startswith("CCIV_"):
+                    #     this_protocol = "CCIV_"
+                    # else:
+                    # this_protocol = cdd["protocol"][index]  # # not meaningful if protocols are combined[
+                    #                    :-4
+                    #               ]  # get protocol, strip number
+                    # print("This protocol: ", this_protocol, "sel: ", protosel, cdd["protocol"][index])
+                    # 
+                    # if this_protocol not in protosel:
+                    #     continue
+                    if pd.isnull(cdd["cell_id"][index]):
+                        print("No cell ids")
                         continue
+                    try:
+                        FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
+                    except:
+                        print("No FI data", cdd.cell_id[index])
+                        print(cdd.columns)
+                        print("Did you run the assembly on the final IV analysis files?")
+                        continue
+                    #raise KeyError("No FI data")
+                    
+                    if len(FI_data[0]) == 0:
+                        print("FI data is empty", cdd.cell_id[index])
+
+                        continue
+                    print("FIdata: ", len(FI_data[0]))
+                    FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
+                    if FI_data.shape == (2, 0):  # no fi data from the excel table....
+                        print("No FI data from excel table?")
+                        continue
+
                     if "max_FI" in self.experiment.keys():
-                        max_FI = self.experiment["max_FI"] * 1e-3
-                    ax.errorbar(
-                        fx[fx <= max_FI],
-                        fy[fx <= max_FI],
-                        yerr=fystd[fx <= max_FI] / np.sqrt(yn[fx <= max_FI]),
-                        color=colors[group],
-                        marker="o",
-                        markersize=2.5,
-                        linewidth=1.5,
-                        clip_on=False,
-                        label=self.experiment["group_legend_map"][group],
+                        max_fi = self.experiment["max_FI"] * 1e-9
+                    else:
+                        max_fi = 1.05e-9
+                    FI_dat_saved = FI_data.copy()
+                    ### HERE WE LIMIT FI_data to the range with the max firing
+                    FI_data = self.limit_to_max_rate_and_current(
+                        FI_data, imax=max_fi, id=cdd["cell_id"][index]
                     )
+                    NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                    if group not in found_groups:
+                        found_groups.append(group)
+                        fi_group_sum[group] = []
+                    maxi = 1000e-12
+                    ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
+                    if ptype in ["individual", "mean"]:
+                        fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
 
-                ax.set_xlim(0, max_FI)
+                        ax.plot(
+                            fix[:ilim] * 1e9,
+                            fiy[:ilim],
+                            color=colors[group],
+                            marker=None,
+                            markersize=2.5,
+                            linewidth=0.5,
+                            clip_on=False,
+                            alpha=0.35,
+                        )
+                    if ptype == "mean":
+                        if group in FIy_all.keys():
+                            FIy_all[group].append(np.array(FI_data[1][:ilim]))
+                            FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
 
-            yoffset = -0.025
+                    elif ptype == "sum":
+                        fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
+
+                if ptype == "mean":
+                    max_FI = 1.0
+                    for i, group in enumerate(FIy_all.keys()):
+                        fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
+                        if len(fx) == 0:
+                            print("unable to get average", cdd["cell_id"][index])
+                            continue
+                        else:
+                            print("getting average: ", cdd["cell_id"][index])
+                        if "max_FI" in self.experiment.keys():
+                            max_FI = self.experiment["max_FI"] * 1e-3
+                        ax.errorbar(
+                            fx[fx <= max_FI],
+                            fy[fx <= max_FI],
+                            yerr=fystd[fx <= max_FI] / np.sqrt(yn[fx <= max_FI]),
+                            color=colors[group],
+                            marker="o",
+                            markersize=2.5,
+                            linewidth=1.5,
+                            clip_on=False,
+                            label=self.experiment["group_legend_map"][group],
+                        )
+
+                        ax.set_xlim(0, max_FI)
+                if ptype == "sum":
+                    ax = P.axarr[ir, ic]
+                    ax.set_title("Summed FI", y=1.05)
+                    ax.set_xlabel("Group")
+                    fi_list = []
+                    for i, group in enumerate(fi_group_sum.keys()):
+                        ax.scatter(0.75+i + np.random.random(len(fi_group_sum[group]))*0.5, fi_group_sum[group], 
+                            color=colors[group], marker="o", s=8.0)
+                        fi_list.append(fi_group_sum[group])
+                    ax.boxplot(fi_list, widths=0.8)
+                    ax.set_xlim(-0.5, 2.5)
+                    ax.set_ylim(0, 1500)
+                    p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
+                    print(p, t)
+                    print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
+                print("group: ", group, "ptype: ", ptype)
+              
+
+            yoffset = 0.025
             xoffset = 0.0
             xo2 = 0.0
             # if "individual" in mode:
@@ -2112,7 +2156,7 @@ class PlotSpikeInfo(QObject):
                 if celltype == "pyramidal":  # more legend - name of group
                     ax.text(
                         x=pos[celltype][0] + xoffset + xo2,
-                        y=pos[celltype][1] - 0.095 * (i - 0.5) + yoffset,
+                        y=pos[celltype][1] + 0.095 * (i - 0.5) + yoffset,
                         s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
                         ha="left",
                         va="top",
@@ -2120,6 +2164,7 @@ class PlotSpikeInfo(QObject):
                         color=colors[group],
                         transform=ax.transAxes,
                     )
+                    print("Pyramidal legend: ", f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}")
                 else:
                     if (celltype, group) in NCells.keys():
                         textline = f"{group:s} N={NCells[(celltype, group)]:>3d}"
@@ -2155,7 +2200,7 @@ class PlotSpikeInfo(QObject):
                         )
         i = 0
         icol = 0
-        axp = P.axdict["A"]
+        axp = P.axdict["A1"]
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
@@ -2252,12 +2297,13 @@ class PlotSpikeInfo(QObject):
         if measure in facs:
             scale = facs[measure]
         CP("c", "\n==================================================")
+        # CP("c", f"Statistics are based on ALL ")
         print(f"Celltype:: {celltype:s}, Measure: {measure:s}")
         print("Subject, Group, sex, Value\n-----------------------------------------------")
         for cell in sorted(list(df_clean.cell_id.values)):
             print(f"{cell:s}, {df_clean[df_clean.cell_id == cell].Group.values[0]:s},", end=" ")
             print(f"{df_clean[df_clean.cell_id == cell].sex.values[0]:s},", end="")
-            print(f"{scale*df_clean[df_clean.cell_id == cell][measure].values[0]:12.6f}")
+            print(f"{scale*df_clean[df_clean.cell_id == cell][measure].values[0]!s}")
 
         groups_in_data = df_clean[group_by].unique()
         # print("Groups found in data: ", groups_in_data, len(groups_in_data))
@@ -2272,7 +2318,7 @@ class PlotSpikeInfo(QObject):
                     "",
                     CP(
                         "r",
-                        f"****** Insuffieient data for {celltype:s} and {measure:s}",
+                        f"****** Insufficient data for {celltype:s} and {measure:s}",
                         textonly=True,
                     ),
                 ]
@@ -2336,7 +2382,7 @@ class PlotSpikeInfo(QObject):
 
         if nonparametric:
             # nonparametric:
-            msg = f"\nKW: [{measure:s}]  celltype={celltype:s}\n\n "
+            msg = f"KW: [{measure:s}]  celltype={celltype:s}\n\n "
             stattext = "".join(["", CP("y", msg, textonly=True)])
             groups_in_data = df_clean[group_by].unique()
 
@@ -2348,14 +2394,14 @@ class PlotSpikeInfo(QObject):
             for group in groups_in_data:
                 dg = df_clean[df_clean[group_by] == group]
                 # print("group: ", group, "measure: ", measure, "dgmeasure: ", dg[measure].values)
-                data.append(dg[measure].values)
-                dictdata[group].append(dg[measure].values)
-            #     df_clean[df_clean["Group"] == group][measure].values]
-            #     # for ids in df_clean.groupby("Group").groups.values()
-            #     for group in groups_in_data
-            # ]
-            # print("# groups with data: ", len(data))
-            # print("data: ", data)
+                dv = []
+                for d in dg[measure].values:
+                    dv.append(np.nanmean(d))
+                # I know this is not the most efficient way to do this, but it is fast enough.
+                dv = [d for d in dv if ~np.isnan(d)]  # clean out nan's. Should not be necessary, but MW/KW doesn't like them.
+                data.append(dv)
+                dictdata[group].append(dv)
+
             if len(data) < 2:
                 stattext = "\n".join(
                     [
@@ -2365,15 +2411,21 @@ class PlotSpikeInfo(QObject):
                 )
                 FUNCS.textappend(stattext)
                 return df_clean
-            print("\nMeasure: ", measure)
-            print("Data: ")
-            for gr in dictdata.keys():
-                # print(dictdata[gr])
-                print(f"Group: {gr:s}  len: {len(dictdata[gr][0]):d}, median: {scale*np.median(dictdata[gr]):.6f}, mean: {scale*np.mean(dictdata[gr]):.6f}", end="")
-                print(f"  std: {scale*np.std(dictdata[gr]):.6f}, QR: {scale*np.quantile(dictdata[gr], 0.25):.6f} - {scale*np.quantile(dictdata[gr], 0.75):.6f}", end=" ")
-                print(f" IQR: {scale*(np.quantile(dictdata[gr], 0.25)- np.quantile(dictdata[gr], 0.75)):.6f}")
-            print("")
-            print(len(groups_in_data), " groups in data")
+
+            print("  Descriptive Statistics: ")
+            # print(dictdata.keys())
+            desc_stat = ""
+            for gr in dictdata.keys():  # gr is the group (e.g., genotype, treatment, etc)
+                # print(dictdata[gr], len(dictdata[gr][0]))
+                desc_stat += f"Group: {gr:s}  N: {np.sum(~np.isnan(dictdata[gr])):d}, median: {scale*np.nanmedian(dictdata[gr]):.6f},"
+                desc_stat += f"mean: {scale*np.nanmean(dictdata[gr]):.6f}"
+                desc_stat += f"  std: {scale*np.nanstd(dictdata[gr]):.6f}, QR: {scale*np.nanquantile(dictdata[gr], 0.25):.6f}"
+                desc_stat += f"- {scale*np.nanquantile(dictdata[gr], 0.75):.6f}"
+                desc_stat += f" IQR: {scale*(np.nanquantile(dictdata[gr], 0.25)- np.nanquantile(dictdata[gr], 0.75)):.6f}\n"
+            FUNCS.textappend(desc_stat)
+            print(desc_stat)
+            # print("")
+            # print(len(groups_in_data), " groups in data", len(data))
             if len(groups_in_data) == 2:
                 s, p = scipy.stats.mannwhitneyu(*data)
                 stattext = "\n".join(
@@ -2388,8 +2440,6 @@ class PlotSpikeInfo(QObject):
                 )
             else:
                 s, p = scipy.stats.kruskal(*data)
-                # print("s: ", s)
-                # print("p: ", p)
                 stattext = "\n".join(
                     [
                         "",
@@ -2415,7 +2465,7 @@ class PlotSpikeInfo(QObject):
                         ),
                     ]
                 )
-                FUNCS.textappend(stattext)
+            FUNCS.textappend(stattext)
             print(stattext)
         return df_clean
 
@@ -2556,28 +2606,28 @@ class PlotSpikeInfo(QObject):
             row.sex = "U"
         return row.sex
 
-    def get_AHP_depth(self, row):
-        # recalculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
+    def compute_AHP_depth(self, row):
+        # Calculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
         if "LowestCurrentSpike" not in row.keys():
-            print("len: thr, trough: ", len(row.AP_thr_V), len(row.AHP_trough_V))
+            # This is the first assignment/caluclation of AHP_depth_V, so we need to make sure
+            # it is a list of the right length
+            row["AHP_depth_V"] =[np.nan]*len(row.AP_thr_V)
             for i, apv in enumerate(row.AHP_trough_V):
-                # print("trough, thr: ", row.AHP_trough_V, row.AP_thr_V)
-                row.AHP_depth_V[i] = row.AHP_trough_V[i] * 1e3 - row.AP_thr_V[i]
+                row.AHP_depth_V[i] = row.AHP_trough_V[i] - row.AP_thr_V[i]
                 if row.AHP_depth_V[i] > 0:
                     row.AHP_depth_V[i] = np.nan
             return row.AHP_depth_V[i]
         else:
             CP("c", "LowestCurrentSpike in row keys")
 
-    def get_AHP_trough_time(self, row):
-        # recalculate the AHP trough time, as the time between the AP threshold and the AHP trough
+    def compute_AHP_trough_time(self, row):
+        # RE-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
-        if "AHP_trough_T" not in row.keys():
-            return np.nan
-        return np.nan
-        for i, att in enumerate(row.AHP_trough_T):
-            row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i]* 1e-3
+        # print(len(row.AHP_trough_T), len(row.AP_thr_T))
+        for i, att in enumerate(row.AP_thr_T):  # base index on threshold measures
+            #print(row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
+            row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
             if row.AHP_trough_T[i] < 0:
                 row.AHP_trough_T[i] = np.nan
         return row.AHP_trough_T
@@ -2702,8 +2752,8 @@ class PlotSpikeInfo(QObject):
     def preprocess_data(self, df, experiment):
         """preprocess_data Clean up the data, add columns, etc."""
         df_summary = get_datasummary(experiment)
-        print("df_summary column names: ", sorted(df_summary.columns))
-        print("df column names: ", sorted(df.columns))
+        print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
+        print("   Preprocess_data: df column names: ", sorted(df.columns))
         df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
 
         if "cell_layer" not in df.columns:
@@ -2723,8 +2773,8 @@ class PlotSpikeInfo(QObject):
                 df["cell_expression"] = df.apply(
                     self.get_cell_expression, df_summary=df_summary, axis=1
                 )
-            print("cell expression values: ", df.cell_expression.unique())
-        print("Groups: ", df.Group.unique())
+            print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
+        print("   Preprocess_data: Groups: ", df.Group.unique())
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
         df["RMP"] = df.apply(self.clean_rmp, axis=1)
@@ -2739,20 +2789,24 @@ class PlotSpikeInfo(QObject):
         df["Group"] = df["Group"].astype("str")
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
-        df["AHP_depth_V"] = df.apply(self.get_AHP_depth, axis=1)
-        df["AHP_trough_T"] = df.apply(self.get_AHP_trough_time, axis=1)
+        if "AHP_depth_V" not in df.columns:
+            df["AHP_depth_V"] = np.nan
+        df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
+        if "AHP_trough_V" not in df.columns:
+            df["AHP_trough_V"] = np.nan
+        df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
         groups = df.Group.unique()
-        print("preload: Groups: ", groups)
+        print("   Preprocess_data:  Groups: ", groups)
         # self.data_table_manager.update_table(data=df)
         df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
         if len(groups) > 1:
             df.dropna(subset=["Group"], inplace=True)  # remove empty groups
             df.drop(df.loc[df.Group == "nan"].index, inplace=True)
         print(
-            "        # Groups found after dropping nan: ",
+            "           Preprocess_data: # Groups found after dropping nan: ",
             df.Group.unique(),
             len(df.Group.unique()),
         )
@@ -2784,14 +2838,14 @@ class PlotSpikeInfo(QObject):
                     r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
                 )
 
-                print("Checking exclude for listed exclusion ", filename)
+                print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
                 if re_day.match(fn) is not None:  # specified a day, not a cell:
                     df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
-                    CP("r", f"dropped DAY {fn:s} from analysis, reason = {reason:s}")
+                    CP("r", f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}")
                 elif re_slice.match(fn) is not None:  # specified day and slice
                     fns = re_slice.match(fn)
                     df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
-                    CP("r", f"dropped SLICE {fn:s} from analysis, reason = {reason:s}")
+                    CP("r", f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}")
                 elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
                     fnc = re_slicecell2.match(fn)
                     # generate an id with 1 number for the slice and 1 for the cell,
@@ -2801,17 +2855,18 @@ class PlotSpikeInfo(QObject):
                     fn2 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}C{int(fnc['cellno']):02d}"
                     fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
                     fns = [fn1, fn1a, fn2, fn2a]
+                    # print(df.cell_id.unique())
                     for i, f in enumerate(fns):
                         if fnpath is not None:
                             fns[i] = str(Path(fnpath, f))  # add back the leading path
                         if not df.loc[df.cell_id == fns[i]].empty:
                             df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
-                            CP("m", f"dropped CELL {fns[i]:s} from analysis, reason = {reason:s}")
+                            CP("m", f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}")
                         else:
-                            CP("r", f"CELL {fns[i]:s} not found in data set")
+                            CP("r", f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)")
 
         gu = df.Group.unique()
-        print("Groups after exclusions: ")
+        print("   Preprocess_data: Groups after exclusions: ")
 
         for g in sorted(gu):
             print(f"    {g:s}  (N={len(df.loc[df.Group == g]):d})")
@@ -2824,9 +2879,9 @@ class PlotSpikeInfo(QObject):
         print("="*80)
         # now apply any external filters that might be specified in the configuration file
         if "filters" in self.experiment.keys():
-            print("Filters is set: ")
+            print("   Preprocess_data: Filters is set: ")
             for key, values in self.experiment["filters"].items():
-                print("   Filtering on: ", key, values)
+                print("      Preprocess_data: Filtering on: ", key, values)
                 df = df[df[key].isin(values)]
 
         # print("age categories: ", df.age_category.unique())
