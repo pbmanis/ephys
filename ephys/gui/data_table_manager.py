@@ -282,9 +282,9 @@ class TableManager:
         Index_data.sex = str(row.sex)
         Index_data.weight = str(row.weight)
         # Index_data.temperature = str(row.temperature)
-        print(list(row.keys()))
+        # print(list(row.keys()))
         Index_data.Group = str(row.Group)
-        print("row.RMP", row.RMP)
+        # print("row.RMP", row.RMP)
         Index_data.RMP = f"{np.nanmean(row.RMP):6.2f}"
         Index_data.RMP_SD = f"{np.nanmean(row.RMP_SD):6.2f}"
         Index_data.flag = False
