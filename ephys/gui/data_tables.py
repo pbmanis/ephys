@@ -255,7 +255,7 @@ class DataTables:
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
         self.infobox_x = 0.02
-        self.infobox_y = 0.94
+        self.infobox_y = 0.99
         self.infobox_fontsize = 5.5
 
         # Define the table style for various parts dark scheme
@@ -339,6 +339,7 @@ class DataTables:
         self.Dock_PDFView.addWidget(self.PDFView)
 
         self.textbox = QtWidgets.QTextEdit()
+        
         FUNCS.textbox_setup(self.textbox)  # make sure the functions know about the textbox
         self.textbox.setReadOnly(True)
         self.textbox.setTextColor(QtGui.QColor("white"))
@@ -350,6 +351,7 @@ class DataTables:
         self.textbox.clear()
         self.textbox.setText("")
         self.Dock_Report.addWidget(self.textbox)
+
 
         style = "::section {background-color: darkblue; }"
         self.selected_index_row = None  # for single selection mode
@@ -1257,6 +1259,8 @@ class DataTables:
                                     "fontstyle": "normal",
                                     "font": "helvetica",
                                 },
+                                verticalalignment="top",
+                                horizontalalignment="left",
                             )
                             P4.figure_handle.show()
                         case "Set BSpline S":
@@ -1288,6 +1292,7 @@ class DataTables:
                             plot_order = self.experiment["plot_order"][group_by]
                             header = self.get_analysis_info(fn)
                             self.selected_index_rows = self.table.selectionModel().selectedRows()
+                            # print("selected index rows: ", self.selected_index_rows)
                             table_data = pd.DataFrame()
                             for irow in self.selected_index_rows:
                                 cellid = self.table_manager.get_table_data(irow).cell_id
@@ -1785,7 +1790,8 @@ class DataTables:
         second_group_by = self.ptreedata.child("Plotting").child("2nd Group By").value()
         datetime_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         header = f"Experiment Name: {self.experimentname:s}\n"
-        header += f"File: {filename.name!s} [{datetime.datetime.fromtimestamp(filename.stat().st_mtime)!s}]\n"
+        header += f"Assembled File: {filename.name!s}\n"
+        header += f"   Last analysis/assembly: [{datetime.datetime.fromtimestamp(filename.stat().st_mtime)!s}]\n"
         header += f"Plot date: {datetime_str:s}\n"
         header += f"1 Group By: {group_by:s} 2 Group by: {second_group_by!s}\n"
         header += f"Git hashes: Proj={self.git_hash['project'][-9:]!s}\n       ephys={self.git_hash['ephys'][-9:]!s}\n"
@@ -1907,9 +1913,9 @@ class DataTables:
                 f"DataSummary file: {self.datasummaryfile!s} does not yet exist - please generate it first"
             )
             return
-        FUNCS.textappend(
-            f"DataSummary file: {self.datasummaryfile!s}  exists. Last updated: {self.datasummaryfile.stat().st_mtime:f}"
-        )
+        msg = f"DataSummary file: {self.datasummaryfile!s}  exists"
+        msg += f"    Last updated: {datetime.datetime.fromtimestamp(self.datasummaryfile.stat().st_mtime)!s}"
+        FUNCS.textappend(msg)
         FUNCS.textappend("Loading ...")
         self.datasummary = pd.read_pickle(self.datasummaryfile)
         if self.datasummary is not None:
