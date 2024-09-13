@@ -391,7 +391,7 @@ class IVPlotter(object):
             n += 1
         if n > 0:
             P.axdict["B"].legend(fontsize=6)
-        if "ivss_cmd" not in ivs.keys():
+        if "ivss_cmd" not in ivs.keys() or "ivss_v" not in ivs.keys():
             print("\niv_plotter: No ivss_cmd found in the iv keys")
             print("    cell, protocol: ", self.plot_df["cell_id"], protocol)
             # print("\n    Ivs: ", ivs), "\n")
