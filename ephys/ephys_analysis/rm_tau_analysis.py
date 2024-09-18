@@ -27,7 +27,7 @@ for acq4
 import datetime
 import numpy as np
 from scipy.signal import savgol_filter  # for smoothing
-import ephys.tools.fitting as fitting
+import ephys.tools as TOOLS
 from pathlib import Path
 import pyqtgraph as pg
 import ephys.tools.exp_estimator_lmfit as exp_estimator_lmfit
@@ -228,7 +228,7 @@ class RmTauAnalysis:
         if self.rmp is None:
             self.rmp_analysis(time_window=self.baseline)
 
-        Fits = fitting.Fitting()  # get a fitting instance
+        Fits = TOOLS.fitting.Fitting()  # get a fitting instance
         initpars = [self.rmp * 1e-3, -0.010, 0.020]  # rmp is in units of mV
 
         # determine which current injection levels to use for the measurements.
@@ -1079,7 +1079,7 @@ class RmTauAnalysis:
             return
 
         Func = "exp1"  # single exponential fit to the seleccted region
-        Fits = fitting.Fitting()
+        Fits = TOOLS.fitting.Fitting()
 
         # for our time windows, get the ss voltage to use
         ss_voltages = self.Clamps.traces[
