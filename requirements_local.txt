@@ -13,7 +13,7 @@ jupyterlab==3.4.4
 pyperclip
 pytest==7.3.1
 gitpython
-# Cython==3.0.8
+Cython==3.0.11
 dill==0.3.8
 # efel>=3.0.93 
 # envisage==4.7.2
