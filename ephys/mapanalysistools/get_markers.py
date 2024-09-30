@@ -104,7 +104,7 @@ def plot_mosaic_markers(
     measures = {}
     smoothed_poly = None
     markers_complete = True
-    print(mark_alpha.keys())
+    # print(mark_alpha.keys())
     if markers is not None and len(markers.keys()) > 0:
         for marktype in markers.keys():
             if marktype not in mark_colors.keys():
