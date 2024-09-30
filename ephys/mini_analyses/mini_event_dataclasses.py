@@ -8,12 +8,11 @@ protocol.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Optional
 import numpy as np
 
 def def_empty_list():
     return [] 
-
 
 
 
