@@ -1104,24 +1104,66 @@ class DataTables:
                             pass
                         case "Analyze Selected Maps":
 
-                            # work from the *datasummary* table, not the Assembled table.
-                            index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
-                            FUNCS.textappend(
-                                f"Analyze all LSPS maps from selected cell(s) at rows: {len(index_rows)!s}"
-                            )
 
-                            for selected in index_rows:
-                                if selected is None:
-                                    print("selected was None")
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            # FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            FUNCS.textappend(
+                                f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
+                            )
+                            # print("Index rows: ", index_rows)
+                            selections = {"selected": []}
+                            for selected_row in index_rows:
+                                if selected_row is None:
+                                    print("No selected rows")
                                     break
-                                FUNCS.textappend(selected.cell_id)
-                                pathparts = Path(selected.cell_id).parts
+                                print("selected row: ", selected_row)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row)
+                                if cell_id is None:
+                                    print("cell id is none?")
+                                    continue
+                                print("selected cell: ", cell_id)
+                                FUNCS.textappend(cell_id)
+                                pathparts = Path(cell_id).parts
                                 slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
                                 day = str(Path(*pathparts[0:-2]))
+
                                 FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
-                                print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
-                                self.analyze_maps(mode="selected", day=day, slicecell=slicecell)
+                                print(
+                                    (
+                                        f"datatables:analyzeselectedIVS:     Day: {day!s}  slice_cell: {slicecell!s}, cellid: {cell_id!s}"
+                                    )
+                                )
+                                if self.dry_run:
+                                    print(f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}")
+                                else:
+                                    self.analyze_maps(
+                                        mode="selected",
+                                        day=day,
+                                        slicecell=slicecell,
+                                        cell_id=cell_id,
+                                    )
                             self.maps_finished_message()
+                            self.Dock_DataSummary.raiseDock()  # back to the original one
+
+
+                            # work from the *datasummary* table, not the Assembled table.
+                            # index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
+                            # FUNCS.textappend(
+                            #     f"Analyze all LSPS maps from selected cell(s) at rows: {len(index_rows)!s}"
+                            # )
+
+                            # for selected in index_rows:
+                            #     if selected is None:
+                            #         print("selected was None")
+                            #         break
+                            #     FUNCS.textappend(selected.cell_id)
+                            #     pathparts = Path(selected.cell_id).parts
+                            #     slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
+                            #     day = str(Path(*pathparts[0:-2]))
+                            #     FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
+                            #     print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
+                            #     self.analyze_maps(mode="selected", day=day, slicecell=slicecell)
+                            # self.maps_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Analyze Selected Maps m/Important":
@@ -1610,7 +1652,7 @@ class DataTables:
             return
         IV.setup()
         CP.cprint("c", "analyze_ivs datatables: setup completed")
-        IV.run()
+        IV.run(mode="IV")
         CP.cprint("c", "analyze_ivs datatables: run completed")
         if self.dry_run:
             CP.cprint(
@@ -1682,7 +1724,8 @@ class DataTables:
         return f.result()
 
     def analyze_maps(
-        self, mode="all", important: bool = False, day: str = None, slicecell: str = None
+        self, mode="all", important: bool = False, day: str = None, slicecell: str = None,
+        cell_id: str = None
     ):
         import numpy as np
 
@@ -1717,6 +1760,7 @@ class DataTables:
         if mode == "selected":
             args.day = day
             args.slicecell = slicecell
+            args.cell_id = cell_id
 
         args.notchfilter = True
         odds = np.arange(1, 43, 2) * 60.0  # odd harmonics
@@ -1761,7 +1805,7 @@ class DataTables:
         MAP.setup()
 
         CP.cprint("c", "=" * 80)
-        MAP.run()
+        MAP.run(mode="MAP")
 
         # allp = sorted(list(set(NF.allprots)))
         # print('All protocols in this dataset:')
