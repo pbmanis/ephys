@@ -126,7 +126,7 @@ class TableManager:
         if pd.isnull(row.cell_id):
             return None
         Index_data = IndexData()
-        print("row: ", row.keys())
+        # print("row: ", row.keys())
         Index_data.ephys_hash = ephys_git_hash  # save hash for the model code
         Index_data.project_code_hash = git_head_hash  # this repository!
         Index_data.date = str(row.date)
