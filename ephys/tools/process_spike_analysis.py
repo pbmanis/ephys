@@ -77,7 +77,7 @@ logging_fh.setFormatter(log_formatter)
 logging_sh.setFormatter(CustomFormatter())  # log_formatter)
 Logger.addHandler(logging_fh)
 Logger.addHandler(logging_sh)
-Logger.info("Starting Process Spike Analysis")
+# Logger.info("Starting Process Spike Analysis")
 
 pd.set_option("display.max_columns", 40)
 
