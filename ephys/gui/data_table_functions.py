@@ -203,6 +203,22 @@ iv_mapper: dict = {
 }
 
 
+def numeric_age(row):
+    """numeric_age convert age to numeric for pandas row.apply
+
+    Parameters
+    ----------
+    row : pd.row_
+
+    Returns
+    -------
+    value for row entry
+    """
+    if isinstance(row.age, float):
+        return row.age
+    row.age = int("".join(filter(str.isdigit, row.age)))
+    return float(row.age)
+
 def print_spike_keys(row):
     if pd.isnull(row.IV):
         return row
@@ -214,8 +230,8 @@ class Functions:
     def __init__(self):
         # self.textbox = None
         self.cursor = []  # a list to hold cursors (need to keep a live reference)
-        pass
-
+        self.textbox = None
+        
     def get_row_selection(self, table_manager):
         """
         Find the selected rows in the currently managed table, and if there is a valid selection,
@@ -1338,6 +1354,17 @@ class Functions:
         x, y = event.xdata, event.ydata
         self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
 
+    def categorize_ages(self, row,  experiment):
+        row.age = numeric_age(row)
+        for k in experiment["age_categories"].keys():
+            if (
+                row.age >= experiment["age_categories"][k][0]
+                and row.age <= experiment["age_categories"][k][1]
+            ):
+                row.age_category = k
+        return row.age_category
+
+
     def get_selected_cell_data_FI(
         self,
         experiment: pd.DataFrame,
@@ -1406,6 +1433,7 @@ class Functions:
             )
             nplots = 0
             expression_list = []
+            age_list = []
             # arrays for summary histograms
             #
             drop_out_currents = pd.DataFrame(
@@ -1418,14 +1446,20 @@ class Functions:
             # One analysis is this:
             # for each cell class,
             #   for each cell, for each level, plot the latency of the LAST spike in the train
-            LS = {
-                "+/+": {},
-                "-/-": {},   # dict keys are current level, lastspikes are arrays of spikes
-            }  # last spike dict: keys are current level, lastspikes are arrays of spikes .
+            LS = dict.fromkeys(list(experiment['group_map'].keys()), {})
+            n1 = dict.fromkeys(list(LS.keys()), [])
+            # {
+            #     "+/+": {},
+            #     "-/-": {},   # dict keys are current level, lastspikes are arrays of spikes
+            # }  # last spike dict: keys are current level, lastspikes are arrays of spikes .
             # LS[I]{genotype1: dict of {I: , lastspikesarray of latencies, genotype2: array of latencies}
-            Ns = {"+/+": [], "-/-": []}  # track cells used.
+            Ns:dict = {}
+            
+            for ells in LS.keys():
+                Ns[ells] = [] # {"+/+": [], "-/-": []}  # track cells used.
             for selected in assembleddata.itertuples():
                 pcolor = colors[nplots].colors
+                grp = selected.Group
                 day = selected.date[:-4]
                 slicecell = selected.cell_id[-4:]
                 # we need to reach into the main data set to get the expression,
@@ -1433,12 +1467,16 @@ class Functions:
                 cell_df, _ = filename_tools.get_cell(
                     experiment, assembleddata, cell_id=selected.cell_id
                 )
+                if "age_category" not in cell_df.keys():
+                    cell_df["age_category"] = np.nan
+                cell_df["age_category"] = self.categorize_ages(cell_df, experiment=experiment)
                 if cell_df.cell_expression is None:
                     continue
                 if cell_df.cell_expression not in expression_list:
                     expression_list.append(cell_df.cell_expression)
+
                 prots = list(cell_df["IV"].keys())
-                IVdata = cell_df["IV"][prots[0]].keys()
+                # IVdata = cell_df["IV"][prots[0]].keys()
 
                 # for this cell, build spike arrays for all spike
                 # latencies at each current level.
@@ -1450,6 +1488,8 @@ class Functions:
                 rpnames = [r for r in experiment["raster_protocols"]]
                 pulse_start = {}
                 for prot in prots:
+                    if cell_df["Spikes"][prot] is None:
+                        continue
                     protname = str(Path(prot).name)
                     if protname[:-4] not in rpnames:
                         continue
@@ -1458,6 +1498,7 @@ class Functions:
                         continue
                     pused.append(prot)
                     pulse_start = experiment["protocol_start_times"][protname[:-4]]
+
                     for tr in cell_df["Spikes"][prot]["spikes"].keys():
                         for nsp in cell_df["Spikes"][prot]["spikes"][tr].keys():
                             lat = cell_df["Spikes"][prot]["spikes"][tr][nsp].AP_latency
@@ -1494,41 +1535,59 @@ class Functions:
                     firing_rate_mean[i] = len(latency_at_I)  # 1 is pulse duration in sec
                     firing_rate_fl[i] = len(latency_at_I) / ((last_spike[i] - np.min(latency_at_I)))
                     ucurr = np.around(current, 2)
-                    if ucurr not in LS[selected.Group].keys():
-                        LS[selected.Group][ucurr] = [last_spike[i]]
+
+                    print(grp)
+                    if (isinstance(grp, float) and np.isnan(grp)):
+                        continue
+                    if grp is None or (isinstance(grp, float) and np.isnan(grp)):
+                        grp = cell_df["age_category"]
+                    if ucurr not in LS[grp].keys():
+                        LS[grp][ucurr] = [last_spike[i]]
                     else:
-                        LS[selected.Group][ucurr].append(last_spike[i])
+                        LS[grp][ucurr].append(last_spike[i])
 
                 # designate symbols:
                 # s for +/+ genotype
                 # o for -/- genotype
                 # filled for GFP+ or EYFP+
                 # open for GFP- or EYFP-
-                Ns[selected.Group].append(selected.cell_id)
-                gcolor = "k"
-                match selected.Group:
-                    case "+/+":
-                        symbol = "s"
-                        gcolor = "blue"
-                    case "-/-":
-                        symbol = "o"
-                        gcolor = "salmon"
-                    case "+/-" | "-/+":
-                        symbol = "D"
-                        gcolor = "grey"
-                    case _:
-                        symbol = "X"
-                match cell_df.cell_expression:
-                    case "+" | "GFP+" | "EYFP" | "EYFP+":
-                        fillstyle = "full"
-                        facecolor = gcolor
-                    case "-" | "GFP-" | "EYFP-" | "EGFP-":
-                        fillstyle = "full"
-                        facecolor = "white"
-                    case _:
-                        fillstyle = "full"
-                        facecolor = "lightgrey"
 
+                if (isinstance(grp, float) and np.isnan(grp)):
+                    continue
+                Ns[grp].append(selected.cell_id)
+                gcolor = "k"
+                symbol = "o"
+                fillstyle = "full"
+                facecolor = "lightgrey"
+                
+                if grp in ["+/+", "-/-", "+/-"]:
+                    match grp:
+                        case "+/+":
+                            symbol = "s"
+                            gcolor = "blue"
+                        case "-/-":
+                            symbol = "o"
+                            gcolor = "salmon"
+                        case "+/-" | "-/+":
+                            symbol = "D"
+                            gcolor = "grey"
+                        case _:
+                            symbol = "X"
+                    match cell_df.cell_expression:
+                        case "+" | "GFP+" | "EYFP" | "EYFP+":
+                            fillstyle = "full"
+                            facecolor = gcolor
+                        case "-" | "GFP-" | "EYFP-" | "EGFP-":
+                            fillstyle = "full"
+                            facecolor = "white"
+                        case _:
+                            fillstyle = "full"
+                            facecolor = "lightgrey"
+                elif grp in ["Preweaning", "Pubescent", "Young Adult", "Old Adult"]:
+                    facecolor = experiment["plot_colors"][grp]
+                    symbol = "o"
+                    fillstyle = "full"
+                    # facecolor = "lightgrey"
                 # print("Fill style, symbol, facecolor: ", fillstyle, symbol, facecolor)
                 try:
                     fit = selected.fit[0][0]
@@ -1680,47 +1739,51 @@ class Functions:
 
                 iplot += 1
                 nplots += 1
-            n1 = []
-            n2 = []
-            for i, current in enumerate(LS["+/+"].keys()):
-                # print("current: ", current)
-                icurr = current
-                if icurr < 0.2:
-                    continue
-                h1, b1 = np.histogram(
-                    np.array(LS["+/+"][current]),
-                    bins=np.linspace(0, 1, 20, endpoint=True),
-                )
-                h2, b2 = np.histogram(
-                    np.array(LS["-/-"][current]),
-                    bins=np.linspace(0, 1, 20, endpoint=True),
-                )
-                n1.append([icurr, np.sum(h1), h1[-1], h1[0]])
-                n2.append([icurr, np.sum(h2), h2[-1], h1[0]])                          
-                # print(np.array(LS["+/+"][current]))
-                # print(h1)
-                yd = 0.035
-                pmode = 0
-                if np.sum(h1) > 0:
-                    if pmode == 0:
-                        ax[1, 1].bar(b1[:-1]-0.05, yd*h1/np.sum(h1), width=0.05, color="blue", alpha=0.7, bottom=current)
-                    if pmode == 1:
-                        ax[1,1].stairs(edges=b1, values=yd*h1/np.sum(h1)+icurr, color="blue", alpha=0.7, baseline=icurr, fill="blue")
-                if np.sum(h2) > 0:
-                    if pmode == 0:
-                        ax[1, 1].bar(b2[:-1] + 0.05, yd*h2/np.sum(h2), width=0.05, color="salmon", alpha=0.7, bottom=current)
-                    if pmode == 1:
-                        ax[1,1].stairs(edges=b2+0.05, values=yd*h2/np.sum(h2)+icurr, color="salmon", alpha=0.7, baseline=icurr, fill="salmon")
 
-                        ax[1,1].plot([0, 1], [icurr, icurr], '--', linewidth=0.33, color="gray")
-            ax[1, 1].set_ylim(0.4, 1.05)
-            n1 = np.array(n1)#.reshape(-1, 4)
-            n2 = np.array(n2)#.reshape(-1, 4)
-            print(n1[:,0])
-            ax[2, 0].plot(n1[:,0], n1[:, 2]/n1[:,1], "bo-")
-            ax[2, 0].plot(n2[:,0], n2[:, 2]/n2[:,1], "ro-")
-            ax[2,0].set_ylim(0, 1)
-            ax[2,0].set_xlim(0, 1)
+            for grp in list(LS.keys()):
+                for i, current in enumerate(LS[grp].keys()):
+                    # print("current: ", current)
+                    icurr = current
+                    if icurr < 0.2:
+                        continue
+                    h1, b1 = np.histogram(
+                        np.array(LS[grp][current]),
+                        bins=np.linspace(0, 1, 20, endpoint=True),
+                    )
+                    # h2, b2 = np.histogram(
+                    #     np.array(LS[grp][current]),
+                    #     bins=np.linspace(0, 1, 20, endpoint=True),
+                    # )
+                    n1[grp].append([icurr, np.sum(h1), h1[-1], h1[0]])
+                    # n2.append([icurr, np.sum(h2), h2[-1], h1[0]])                          
+                    # print(np.array(LS["+/+"][current]))
+                    # print(h1)
+                    yd = 0.035
+                    pmode = 1
+                    color = experiment["plot_colors"][grp]
+                    if np.sum(h1) > 0:
+                        if pmode == 0:
+                            ax[1, 1].bar(b1[:-1]-0.05, yd*h1/np.sum(h1), width=0.05, color=color, alpha=0.7, bottom=current)
+                        if pmode == 1:
+                            ax[1,1].stairs(edges=b1, values=yd*h1/np.sum(h1)+icurr, color=color, alpha=0.7, baseline=icurr, fill=None)
+                    # if np.sum(h2) > 0:
+                    #     if pmode == 0:
+                    #         ax[1, 1].bar(b2[:-1] + 0.05, yd*h2/np.sum(h2), width=0.05, color="salmon", alpha=0.7, bottom=current)
+                    #     if pmode == 1:
+                    #         ax[1,1].stairs(edges=b2+0.05, values=yd*h2/np.sum(h2)+icurr, color="salmon", alpha=0.7, baseline=icurr, fill="salmon")
+
+                    #         ax[1,1].plot([0, 1], [icurr, icurr], '--', linewidth=0.33, color="gray")
+                    # n1[grp] = np.array(n1[grp])#.reshape(-1, 4)
+                    # n2 = np.array(n2)#.reshape(-1, 4)
+                    # print(n1[:,0])
+                    ax[2, 0].plot(np.array(n1[grp])[:,0], np.array(n1[grp])[:, 2]/np.array(n1[grp])[:,1], color = experiment["plot_colors"][grp],
+                                marker="o", linestyle="-", markersize=4, fillstyle=fillstyle, markerfacecolor=experiment["plot_colors"][grp],
+                                clip_on=False)
+                # ax[2, 0].plot(n2[:,0], n2[:, 2]/n2[:,1], "ro-")
+                ax[2,0].set_ylim(0, 1)
+                ax[2,0].set_xlim(0, 1)
+                ax[1, 1].set_ylim(0.4, 1.05)
+    
 
         # plot some summary stuff
         # sns.jointplot(
@@ -2518,6 +2581,7 @@ class Functions:
                         else:  # def a coding error
                             print("what is wrong with taupars: ", df_cell.IV[protocol]["taupars"])
                             exit()
+                    print("TAU: ", protocol, measure, value)
                     self.add_measure(protocol, measure, value=value)
         elif measure in iv_mapper.keys() and iv_mapper[measure] in iv_keys:
             for protocol in protocols:
@@ -2693,7 +2757,10 @@ class Functions:
         return datadict
 
     def textbox_setup(self, textbox):
-        self.textbox = textbox
+        if textbox is not None:
+            self.textbox = textbox
+            self.textclear()
+
 
     def textclear(self):
         if self.textbox is None:
