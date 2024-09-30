@@ -69,16 +69,20 @@ class IVPlotter(object):
             CP("g", msg)
             self.nfiles += 1
 
-    def plot_ivs(self, df_selected=None):
-        if df_selected is None or df_selected['IV'] is None:
+    def plot_IVs(self, df_selected=None, types: str = "IV"):
+        if df_selected is None or df_selected[types] is None:
             return
-
+        assert types in ["IV", "MAP"], f"types must be IV or MAP, not {types!s}"
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
         # check to see if this one is in the exclusion list:
         # print(df_selected.cell_id, self.experiment["excludeIVs"])
-        protocols = df_selected["IV"].keys()
-        if not isinstance(df_selected.cell_id, str):
+        protocols = df_selected[types].keys()
+        print("Plot IVs...", df_selected.cell_id)
+        print(type(df_selected.cell_id))
+        if isinstance(df_selected.cell_id, pd.Series):
+            cell_id = df_selected.cell_id.values[0]  # convert series to str
+        elif not isinstance(df_selected.cell_id, str):
             cell_id = df_selected.cell_id.item()  # convert series to str
         else:
             cell_id = df_selected.cell_id
@@ -125,6 +129,7 @@ class IVPlotter(object):
             analysistype="IVs",
             slicecell=slicecell,
         )
+        print("IV plotter: ", self.plot_df.keys())
 
         with PdfPages(Path(pdffile)) as pdf:
             for iv in self.plot_df["IV"].keys():
