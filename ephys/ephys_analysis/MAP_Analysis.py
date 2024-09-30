@@ -49,7 +49,7 @@ class MAP_Analysis(Analysis):
         # print(self._testing_counter)
         Logger.info("Instantiating map_analysis class")
 
-    def analyze_maps(self, icell: int, celltype: str, allprots: dict, pdf=None):
+    def analyze_maps(self, icell: int, celltype: str, allprots: dict, plotmap:bool=True, pdf=None):
         # print("icell: ", icell)
 
         if self.celltype != "all":
@@ -147,7 +147,7 @@ class MAP_Analysis(Analysis):
         print("tasks: ", tasks)
         results = dict()  # storage for results
         result = [None] * len(tasks)  # likewise
-        plotmap = True
+
         foname = "%s~%s~%s" % (datestr, slicestr, cellstr)
         if self.signflip:
             foname += "_signflip"
@@ -722,6 +722,7 @@ class MAP_Analysis(Analysis):
         """
         CP.cprint("g", "\nEntering MAP_Analysis:analyze_map")
         self.map_name = allprots["Maps"][i_protocol]
+        self.measuretype = measuretype  # save for the plotter
         if len(self.map_name) == 0:
             Logger.warning(f"No map name found! for {str(allprots['Maps'][i_protocol]):s}")
             return None
@@ -729,12 +730,13 @@ class MAP_Analysis(Analysis):
         msg = f"    Map protocol: {str(allprots['Maps'][i_protocol]):s} map name: {self.map_name}"
         print(msg)
         Logger.info(msg)
-        mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
-        if not mapdir.is_dir():
-            msg = f"Map name did not resolve to directory: {str(mapdir):s}"
+        self.icell = icell
+        self.mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
+        if not self.mapdir.is_dir():
+            msg = f"Map name did not resolve to directory: {str(self.mapdir):s}"
             Logger.error(msg)
             raise ValueError(msg)
-        if "_IC__" in str(mapdir.name) or "CC" in str(mapdir.name):
+        if "_IC__" in str(self.mapdir.name) or "CC" in str(self.mapdir.name):
             scf = 1e3  # mV
         else:
             scf = 1e12  # pA, vc
@@ -772,7 +774,7 @@ class MAP_Analysis(Analysis):
             result = results[str(mapkey)]  # get individual map result
 
         self.AM.reset_filtering()  # for every protocol!
-        self.set_map_factors(icell, mapdir)
+        self.set_map_factors(icell, self.mapdir)
         # if self.LPF > 0:
         #     self.AM.set_LPF(self.LPF)
         # if self.HPF > 0:
@@ -807,7 +809,7 @@ class MAP_Analysis(Analysis):
                 self.AM.Pars.template_pre_time,
             )
             result = self.AM.analyze_one_map(
-                mapdir,
+                self.mapdir,
                 parallel_mode=self.parallel_mode,
                 verbose=verbose,
                 template_tmax=self.AM.Pars.template_tmax,
@@ -821,131 +823,137 @@ class MAP_Analysis(Analysis):
                 return
         else:
             pass  # already got the file
-
+        self.result = result
         if plotmap:
-            if self.celltype_changed:
-                celltype_text = f"{self.this_celltype:s}* "
-            else:
-                celltype_text = f"{self.this_celltype:s} "
-            getimage = False
-            plotevents = True
-            self.AM.Pars.overlay_scale = 0.0
-            PMD.set_Pars_and_Data(pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA)
-            if self.mapsZQA_plot:
-                mapok = PMD.display_position_maps(
-                    dataset_name=mapdir, result=result, pars=self.AM.Pars
-                )
-            else:
-                if mapdir != self.AM.last_dataset:
-                    results = self.analyze_one_map(self.AM.last_dataset)
-                else:
-                    results = self.AM.last_results
-                mapok = PMD.display_one_map(
-                    dataset=mapdir,
-                    results=results,
-                    imagefile=None,
-                    rotation=0.0,
-                    markers=self.markers,
-                    measuretype=measuretype,
-                    zscore_threshold=self.AM.Pars.zscore_threshold,
-                    plotevents=plotevents,
-                    whichstim=self.whichstim,
-                    trsel=self.trsel,
-                    plotmode=self.plotmode,
-                    average=False,
-                    rasterized=False,
-                    datatype=self.AM.Pars.datatype,
-                )  # self.AM.rasterized, firstonly=True, average=False)
-
-            msg = f"Map analysis done: {str(self.map_name):s}"
-            print(msg)
-            Logger.info(msg)
-
-            if mapok:
-                results["FittingResults"] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
-                infostr = ""
-                colnames = self.df.columns
-                if "animal_identifier" in colnames:
-                    if isinstance(self.df.at[icell, "animal_identifier"], str):
-                        infostr += f"ID: {self.df.at[icell, 'animal_identifier']:s} "
-                    else:
-                        infostr += f"ID: None "
-                if "cell_location" in colnames:
-                    infostr += f"{self.df.at[icell, 'cell_location']:s}, "
-                if "cell_layer" in colnames:
-                    infostr += f"{self.df.at[icell, 'cell_layer']:s}, "
-                infostr += celltype_text
-                if "cell_expression" in colnames:
-                    infostr += f"Exp: {self.df.at[icell, 'cell_expression']:s}, "
-
-                # notes = self.df.at[icell,'notes']
-                if self.internal_Cs:
-                    if self.high_Cl:
-                        infostr += "Hi-Cl Cs, "
-                    elif self.internal_Cs:
-                        infostr += "Norm Cs, "
-                else:
-                    infostr += self.df.at[icell, "internal"] + ", "
-
-                temp = self.df.at[icell, "temperature"]
-                if temp == "room temperature":
-                    temp = "RT"
-                infostr += "{0:s}, ".format(temp)
-                infostr += "{0:s}, ".format(self.df.at[icell, "sex"].upper())
-                infostr += "{0:s}".format(str(self.df.at[icell, "age"]).upper())
-                # ftau1 = np.nanmean(np.array(result['events'][0]['fit_tau1']))
-                # ftau2 = np.nanmean(np.array(result['events'][0]['fit_tau2']))
-                # famp = np.nanmean(np.array(result['events'][0]['fit_amp']))
-                params = "Mode: {0:s}  Sign: {1:d}  taus: {2:.2f}, {3:.2f}  thr: {4:5.2f}  Scale: {5:.1e} Det: {6:2s}".format(
-                    self.AM.Pars.datatype,
-                    self.AM.Pars.sign,
-                    self.AM.Pars.taus[0] * 1e3,
-                    self.AM.Pars.taus[1] * 1e3,
-                    self.AM.Pars.threshold,
-                    self.AM.Pars.scale_factor,
-                    self.AM.methodname,
-                )
-                datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
-                cell_df = self.find_cell(
-                    self.map_annotations, datestr, slicestr, cellstr, Path(mapdir)
-                )
-                preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts: {4:s} scale:{5:5.2f}".format(
-                    self.AM.filters.HPF_frequency,
-                    self.AM.filters.LPF_frequency,
-                    str(cell_df["Notch"].values[0]),  # get compact form
-                    str(self.AM.filters.Detrend_method),
-                    str(self.AM.Pars.artifact_filename),
-                    self.AM.Pars.artifact_scale,
-                )
-                fix_mapdir = str(mapdir)  # .replace("_", "\_")
-                PMD.P.figure_handle.suptitle(
-                    f"{fix_mapdir:s}\n{infostr:s} {params:s}\n{preprocessing:s}",
-                    fontsize=8,
-                )
-                t_path = Path(self.cell_tempdir, "temppdf_{0:s}.pdf".format(str(mapdir.name)))
-                if not self.cell_tempdir.is_dir():
-                    print("The cell's tempdir was not found: ", self.cell_tempdir)
-                    Logger.critical("The cell's tempdir was not found: ", self.cell_tempdir)
-                    return
-
-                if t_path.is_file():
-                    t_path.unlink()
-                pp = PdfPages(t_path)
-                # try:
-                try:
-                    print("        ***** Temp file to : ", t_path)
-                    mpl.savefig(
-                        pp, format="pdf"
-                    )  # use the map filename, as we will sort by this later
-                    pp.close()
-                    # except ValueError:
-                    #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
-                    mpl.close(PMD.P.figure_handle)
-                except:
-                    Logger.error("map_analysis savefig failed")
-                    return
+            self.plot_map_data()
+           
         # print("result: ", result.keys())
         # print(dir(result['events'][0].average.fitted_tau1))
         # print(result['events'][0].average.fitted_tau1, result['events'][0].average.fitted_tau2, result['events'][0].average.amplitude)
         # exit()
         return result
+    
+    def plot_map_data(self):
+        if self.celltype_changed:
+            celltype_text = f"{self.this_celltype:s}* "
+        else:
+            celltype_text = f"{self.this_celltype:s} "
+        getimage = False
+        plotevents = True
+        self.AM.Pars.overlay_scale = 0.0
+        PMD.set_Pars_and_Data(pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA)
+        if self.mapsZQA_plot:
+            mapok = PMD.display_position_maps(
+                dataset_name=self.mapdir, result=self.result, pars=self.AM.Pars
+            )
+        else:
+            if self.mapdir != self.AM.last_dataset:
+                results = self.analyze_one_map(self.AM.last_dataset)
+            else:
+                results = self.AM.last_results
+            mapok = PMD.display_one_map(
+                dataset=self.mapdir,
+                results=results,
+                imagefile=None,
+                rotation=0.0,
+                markers=self.markers,
+                measuretype=self.measuretype,
+                zscore_threshold=self.AM.Pars.zscore_threshold,
+                plotevents=plotevents,
+                whichstim=self.whichstim,
+                trsel=self.trsel,
+                plotmode=self.plotmode,
+                plot_minmax=[-1000, 1000],
+                average=False,
+                rasterized=False,
+                datatype=self.AM.Pars.datatype,
+            )  # self.AM.rasterized, firstonly=True, average=False)
+
+        msg = f"Map analysis done: {str(self.map_name):s}"
+        print(msg)
+        Logger.info(msg)
+
+        if mapok:
+            results["FittingResults"] = {"Evoked": PMD.evoked_events, "Spont": PMD.spont_events}
+            infostr = ""
+            colnames = self.df.columns
+            if "animal_identifier" in colnames:
+                if isinstance(self.df.at[self.icell, "animal_identifier"], str):
+                    infostr += f"ID: {self.df.at[self.icell, 'animal_identifier']:s} "
+                else:
+                    infostr += f"ID: None "
+            if "cell_location" in colnames:
+                infostr += f"{self.df.at[self.icell, 'cell_location']:s}, "
+            if "cell_layer" in colnames:
+                infostr += f"{self.df.at[self.icell, 'cell_layer']:s}, "
+            infostr += celltype_text
+            if "cell_expression" in colnames:
+                infostr += f"Exp: {self.df.at[self.icell, 'cell_expression']:s}, "
+
+            # notes = self.df.at[icell,'notes']
+            if self.internal_Cs:
+                if self.high_Cl:
+                    infostr += "Hi-Cl Cs, "
+                elif self.internal_Cs:
+                    infostr += "Norm Cs, "
+            else:
+                infostr += self.df.at[self.icell, "internal"] + ", "
+
+            temp = self.df.at[self.icell, "temperature"]
+            if temp == "room temperature":
+                temp = "RT"
+            infostr += "{0:s}, ".format(temp)
+            infostr += "{0:s}, ".format(self.df.at[self.icell, "sex"].upper())
+            infostr += "{0:s}".format(str(self.df.at[self.icell, "age"]).upper())
+            # ftau1 = np.nanmean(np.array(result['events'][0]['fit_tau1']))
+            # ftau2 = np.nanmean(np.array(result['events'][0]['fit_tau2']))
+            # famp = np.nanmean(np.array(result['events'][0]['fit_amp']))
+            params = "Mode: {0:s}  Sign: {1:d}  taus: {2:.2f}, {3:.2f}  thr: {4:5.2f}  Scale: {5:.1e} Det: {6:2s}".format(
+                self.AM.Pars.datatype,
+                self.AM.Pars.sign,
+                self.AM.Pars.taus[0] * 1e3,
+                self.AM.Pars.taus[1] * 1e3,
+                self.AM.Pars.threshold,
+                self.AM.Pars.scale_factor,
+                self.AM.methodname,
+            )
+            datestr, slicestr, cellstr = filename_tools.make_cell(self.icell, df=self.df)
+            cell_df = self.find_cell(
+                self.map_annotations, datestr, slicestr, cellstr, Path(self.mapdir)
+            )
+            preprocessing = "HPF: {0:.1f}  LPF: {1:.1f}  Notch: {2:s}  Detrend: {3:s}  Artifacts: {4:s} scale:{5:5.2f}".format(
+                self.AM.filters.HPF_frequency,
+                self.AM.filters.LPF_frequency,
+                str(cell_df["Notch"].values[0]),  # get compact form
+                str(self.AM.filters.Detrend_method),
+                str(self.AM.Pars.artifact_filename),
+                self.AM.Pars.artifact_scale,
+            )
+            fix_mapdir = str(self.mapdir)  # .replace("_", "\_")
+            PMD.P.figure_handle.suptitle(
+                f"{fix_mapdir:s}\n{infostr:s} {params:s}\n{preprocessing:s}",
+                fontsize=8,
+            )
+            t_path = Path(self.cell_tempdir, "temppdf_{0:s}.pdf".format(str(self.mapdir.name)))
+            if not self.cell_tempdir.is_dir():
+                print("The cell's tempdir was not found: ", self.cell_tempdir)
+                Logger.critical("The cell's tempdir was not found: ", self.cell_tempdir)
+                return
+
+            if t_path.is_file():
+                t_path.unlink()
+            pp = PdfPages(t_path)
+            # try:
+            try:
+                print("        ***** Temp file to : ", t_path)
+                mpl.savefig(
+                    pp, format="pdf"
+                )  # use the map filename, as we will sort by this later
+                pp.close()
+                # except ValueError:
+                #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
+                mpl.close(PMD.P.figure_handle)
+            except:
+                Logger.error("map_analysis savefig failed")
+                return
+                
