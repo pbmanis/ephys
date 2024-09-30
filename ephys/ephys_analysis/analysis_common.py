@@ -311,10 +311,9 @@ class Analysis:
             print("Failed first super init")
             try:
                 super().__init__(args)
-                print("pased second")
+                print("passed second")
             except:
                 raise RuntimeError("Failed second super init")
-        
 
     def set_exclusions(self, exclusions: dict):
         """Set the datasets that will be excluded
@@ -497,13 +496,15 @@ class Analysis:
         for p in allpaths:
             print(f"   {p:>20s}   {str(allpaths[p]):<s}")
 
-    def run(self):
+    def run(self, mode: str = "IV"):
         """Perform analysis on one cell
 
         Returns:
             nothing
         """
-        CP.cprint("r", f"\nStarting Analysis run, self.day = {self.day!s}, slicecell= {self.cell_id!s}")
+        CP.cprint(
+            "r", f"\nStarting Analysis run, self.day = {self.day!s}, slicecell= {self.cell_id!s}"
+        )
         # raise ValueError()
         self.n_analyzed = 0
         # keep track of all protocols run, so we can print a summary at the end and also check for duplicates
@@ -522,10 +523,12 @@ class Analysis:
         self.df = self.df.apply(_add_day, axis=1)  # add a day (short name)
         day = str(self.day)
         # find table entry:
+        print("self.cellid: ", self.cell_id)
+
         print(f"Looking for {self.cell_id!s} in database from {str(self.inputFilename)!s}")
         cell_entry = self.df.loc[(self.df.cell_id == self.cell_id)]
         if cell_entry.empty:
-            CP.cprint("r", f"Date not found: {day:s} {self.cell_id:s}")
+            CP.cprint("r", f"Date not found: {day!s} {self.cell_id!s}")
             # for dx in self.df.date.values:
             #     CP.cprint("r", f"    day: {dx:s}")
             raise FileNotFoundError(f"Cell: {self.cell_id!s} was not found in database")
@@ -533,28 +536,40 @@ class Analysis:
         CP.cprint("c", f"  ... [Analysis:run] Retrieved cell:\n       {self.cell_id:s}")
         icell = cell_entry.index
         print(
-            "Cell in day: ", icell, "which is: ", self.df.iloc[icell].cell_id, 
-              " with: self.pdffilename", self.pdfFilename)
-        
+            "Cell in day: ",
+            icell,
+            "which is: ",
+            self.df.iloc[icell].cell_id,
+            " with: self.pdffilename",
+            self.pdfFilename,
+        )
+
         print("Parallel mode (testing): ", self.parallel_mode)
-        
+
         if self.parallel_mode.lower() == "off":  # don't use parallel processing
             # if self.pdfFilename is None:
             print(" Doing cell: ", self.df.iloc[icell].cell_id)
-            cell_ok = self.do_cell(icell, pdf=None)
+            cell_ok = self.do_cell(icell, pdf=None, mode=mode)
             # generate pdf files from the pkl files
             if cell_ok:
-                self.plot_data(icell)
-        
-        # do parallel only on all the selected cell
-        elif self.parallel_mode in ["cell" ]: 
-                # Protocols are the parallel tasks
-                cell_ok = self.do_cell(icell, pdf=None)
-                        # generate pdf files from the pkl files
-                if cell_ok:
+                if mode == "IV":
                     self.plot_data(icell)
+                elif mode == "MAP":
+                    PMD.plot_map_data(icell)
 
-        else:  # specified day
+        # do parallel only on all the selected cell
+        elif self.parallel_mode in ["cell"]:
+            # Protocols are the parallel tasks
+            cell_ok = self.do_cell(icell, pdf=None, mode=mode)
+            # generate pdf files from the pkl files
+            if cell_ok:
+                if mode == "IV":
+                    self.plot_data(icell)
+                elif mode == "MAP":
+                    pass # was done already, I think
+                # PMD.plot_map_data(icell)
+
+        elif self.parallel_mode in ["day"]:  # specified day
             print(f"Looking for day: {day:s} in database from {str(self.inputFilename):s}")
             if "_" not in day:  # append proper ending
                 day = day + "_000"
@@ -599,6 +614,8 @@ class Analysis:
                     # if cell_ok:
                     #     self.plot_data(icell)
                 return None  # get the complete protocols:
+        else:
+            raise ValueError(f"Parallel mode: {self.parallel_mode!s} is not recognized")
 
         if day == "whoknows":
             # do the selected days in parallel mode here
@@ -608,7 +625,7 @@ class Analysis:
             with MP.Parallelize(enumerate(tasks), results=results, workers=self.nworkers) as tasker:
                 for icell, x in tasker:
                     print("i: ", icell, "x: ", x)
-                    result = self.do_cell(icell, pdf=self.pdfFilename)
+                    result = self.do_cell(icell, pdf=self.pdfFilename, mode=mode)
                     # tasker.results[cells_in_day[i]] = result
             return None
         # Only returns a dataframe if there is more than one entry
@@ -651,7 +668,7 @@ class Analysis:
             df_summary=self.df,
             decorate=True,
         )
-        self.IVplotter.plot_ivs(df_selected=self.df.iloc[icell])
+        self.IVplotter.plot_IVs(df_selected=self.df.iloc[icell], types="IV")
 
     def update_annotations(self):
         if self.annotated_dataframe is not None:
@@ -1059,7 +1076,7 @@ class Analysis:
                 Logger.info(msg)
                 return original_celltype, False
 
-    def do_cell(self, icell: int, pdf=None) -> bool:
+    def do_cell(self, icell: int, pdf=None, mode: str = "IV") -> bool:
         """
         Do analysis on one cell
         Runs all protocols for the cell
@@ -1082,6 +1099,10 @@ class Analysis:
             "c",
             f"Entering do_cell with icell = {icell} (dataframe index, not table index), cell_id: {self.df.iloc[icell].cell_id}",
         )
+        # print(type(icell))
+        if len(icell.values) > 0:
+            icell = icell.values[0]
+        # print(icell.values)
         if not isinstance(icell, int):
             icell = icell.item()
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
@@ -1302,7 +1323,7 @@ class Analysis:
         elif self.map_flag:
             if self.cell_tempdir is not None:
                 self.make_tempdir()
-            self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+            self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, plotmap=True, pdf=pdf)
             # analyze_maps stores events in an "events" subdirectory under the main
             # dataset directory, with filenames tagged by cell
             # It also merges the PDFs for that cell in the celltype-specific directory
