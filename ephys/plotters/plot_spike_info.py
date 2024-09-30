@@ -1056,23 +1056,30 @@ class PlotSpikeInfo(QObject):
                 zorder=100,
                 clip_on=False,
             )
-
-        sns.boxplot(
-            data=df_x,
-            x=xname,
-            y=yname,
-            hue=hue_category,
-            hue_order=hue_order,
-            palette=hue_palette,
-            ax=ax,
-            order=plot_order,
-            saturation=0.25,
-            orient="v",
-            showfliers=False,
-            linewidth=0.5,
-            zorder=50,
-            # clip_on=False,
-        )
+        print("hue cat: ", hue_category)
+        print("hue order: ", hue_order)
+        print("hue_palette", hue_palette)
+        print("plot_order: ", plot_order)
+        print("xname: ", xname)
+        print(df_x[xname])
+        print(df_x[yname])
+        if not all(np.isnan(df_x[yname])):
+            sns.boxplot(
+                data=df_x,
+                x=xname,
+                y=yname,
+                hue=hue_category,
+                hue_order=hue_order,
+                palette=hue_palette,
+                ax=ax,
+                order=plot_order,
+                saturation=0.25,
+                orient="v",
+                showfliers=False,
+                linewidth=0.5,
+                zorder=50,
+                # clip_on=False,
+            )
         # except Exception as e:
         #     print("boxplot failed for ", celltype, yname)
         #     raise e  # re-raise the exception
@@ -1338,25 +1345,25 @@ class PlotSpikeInfo(QObject):
                     continue
                 if measure not in df.columns:
                     continue
-                try:
-                    picker_func = self.create_one_plot_categorical(
-                        data=df,
-                        xname=xname,
-                        y=measure,
-                        ax=axp,
-                        celltype=celltype,
-                        hue_category=hue_category,
-                        plot_order=plot_order,
-                        colors=colors,
-                        logx=False,
-                        ylims=self.ylims[ycell][measure],
-                        transform=tf,
-                        xlims=None,
-                        enable_picking=enable_picking,
-                    )
-                except Exception as e:
-                    print("ylims: ", self.ylims.keys(), ycell)
-                    raise KeyError(f"\n{e!s}")
+                # try:
+                picker_func = self.create_one_plot_categorical(
+                    data=df,
+                    xname=xname,
+                    y=measure,
+                    ax=axp,
+                    celltype=celltype,
+                    hue_category=hue_category,
+                    plot_order=plot_order,
+                    colors=colors,
+                    logx=False,
+                    ylims=self.ylims[ycell][measure],
+                    transform=tf,
+                    xlims=None,
+                    enable_picking=enable_picking,
+                )
+                # except Exception as e:
+                #     print("Categorical plot error in ylims: ", self.ylims.keys(), ycell)
+                #     raise KeyError(f"\n{e!s}")
                 picker_funcs[axp] = picker_func  # each axis has different data...
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
@@ -1593,6 +1600,8 @@ class PlotSpikeInfo(QObject):
             else:
                 min_Rin = self.experiment["data_inclusion_criteria"]["default"]["Rin_min"]
         # print("rowrin: ", row.Rin)
+        if isinstance(row.Rin, float):
+            row.Rin = [row.Rin]
         for i, rin in enumerate(row.Rin):
             # print("rin: ", rin)
             if row.Rin[i] < min_Rin:
@@ -1606,6 +1615,8 @@ class PlotSpikeInfo(QObject):
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
+        if isinstance(row.RMP, float):
+            row.RMP = [row.RMP]
         for i, rmp in enumerate(row.RMP):
             if rmp > min_RMP:
                 row.RMP[i] = np.nan
@@ -2612,7 +2623,11 @@ class PlotSpikeInfo(QObject):
         if "LowestCurrentSpike" not in row.keys():
             # This is the first assignment/caluclation of AHP_depth_V, so we need to make sure
             # it is a list of the right length
-            row["AHP_depth_V"] =[np.nan]*len(row.AP_thr_V)
+            if isinstance(row.AP_thr_V, float):
+                row.AP_thr_V = [row.AP_thr_V]
+            if isinstance(row.AHP_trough_V, float):
+                row.AHP_trough_V = [row.AHP_trough_V]
+            row["AHP_depth_V"] = [np.nan]*len(row.AP_thr_V)
             for i, apv in enumerate(row.AHP_trough_V):
                 row.AHP_depth_V[i] = row.AHP_trough_V[i] - row.AP_thr_V[i]
                 if row.AHP_depth_V[i] > 0:
@@ -2625,6 +2640,10 @@ class PlotSpikeInfo(QObject):
         # RE-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
         # print(len(row.AHP_trough_T), len(row.AP_thr_T))
+        if isinstance(row.AP_thr_T, float):
+            row.AP_thr_T = [row.AP_thr_T]
+        if isinstance(row.AHP_trough_T, float):
+            row.AHP_trough_T = [row.AHP_trough_T]
         for i, att in enumerate(row.AP_thr_T):  # base index on threshold measures
             #print(row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
             row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
