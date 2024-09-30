@@ -365,7 +365,7 @@ class PlotMapData:
         hist goes into axh
 
         """
-        CP.cprint("c", "    Plot_hist")
+        # CP.cprint("c", "    Plot_hist")
 
         # assert not self.plotted_em['histogram']
         self.plotted_em["histogram"] = True
@@ -398,7 +398,7 @@ class PlotMapData:
                 iev += ntrialev
         CP.cprint(
             "c",
-            f"    plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec",
+            f"    Plot_hist:: total events: {iev:5d}  # event times: {len(eventtimes):5d}  Sample Rate: {1e6*rate:6.1f} usec",
         )
 
         if plotevents and len(eventtimes):
@@ -475,10 +475,7 @@ class PlotMapData:
         dt = np.mean(np.diff(self.Data.timebase))
         step_I = self.Pars.stepi
         if trsel is not None:
-            # only plot the selected traces
             for jtrial in range(mdata.shape[0]):
-                print("trsel: ", trsel)
-                exit()
                 if tb.shape[0] > 0 and mdata[jtrial, trsel, :].shape[0] > 0:
                     ax.plot(
                         tb,  #  - self.Pars.time_zero,
@@ -850,25 +847,32 @@ class PlotMapData:
                         continue
                     bl = np.mean(evdata[0:ptfivems])
                     evdata -= bl
+                    
+                    ######################################################################
+                    #  THESE are limiting factors in the plots, and can lead to incorrect estimates
+                    # of the evoked and spont rates. Nice for plotting and seeing events,
+                    # but not for quantitative analysis.
+                    ######################################################################
+                    # 
+                    # print("PARAMS: ", params)
+                    # if (
+                    #     params["plot_minmax"] is not None
+                    # ):  # only plot events that fall in an ampltidue window
+                    #     if (np.min(evdata) < params["plot_minmax"][0]) or (
+                    #         np.max(evdata) > params["plot_minmax"][1]
+                    #     ):
+                    #         continue  #
+                    # if (
+                    #     event_id not in event_data["events"][trial].isolated_event_trace_list
+                    # ):  # exclude events that are not isolated
+                    #     continue
 
-                    if (
-                        params["plot_minmax"] is not None
-                    ):  # only plot events that fall in an ampltidue window
-                        if (np.min(evdata) < params["plot_minmax"][0]) or (
-                            np.max(evdata) > params["plot_minmax"][1]
-                        ):
-                            continue  #
-                    if (
-                        event_id not in event_data["events"][trial].isolated_event_trace_list
-                    ):  # exclude events that are not isolated
-                        continue
-
-                    if (
-                        params["zscore_threshold"] is not None
-                        and np.max(results["ZScore"], axis=0)[itrace] < params["zscore_threshold"]
-                        and event_data["event_type"] == "avgspont"
-                    ):
-                        continue  # skip this event if it doesn't meet the zscore threshold
+                    # if (
+                    #     params["zscore_threshold"] is not None
+                    #     and np.max(results["ZScore"], axis=0)[itrace] < params["zscore_threshold"]
+                    #     and event_data["event_type"] == "avgevoked"
+                    # ):
+                    #     continue  # skip this event if it doesn't meet the zscore threshold
 
                     ave.append(evdata)
                     npev += 1
@@ -946,7 +950,7 @@ class PlotMapData:
             Res["Amplitude2"] = 0.0
             Res["bfdelay"] = 0.0
             Res["bestfit"] = None
-
+        Res["data_for_hist"] = data_for_hist
         return Res
 
     def plot_event_traces(
@@ -1098,7 +1102,6 @@ class PlotMapData:
         # if ylims[0] > -0.10*ymax:
         #     ymax2 = -0.10*ymax
         # ax.set_ylim(-ymax2, ymax1)
-
         if (
             self.fitting_results["data_for_hist"] is not None
             and len(self.fitting_results["data_for_hist"]) > 10

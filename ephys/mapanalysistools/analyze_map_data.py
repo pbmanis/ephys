@@ -1279,7 +1279,7 @@ def main():
         plotevents = True
         dhImage = None
         rotation = 0
-        AM = AnalyzeMap()
+        AM = AnalyzeMap()     
         AM.sign = plan[cell]["Sign"]
         AM.overlay_scale = args.scale
         AM.display_one_map(
@@ -1288,6 +1288,7 @@ def main():
             imagefile=os.path.join(datapath, plan[cell]["Image"]) + ".tif",
             rotation=rotation,
             measuretype="ZScore",
+            plot_minmax = [-1000, 1000],
         )
         # mpl.show()
 
