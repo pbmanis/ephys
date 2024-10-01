@@ -144,7 +144,7 @@ class MAP_Analysis(Analysis):
         computername = get_computer.get_computer()
         nworkers = self.experiment["NWORKERS"][computername]  # number of cores/threads to use
         tasks = range(len(allprots["Maps"]))  # number of tasks that will be needed
-        print("tasks: ", tasks)
+        # print("tasks: ", tasks)
         results = dict()  # storage for results
         result = [None] * len(tasks)  # likewise
 
@@ -229,19 +229,19 @@ class MAP_Analysis(Analysis):
             sh2 = cell_df["fl_tau1"].shape
 
             if sh != (0,) and sh1 != (0,) and sh2 != (0,):
-                if not self.signflip:
+                if not self.signflip:  # alternate set of taus (for secondary events?)
                     if self.alternate_fit1:
                         self.AM.Pars.taus[0:2] = [
                             cell_df["alt1_tau1"].values[0] * 1e-3,
                             cell_df["alt1_tau2"].values[0] * 1e-3,
                         ]
-                    else:
+                    else:  # normal taus
                         self.AM.Pars.taus[0:2] = [
                             cell_df["tau1"].values[0] * 1e-3,
                             cell_df["tau2"].values[0] * 1e-3,
                         ]
-                    print("    Setting VC taus: ", end="")
-                else:
+                    CP.cprint("w", "    Setting VC taus: ", end="")
+                else:  # signflipped taus
                     self.AM.Pars.taus[0:2] = [
                         cell_df["fl_tau1"].values[0] * 1e-3,
                         cell_df["fl_tau2"].values[0] * 1e-3,
@@ -255,7 +255,7 @@ class MAP_Analysis(Analysis):
                     msg,
                 )
                 Logger.warning(msg)
-        CP.cprint("w", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]")
+        CP.cprint("y", f"    [{self.AM.Pars.taus[0]:8.4f}, {self.AM.Pars.taus[1]:8.4f}]")
 
     def set_cc_taus(self, icell: int, path: Union[Path, str]):
         datestr, slicestr, cellstr = filename_tools.make_cell(icell, df=self.df)
@@ -535,7 +535,7 @@ class MAP_Analysis(Analysis):
         if ("_VC_" in str_path_to_map or record_mode == "VC") and not self.rawdatapath.match(
             "*VGAT_*"
         ):  # excitatory PSC
-            print(f"Exscitatory PSC, VC, not VGAT")
+            print(f"Excitatory PSC, VC, not VGAT")
             self.AM.Pars.datatype = "V"
             self.AM.Pars.sign = -1
             self.AM.Pars.scale_factor = 1e12
