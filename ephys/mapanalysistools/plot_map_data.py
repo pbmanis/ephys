@@ -919,14 +919,14 @@ class PlotMapData:
         Res["tb"] = Res["tb"][: len(Res["avedat"])]
         avebl = 0  # np.mean(avedat[:ptfivems])
         Res["avedat"] = Res["avedat"] - avebl
-        self.Pars.taus = [0.0005, 0.002, 0.01, 0.02]
+
         MA.fit_average_event(
             Res["tb"],
             Res["avedat"],
             debug=False,
             label="Map average",
             n_taus = params['n_taus'],
-            inittaus=self.Pars.taus,
+            inittaus=self.Pars.taus,  # start fit with seeded taus
             initdelay=params["tpre"],
         )
         CP.cprint("c", "        Event fitting completed")
