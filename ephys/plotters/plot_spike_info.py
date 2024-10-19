@@ -26,6 +26,7 @@ from statsmodels.stats.multitest import multipletests
 
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools.get_computer import get_computer
+import ephys.tools.show_combined_datafile  as SCD
 from ephys.gui import data_table_functions
 from ephys.tools import filter_data, fitting, utilities
 
@@ -773,9 +774,12 @@ class PlotSpikeInfo(QObject):
             df = df_summary
             df["Group"] = "Control"
         FD = filter_data.FilterDataset(df)
+        if "remove_expression" not in self.experiment.keys():
+            self.experiment["remove_expression"] = None
         df = FD.filter_data_entries(
             df,
-            remove_groups=self.experiment["remove_groups"],
+            remove_groups = self.experiment["remove_groups"],
+            remove_expression=self.experiment["remove_expression"],
             excludeIVs=self.experiment["excludeIVs"],
             exclude_internals=["cesium", "Cesium"],
             exclude_temperatures=["25C", "room temp"],
@@ -926,7 +930,9 @@ class PlotSpikeInfo(QObject):
     def clear_missing_groups(self, row, data):
         if pd.isnull(row[data]):
             return np.NaN
-
+        if "remove_expression" in self.experiment.keys():
+            if row.Group in self.experiment["remove_expression"]:
+                return np.NaN  # replace removed groups (such as "ND") with nan
         if row[data] in [" ", "", "", "nan"] or len(row[data]) == 0:
             return np.NaN
         return row
@@ -978,7 +984,7 @@ class PlotSpikeInfo(QObject):
         df_x.dropna(subset=[xname], inplace=True)
         # print(df_x[xname].unique())
         # print("bar_pts: ")
-        # print("      Celltype: ", celltype, " Groups: ", df_x.Group.unique())
+        CP("y", f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}")
         # print("      X values: ", xname)
         # print("Hue category: ", hue_category)
 
@@ -988,6 +994,22 @@ class PlotSpikeInfo(QObject):
             and hue_category in self.experiment["hue_palette"].keys()
         ):
             hue_palette = self.experiment["hue_palette"][hue_category]
+        else:
+            hue_category = xname
+            hue_palette = colors
+        if hue_category != xname:
+            dodge = True
+            hue_order = self.experiment["plot_order"][hue_category]
+        else:
+            dodge = False
+            hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
+        if "remove_expression" in self.experiment.keys():
+            for expression in self.experiment["remove_expression"]:
+                if expression in hue_palette:
+                    hue_palette.pop(expression)
+                if expression in hue_order:
+                    hue_order.remove(expression)
+                    
         # if hue_category == "sex":
         #     print("setting hue_palette via sex")
         #     hue_palette = {
@@ -999,18 +1021,16 @@ class PlotSpikeInfo(QObject):
         #     }
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
-        else:
-            hue_category = xname
-            hue_palette = colors
+
             # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
-        if hue_category != xname:
-            dodge = True
-            hue_order = self.experiment["plot_order"][hue_category]
-        else:
-            dodge = False
-            hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
+
+        print("hue cat: ", hue_category)
+        print("hue order: ", hue_order)
+        print("hue_palette", hue_palette)
+        print("plot_order: ", plot_order)
+
         # must use scatterplot if you want to use picking.
         if enable_picking:
             # print("xname, uniqe xnames: ", xname, df_x[xname].unique())
@@ -1056,10 +1076,7 @@ class PlotSpikeInfo(QObject):
                 zorder=100,
                 clip_on=False,
             )
-        print("hue cat: ", hue_category)
-        print("hue order: ", hue_order)
-        print("hue_palette", hue_palette)
-        print("plot_order: ", plot_order)
+
         print("xname: ", xname)
         print(df_x[xname])
         print(df_x[yname])
@@ -1228,7 +1245,26 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
 
+    def remove_nans(self, row, measure):
+        print("\n***", row[measure])
 
+        print(type(row[measure]))
+        if isinstance(row[measure], list):
+            m = [x for x in row[measure]] #  if not pd.isnull(x)]
+            if len(m) == 1 and (np.isnan(m[0]) or m[0] == "nan"):
+                m =  "NA"
+            print("   List reduced to: ", m)
+            return m
+        elif isinstance(row[measure], float):
+            row[measure] = [row[measure]]
+            print("   Float set to : ", row[measure])
+            return row[measure]
+        elif np.isnan(row[measure]):
+
+            print("    Nan: ", row[measure])
+            return "NA"
+        else:
+            raise ValueError(f"measure is not a list or float: {row[measure]!s}")    
     def make_subject_name(self, row):
         sn = Path(row.cell_id).name
         sn = sn.split("_")[0]
@@ -1247,20 +1283,55 @@ class PlotSpikeInfo(QObject):
         else:
             columns = [xname, hue_category]
         columns.extend(measures)
+        parameters = [
+            "Rs",
+            "Rin",
+            "CNeut",
+            "RMP",
+            "taum",
+            "CC_taum",  # CC_taum protocol
+            "AP_thr_V",
+            "AP_thr_T",
+            "AP_HW",
+            "AdaptRatio",
+            "AHP_trough_V",
+            "AHP_trough_T",
+            "AHP_depth_V",
+            "tauh",
+            "Gh",
+            "dvdt_falling",
+            "dvdt_rising",
+            "FIMax_1"
+            "FIMax_4",
+            "maxHillSlope",
+            "I_maxHillSlope",
+        ]
+        df = SCD.populate_columns(df, configuration=self.experiment, select_by= "Rs", select_limits=[0, 1e9],
+                                  parameters=parameters)
         if "animal identifier" in columns:
             df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
-        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_id", "Rs", "CNeut", "Subject", "protocol"]
+        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_expression", 
+                       "cell_id", "Rs", "CNeut", "Subject", "protocols", "used_protocols"]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
+
+        select_by = "Rs"
+        df_R = df[[c for c in columns if c != "AP_peak_V"]]
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
-
-        df_R = df[[c for c in columns if c != "AP_peak_V"]]
         if 'Rs' in df_R.columns:
             df_R = df_R.apply(self.average_Rs, axis=1)
         if 'CNeut' in df_R.columns:
             df_R = df_R.apply(self.average_CNeut, axis=1)
+
+        for meas in measures:
+            if meas in df_R.columns:
+                print("meas: ", meas)
+                df_R[meas] = SCD.perform_selection(
+                    select_by=select_by, select_limits=[0, 1e9], data=df_R, parameters=measures)
+    
+                # df_R[meas] = df_R.apply(self.remove_nans, measure=meas, axis=1)
 
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
@@ -1402,7 +1473,7 @@ class PlotSpikeInfo(QObject):
             fn = "firing_parameters.csv"
         elif "RMP" in measures:
             fn = "rmtau.csv"
-        self.export_r(df, xname, measures, hue_category, filename=fn)
+        self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
     def pick_handler(self, event, picker_funcs):
@@ -2739,8 +2810,14 @@ class PlotSpikeInfo(QObject):
             row.cell_expression = df_summary.loc[
                 df_summary.cell_id == cell_id_match
             ].cell_expression.values[0]
+
             if row.cell_expression in [" ", "nan"]:
                 row.cell_expression = "ND"
+            if "remove_expression" in self.experiment.keys():
+                if row.cell_expression in self.experiment["remove_expression"]:
+                    for re in self.experiment["remove_expression"]:
+                        if row.cell_expression == re:
+                            row.cell_expression = np.nan
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
@@ -2819,6 +2896,14 @@ class PlotSpikeInfo(QObject):
                 df["Group"] = "Control"
         groups = df.Group.unique()
         print("   Preprocess_data:  Groups: ", groups)
+        expressions = df.cell_expression.unique()
+        print("   Preprocess_data:  Expressions: ", expressions)
+        if "remove_expression" in self.experiment.keys():
+            print(df.columns)
+            print("REMOVING specific cell_expression")
+            for expression in self.experiment["remove_expression"]:  # expect a list
+                df = df[df.cell_expression != expression]
+                print("   Preprocess_data: Removed expression: ", expression)
         # self.data_table_manager.update_table(data=df)
         df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
         if len(groups) > 1:
