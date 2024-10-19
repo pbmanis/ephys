@@ -11,39 +11,43 @@ import ephys.tools.categorize_ages as CatAge
 import pylibrary.tools.cprint as CP
 
 
-def transfer_cc_taum(row, excludes:list):
+def transfer_cc_taum(row, excludes: list):
     """
     transfer_cc_taum : This routine is used to transfer the taum value from the
     CC_taum protocol to the taum column. This is done to allow the selection
     of the best value for taum from the CC_taum protocol, if it exists.
     """
-    row["CC_taum"] = [np.nan]*len(row["protocols"])
+    row["CC_taum"] = [np.nan] * len(row["protocols"])
     # print("row: ", row["protocols"], "cctaum: ", row["taum"])
     # print("excludes: ", excludes)
     n = 0
     for i, p in enumerate(row["protocols"]):
         proto = Path(p)
-        print("proto: ", p)
+        # print("proto: ", p)
         if str(proto) in excludes:
             CP.cprint("y", f"       Excluding: {proto!s}")
             continue
         if proto.name == "all":
             return row["CC_taum"]
         pn = str(Path(p).name)
-        
+
         # print(i, pn, len(row["CC_taum"]))
         if pn.startswith("CC_taum"):
+            # if isinstance(row["taum"], list):
             row["CC_taum"][n] = row["taum"][n]
+            # else:
+            #     row["CC_taum"][n] = row["taum"]
         else:
             row["CC_taum"][n] = np.nan
         n += 1
-    row["CC_taum"] = row["CC_taum"][:n] # trim to the correct length
+    row["CC_taum"] = row["CC_taum"][:n]  # trim to the correct length
+    assert isinstance(row["CC_taum"], list)
     return row["CC_taum"]
 
 
-def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
+def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     """
-    _apply_select_by : Here we filter the data from the different protocols
+    apply_select_by : Here we filter the data from the different protocols
     in the measurements for this row on the "select_by" criteria (measurement type, limits).
     We then select the best value to report for the parameter based on the filtered data.
 
@@ -75,9 +79,13 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # if no valid measurements, just return the row
     if verbose:
         print("row par: ", row[parameter])
-    if np.all(np.isnan(row[parameter])):
-        CP.cprint("r", f"Parameter {parameter:s} is all nan")
-        return row
+    print("type: ", type(row[parameter]))
+    print("row parameter: ", row[parameter])
+    if not isinstance(row[parameter], str):
+        if np.all(np.isnan(row[parameter])):
+            CP.cprint("r", f"Parameter {parameter:s} is all nan")
+            row[parameter] = np.nan
+            return row
 
     # Standard measurements: the mean of ALL of the measurements
     # collected across all protocols (data in a new column, representing the
@@ -85,7 +93,7 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # row[parameter + "_mean"] = np.nanmean(row[parameter])
 
     # now do the selection. Find out which protocols have the
-    # # lowest select_by measurement
+    # lowest select_by measurement
     # these arrays are the same length as the number of protocols
     selector_values = np.array(row[select_by])
     params = np.array(row[parameter])
@@ -117,6 +125,8 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         CP.cprint("r", f"No valid values for {parameter:s} in {row.cell_id:s}")
         # row[parameter + f"_best{select_by:s}"] = np.nan
         # row[parameter + f"_mean"] = np.nan
+        if "used_protocols" not in row.keys():
+            row["used_protocols"] = ""
         row["used_protocols"] = " ".join((row["used_protocols"], f"{parameter:s}:None"))
         return row
 
@@ -131,9 +141,11 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     equal_mins = []  # indicices to equal minimum values (to be averaged)
     values = []  # measurement value
     taums = []  # taum values for CC_taum protocol
+    print("prots: ", prots)
     for i, prot in enumerate(prots):
         if i not in valid_measures:  # no measure for this protocol, so move on
             continue
+        print("prot: ", prot)
         p = str(Path(prot).name)  # get the name of the protocol
         # skip specific protocols
         if p.startswith(
@@ -142,7 +154,14 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             continue
         # if p.startswith("CC_taum"):
         #     continue
-        select_value = row[select_by][i]
+        print("select by: ", select_by)
+        print("index: ", i)
+        print("row selection data: ", row[select_by])
+
+        if isinstance(row[select_by], float):
+            select_value = row[select_by]
+        else:
+            select_value = row[select_by][i]
         value = params[i]
         if np.isnan(value):
             continue
@@ -159,10 +178,10 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
                 values.append(value)
                 iprots.append(i)
             # equal_mins.append(i)
-            # if not p.startswith("CC_taum"):
-            #     values.append(params[i])
-            # else:
-            #     taums.append(params[i])
+            if not p.startswith("CC_taum"):
+                values.append(params[i])
+            else:
+                taums.append(params[i])
 
     if verbose:
         print("iprot, eq_mins, values, taums: ", iprots, equal_mins, values, taums)
@@ -173,28 +192,114 @@ def _apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         )
         if verbose:
             print("    protocols: ", row[select_by])
-            print(row[parameter])
+            print("row[parameter]: ", row[parameter])
         return row
 
     if len(iprots) == 1:
         CP.cprint("g", f"Single value: {prots[iprots[0]]!s}")
-        row[parameter + f"_best{select_by:s}"] = values[0]
+        if isinstance(values, list):
+            values = values[0]
+        # print("   values: ", values)
+        row[parameter + f"_best{select_by:s}"] = values
         used_prots = f"{parameter:s}:{str(Path(prots[iprots[0]]).name):s}"
     elif len(iprots) > 1:
-        used = ','.join([str(Path(prots[i]).name) for i in equal_mins])
+        used = ",".join([str(Path(prots[i]).name) for i in equal_mins])
         CP.cprint("c", f"Multiple averaged from: {used!s}")
         row[parameter + f"_best{select_by:s}"] = np.mean(values)
         used_prots = f"{parameter:s}:{used:s}"
-    
+
     # global means (indpendent of select_by)
     if not parameter.startswith("CC_taum"):  # standard IV protocols
-        row[parameter + f"_mean"] = np.nanmean([v for i, v in enumerate(params) if not prots[i].startswith("CC_taum")])
+        row[parameter + f"_mean"] = np.nanmean(
+            [v for i, v in enumerate(params) if not prots[i].startswith("CC_taum")]
+        )
     else:  # specific to CC_taum protocol
-        row[parameter + f"_mean"] = np.nanmean([v for i, v in enumerate(params) if prots[i].startswith("CC_taum")])
-
+        row[parameter + f"_mean"] = np.nanmean(
+            [v for i, v in enumerate(params) if prots[i].startswith("CC_taum")]
+        )
+    if "used_protocols" not in row.keys():
+        row["used_protocols"] = ""
     row["used_protocols"] = ",".join((row["used_protocols"], used_prots))
     return row
 
+def innermost(data):
+    for item in data:
+        if isinstance(item, list):
+            return innermost(item)
+        else:
+            continue
+    return data
+
+def check_types(data1, data2):
+    # Compare 2 pandas series, element by element (e.g., rows)
+    print("Checking types between data1 and data2")
+    pars = ["taum", "AP_thr_V", "AP_HW", "AdaptRatio", "AHP_trough_V", "AHP_trough_T", "AHP_depth_V",]
+    floats = [np.float64, float]
+    for d in data1.index:
+        d2 = data2.get(d)
+        d1 = data1.get(d)
+        print("looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
+        if d in ["pars", "fit"]:
+            data1[d] = innermost(data1[d])
+            data2[d] = innermost(data2[d])
+            d2 = data2.get(d)
+            d1 = data1.get(d)
+            print("re-looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
+
+       
+        # print("checktypes: ", d, type(d1), d1, type(d2), d2, type(d1) in floats, type(d2) in floats)
+        
+        if type(d1) != type(d2):
+            if type(d1) in floats and type(d2) in floats:
+                pass
+            else:
+                CP.cprint("r", f"Types do not match before conversion: {d}, {type(d1)}, {type(d2)}")
+                # print(d, d in pars)
+                if d in pars:
+                    assert type(data1.get(d) == type(data2.get(d)))
+                    if isinstance(data1[d], list):
+                        data1[d] = float(innermost(data1[d])[0])  # convert to float
+                    else:
+                        data1[d] = float(data1[d])
+                    if d == "AHP_trough_V":
+                        CP.cprint("y", f"AHP_trough_V:  {data1[d]}")
+
+                d1 = data1.get(d)  # get the new type
+                if type(d1) != type(d2) and (type(d1) not in floats or type(d2) not in floats):
+                    CP.cprint("r", f"Types do not match after conversion: {d}, {type(d1)}, {type(d2)}")
+                    print(data1.get(d), data2.get(d))
+                else:
+                    CP.cprint("g", f"Types match after conversion: {d}, {type(d1)}, {type(d2)}")
+        if isinstance(d1, list) and isinstance(d2, list):
+            # print(d1, d2)
+            # print(type(d1), type(d2))
+            for d1i, d2i in zip(d1, d2):
+                # print("d1i, d2i: ", d1i, d2i)
+                if isinstance(d1i, list) and isinstance(d2i, list):
+                    print("d1i: ", d, d1i)
+                    if len(set(d1i)-set(d2i)) > 0 or len(set(d2i)-set(d1i)) > 0:
+                        CP.cprint("r", f"lists are not matched {d1}, {d2}")
+        elif type(d1) in floats and type(d2) in floats:
+            if not np.equal(d1, d2):
+                if np.isnan(d1) and np.isnan(d2):
+                    break
+                CP.cprint("r", f"floats are not matched, {d1}, {d2}")
+        elif isinstance(d1, np.ndarray) and isinstance(d2, np.ndarray):
+            if not np.array_equal(d1, d2):
+                CP.cprint("r", f"np arrays are not matched:  {d1}, {d2}")
+        elif isinstance(d1, str) and isinstance(d2, str):
+            if d1 != d2:
+                CP.cprint("r", f"Strings are not matched: {d1}, {d2}")   
+        elif d1 is None or d2 is None: 
+            if d1 != d2:
+                CP.cprint("r", f"'None' types are not matched: {d1}, {d2}")
+        else:
+            CP.cprint("r", f"show_combined: check_types: Uncaught comparision for variable: {d}")
+
+
+
+    print("Done checking types")
+    return data1
 
 def perform_selection(
     select_by: str = "Rs",
@@ -205,13 +310,16 @@ def perform_selection(
 
     for idx, row in data.iterrows():
         for parameter in parameters:
-            # data.iloc[idx] = _apply_select_by(
-            data.iloc[idx] = _apply_select_by(
+            print("param, idx: ", parameter, idx)
+            rowdat = apply_select_by(
                 row,
-                parameter = parameter,
+                parameter=parameter,
                 select_by=select_by,
                 select_limits=select_limits,
             )
+            #data.loc[idx] = check_types(rowdat, data.loc[idx])
+            check_types(rowdat, data.loc[idx])
+
     return data
 
 
@@ -223,8 +331,8 @@ def populate_columns(
     select_limits: list = [0, 1e9],
 ):
     # populate the new columns for each parameter
-    # if "taums" not in data.columns:
-    #     data["taums"] = np.nan
+    if "taums" not in data.columns:
+        data["taums"] = np.nan
     for p in parameters:
         if p not in data.columns:
             CP.cprint("c", f"ADDING {p:s} to data columns")
@@ -245,15 +353,12 @@ def populate_columns(
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
     excludes = []
-    for cellid in configuration['excludeIVs']:
-        for protos in configuration['excludeIVs'][cellid]['protocols']:
+    for cellid in configuration["excludeIVs"]:
+        for protos in configuration["excludeIVs"][cellid]["protocols"]:
             excludes.append(str(Path(cellid, protos)))
 
     data["CC_taum"] = data.apply(transfer_cc_taum, excludes=excludes, axis=1)
-    x = data['CC_taum'].values
-    # for i in x:
-    #     print(i)
-    # exit()
+    assert isinstance(data["CC_taum"], pd.Series)
     data["used_protocols"] = ""
     data["age_category"] = data.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
 
@@ -282,86 +387,92 @@ parameters = [
     "Gh",
 ]
 
-# print(data.head(10))
-import matplotlib.pyplot as mpl
+if __name__ == "__main__":
+    # print(data.head(10))
+    import matplotlib.pyplot as mpl
 
-fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
-print(fn.is_file())
-select_by = "Rs"
-cfg, d = get_configuration(str(fn))
+    fn = Path("/Users/pbmanis/Desktop/Python/Maness_Ank2_Nex/config/experiments.cfg")
+    print(fn.is_file())
+    select_by = "Rs"
+    cfg, d = get_configuration(str(fn))
 
-expts = d[cfg[0]]
+    expts = d[cfg[0]]
 
-assembled_filename = Path(expts["analyzeddatapath"], cfg[0], expts["assembled_filename"])
-print(assembled_filename)
-data = read_pickle(assembled_filename)
+    assembled_filename = Path(expts["analyzeddatapath"], cfg[0], expts["assembled_filename"])
+    print(assembled_filename)
+    data = read_pickle(assembled_filename)
 
-print("Parameters: ", parameters, "select_by", select_by)
-data = populate_columns(
-    data, configuration=expts, parameters=parameters, select_by=select_by, select_limits=[0, 1e9]
-)
-
-print(data["age_category"])
-# for idx, row in data.iterrows():
-#     mpl.plot(data.iloc[idx].FI_Curve1[0], data.iloc[idx].FI_Curve1[1])
-#     mpl.plot(data.iloc[idx].FI_Curve4[0], data.iloc[idx].FI_Curve4[1])
-# mpl.show()
-yx = ["taum_bestRs", "taum_mean", "CC_taum_bestRs"]
-f, ax = mpl.subplots(1, 3, figsize=(12, 6))
-for i, axi in enumerate(ax):
-    sns.boxplot(
-        x="age_category",
-        y=yx[i],
-        data=data,
-        hue="age_category",
-        order=expts["age_categories"],
-        palette=expts["plot_colors"],
-        ax=axi,
+    print("Parameters: ", parameters, "select_by", select_by)
+    data = populate_columns(
+        data,
+        configuration=expts,
+        parameters=parameters,
+        select_by=select_by,
+        select_limits=[0, 1e9],
     )
-    sns.swarmplot(
-        x="age_category",
-        y=yx[i],
-        data=data,
-        hue="age_category",
-        order=expts["age_categories"],
-        palette=expts["plot_colors"],
-        edgecolor="k",
-        linewidth=0.5,
-        ax=axi,
-        # dodge=True,
-    )
-    axi.set_title(f"{yx[i]:s}")
-    axi.set_ylabel(f"taum (s)")
-    axi.set_ylim(0, 0.08)
-    axi.set_xticklabels(axi.get_xticklabels(), rotation=45)
-mpl.tight_layout()
-for idx, row in data.iterrows():
-    if idx >= 0 and idx < 500:
-        # if data.iloc[idx].taum_bestRs > 1.0 or data.iloc[idx].taum_bestRs < 0.0 or data.iloc[idx].taum_mean > 1.0 or data.iloc[idx].taum_mean < 0.0:
-        #     print("taum OUT OF BOUNDS: ", data.iloc[idx].cell_id)
-        #     print("     taum mean: ", data.iloc[idx].taum_mean, "taum best rs: ", data.iloc[idx].taum_bestRs)
-        #     continue
-        # else:
-        # mpl.plot([idx, idx], [data.iloc[idx].taum_bestRs, data.iloc[idx].taum_bestRs], 'o-')
+    # for d in data.columns:
+    #     print(d, type(data[d]))
 
-        # print(" plot?    taum mean: ", data.iloc[idx].taum_mean, "taum best rs: ", data.iloc[idx].taum_bestRs)
-        # if data.iloc[idx].taum_bestRs > 0.02:
-        #     print("\ntaum too high: ", data.iloc[idx].cell_id, data.iloc[idx].taum_bestRs, data.iloc[idx].taum)
-        #     print("               ", data.iloc[idx].Rs)
-        #     print("       ", data.iloc[idx].protocols)
-        pass
+    print(data["age_category"])
+    # for idx, row in data.iterrows():
+    #     mpl.plot(data.iloc[idx].FI_Curve1[0], data.iloc[idx].FI_Curve1[1])
+    #     mpl.plot(data.iloc[idx].FI_Curve4[0], data.iloc[idx].FI_Curve4[1])
+    # mpl.show()
+    yx = ["taum_bestRs", "taum_mean", "CC_taum_bestRs"]
+    f, ax = mpl.subplots(1, 3, figsize=(12, 6))
+    for i, axi in enumerate(ax):
+        sns.boxplot(
+            x="age_category",
+            y=yx[i],
+            data=data,
+            hue="age_category",
+            order=expts["age_categories"],
+            palette=expts["plot_colors"],
+            ax=axi,
+        )
+        sns.swarmplot(
+            x="age_category",
+            y=yx[i],
+            data=data,
+            hue="age_category",
+            order=expts["age_categories"],
+            palette=expts["plot_colors"],
+            edgecolor="k",
+            linewidth=0.5,
+            ax=axi,
+            # dodge=True,
+        )
+        axi.set_title(f"{yx[i]:s}")
+        axi.set_ylabel(f"taum (s)")
+        axi.set_ylim(0, 0.08)
+        axi.set_xticklabels(axi.get_xticklabels(), rotation=45)
+    mpl.tight_layout()
+    for idx, row in data.iterrows():
+        if idx >= 0 and idx < 500:
+            # if data.iloc[idx].taum_bestRs > 1.0 or data.iloc[idx].taum_bestRs < 0.0 or data.iloc[idx].taum_mean > 1.0 or data.iloc[idx].taum_mean < 0.0:
+            #     print("taum OUT OF BOUNDS: ", data.iloc[idx].cell_id)
+            #     print("     taum mean: ", data.iloc[idx].taum_mean, "taum best rs: ", data.iloc[idx].taum_bestRs)
+            #     continue
+            # else:
+            # mpl.plot([idx, idx], [data.iloc[idx].taum_bestRs, data.iloc[idx].taum_bestRs], 'o-')
 
-mpl.show()
-# print("taum mean: ", data["taum_mean"].values)
-# print("taum best rs: ", data["taum_bestRs"].values)
-# print("taum raw: ", data["taum"].values)
-# print("rs best rs: ", data["Rs_bestRs"].values)
-# for p in parameters:
-#     print(f"{p} # best Rs: ", data[f"{p:s}_bestRs"].values, "mean: ", data[f"{p:s}_mean"].values)
-#     print(f"    f{p}:  {data[f'{p:s}'].values!s}")
+            # print(" plot?    taum mean: ", data.iloc[idx].taum_mean, "taum best rs: ", data.iloc[idx].taum_bestRs)
+            # if data.iloc[idx].taum_bestRs > 0.02:
+            #     print("\ntaum too high: ", data.iloc[idx].cell_id, data.iloc[idx].taum_bestRs, data.iloc[idx].taum)
+            #     print("               ", data.iloc[idx].Rs)
+            #     print("       ", data.iloc[idx].protocols)
+            pass
 
+    mpl.show()
+    # print("taum mean: ", data["taum_mean"].values)
+    # print("taum best rs: ", data["taum_bestRs"].values)
+    # print("taum raw: ", data["taum"].values)
+    # print("rs best rs: ", data["Rs_bestRs"].values)
+    # for p in parameters:
+    #     print(f"{p} # best Rs: ", data[f"{p:s}_bestRs"].values, "mean: ", data[f"{p:s}_mean"].values)
+    #     print(f"    f{p}:  {data[f'{p:s}'].values!s}")
 
-# for u in data["used_protocols"].values:
-#     print(f"used protocols: , {u:s}")
-# print("Rin mean: ", data["Rin_mean"].values)
-# print("Rin raw: ", data["Rin"].values)
+    # for u in data["used_protocols"].values:
+    #     print(f"used protocols: , {u:s}")
+    # print("Rin mean: ", data["Rin_mean"].values)
+    # print("Rin raw: ", data["Rin"].values)

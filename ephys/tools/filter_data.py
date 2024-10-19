@@ -102,6 +102,7 @@ class FilterDataset:
         self,
         df: pd.DataFrame,
         remove_groups: list = ["C", "D", "?", "X", "30D", "nan"],
+        remove_expression: list = [],
         excludeIVs: list = [],
         exclude_internals: list = ["cesium", "Cesium"],
         exclude_temperatures: list = ["25C", "room temp"],
@@ -138,6 +139,12 @@ class FilterDataset:
                 CP.cprint("y", msg)
                 FUNCS.textappend(msg)
                 df.drop(df.loc[df["Group"] == group].index, inplace=True)
+        if remove_expression is not None:
+            for expr in remove_expression:
+                msg = f"    Filtering out expression: {expr:s}"
+                CP.cprint("y", msg)
+                FUNCS.textappend(msg)
+                df.drop(df.loc[df["cell_expression"] == expr].index, inplace=True)
 
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
         if excludeIVs is None:
