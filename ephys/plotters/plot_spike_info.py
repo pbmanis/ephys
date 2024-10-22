@@ -1290,17 +1290,19 @@ class PlotSpikeInfo(QObject):
             "RMP",
             "taum",
             "CC_taum",  # CC_taum protocol
+            "tauh",
+            "Gh",
+            
+            "dvdt_falling",
+            "dvdt_rising",
             "AP_thr_V",
             "AP_thr_T",
             "AP_HW",
-            "AdaptRatio",
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",
-            "tauh",
-            "Gh",
-            "dvdt_falling",
-            "dvdt_rising",
+
+            "AdaptRatio",
             "FIMax_1"
             "FIMax_4",
             "maxHillSlope",
@@ -1325,14 +1327,15 @@ class PlotSpikeInfo(QObject):
         if 'CNeut' in df_R.columns:
             df_R = df_R.apply(self.average_CNeut, axis=1)
 
-        for meas in measures:
-            if meas in df_R.columns:
-                print("meas: ", meas)
-                df_R[meas] = SCD.perform_selection(
-                    select_by=select_by, select_limits=[0, 1e9], data=df_R, parameters=measures)
+        # for meas in measures:
+        #     if meas in df_R.columns:
+        #         print("meas: ", meas)
+        df_R = SCD.perform_selection(
+            select_by=select_by, select_limits=[0, 1e9], data=df_R, parameters=measures)
     
                 # df_R[meas] = df_R.apply(self.remove_nans, measure=meas, axis=1)
-
+        # print("df_R :")
+        # print(df_R.head(20))
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
 

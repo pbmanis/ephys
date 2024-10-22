@@ -49,10 +49,12 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     """
     apply_select_by : Here we filter the data from the different protocols
     in the measurements for this row on the "select_by" criteria (measurement type, limits).
-    We then select the best value to report for the parameter based on the filtered data.
+    We then select the "best" value to report for the selected parameter based on the filtered data.
 
     Usually, this will be when the select_by parameter with the lowest value(s),
     where the parameter value is not nan, and the select_by value is not nan.
+    Typically, the selection will be for the protocol with the lowest Rs that
+    has a valid measurement for the parameter.
 
     This routine stes the following columns in the row:
         'parameter'_mean : the mean of the parameter values
@@ -71,6 +73,11 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         print("Selector to use: ", select_by)
         print("Parameter to test, value: ", parameter, row[parameter])
     # first, convert the measurements to a list if they are not already
+    if parameter not in row.keys():
+        CP.cprint("y", f"Parameter {parameter:s} is not in current data row")
+        raise ValueError
+        print("     row keys: ", row.keys())
+        return row
     if isinstance(row[parameter], float):
         row[parameter] = [row[parameter]]
     # if there is just one value, propagate it to all protocols
@@ -79,8 +86,8 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # if no valid measurements, just return the row
     if verbose:
         print("row par: ", row[parameter])
-    print("type: ", type(row[parameter]))
-    print("row parameter: ", row[parameter])
+        print("type: ", type(row[parameter]))
+        print("row parameter: ", row[parameter])
     if not isinstance(row[parameter], str):
         if np.all(np.isnan(row[parameter])):
             CP.cprint("r", f"Parameter {parameter:s} is all nan")
@@ -125,8 +132,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         CP.cprint("r", f"No valid values for {parameter:s} in {row.cell_id:s}")
         # row[parameter + f"_best{select_by:s}"] = np.nan
         # row[parameter + f"_mean"] = np.nan
-        if "used_protocols" not in row.keys():
-            row["used_protocols"] = ""
+
         row["used_protocols"] = " ".join((row["used_protocols"], f"{parameter:s}:None"))
         return row
 
@@ -141,11 +147,13 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     equal_mins = []  # indicices to equal minimum values (to be averaged)
     values = []  # measurement value
     taums = []  # taum values for CC_taum protocol
-    print("prots: ", prots)
+    if verbose:
+        print("prots: ", prots)
     for i, prot in enumerate(prots):
         if i not in valid_measures:  # no measure for this protocol, so move on
             continue
-        print("prot: ", prot)
+        if verbose:
+            print("prot: ", prot)
         p = str(Path(prot).name)  # get the name of the protocol
         # skip specific protocols
         if p.startswith(
@@ -154,9 +162,10 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             continue
         # if p.startswith("CC_taum"):
         #     continue
-        print("select by: ", select_by)
-        print("index: ", i)
-        print("row selection data: ", row[select_by])
+        if verbose:
+            print("select by: ", select_by)
+            print("index: ", i)
+            print("row selection data: ", row[select_by])
 
         if isinstance(row[select_by], float):
             select_value = row[select_by]
@@ -196,15 +205,15 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         return row
 
     if len(iprots) == 1:
-        CP.cprint("g", f"Single value: {prots[iprots[0]]!s}")
+
         if isinstance(values, list):
             values = values[0]
-        # print("   values: ", values)
+        CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
         row[parameter + f"_best{select_by:s}"] = values
         used_prots = f"{parameter:s}:{str(Path(prots[iprots[0]]).name):s}"
     elif len(iprots) > 1:
         used = ",".join([str(Path(prots[i]).name) for i in equal_mins])
-        CP.cprint("c", f"Multiple averaged from: {used!s}")
+        CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
         row[parameter + f"_best{select_by:s}"] = np.mean(values)
         used_prots = f"{parameter:s}:{used:s}"
 
@@ -217,111 +226,30 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         row[parameter + f"_mean"] = np.nanmean(
             [v for i, v in enumerate(params) if prots[i].startswith("CC_taum")]
         )
-    if "used_protocols" not in row.keys():
-        row["used_protocols"] = ""
+
     row["used_protocols"] = ",".join((row["used_protocols"], used_prots))
     return row
 
-def innermost(data):
-    for item in data:
-        if isinstance(item, list):
-            return innermost(item)
+
+def innermost(datalist):
+    """innermost For a nested set of lists, return the innermost list
+
+    Parameters
+    ----------
+    data :list
+        a potentially nested set of lists
+
+    Returns
+    -------
+    list
+        Innermost list
+    """
+    for element in datalist:
+        if isinstance(element, list):
+            return innermost(element)
         else:
             continue
-    return data
-
-def check_types(data1, data2):
-    # Compare 2 pandas series, element by element (e.g., rows)
-    print("Checking types between data1 and data2")
-    pars = ["taum", "AP_thr_V", "AP_HW", "AdaptRatio", "AHP_trough_V", "AHP_trough_T", "AHP_depth_V",]
-    floats = [np.float64, float]
-    for d in data1.index:
-        d2 = data2.get(d)
-        d1 = data1.get(d)
-        print("looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
-        if d in ["pars", "fit"]:
-            data1[d] = innermost(data1[d])
-            data2[d] = innermost(data2[d])
-            d2 = data2.get(d)
-            d1 = data1.get(d)
-            print("re-looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
-
-       
-        # print("checktypes: ", d, type(d1), d1, type(d2), d2, type(d1) in floats, type(d2) in floats)
-        
-        if type(d1) != type(d2):
-            if type(d1) in floats and type(d2) in floats:
-                pass
-            else:
-                CP.cprint("r", f"Types do not match before conversion: {d}, {type(d1)}, {type(d2)}")
-                # print(d, d in pars)
-                if d in pars:
-                    assert type(data1.get(d) == type(data2.get(d)))
-                    if isinstance(data1[d], list):
-                        data1[d] = float(innermost(data1[d])[0])  # convert to float
-                    else:
-                        data1[d] = float(data1[d])
-                    if d == "AHP_trough_V":
-                        CP.cprint("y", f"AHP_trough_V:  {data1[d]}")
-
-                d1 = data1.get(d)  # get the new type
-                if type(d1) != type(d2) and (type(d1) not in floats or type(d2) not in floats):
-                    CP.cprint("r", f"Types do not match after conversion: {d}, {type(d1)}, {type(d2)}")
-                    print(data1.get(d), data2.get(d))
-                else:
-                    CP.cprint("g", f"Types match after conversion: {d}, {type(d1)}, {type(d2)}")
-        if isinstance(d1, list) and isinstance(d2, list):
-            # print(d1, d2)
-            # print(type(d1), type(d2))
-            for d1i, d2i in zip(d1, d2):
-                # print("d1i, d2i: ", d1i, d2i)
-                if isinstance(d1i, list) and isinstance(d2i, list):
-                    print("d1i: ", d, d1i)
-                    if len(set(d1i)-set(d2i)) > 0 or len(set(d2i)-set(d1i)) > 0:
-                        CP.cprint("r", f"lists are not matched {d1}, {d2}")
-        elif type(d1) in floats and type(d2) in floats:
-            if not np.equal(d1, d2):
-                if np.isnan(d1) and np.isnan(d2):
-                    break
-                CP.cprint("r", f"floats are not matched, {d1}, {d2}")
-        elif isinstance(d1, np.ndarray) and isinstance(d2, np.ndarray):
-            if not np.array_equal(d1, d2):
-                CP.cprint("r", f"np arrays are not matched:  {d1}, {d2}")
-        elif isinstance(d1, str) and isinstance(d2, str):
-            if d1 != d2:
-                CP.cprint("r", f"Strings are not matched: {d1}, {d2}")   
-        elif d1 is None or d2 is None: 
-            if d1 != d2:
-                CP.cprint("r", f"'None' types are not matched: {d1}, {d2}")
-        else:
-            CP.cprint("r", f"show_combined: check_types: Uncaught comparision for variable: {d}")
-
-
-
-    print("Done checking types")
-    return data1
-
-def perform_selection(
-    select_by: str = "Rs",
-    select_limits: list = [0, 1e10],
-    data: pd.DataFrame = None,
-    parameters: list = None,
-):
-
-    for idx, row in data.iterrows():
-        for parameter in parameters:
-            print("param, idx: ", parameter, idx)
-            rowdat = apply_select_by(
-                row,
-                parameter=parameter,
-                select_by=select_by,
-                select_limits=select_limits,
-            )
-            #data.loc[idx] = check_types(rowdat, data.loc[idx])
-            check_types(rowdat, data.loc[idx])
-
-    return data
-
+    return datalist  # no inner list found
 
 def populate_columns(
     data: pd.DataFrame,
@@ -361,12 +289,152 @@ def populate_columns(
     assert isinstance(data["CC_taum"], pd.Series)
     data["used_protocols"] = ""
     data["age_category"] = data.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
-
-    data = perform_selection(
-        select_by=select_by, select_limits=select_limits, data=data, parameters=parameters
-    )
-    print("# Data columns: ", data.columns)
     return data
+
+def check_types(data1, data2):
+    # Compare 2 pandas series, element by element (e.g., rows)
+    # print("Checking types between data1 and data2")
+    pars = [
+        "taum",
+        "AP_thr_V",
+        "AP_HW",
+        "AdaptRatio",
+        "AHP_trough_V",
+        "AHP_trough_T",
+        "AHP_depth_V",
+        "AP_peak_V",
+        "dvdt_rising",
+    ]
+    # define types suitable as float values
+    floats = [np.float64, float]
+    for d in data1.index:
+        d2 = data2.get(d)
+        d1 = data1.get(d)
+        # print("looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
+        if d in ["pars", "fit"]:
+            data1[d] = innermost(data1[d])
+            data2[d] = innermost(data2[d])
+            d2 = data2.get(d)
+            d1 = data1.get(d)
+            # print("re-looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
+
+        original_data = f"checktypes: {d!s}, {type(d1)}, {d1!s}, {type(d2)}, {d2!s}, floats? : {type(d1) in floats}, {type(d2) in floats}"
+
+        if type(d1) != type(d2):
+            if type(d1) in floats and type(d2) in floats:
+                pass
+            else:
+                CP.cprint(
+                    "r",
+                    f"Types do not match before conversion: {d}, d1: {type(d1)}, d2: {type(d2)}",
+                )
+                # print(d, d in pars)
+                if d in pars:
+                    assert type(data1.get(d) == type(data2.get(d)))
+                    if isinstance(data1[d], list):
+                        data1[d] = float(innermost(data1[d])[0])  # convert to float
+                    else:
+                        data1[d] = float(data1[d])
+                    if d == "AHP_trough_V":
+                        CP.cprint("y", f"AHP_trough_V:  {data1[d]}")
+
+                d1 = data1.get(d)  # get the new type
+                if type(d1) != type(d2) and (type(d1) not in floats or type(d2) not in floats):
+                    if type(d1) in floats and type(d2) is None:
+                        print("    converted d2 to float nan")
+                        data2[d] = np.nan
+                        d2 = data2.get(d)
+                    if type(d2) in floats and type(d1) is None:
+                        print("    converted d1 to float nan")
+                        data1[d] = np.nan
+                        d1 = data1.get(d)
+                    else:
+                        CP.cprint(
+                            "r", f"Types do not match after conversion: {d}, {type(d1)}, {type(d2)}"
+                        )
+                        print(data1.get(d), data2.get(d))
+                else:
+                    CP.cprint("g", f"Types match after conversion: {d}, {type(d1)}, {type(d2)}")
+        if isinstance(d1, list) and isinstance(d2, list):
+            # print(d1, d2)
+            # print(type(d1), type(d2))
+            for d1i, d2i in zip(d1, d2):
+                # print("d1i, d2i: ", d1i, d2i)
+                if isinstance(d1i, list) and isinstance(d2i, list):
+                    # print("d1i: ", d, d1i)
+                    if len(set(d1i) - set(d2i)) > 0 or len(set(d2i) - set(d1i)) > 0:
+                        CP.cprint("r", f"lists are not matched {d1}, {d2}")
+        elif type(d1) in floats and type(d2) in floats:
+            if not np.equal(d1, d2):
+                if np.isnan(d1) and np.isnan(d2):
+                    break
+                CP.cprint("r", f"floats are not matched, {d1}, {d2}")
+        elif isinstance(d1, np.ndarray) and isinstance(d2, np.ndarray):
+            if not np.array_equal(d1, d2):
+                CP.cprint("r", f"np arrays are not matched:  {d1}, {d2}")
+        elif isinstance(d1, str) and isinstance(d2, str):
+            if d1 != d2:
+                CP.cprint("r", f"Strings are not matched: \n>>>{d1}\n>>>{d2}\n")
+        elif d1 is None or d2 is None:
+            if d1 != d2:
+                CP.cprint("r", f"One of the types is 'None'; not matched: d1={d1}, d2={d2}")
+        else:
+            CP.cprint("r", f"show_combined: check_types: Uncaught comparision for variable: {d}")
+            CP.cprint("r", f"original data: {original_data}")
+
+    # print("Done checking types")
+    return data1
+
+
+def perform_selection(
+    select_by: str = "Rs",
+    select_limits: list = [0, 1e10],
+    data: pd.DataFrame = None,
+    parameters: list = None,
+):
+    fn = Path("/Users/pbmanis/Desktop/Python/Maness_Ank2_Nex/config/experiments.cfg")
+    print(fn.is_file())
+    select_by = "Rs"
+    cfg, d = get_configuration(str(fn))
+
+    expts = d[cfg[0]]
+    data = populate_columns(
+        data,
+        configuration=expts,
+        parameters=parameters,
+        select_by=select_by,
+        select_limits=select_limits,
+    )
+    for parameter in parameters:
+        CP.cprint("r", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
+        try:
+            data = data.apply(
+                apply_select_by,
+                parameter=parameter,
+                select_by=select_by,
+                select_limits=select_limits,
+                axis=1,
+            )
+        except:
+            print("Error in apply_select_by on key=", parameter)
+            raise ValueError
+
+    # for idx, row in data.iterrows():
+    #     for parameter in parameters:
+    #         print("param, idx: ", parameter, idx)
+    #         rowdat = apply_select_by(
+    #             row,
+    #             parameter=parameter,
+    #             select_by=select_by,
+    #             select_limits=select_limits,
+    #         )
+    #         data.loc[idx] = check_types(rowdat, data.loc[idx])
+    #         #check_types(rowdat, data.loc[idx])
+
+    return data
+
+
+
 
 
 values = "mean"  # or "lowest_Rs"
@@ -383,8 +451,12 @@ parameters = [
     "AHP_trough_V",
     "AHP_trough_T",
     "AHP_depth_V",
+    "AP_peak_V",
+    "dvdt_rising",
+    "dvdt_falling",
     "tauh",
     "Gh",
+    "used_protocols",
 ]
 
 if __name__ == "__main__":
@@ -401,17 +473,19 @@ if __name__ == "__main__":
     assembled_filename = Path(expts["analyzeddatapath"], cfg[0], expts["assembled_filename"])
     print(assembled_filename)
     data = read_pickle(assembled_filename)
-
+    select_limits = [0, 1e9]
     print("Parameters: ", parameters, "select_by", select_by)
     data = populate_columns(
         data,
         configuration=expts,
         parameters=parameters,
         select_by=select_by,
-        select_limits=[0, 1e9],
+        select_limits=select_limits,
     )
-    # for d in data.columns:
-    #     print(d, type(data[d]))
+    data = perform_selection(
+        select_by=select_by, select_limits=select_limits, data=data, parameters=parameters
+    )
+    print("# Data columns: ", data.columns)
 
     print(data["age_category"])
     # for idx, row in data.iterrows():
