@@ -488,7 +488,7 @@ class TableManager:
         cprint("g", "Finished updating index files")
 
     def update_table(self, data, QtCore=None, QtGui=None):
-        cprint("g", "Updating data table")
+        cprint("g", f"Updating IV data table from {self.experiment['datasummaryFilename']:s} with {len(data):d} rows")
         self.table.setData(data)
         style = "section:: {font-size: 4pt; color:black; font:TimesRoman;}"
         self.table.setStyleSheet(style)

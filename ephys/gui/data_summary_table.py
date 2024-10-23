@@ -261,7 +261,7 @@ class TableManager:
             _description_
     
         """
-        cprint("g", "Updating data table")
+        cprint("g",f"Updating data table")
         # print("data for update: ", data)
         # print("data complete: ", data[:]['data_complete'])
         self.table.setData(data)

@@ -2581,7 +2581,7 @@ class Functions:
                         else:  # def a coding error
                             print("what is wrong with taupars: ", df_cell.IV[protocol]["taupars"])
                             exit()
-                    print("TAU: ", protocol, measure, value)
+                    # print("TAU: ", protocol, measure, value)
                     self.add_measure(protocol, measure, value=value)
         elif measure in iv_mapper.keys() and iv_mapper[measure] in iv_keys:
             for protocol in protocols:
