@@ -129,7 +129,7 @@ class IVPlotter(object):
             analysistype="IVs",
             slicecell=slicecell,
         )
-        print("IV plotter: ", self.plot_df.keys())
+        # print("IV plotter: ", self.plot_df.keys())
 
         with PdfPages(Path(pdffile)) as pdf:
             for iv in self.plot_df["IV"].keys():
