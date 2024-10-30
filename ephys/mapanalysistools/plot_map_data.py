@@ -265,7 +265,7 @@ class PlotMapData:
     def set_Pars_and_Data(self, pars, data, minianalyzer):
         """
         save parameters passed from analyze Map Data
-        Analysis parameters and data are in separae data classes.
+        Analysis parameters and data are in separate data classes.
         """
         self.Pars = pars
         self.Data = data
