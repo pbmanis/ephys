@@ -268,6 +268,32 @@ def make_slicecell(slicestr: str, cellstr: str):
     else:
         raise ValueError("Failed to parse slice and cell strings")
 
+def make_cellid_from_slicecell(slicecell):
+    """make_cellid_from_slicecell Convert slicecell string
+     of the form 2022.01.01_000_S0C0 into a cell_id string
+    such as 2022.01.01_000/slice_000/cell_000
+
+    Parameters
+    ----------
+    slicecell : _type_
+        _description_
+    returns
+    cell_id : str
+    """
+    re_sc = re.compile(r"S(\d{1,3})C(\d{1,3})")
+    sc = slicecell.split("_")[-1]
+    m = re_sc.match(sc)
+
+    if m is not None:
+        slicestr = f"slice_{int(m.group(1)):03d}"
+        cellstr = f"cell_{int(m.group(2)):03d}"
+        scdate = slicecell.split("_")
+        cell_id = f"{scdate[0]:s}_{scdate[1]:s}/{slicestr:s}/{cellstr:s}"
+
+        return cell_id
+    else:
+        print(m)
+        raise ValueError("Failed to parse slicecell string")
 
 def make_cell_filename(
     thisday: str,

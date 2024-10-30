@@ -828,14 +828,23 @@ class PlotSpikeInfo(QObject):
      
         # here we should check to see if cell has been done in the current file,
         # and remove it from the list.
-        already_done = pd.read_pickle(
-            Path(
+        combined_file =  Path(
                 self.experiment["analyzeddatapath"],
                 self.experiment["directory"],
                 self.experiment["assembled_filename"],
             )
-        )
-        already_done = already_done.cell_id.unique()
+        # first be sure that we even have a combined file!
+        if combined_file.is_file():
+            already_done = pd.read_pickle(
+                Path(
+                    self.experiment["analyzeddatapath"],
+                    self.experiment["directory"],
+                    self.experiment["assembled_filename"],
+                )
+            )
+            already_done = already_done.cell_id.unique()
+        else:
+            already_done = []
         # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
         # instrument up to to a limited set of the data for testing
         # The limit numbers refer to the IV data table.
@@ -931,8 +940,9 @@ class PlotSpikeInfo(QObject):
         if pd.isnull(row[data]):
             return np.NaN
         if "remove_expression" in self.experiment.keys():
-            if row.Group in self.experiment["remove_expression"]:
-                return np.NaN  # replace removed groups (such as "ND") with nan
+            if self.experiment['remove_expression'] is not None:
+                if row.Group in self.experiment["remove_expression"]:
+                    return np.NaN  # replace removed groups (such as "ND") with nan
         if row[data] in [" ", "", "", "nan"] or len(row[data]) == 0:
             return np.NaN
         return row
@@ -1003,7 +1013,7 @@ class PlotSpikeInfo(QObject):
         else:
             dodge = False
             hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
-        if "remove_expression" in self.experiment.keys():
+        if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
             for expression in self.experiment["remove_expression"]:
                 if expression in hue_palette:
                     hue_palette.pop(expression)
@@ -2673,7 +2683,7 @@ class PlotSpikeInfo(QObject):
 
         df = self.combine_by_cell(df)
         print("\nWriting assembled data to : ", fn)
-        print("Assembled groups: datafram Groups: ", df.Group.unique())
+        print("Assembled groups: dataframe Groups: ", df.Group.unique())
         df.to_pickle(fn)
 
     def categorize_ages(self, row):
@@ -2901,7 +2911,8 @@ class PlotSpikeInfo(QObject):
         print("   Preprocess_data:  Groups: ", groups)
         expressions = df.cell_expression.unique()
         print("   Preprocess_data:  Expressions: ", expressions)
-        if "remove_expression" in self.experiment.keys():
+        # print("   experiment keys: ", self.experiment.keys())
+        if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
             print(df.columns)
             print("REMOVING specific cell_expression")
             for expression in self.experiment["remove_expression"]:  # expect a list
@@ -2924,7 +2935,7 @@ class PlotSpikeInfo(QObject):
         # if "cell_id2" not in df.columns:
         #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
         # print("cell ids: \n", df.cell_id)
-        if self.experiment["excludeIVs"] is not None:
+        if len(self.experiment["excludeIVs"]) > 0:
             CP("c", "Parsing Excluded IV datasets (noise, etc)")
             # print(self.experiment["excludeIVs"])
             for filename, key in self.experiment["excludeIVs"].items():
