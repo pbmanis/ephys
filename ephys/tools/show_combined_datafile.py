@@ -18,10 +18,10 @@ def transfer_cc_taum(row, excludes: list):
     of the best value for taum from the CC_taum protocol, if it exists.
     """
     row["CC_taum"] = [np.nan] * len(row["protocols"])
-    print("row: ", "protocols: ", row["protocols"], "cctaum: ", row["CC_taum"])
+    # print("row: ", "protocols: ", row["protocols"], "cctaum: ", row["CC_taum"])
     if "taum" not in row.keys():
         row["taum"] = row["CC_taum"]
-    print("     ***** taum: ", row["taum"])
+    # print("     ***** taum: ", row["taum"])
     # print("excludes: ", excludes)
     n = 0
     for i, p in enumerate(row["protocols"]):
