@@ -102,10 +102,12 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph import multiprocess as MP
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
+# get the rest of the ephys modules that we will need.
 from ephys.gui import data_summary_table
 from ephys.gui import data_table_functions as functions
 from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
+from ephys.gui import command_params
 from ephys.plotters import plot_spike_info as plot_spike_info
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
@@ -117,6 +119,7 @@ from ephys.ephys_analysis import (
     map_analysis,
 )
 
+from ephys.mapanalysistools import mapevent_analysis2 as MA2
 
 from ephys.tools import (
     process_spike_analysis,
@@ -170,28 +173,6 @@ def make_rundates():
             rundates.append(f"{y}-{m}-01")
     return rundates
 
-
-Age_Values = [  # this is just for selecting age ranges in the GUI
-    "None",
-    [7, 20],
-    [21, 49],
-    [50, 179],
-    [180, 1200],
-    [0, 21],
-    [21, 28],
-    [28, 60],
-    [60, 90],
-    [90, 182],
-    [28, 365],
-    [365, 900],
-]
-
-RMP_Values = [
-    [-80, -50],
-    [-70, -50],
-]
-
-taum_Values = [0.0005, 0.05]
 
 experimenttypes = ["CCIV", "VC", "Map", "Minis", "PSC"]
 
@@ -339,7 +320,7 @@ class DataTables:
         self.Dock_PDFView.addWidget(self.PDFView)
 
         self.textbox = QtWidgets.QTextEdit()
-        
+
         FUNCS.textbox_setup(self.textbox)  # make sure the functions know about the textbox
         self.textbox.setReadOnly(True)
         self.textbox.setTextColor(QtGui.QColor("white"))
@@ -352,7 +333,6 @@ class DataTables:
         self.textbox.setText("")
         self.Dock_Report.addWidget(self.textbox)
 
-
         style = "::section {background-color: darkblue; }"
         self.selected_index_row = None  # for single selection mode
         self.selected_index_rows = None  # for multirow selection mode
@@ -364,8 +344,16 @@ class DataTables:
         self.cellID = None
         self.start_date = "None"
         self.end_date = "None"
+        self.CD = None # not set up yet - 
         self.dataset = self.datasets[0]
         self.set_experiment(self.dataset)
+        # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
+        # defines the layout.
+        self.CD = command_params.CommandParams()
+        self.CD.set_datasets(self.dataset)
+        self.CD.set_experiment(self.experiment)
+        self.params, self.ptree, self.ptreedata = self.CD.create_params()
+
         self.selvals = {
             "DataSets": [self.datasets, self.dataset],
             "Run Type": [runtypes, self.runtype],
@@ -399,252 +387,8 @@ class DataTables:
         self.bspline_s = 1.0
         self.revcorr_window = [-2.7, -0.5]
 
-        # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
-        # defines the layout.
 
-        self.params = [
-            # {"name": "Pick Cell", "type": "list", "values": cellvalues,
-            # "value": cellvalues[0]},
-            {"name": "Create New DataSet", "type": "action"},
-            {
-                "name": "Choose Experiment",
-                "type": "list",
-                "limits": [ds for ds in self.datasets],
-                "value": self.datasets[0],
-            },
-            {"name": "Reload Configuration", "type": "action"},  # probably not needed...
-            {"name": "Update DataSummary", "type": "action"},
-            {"name": "Load DataSummary", "type": "action"},
-            {"name": "Load Assembled Data", "type": "action"},
-            {"name": "Save Assembled Data", "type": "action"},
-            {
-                "name": "Parallel Mode",
-                "type": "list",
-                "limits": ["cell", "day", "trace", "map", "off"],
-                "value": "cell",
-            },
-            {"name": "Dry run (test)", "type": "bool", "value": False},
-            {"name": "Only Analyze Important Flagged Data", "type": "bool", "value": False},
-            {
-                "name": "IV Analysis",
-                "type": "group",
-                "expanded": False,
-                "children": [
-                    {"name": "Analyze Selected IVs", "type": "action"},
-                    {"name": "Plot from Selected IVs", "type": "action"},
-                    {"name": "Analyze ALL IVs", "type": "action"},
-                    {"name": "Analyze ALL IVs m/Important", "type": "action"},
-                    # {"name": "Process Spike Data", "type": "action"},
-                    {"name": "Assemble IV datasets", "type": "action"},
-                    {"name": "Exclude unimportant in assembly", "type": "bool", "value": False},
-                ],
-            },
-            {
-                "name": "Map Analysis",
-                "type": "group",
-                "expanded": False,
-                "children": [
-                    {"name": "Analyze Selected Maps", "type": "action"},
-                    {"name": "Analyze ALL Maps", "type": "action"},
-                    # {"name": "Assemble Map datasets", "type": "action"},
-                    # {"name": "Plot from Selected Maps", "type": "action"},
-                ],
-            },
-            {
-                "name": "Mini Analysis",
-                "type": "group",
-                "expanded": False,
-                "children": [
-                    {"name": "Analyze Selected Minis", "type": "action"},
-                    {"name": "Analyze ALL Minis", "type": "action"},
-                    # {"name": "Assemble Mini datasets", "type": "action"},
-                    # {"name": "Plot from Selected Minis", "type": "action"},
-                ],
-            },
-            {
-                "name": "Plotting",
-                "type": "group",
-                "children": [
-                    {
-                        "name": "Group By",
-                        "type": "list",
-                        "limits": [gr for gr in self.experiment["group_by"]],
-                        "value": self.experiment["group_by"][0],
-                    },
-                    {
-                        "name": "2nd Group By",
-                        "type": "list",
-                        "limits": [gr for gr in self.experiment["secondary_group_by"]],
-                        "value": self.experiment["secondary_group_by"][0],
-                    },
-                    {"name": "View Cell Data", "type": "action"},
-                    {"name": "Use Picker", "type": "bool", "value": False},
-                    {"name": "Show PDF on Pick", "type": "bool", "value": False},
-                    {"name": "Plot Spike Data categorical", "type": "action"},
-                    {"name": "Plot Spike Data continuous", "type": "action"},
-                    {"name": "Plot Rmtau Data categorical", "type": "action"},
-                    {"name": "Plot Rmtau Data continuous", "type": "action"},
-                    {"name": "Plot FIData Data categorical", "type": "action"},
-                    {"name": "Plot FIData Data continuous", "type": "action"},
-                    {"name": "Plot FICurves", "type": "action"},
-                    {
-                        "name": "Set BSpline S",
-                        "type": "float",
-                        "value": 1.0,
-                        "limits": [0.0, 100.0],
-                    },
-                    {"name": "Plot Selected Spike", "type": "action"},
-                    {"name": "Plot Selected FI Fitting", "type": "action"},
-                    {"name": "Print Stats on IVs and Spikes", "type": "action"},
-                ],
-            },
-            {
-                "name": "Filters",
-                "type": "group",
-                "expanded": False,
-                "children": [
-                    # {"name": "Use Filter", "type": "bool", "value": False},
-                    {
-                        "name": "cell_type",
-                        "type": "list",
-                        "limits": [
-                            "None",
-                            "bushy",
-                            "t-stellate",
-                            "d-stellate",
-                            "octopus",
-                            "pyramidal",
-                            "cartwheel",
-                            "giant",
-                            "giant_maybe",
-                            "golgi",
-                            "glial",
-                            "granule",
-                            "stellate",
-                            "tuberculoventral",
-                            "unclassified",
-                        ],
-                        "value": "None",
-                    },
-                    {
-                        "name": "age",
-                        "type": "list",
-                        "limits": Age_Values,
-                        "value": "None",
-                    },
-                    {
-                        "name": "sex",
-                        "type": "list",
-                        "limits": ["None", "M", "F"],
-                        "value": "None",
-                    },
-                    {
-                        "name": "Group",
-                        "type": "list",
-                        "limits": ["None", "-/-", "+/+", "+/-"],
-                        "value": "None",
-                    },
-                    {
-                        "name": "RMP",
-                        "type": "list",
-                        "limits": RMP_Values,
-                        "value": 0,
-                    },
-                    {
-                        "name": "taum",
-                        "type": "list",
-                        "limits": taum_Values,
-                        "value": "None",
-                    },
-                    {
-                        "name": "PulseDur",
-                        "type": "list",
-                        "limits": ["None", 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0],
-                        "value": "None",
-                    },
-                    {
-                        "name": "Protocol",
-                        "type": "list",
-                        "limits": [
-                            "None",
-                            "CCIV_+",
-                            "CCIV_1nA",
-                            "CCIV_200pA",
-                            "CCIV_long",
-                            "CCIV_long_HK",
-                        ],
-                        "value": "None",
-                    },
-                    {
-                        "name": "Filter Actions",
-                        "type": "group",
-                        "children": [
-                            {"name": "Apply", "type": "action"},
-                            {"name": "Clear", "type": "action"},
-                        ],
-                    },
-                ],
-            },
-            #  for plotting figures
-            #
-            {
-                "name": "Figures",
-                "type": "group",
-                "children": [
-                    {
-                        "name": "Figures",
-                        "type": "list",
-                        "limits": [
-                            "-------NF107_WT_Ctl-------",
-                            "Figure1",
-                            "Figure2",
-                            "Figure3",
-                            "EPSC_taurise_Age",
-                            "EPSC_taufall_age",
-                            "-------NF107_NIHL--------",
-                            "Figure-rmtau",
-                            "Figure-spikes",
-                            "Figure-firing",
-                        ],
-                        "value": "-------NF107_WT_Ctl-------",
-                    },
-                    {"name": "Create Figure/Analyze Data", "type": "action"},
-                ],
-            },
-            {
-                "name": "Tools",
-                "type": "group",
-                "expanded": False,
-                "children": [
-                    {"name": "Reload", "type": "action"},
-                    {"name": "View IndexFile", "type": "action"},
-                    {"name": "Print File Info", "type": "action"},
-                    {"name": "Export Brief Table", "type": "action"},
-                ],
-            },
-            {"name": "Quit", "type": "action"},
-        ]
-        self.ptree = ParameterTree()
-        self.ptreedata = Parameter.create(name="Models", type="group", children=self.params)
-        self.ptree.setStyleSheet(
-            """
-            QTreeView {
-                background-color: '#282828';
-                alternate-background-color: '#646464';   
-                color: rgb(238, 238, 238);
-            }
-            QLabel {
-                color: rgb(238, 238, 238);
-            }
-            QTreeView::item:has-children {
-                background-color: '#212627';
-                color: '#00d4d4';
-            }
-            QTreeView::item:selected {
-                background-color: '##c1c3ff';
-            }
-                """
-        )
+        
         self.ptree.setParameters(self.ptreedata)
 
         self.ptree.setMaximumWidth(ptreewidth + 50)
@@ -717,7 +461,7 @@ class DataTables:
 
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
-        # through the CommandDispatcher.
+        # through the command_dispatcher.
 
     def on_double_click(self, w):
         """
@@ -836,6 +580,9 @@ class DataTables:
         self.experimentname = data
         self.dataset = data
         self.experiment = self.experiments[data]
+        if self.CD is not None:
+            self.CD.set_datasets(self.dataset)
+            self.CD.set_experiment(self.experiment)
         self.win.setWindowTitle(f"DataTables: {self.experimentname!s}")
         if self.ptreedata is not None:
             group = self.ptreedata.child("Plotting").child("Group By")
@@ -948,7 +695,7 @@ class DataTables:
 
                         # analyze the selected cells, working from the *datasummary* table, not the Assembled table.
                         case "Analyze Selected IVs":
-                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows()
                             # FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
@@ -959,7 +706,9 @@ class DataTables:
                                     print("No selected rows")
                                     break
                                 # print("selected row: ", selected_row_number)
-                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row_number)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(
+                                    selected_row_number
+                                )
                                 if cell_id is None:
                                     # print("cell id is none?")
                                     continue
@@ -976,7 +725,9 @@ class DataTables:
                                     )
                                 )
                                 if self.dry_run:
-                                    print(f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}")
+                                    print(
+                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}"
+                                    )
                                 else:
                                     self.analyze_ivs(
                                         mode="selected",
@@ -988,7 +739,7 @@ class DataTables:
                             self.Dock_DataSummary.raiseDock()  # back to the original one
 
                         case "Plot from Selected IVs":
-                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows()
                             # FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
@@ -1000,7 +751,9 @@ class DataTables:
                                     print("No selected rows")
                                     break
                                 # print("selected row: ", selected_row_number)
-                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row_number)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(
+                                    selected_row_number
+                                )
                                 if cell_id is None:
                                     # print("cell id is none?")
                                     continue
@@ -1027,7 +780,10 @@ class DataTables:
                             else:
                                 nworkers = self.experiment["NWORKERS"][self.computer_name]
                                 tasks = range(len(index_rows))
-                                task_cell = [self.DS_table_manager.get_selected_cellid_from_table(i) for i in index_rows]
+                                task_cell = [
+                                    self.DS_table_manager.get_selected_cellid_from_table(i)
+                                    for i in index_rows
+                                ]
                                 results = {}
                                 result = [None] * len(tasks)
                                 with MP.Parallelize(
@@ -1104,8 +860,7 @@ class DataTables:
                             pass
                         case "Analyze Selected Maps":
 
-
-                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows() 
+                            index_rows = self.DS_table_manager.table.selectionModel().selectedRows()
                             # FUNCS.get_multiple_row_selection(self.DS_table_manager)
                             FUNCS.textappend(
                                 f"Analyze all IVs from selected cell(s) at rows: {len(index_rows)!s}"
@@ -1117,7 +872,9 @@ class DataTables:
                                     print("No selected rows")
                                     break
                                 print("selected row: ", selected_row)
-                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(selected_row)
+                                cell_id = self.DS_table_manager.get_selected_cellid_from_table(
+                                    selected_row
+                                )
                                 if cell_id is None:
                                     print("cell id is none?")
                                     continue
@@ -1134,7 +891,9 @@ class DataTables:
                                     )
                                 )
                                 if self.dry_run:
-                                    print(f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}")
+                                    print(
+                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}"
+                                    )
                                 else:
                                     self.analyze_maps(
                                         mode="selected",
@@ -1144,7 +903,6 @@ class DataTables:
                                     )
                             self.maps_finished_message()
                             self.Dock_DataSummary.raiseDock()  # back to the original one
-
 
                             # work from the *datasummary* table, not the Assembled table.
                             # index_rows = FUNCS.get_multiple_row_selection(self.DS_table_manager)
@@ -1212,217 +970,265 @@ class DataTables:
                         case "Show PDF on Pick":
                             self.show_pdf_on_pick = data
 
-                        case "Plot Spike Data categorical":
-                            self.spike_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="categorical",
-                                title="Spike Data",
-                                data_class="spike_measures",
-                                colors=colors,
-                            )
+                        case "Spike/IV plots":
+                            match path[2]:
+                                case "Plot Spike Data categorical":
+                                    self.spike_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="categorical",
+                                        title="Spike Data",
+                                        data_class="spike_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot Spike Data continuous":
-                            self.spike_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="continuous",
-                                title="Spike Data",
-                                data_class="spike_measures",
-                                colors=colors,
-                            )
+                                case "Plot Spike Data continuous":
+                                    self.spike_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="continuous",
+                                        title="Spike Data",
+                                        data_class="spike_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot Rmtau Data categorical":
-                            self.rmtau_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="categorical",
-                                title="RmTau Data",
-                                data_class="rmtau_measures",
-                                colors=colors,
-                            )
+                                case "Plot Rmtau Data categorical":
+                                    self.rmtau_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="categorical",
+                                        title="RmTau Data",
+                                        data_class="rmtau_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot Rmtau Data continuous":
-                            self.rmtau_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="continuous",
-                                title="RmTau Data",
-                                data_class="rmtau_measures",
-                                colors=colors,
-                            )
+                                case "Plot Rmtau Data continuous":
+                                    self.rmtau_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="continuous",
+                                        title="RmTau Data",
+                                        data_class="rmtau_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot FIData Data categorical":
-                            self.fidata_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="categorical",
-                                title="FI Data",
-                                data_class="FI_measures",
-                                colors=colors,
-                            )
+                                case "Plot FIData Data categorical":
+                                    self.fidata_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="categorical",
+                                        title="FI Data",
+                                        data_class="FI_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot FIData Data continuous":
-                            self.fidata_plot = self.generate_summary_plot(
-                                plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
-                                mode="continuous",
-                                title="FI Data",
-                                data_class="FI_measures",
-                                colors=colors,
-                            )
+                                case "Plot FIData Data continuous":
+                                    self.fidata_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        mode="continuous",
+                                        title="FI Data",
+                                        data_class="FI_measures",
+                                        colors=colors,
+                                    )
 
-                        case "Plot FICurves":
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("Loading fn: ", fn)
-                            df = self.PSI.preload(fn)
-                            P4, picker_funcs4 = self.PSI.summary_plot_fi(
-                                df,
-                                mode=["mean"],  # could be ["individual", "mean"]
-                                group_by=self.ptreedata.child("Plotting").child("Group By").value(),
-                                # protosel=[
-                                #     "CCIV_1nA_max",
-                                #     # "CCIV_4nA_max",
-                                #     "CCIV_long",
-                                #     "CCIV_short",
-                                #     "CCIV_1nA_Posonly",
-                                #     # "CCIV_4nA_max_1s_pulse_posonly",
-                                #     "CCIV_1nA_max_1s_pulse",
-                                #     # "CCIV_4nA_max_1s_pulse",
-                                # ],
-                                colors=self.experiment["plot_colors"],
-                                enable_picking=self.picker_active,
-                            )
-                            picked_cellid = P4.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-                                "pick_event",
-                                lambda event: PSI.pick_handler(event, picker_funcs4),
-                            )
-                            header = self.get_analysis_info(fn)
-                            P4.figure_handle.text(
-                                self.infobox_x,
-                                self.infobox_y,
-                                header,
-                                fontdict={
-                                    "fontsize": self.infobox_fontsize,
-                                    "fontstyle": "normal",
-                                    "font": "helvetica",
-                                },
-                                verticalalignment="top",
-                                horizontalalignment="left",
-                            )
-                            P4.figure_handle.show()
-                        case "Set BSpline S":
-                            self.bspline_s = data
-                        case "Plot Selected Spike":
-                            if self.assembleddata is None:
-                                raise ValueError("Must load assembled data file first")
-                            FUNCS.get_selected_cell_data_spikes(
-                                self.experiment,
-                                self.table_manager,
-                                self.assembleddata,
-                                self.bspline_s,
-                                self.Dock_Traces,
-                                self.win,  # target dock and window for plot
-                            )
+                                case "Plot FICurves":
+                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    print("Loading fn: ", fn)
+                                    df = self.PSI.preload(fn)
+                                    P4, picker_funcs4 = self.PSI.summary_plot_fi(
+                                        df,
+                                        mode=["mean"],  # could be ["individual", "mean"]
+                                        group_by=self.ptreedata.child("Plotting")
+                                        .child("Group By")
+                                        .value(),
+                                        # protosel=[
+                                        #     "CCIV_1nA_max",
+                                        #     # "CCIV_4nA_max",
+                                        #     "CCIV_long",
+                                        #     "CCIV_short",
+                                        #     "CCIV_1nA_Posonly",
+                                        #     # "CCIV_4nA_max_1s_pulse_posonly",
+                                        #     "CCIV_1nA_max_1s_pulse",
+                                        #     # "CCIV_4nA_max_1s_pulse",
+                                        # ],
+                                        colors=self.experiment["plot_colors"],
+                                        enable_picking=self.picker_active,
+                                    )
+                                    picked_cellid = P4.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
+                                        "pick_event",
+                                        lambda event: PSI.pick_handler(event, picker_funcs4),
+                                    )
+                                    header = self.get_analysis_info(fn)
+                                    P4.figure_handle.text(
+                                        self.infobox_x,
+                                        self.infobox_y,
+                                        header,
+                                        fontdict={
+                                            "fontsize": self.infobox_fontsize,
+                                            "fontstyle": "normal",
+                                            "font": "helvetica",
+                                        },
+                                        verticalalignment="top",
+                                        horizontalalignment="left",
+                                    )
+                                    P4.figure_handle.show()
+                                case "Set BSpline S":
+                                    self.bspline_s = data
+                                case "Plot Selected Spike":
+                                    if self.assembleddata is None:
+                                        raise ValueError("Must load assembled data file first")
+                                    FUNCS.get_selected_cell_data_spikes(
+                                        self.experiment,
+                                        self.table_manager,
+                                        self.assembleddata,
+                                        self.bspline_s,
+                                        self.Dock_Traces,
+                                        self.win,  # target dock and window for plot
+                                    )
 
-                        case "Plot Selected FI Fitting":
-                            if self.assembleddata is None:
-                                raise ValueError("Must load assembled data file first")
+                                case "Plot Selected FI Fitting":
+                                    if self.assembleddata is None:
+                                        raise ValueError("Must load assembled data file first")
 
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("Loading fn: ", fn)
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            hue_category = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
-                            )
-                            if hue_category == "None":
-                                hue_category = None
-                            plot_order = self.experiment["plot_order"][group_by]
-                            header = self.get_analysis_info(fn)
-                            self.selected_index_rows = self.table.selectionModel().selectedRows()
-                            # print("selected index rows: ", self.selected_index_rows)
-                            table_data = pd.DataFrame()
-                            for irow in self.selected_index_rows:
-                                cellid = self.table_manager.get_table_data(irow).cell_id
-                                dfi = self.assembleddata[self.assembleddata.ID == cellid]
-                                table_data = pd.concat([table_data, dfi])
-                            parameters = {
-                                "header": header,
-                                "experiment": self.experiment,
-                                "datasummary": self.datasummary,
-                                "assembleddata": table_data,  # only the
-                                "group_by": group_by,
-                                "plot_order": plot_order,
-                                "colors": colors,
-                                "hue_category": hue_category,
-                                "pick_display_function": None,  # self.display_from_table_by_cell_id
-                            }
-                           # plot_spike_info.concurrent_selected_fidata_data_plotting(
-                            #         fn,
-                            #         parameters,
-                            #         self.picker_active,
-                            #         infobox={
-                            #             "x": self.infobox_x,
-                            #             "y": self.infobox_y,
-                            #             "fontsize": self.infobox_fontsize,
-                            #         },
-                            #     )
+                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    print("Loading fn: ", fn)
+                                    group_by = (
+                                        self.ptreedata.child("Plotting").child("Group By").value()
+                                    )
+                                    hue_category = (
+                                        self.ptreedata.child("Plotting")
+                                        .child("2nd Group By")
+                                        .value()
+                                    )
+                                    if hue_category == "None":
+                                        hue_category = None
+                                    plot_order = self.experiment["plot_order"][group_by]
+                                    header = self.get_analysis_info(fn)
+                                    self.selected_index_rows = (
+                                        self.table.selectionModel().selectedRows()
+                                    )
+                                    # print("selected index rows: ", self.selected_index_rows)
+                                    table_data = pd.DataFrame()
+                                    for irow in self.selected_index_rows:
+                                        cellid = self.table_manager.get_table_data(irow).cell_id
+                                        dfi = self.assembleddata[self.assembleddata.ID == cellid]
+                                        table_data = pd.concat([table_data, dfi])
+                                    parameters = {
+                                        "header": header,
+                                        "experiment": self.experiment,
+                                        "datasummary": self.datasummary,
+                                        "assembleddata": table_data,  # only the
+                                        "group_by": group_by,
+                                        "plot_order": plot_order,
+                                        "colors": colors,
+                                        "hue_category": hue_category,
+                                        "pick_display_function": None,  # self.display_from_table_by_cell_id
+                                    }
+                                    # plot_spike_info.concurrent_selected_fidata_data_plotting(
+                                    #         fn,
+                                    #         parameters,
+                                    #         self.picker_active,
+                                    #         infobox={
+                                    #             "x": self.infobox_x,
+                                    #             "y": self.infobox_y,
+                                    #             "fontsize": self.infobox_fontsize,
+                                    #         },
+                                    #     )
 
-                            with concurrent.futures.ProcessPoolExecutor() as executor:
-                                print("executing")
-                                f = executor.submit(
-                                    plot_spike_info.concurrent_selected_fidata_data_plotting,
-                                    filename=fn,
-                                    parameters=parameters,
-                                    picker_active=self.picker_active,
-                                    infobox={
-                                        "x": self.infobox_x,
-                                        "y": self.infobox_y,
-                                        "fontsize": self.infobox_fontsize,
-                                    },
-                                )
-                                print(f.result())
-                                self.fidata_plot = f.result()
-                            print("Plotting selected FI's Done")
+                                    with concurrent.futures.ProcessPoolExecutor() as executor:
+                                        print("executing")
+                                        f = executor.submit(
+                                            plot_spike_info.concurrent_selected_fidata_data_plotting,
+                                            filename=fn,
+                                            parameters=parameters,
+                                            picker_active=self.picker_active,
+                                            infobox={
+                                                "x": self.infobox_x,
+                                                "y": self.infobox_y,
+                                                "fontsize": self.infobox_fontsize,
+                                            },
+                                        )
+                                        print(f.result())
+                                        self.fidata_plot = f.result()
+                                    print("Plotting selected FI's Done")
 
-                        case "Print Stats on IVs and Spikes":
-                            (
-                                excelsheet,
-                                analysis_cell_types,
-                                adddata,
-                            ) = PSI_2.setup(self.experiment)
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            print("Loading fn: ", fn)
-                            df = self.PSI.preload(fn)
-                            divider = "=" * 80
-                            group_by = self.ptreedata.child("Plotting").child("Group By").value()
-                            second_group_by = (
-                                self.ptreedata.child("Plotting").child("2nd Group By").value()
-                            )
-                            FUNCS.textclear()
-                            FUNCS.textappend(f"Stats on IVs and Spikes for {fn!s}")
-                            self.PSI.do_stats(
-                                df,
-                                experiment=self.experiment,
-                                group_by=group_by,
-                                second_group_by=second_group_by,
-                                divider=divider,
-                                textbox=self.textbox,
-                            )
-                            stats_text = self.textbox.toPlainText()
-                            datetime_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            header = f"Stats on IVs and Spikes for file:\n    {fn!s}\n"
-                            header += f"File date: {datetime.datetime.fromtimestamp(fn.stat().st_mtime)!s}\n"
-                            header += f"Statistics Run date: {datetime_str:s}\n"
-                            header += f"Primary Group By: {group_by:s}      Secondary Group by: {second_group_by!s}\n"
-                            header += f"Experiment Name: {self.experimentname:s}\n"
-                            header += f"Project git hash: {self.git_hash['project']!s}\nephys git hash: {self.git_hash['ephys']!s}\n"
-                            header += f"{'='*80:s}\n\n"
-                            stats_text = header + stats_text
-                            stats_filename = f"{self.experiment['stats_filename']:s}_G1_{group_by:s}_G2_{second_group_by:s}.txt"
-                            stats_path = Path(
-                                self.experiment["analyzeddatapath"],
-                                self.experiment["directory"],
-                                stats_filename,
-                            )
-                            with open(stats_path, "w") as f:
-                                f.write(stats_text)
-                            print(f"Stats written to: {stats_path!s}")
+                                case "Print Stats on IVs and Spikes":
+                                    (
+                                        excelsheet,
+                                        analysis_cell_types,
+                                        adddata,
+                                    ) = PSI_2.setup(self.experiment)
+                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    print("Loading fn: ", fn)
+                                    df = self.PSI.preload(fn)
+                                    divider = "=" * 80
+                                    group_by = (
+                                        self.ptreedata.child("Plotting").child("Group By").value()
+                                    )
+                                    second_group_by = (
+                                        self.ptreedata.child("Plotting")
+                                        .child("2nd Group By")
+                                        .value()
+                                    )
+                                    FUNCS.textclear()
+                                    FUNCS.textappend(f"Stats on IVs and Spikes for {fn!s}")
+                                    self.PSI.do_stats(
+                                        df,
+                                        experiment=self.experiment,
+                                        group_by=group_by,
+                                        second_group_by=second_group_by,
+                                        divider=divider,
+                                        textbox=self.textbox,
+                                    )
+                                    stats_text = self.textbox.toPlainText()
+                                    datetime_str = datetime.datetime.now().strftime(
+                                        "%Y-%m-%d %H:%M:%S"
+                                    )
+                                    header = f"Stats on IVs and Spikes for file:\n    {fn!s}\n"
+                                    header += f"File date: {datetime.datetime.fromtimestamp(fn.stat().st_mtime)!s}\n"
+                                    header += f"Statistics Run date: {datetime_str:s}\n"
+                                    header += f"Primary Group By: {group_by:s}      Secondary Group by: {second_group_by!s}\n"
+                                    header += f"Experiment Name: {self.experimentname:s}\n"
+                                    header += f"Project git hash: {self.git_hash['project']!s}\nephys git hash: {self.git_hash['ephys']!s}\n"
+                                    header += f"{'='*80:s}\n\n"
+                                    stats_text = header + stats_text
+                                    stats_filename = f"{self.experiment['stats_filename']:s}_G1_{group_by:s}_G2_{second_group_by:s}.txt"
+                                    stats_path = Path(
+                                        self.experiment["analyzeddatapath"],
+                                        self.experiment["directory"],
+                                        stats_filename,
+                                    )
+                                    with open(stats_path, "w") as f:
+                                        f.write(stats_text)
+                                    print(f"Stats written to: {stats_path!s}")
 
+                        case "Map Analysis Plots":
+                            match path[2]:
+                                case "Rise/Fall/Amplitude":
+                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea.plot_taus(
+                                        df=mea.merged_db,
+                                        plot_list=["tau1", "tau2", "Amplitude"],
+                                        groups=["Control"],
+                                    )
+
+                                case "Spontaneous Amplitudes":
+                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea.plot_data(df=mea.merged_db, plotwhat="avg_spont_amp")
+
+                                case "Evoked Event Amplitudes":
+                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea.plot_data(
+                                        df=mea.merged_db,
+                                        plotwhat="mean_amp",
+                                    )
+
+                                case "Event Latencies":
+                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea.plot_data(
+                                        df=mea.merged_db,
+                                        plotwhat="latency",
+                                    )
+
+                                case _:
+                                    pass
+                        case _:
+                            pass
                 case "Selections":
                     self.selvals[path[1]][1] = str(data)
                     self.cellID = self.selvals["Cells"][1]
@@ -1557,7 +1363,9 @@ class DataTables:
         dspath = Path(self.experiment["analyzeddatapath"], self.experiment["directory"])
         FUNCS.textappend(f"    Selected: {cell_id!s}")
         print("Selected for plot: ", cell_id)
-        pkl_file = filename_tools.get_cell_pkl_filename(self.experiment, self.datasummary, cell_id=cell_id)
+        pkl_file = filename_tools.get_cell_pkl_filename(
+            self.experiment, self.datasummary, cell_id=cell_id
+        )
         # pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
 
         # print("Reading from pkl_file: ", pkl_file)
@@ -1679,8 +1487,12 @@ class DataTables:
         CP.cprint("r", "=" * 80)
 
     def generate_summary_plot(
-        self, plotting_function: object, mode: str = "categorical", data_class:str="spike_measures",
-         title:str="My Title", colors: dict = {}
+        self,
+        plotting_function: object,
+        mode: str = "categorical",
+        data_class: str = "spike_measures",
+        title: str = "My Title",
+        colors: dict = {},
     ):
         # data class must be in the experimeng configuration file, top level keys.
         # e.g.:
@@ -1712,7 +1524,7 @@ class DataTables:
                 filename=fn,
                 parameters=parameters,
                 mode=mode,
-                plot_title = title,
+                plot_title=title,
                 data_class=data_class,
                 picker_active=self.picker_active,
                 infobox={
@@ -1724,8 +1536,12 @@ class DataTables:
         return f.result()
 
     def analyze_maps(
-        self, mode="all", important: bool = False, day: str = None, slicecell: str = None,
-        cell_id: str = None
+        self,
+        mode="all",
+        important: bool = False,
+        day: str = None,
+        slicecell: str = None,
+        cell_id: str = None,
     ):
         import numpy as np
 
@@ -2138,7 +1954,9 @@ def main():
     (
         datasets,
         experiments,
-    ) = get_configuration(config_file_path)  # retrieves the configuration file from the running directory
+    ) = get_configuration(
+        config_file_path
+    )  # retrieves the configuration file from the running directory
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
