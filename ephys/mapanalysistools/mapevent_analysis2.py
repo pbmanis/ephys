@@ -1,15 +1,14 @@
-# %%
-# matplotlib.use("Qt5Agg")
-import importlib
+import dataclasses
 import logging
 import os
-
+import pathlib
 import re
 
 # importlib.reload(minis)
 # MA = minis.minis_methods.MiniAnalyses()
 import sys
 from pathlib import Path
+from typing import Union
 
 import matplotlib.pyplot as mpl
 import numpy as np
@@ -18,21 +17,40 @@ import seaborn as sns
 
 # import minis
 from pylibrary.plotting import plothelpers as PH
-from PyPDF2 import PdfFileMerger, PdfFileReader
 
+import ephys.mini_analyses.mini_event_dataclass_reader_V1 as MEDC
+import ephys.tools.filename_tools as FT
+import ephys.tools.map_cell_types as MCT
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
-import ephys.tools.map_cell_types as MCT
-import ephys.tools.filename_tools as FT
 
+"""
+Third level of analysis for mapping data.
+
+    The first level is to do the initial analysis of the maps, event detection, etc. this
+    is done in datatables, with analyze selected maps or analyze all maps.
+    The results from the first level of analysis are written to the events folder, 
+    as *individual* files for each cell.
+    
+    The second level is mapevent_analyzer.py, which takes the individual files and
+    combines some of the results from the individual maps into a single file, <experimentname>_event_summary.pkl.
+
+    This third step provides routines to:
+    1. Generate the tau (event time constants) database (df = make_taus(basepath))
+
+    2. Merge the different databases into a single database (df = merge_db(db))
+        This includes getting the taus and the event summary data, and providing
+        additional columns for aggregated analysis and plotting.
+
+"""
 # go up one directory level from this file's directory:
 current_dir = Path.cwd()
-print(current_dir)
-parent_path = current_dir.parent
-# prepend parent directory to the system path:
-sys.path.insert(0, parent_path)
-# setting path
-# sys.path.append("../nf107")
+# print(current_dir)
+# parent_path = current_dir.parent
+# # prepend parent directory to the system path:
+# sys.path.insert(0, parent_path)
+
+# getting configuration file
 config_file_path = Path("../mrk-nf107", "config", "experiments.cfg")
 datasets, experiments = get_configuration(config_file_path)
 
@@ -53,6 +71,7 @@ order = [
 
 class MapEventAnalyzer:
     def __init__(self, experiment: str, force_update: bool = False):
+        self.experiment_name = experiment
         self.expts = experiments[experiment]
         # print(self.expts)
         self.force_map_update = force_update
@@ -76,7 +95,8 @@ class MapEventAnalyzer:
         self.tau_db = None
         if not self.tau_db_name.is_file() or self.force_map_update:
             self.tau_db = self.get_events()  # create the file and get the data
-        self.merged_db = self.merge_db(tau_db=self.tau_db)
+        self.merged_db = self.merge_db(tau_db=self.tau_db, verbose=True)
+        print("Merged database: \n", self.merged_db.cell_type)
 
     def renamecells(self, db):
         for c in db.index:
@@ -95,7 +115,7 @@ class MapEventAnalyzer:
             db = db[db.cell_id != rm]
         return db
 
-    def merge_db(self, tau_db=None):
+    def merge_db(self, tau_db=None, verbose: bool = False):
         """
         Combine event summary and taus with the main db to get ALL information on a per-cell basis
 
@@ -105,7 +125,16 @@ class MapEventAnalyzer:
         """
         Insert a new column, cellID, for matching with other db's
         and population it with a path version for searches
+
+        The following database names are present here:
+        tau_db: tau analysis database (has full cell id)
+        self.db: the main (datasummary-derived) database (has full cell_id)
+        evdb: the event summary database (does not have full cell_id)
+        midb2: the merged database of evdb and tau_db
+        midb3: the merged database of midb2 and self.db
+        midbavg: the final merged database with averages computed
         """
+
         self.db["cellID"] = ["" for _ in range(len(self.db))]
 
         if tau_db is None:  # try to read an existing file instead
@@ -121,34 +150,40 @@ class MapEventAnalyzer:
                 print(exc)
                 exit()
 
-        events = Path(
+        event_summary_filename = Path(
             self.expts["analyzeddatapath"],
             self.expts["directory"],
             self.expts["eventsummaryFilename"],
         )
-        for f in [events]:
+        for f in [event_summary_filename]:
             if not f.is_file():
                 print(f"File not found: {f}")
                 return
-        with open(events, "rb") as fh:
-            evdict = pd.read_pickle(fh, compression=None)
-        evm = {}
+        with open(event_summary_filename, "rb") as fh:
+            evdb = pd.read_pickle(fh, compression=None)
+        # evm = {}
 
-        for i, c in enumerate(evdict.keys()):  # reformat dict so cells are in dict
-            evm[i] = {"cell": c}
-            for d in evdict[c].keys():
-                evm[i][d] = evdict[c][d]
+        # for i, c in enumerate(evdict.keys()):  # reformat dict so cells are in dict
+        #     evm[i] = {"cell": c}
+        #     for d in evdict[c].keys():
+        #         evm[i][d] = evdict[c][d]
 
-        evdb = pd.DataFrame(evm).transpose()
-        evdb.rename(columns={"cell": "cell_id"}, inplace=True)
+        # evdb = pd.DataFrame(evm)
+        # evdb.rename(columns={"cell": "cell_id"}, inplace=True)
+        # print("evdb columns: ", evdb.columns)
+        # for ci in evdb.cell_id:
+        #     print(ci)
+        tau_db.drop("celltype", axis=1, inplace=True)
+        evdb.drop("celltype", axis=1, inplace=True)
+        midb2a = pd.merge(left=evdb, right=tau_db, left_on="cell_id", right_on="cell_id")
+        midb2 = pd.merge(left=midb2a, right=self.db, left_on="cell_id", right_on="cell_id")
+        midb2.rename(
+            # columns={"celltype_x": "cell_type", "cell_id_x": "cell_id"},
+            columns={"cell_id_x": "cell_id"},
+            inplace=True,
+        )
 
-        midb2 = pd.merge(left=evdb, right=tau_db, left_on="cell_id", right_on="cell_id")
-        midb2 = pd.merge(left=midb2, right=self.db, left_on="cell_id", right_on="cell_id")
-        midb2.rename(columns={"celltype_x": "cell_type", "cell_id_x": "cell_id",
-                              "celltype_x": "celltype"}, inplace=True)
-        midb2 = midb2.drop("celltype_y", axis=1)
-
-
+        # add columns that need to be calculated (summarized)
         midb2["maxscore"] = ["" for _ in range(len(midb2))]
         midb2["maxscore_thr"] = ["" for _ in range(len(midb2))]
         midb2["agegroup"] = ["" for _ in range(len(midb2))]
@@ -166,37 +201,40 @@ class MapEventAnalyzer:
         )
         with open(df_iv_name, "rb") as fh:
             df_iv = pd.read_pickle(fh, compression=None)
+        df_iv.drop("celltype", axis=1, inplace=True)
+
         def _make_cellid(row):
             return FT.make_cellid_from_slicecell(row["cell_id"])
-        df_iv['cell_id'] = df_iv.apply(_make_cellid, axis=1)
 
-        midb2 = pd.merge(left=midb2, right=df_iv, left_on="cell_id", right_on="cell_id")
-        args = ['celltype', 'date', 'sex', 'weight', 'important', 'protocols', 'age', 'cell_type', 'animal_identifier']
+        df_iv["cell_id"] = df_iv.apply(_make_cellid, axis=1)
+        midb3 = pd.merge(left=midb2, right=df_iv, left_on="cell_id", right_on="cell_id")
+        args = [
+            "cell_type",
+            "date",
+            "sex",
+            "weight",
+            "important",
+            "age",
+            "animal_identifier",
+            "celltype",
+            "protocols",
+        ]
         for arg in args:
-            midb2.drop(arg+"_y", axis=1, inplace=True)
-            midb2.rename(columns={arg+"_x": arg}, inplace=True)
+            if arg + "_y" in midb3.columns:
+                midb3.drop(arg + "_y", axis=1, inplace=True)
+            if arg + "_x" in midb3.columns:
+                midb3.rename(columns={arg + "_x": arg}, inplace=True)
 
-
-        # print("RMP", midb2["RMP"].values)
-        # print("df_iv cellids: ", df_iv["cell_id"].values)
-        # exit()
-
-        # print("1:::evdb ", (evdb.head()))
-    #    print("2:::midb ", (midb.head()))
-        # print("3:::midb2 ", (midb2.columns))
-        # print("midb2 head: ", midb2.head(), "\n", len(midb2))
-        # print(midb2.cell_id.values)
-
-        for c in midb2.index:
-            dx = midb2.iloc[c]
+        for c in midb3.index:
+            dx = midb3.iloc[c]
             #         print(midb2.loc[c, 'cell_type'],)
-            if midb2.loc[c, "cell_type"] not in [None, "None"]:
-                midb2.loc[c, "cell_type"] = midb2.loc[c, "cell_type"]
-            #         print('  ', midb2.loc[c, 'celltype'])
+            # if midb3.loc[c, "cell_type"] not in [None, "None"]:
+            #     midb3.loc[c, "cell_type"] = midb3.loc[c, "cell_type"]
+            #         print('  ', midb2.loc[c, 'cell_type'])
             # print("temperature" in dx.keys() )
             if dx["temperature"] in ["room temp", "", " ", "room temperature", "25", 25]:
                 #         print(f"resetting temp: <{str(dx['temperature']):s}>")
-                midb2.loc[c, "temperature"] = "25C"
+                midb3.loc[c, "temperature"] = "25C"
             re_age = re.compile(r"[~]*[pP]*[~]*(?P<age>[0-9]{1,3})[dD]*[, ]*")
             if dx["age"] is None or dx["age"] == "":
                 m = None
@@ -215,12 +253,14 @@ class MapEventAnalyzer:
             else:
                 agegroup = 90  #'P65-P200'
             #         print('agegroup: ', agegroup)
-            midb2.loc[c, "agegroup"] = agegroup
-            midb2 = self.average_datasets(midb2, c, dx, "firstevent_latency", "latency", scf=1e3)
-            midb2 = self.average_datasets(midb2, c, dx, "spont_amps", "avg_spont_amps", scf=-1e12)
-            midb2 = self.average_datasets(midb2, c, dx, "event_qcontent", "avg_event_qcontent")
-            midb2 = self.average_datasets(
-                midb2, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent"
+            midb3.loc[c, "agegroup"] = agegroup
+            midb3 = self.average_datasets(midb3, c, dx, "firstevent_latency", "latency", scf=1e3)
+            midb3 = self.average_datasets(midb3, c, dx, "spont_amps", "avg_spont_amps", scf=-1e12)
+            midb3 = self.average_datasets(midb3, c, dx, "event_qcontent", "avg_event_qcontent")
+            midb3 = self.average_datasets(midb3, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent")
+
+            midb3 = self.average_datasets(
+                midb3, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent"
             )
 
             #     lat = []
@@ -235,26 +275,100 @@ class MapEventAnalyzer:
             mscore = np.max(dx["scores"])
             if mscore == 0:
                 mscore = 1e-1
-            midb2.loc[c, "maxscore"] = np.clip(np.log10(mscore), 0.1, 5.0)
-            midb2.loc[c, "maxscore_thr"] = np.clip(np.log10(mscore), 0.1, 5.0) > 1.3
-            midb2.loc[c, "mean_amp"] = np.nanmean(dx["Amplitude"])
-            midb2.loc[c, "max_amp"] = np.nanmax(dx["Amplitude"])
-        #         sa = []
-        #         for l in range(len(dx['spont_amps'])):
-        #             if dx['spont_amps'][l] is not None:
-        #                 sa.extend(dx['spont_amps'][l])
-        #         if len(np.array(sa)) == 0:
-        #             san = np.nan
-        #         else:
-        #             san = np.nanmean(np.array(sa).ravel())*1e12
-        #         midb2.loc[c, 'spontamps'] = san
-        #     print(dx['cellID'], midb2.loc[c, 'max_amp'], dx['celltype'], dx['age'])
+            midb3.loc[c, "maxscore"] = np.clip(np.log10(mscore), 0.1, 5.0)
+            midb3.loc[c, "maxscore_thr"] = np.clip(np.log10(mscore), 0.1, 5.0) > 1.3
+            midb3.loc[c, "mean_amp"] = self.compute_npfunc(dx["Amplitude"], 1.0)
+            midb3.loc[c, "max_amp"] = self.compute_npfunc(dx["Amplitude"], 1.0, func=np.nanmax)
 
+        midbavg = self.compute_averages(midb3)
+        if verbose:
+            self.print_cell_ids(self.db, "DataSummary database", verbose=verbose)
+            self.print_cell_ids(tau_db, "TAU (Tau database)", verbose=verbose)
+            self.print_cell_ids(evdb, "EVDB (event databse)", verbose=verbose)
+            self.print_cell_ids(midb2a, "MIDD2a (Tau and EVDB merge)", verbose=verbose)
+            self.print_cell_ids(midb2, "MIDD2 (MIDD2 and DataSummary merge)", verbose=verbose)
+            self.print_cell_ids(midb3, "MIDD3 (MIDD2 and df_iv merge)", verbose=verbose)
+            self.print_cell_ids(midbavg, "MIDBAVG (averaged measurements)", verbose=verbose)
+        return midbavg
 
-        midb3 = self.compute_averages(midb2)
-        # merged_inner.loc[merged_inner['celltype'] == 'bushy']
+    def print_cell_ids(self, db, dataname, verbose: bool = False):
+        if not verbose:
+            return
+        print(f"\nData set: {dataname}")
+        if "cell_type" in db.columns:
+            print("cell types: ", set(list(db["cell_type"])))
+        else:
+            print("Dataset does not have cell types")
+        ids = list(set(list(db["cell_id"])))
+        print("# of entries: ", len(ids))
+        print(sorted(ids))
+        print(db.head())
+        print("*" * 80)
+        # id2 = [id1 for id1 in ids if id1.startswith("2020")]
+        # print("ids: ", id2)
+        return
 
-        return midb3
+    def matchup_summarydb_events(self):
+        """matchup_summarydb_events match the cell_ids for in the summary database with
+        the keys in the events database. This is necessary because the events database
+        does not have the full cell_id, only the date/slice/cell version. This function
+        will update the events database with the full cell_id (e.g., leading path)
+
+        If there is more than one cell ID in the events database, then we need to figure out the match...
+
+        **** This ONLY needs to be run once, to update the events database with the full cell_id ****
+        **** it should not be run repeatedly ****
+        (11/1/2024)
+        """
+        event_summary_filename = Path(
+            self.expts["analyzeddatapath"],
+            self.expts["directory"],
+            self.expts["eventsummaryFilename"],
+        )
+        event_file_path = Path(self.expts["analyzeddatapath"], self.expts["directory"], "events")
+        fns = sorted(list(event_file_path.glob("*.pkl")))
+        print("Number of event files: ", len(fns))
+        # print("day before: ", day_before, "day after: ", day_after)
+        with open(event_summary_filename, "rb") as fh:
+            evdict = pd.read_pickle(fh, compression=None)
+        evdb = pd.DataFrame(evdict).transpose()
+        evdb.reset_index(names=["cell_id"], inplace=True)
+
+        for cellid in self.db.cell_id:
+            dx = evdb.loc[evdb.cell_id == cellid]
+            if len(dx) > 1:
+                print("More than one cell ID for: ", cellid)
+                print(dx)
+                exit()
+            elif len(dx) == 0:
+                # print("No match in the event databse for: ", cellid)
+                # try reduced cellid:
+                short_cell_id = str(Path(*Path(cellid).parts[-3:]))
+                # print("short cell id: ", short_cell_id)
+                dx = evdb.loc[evdb.cell_id.values == short_cell_id]
+                print(
+                    "checking short match: ",
+                    "dx: ",
+                    dx.cell_id.values,
+                    "short cell: ",
+                    short_cell_id,
+                    "full cell: ",
+                    cellid,
+                )
+                evdb.loc[evdb.cell_id.values == short_cell_id, "cell_id"] = cellid
+                print("changed to: ", evdb.loc[evdb.cell_id.values == cellid, "cell_id"].values)
+            else:
+                print("Matched: ", cellid)
+        print(evdb.tail(20))
+        event_summary_filename = Path(
+            self.expts["analyzeddatapath"],
+            self.expts["directory"],
+            "test_eventsummary.pkl",
+            # self.expts["eventsummaryFilename"],
+        )
+        print("Writing to: ", event_summary_filename)
+        with event_summary_filename as fh:
+            evdb.to_pickle(fh)
 
     """
     Get the database and annotate it
@@ -287,9 +401,8 @@ class MapEventAnalyzer:
         print("age group: ", set(list(midb2["agegroup"])))
         print("RMP 0: ", midb2[midb2["RMP"] < -90.0]["cellID"], midb2[midb2["RMP"] < -90.0]["RMP"])
 
-
         def _apply_show_RMP(row):
-            # print(row["RMP"])
+            print(row["RMP"])
             if row["RMP"] < -85:
                 print("cell RMP out of range: ", row["cell_id"], row["RMP"])
             else:
@@ -306,7 +419,44 @@ class MapEventAnalyzer:
             else:
                 print("cell RMP out in range: ", dx["cell_id"], dx["RMP"])
 
-    def average_datasets(self, db, c, dx, measure, outmeasure, scf=1.0):
+    def compute_npfunc(self, data, scf: float = 1.0, func: object = np.nanmean):
+        """compute_npfunc:  Handle cases where there is no data
+        to averge by setting result to np.nan
+
+        Parameters
+        ----------
+        data : list or np array
+            The data to be averaged (may have nans)
+
+        scf : float
+            Scale factor for the data
+        """
+        data_out = np.nan
+        sa = np.squeeze(np.array(data))
+        if sa.ndim == 0 or len(sa) == 0:
+            print("no data in sa: ", sa.ndim)
+            return np.nan
+        elif np.array(sa).ndim == 2:
+            return func(sa) * scf
+        elif len(sa) == 1 and sa[0] is None:
+            print("sa len 1 and sa[0] is None")
+            return np.nan
+        else:
+            try:
+                sa = func(sa) * scf
+            except ValueError as exc:
+                print(f"failed to apply {func}: {data} due to {exc}")
+        return sa
+
+    def average_datasets(
+        self,
+        db: pd.DataFrame,
+        c: pd.Index,
+        dx: pd.DataFrame,
+        measure: str,
+        outmeasure: str,
+        scf: float = 1.0,
+    ):
         sa = []
         if isinstance(dx[measure], float):
             sa.extend([dx[measure]])
@@ -321,19 +471,13 @@ class MapEventAnalyzer:
                         sa.extend([dx[measure][l]])
                     else:
                         sa.extend(dx[measure][l])
+        # if measure == "spont_amps":
+        #     print("spont_amps: ", sa)
 
-        if len(sa) == 0 or len(np.array(sa)) == 0:
-            san = np.nan
-        elif np.array(sa).ndim == 2:
-            san = np.nanmean(np.squeeze(np.array(sa))) * scf
-        elif len(sa) == 1 and sa[0] is None:
-            san = np.nan
-        else:
-            try:
-                san = np.nanmean(np.squeeze(np.array(sa))) * scf
-            except:
-                print("failed to average: ", np.squeeze(np.array(sa)))
-        #     print('san: ', san)
+        san = self.compute_npfunc(sa, func=np.mean, scf=scf)
+        if measure == "spont_amps":
+            print("spont_amps: ", san)
+            # exit()
         db.loc[c, outmeasure] = san
         return db
 
@@ -357,22 +501,21 @@ class MapEventAnalyzer:
             # for proto in dx["IV"].keys():
             #     feat = dx["IV"][proto]
             #     print(proto.keys())
-                # proto has: ['holding', 'WCComp', 'CCComp', 'BridgeAdjust', 'RMP', 'RMPs',
-                #'Irmp', 'taum', 'taupars', 'taufunc', 'Rin', 'Rin_peak', 'tauh_tau', 'tauh_bovera', 'tauh_Gh', 'tauh_vss']
-                # if "RMP" in feat:
-                #     rmps.append(feat["RMP"] - 12)
-                #     rins.append(feat["Rin"])
-                #     taus.append(feat["taum"])
-                #     if feat["tauh_tau"] is None:
-                #         taus.append(np.nan)
-                #     else:
-                #         tauhs.append(feat["tauh_tau"])
+            # proto has: ['holding', 'WCComp', 'CCComp', 'BridgeAdjust', 'RMP', 'RMPs',
+            #'Irmp', 'taum', 'taupars', 'taufunc', 'Rin', 'Rin_peak', 'tauh_tau', 'tauh_bovera', 'tauh_Gh', 'tauh_vss']
+            # if "RMP" in feat:
+            #     rmps.append(feat["RMP"] - 12)
+            #     rins.append(feat["Rin"])
+            #     taus.append(feat["taum"])
+            #     if feat["tauh_tau"] is None:
+            #         taus.append(np.nan)
+            #     else:
+            #         tauhs.append(feat["tauh_tau"])
 
-            db.loc[c, "Rin"] = np.nanmean(db.loc[c, "Rin"])
-            db.loc[c, "Rin"] = np.nanmean(db.loc[c, "Rin"])
-            db.loc[c, "taum"] = np.nanmean(db.loc[c, "taum"])
-            #     print(tauhs)
-            db.loc[c, "tauh"] = np.nanmean(db.loc[c, "tauh"])
+            db.loc[c, "Rin"] = self.compute_npfunc(db.loc[c, "Rin"], 1.0)
+            db.loc[c, "RMP"] = self.compute_npfunc(db.loc[c, "RMP"], 1.0)
+            db.loc[c, "taum"] = self.compute_npfunc(db.loc[c, "taum"], 1.0)
+            db.loc[c, "tauh"] = self.compute_npfunc(db.loc[c, "tauh"], 1.0)
         return db
 
     """
@@ -434,18 +577,44 @@ class MapEventAnalyzer:
         mpl.legend(legends)
 
     """
-    Plot two parameters in distribution, using list of celltypes in the order.
+    Plot two parameters in distribution, using list of cell_types in the order.
     Color/separate by "hue"
     optional grid
     """
 
     def compare_plot(self, xdat, ydat, db, huefactor=None, figno=1, multivariate=False, title=None):
-        print(db["cell_type"].values)
-        print(db["cell_type"].isin(order))
+        # print(db["cell_type"].values)
+        # print(db["cell_type"].isin(order))
         midbs = db.loc[db["cell_type"].isin(order)]
 
         f, ax = mpl.subplots(1, 1)
         PH.nice_plot(ax)
+        print(db[xdat])
+        print(db[ydat])
+        if title is not None:
+            f.suptitle(f"{title:s}\n{self.experiment_name:s}", fontsize=10)
+        timestamp = pd.Timestamp.now()
+        f.text(
+            x=0.97,
+            y=0.02,
+            s=f"Generated: {timestamp}",
+            ha="right",
+            va="bottom",
+            transform=f.transFigure,
+            fontdict={"size": 7, "color": "black"},
+        )
+        print(type(db[xdat].values))
+        if all(pd.isnull(db[ydat].values)):
+            ax.text(
+                x=0.5,
+                y=0.5,
+                s="No data",
+                fontdict={"size": 24, "color": "red"},
+                ha="center",
+                va="center",
+            )
+            mpl.show()
+            return
 
         #     ax = matplotlib.axes.Axes(f, rect=[0.1, 0.1, 0.8, 0.8])
         sns.boxplot(
@@ -459,7 +628,7 @@ class MapEventAnalyzer:
             orient=None,
             color=None,
             palette=None,
-            saturation=0.5,
+            saturation=0.1,
             width=0.8,
             dodge=True,
             fliersize=4,
@@ -467,9 +636,9 @@ class MapEventAnalyzer:
             whis=1.5,
             notch=False,
         )
-        for patch in ax.artists:
-            r, g, b, a = patch.get_facecolor()
-            patch.set_facecolor((r, g, b, 0.3))
+        # for patch in ax.artists:
+        #     r, g, b, a = patch.get_facecolor()
+        #     patch.set_facecolor((r, g, b, 0.1))
 
         sns.swarmplot(
             x=xdat,
@@ -479,13 +648,12 @@ class MapEventAnalyzer:
             hue=huefactor,
             dodge=True,
             size=3,
-            alpha=0.75,
+            alpha=1,
             color=None,
             linewidth=0,
             ax=ax,
         )
-        if title is not None:
-            f.suptitle(title)
+
         if multivariate:
             mpl.figure(figno + 10)
             self.multivariateGrid(xdat, ydat, huefactor, midbs, k_is_color=False, scatter_alpha=0.5)
@@ -499,45 +667,47 @@ class MapEventAnalyzer:
             handles[0:nleg], labels[0:nleg]
         )  # , bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
-    def plot_data(self, midb2, plotwhat):
+
+    def plot_data(self, df: pd.DataFrame, plotwhat: str):
         """
         Plot decay tau versus cell type, sort by temperature
         """
-        for c in midb2.index:
-            if "_VC_increase_" in midb2.iloc[c]["data_complete"]:
-                print(midb2.iloc[c]["cell_id"], midb2.iloc[c]["data_complete"])
-
+        # for c in midb2.index:
+        #     if "_VC_increase_" in midb2.iloc[c]["data_complete"]:
+        #         print(midb2.iloc[c]["cell_id"], midb2.iloc[c]["data_complete"])
+        df = df.drop_duplicates(subset=["cell_id"])
+        plot_ok = True
         match plotwhat:
             case "temperature":
                 self.compare_plot(
                     "cell_type",
                     "tau2",
-                    midb2,
-                    huefactor="temperature",
+                    df,
+                    huefactor=df["temperature",],
                     figno=1,
                     multivariate=False,
-                    title="Decay Tau by celltype, temperature",
+                    title="Decay Tau by cell type, temperature",
                 )
 
-            case "tau2":
+            case "tau_2":
                 """
                 Plot decay tau versus cell type, sort by max score
                 """
                 self.compare_plot(
                     "cell_type",
                     "tau2",
-                    midb2,
+                    df,
                     huefactor="maxscore_thr",
                     figno=2,
                     multivariate=False,
-                    title="Decay Tau by celltype, maxscore threshold=1.3",
+                    title="Decay Tau by cell type, maxscore threshold=1.3",
                 )
 
             case "decay_tau":
                 """
                 Plot decay tau versus cell type, include only cells with maxscore > threshold
                 """
-                midbx = midb2.loc[midb2["maxscore"] > 1.3]  # reduce data set by maxscore
+                midbx = df.loc[df["maxscore"] > 1.3]  # reduce data set by maxscore
                 midbx = midbx.loc[midbx["cell_type"].isin(order)]
                 self.compare_plot(
                     "cell_type",
@@ -546,22 +716,22 @@ class MapEventAnalyzer:
                     huefactor="temperature",
                     figno=3,
                     multivariate=False,
-                    title="Decay tau by celltype, maxscore>1.3",
+                    title="Decay tau by cell type, maxscore>1.3",
                 )
 
                 """
                 Plot max score versus cell type, sort by age
                 """
             case "max_score":
-                print(set(list(midb2["agegroup"])))
+                # print(set(list(df["agegroup"])))
                 self.compare_plot(
                     "cell_type",
                     "maxscore",
-                    midb2,
+                    df,
                     huefactor="agegroup",
                     figno=4,
                     multivariate=False,
-                    title="maxscore celltype, age",
+                    title="maxscore by cell type, age",
                 )
 
                 """
@@ -571,48 +741,48 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "RMP",
-                    midb2,
+                    df,
                     huefactor="agegroup",
                     figno=45,
                     multivariate=False,
-                    title="RMP by celltype, age",
+                    title="RMP by cell type, age",
                 )
             case "Rin":
                 self.compare_plot(
                     "cell_type",
                     "Rin",
-                    midb2,
+                    df,
                     huefactor="agegroup",
                     figno=46,
                     multivariate=False,
-                    title="Rin by celltype, age",
+                    title="Rin by cell type, age",
                 )
             case "taum":
                 self.compare_plot(
                     "cell_type",
                     "taum",
-                    midb2,
+                    df,
                     huefactor="agegroup",
                     figno=47,
                     multivariate=False,
-                    title="Taum by celltype, age",
+                    title="Taum by cell type, age",
                 )
             case "tauh":
                 self.compare_plot(
                     "cell_type",
                     "tauh",
-                    midb2,
+                    df,
                     huefactor="agegroup",
                     figno=48,
                     multivariate=False,
-                    title="Tauh by celltype, age",
+                    title="Tauh by cell type, age",
                 )
 
                 """
                 Plot mean first event latency versus cell type, sort by maxscore true/false        """
 
             case "maxscore":
-                midby = midb2.loc[midb2["maxscore"] > 1.3]
+                midby = df.loc[df["maxscore"] > 1.3]
                 self.compare_plot(
                     "cell_type",
                     "latency",
@@ -620,11 +790,11 @@ class MapEventAnalyzer:
                     huefactor="temperature",
                     figno=5,
                     multivariate=False,
-                    title="Latency by celltype, temperature for Responding cells",
+                    title="Latency by cell type, temperature for Responding cells",
                 )
 
             case "latency":
-                midby = midb2.loc[midb2["temperature"].isin(["34C"])]
+                midby = df.loc[df["temperature"].isin(["34C"])]
                 self.compare_plot(
                     "cell_type",
                     "latency",
@@ -632,7 +802,7 @@ class MapEventAnalyzer:
                     huefactor="maxscore_thr",
                     figno=55,
                     multivariate=False,
-                    title="Latency by celltype, maxscore>1.3, at 34C",
+                    title="Latency by cell type, maxscore>1.3, at 34C",
                 )
 
             case "max_amp":
@@ -642,7 +812,7 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "max_amp",
-                    midb2,
+                    df,
                     huefactor="maxscore_thr",
                     figno=6,
                     multivariate=False,
@@ -652,7 +822,7 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "mean_amp",
-                    midb2,
+                    df,
                     huefactor="maxscore_thr",
                     figno=6,
                     multivariate=False,
@@ -660,14 +830,14 @@ class MapEventAnalyzer:
                 )
 
             case "avg_spont_amp":
-                midb3 = midb2[midb2["avg_spont_amps"] > 0]
-                for i, c in enumerate(midb3.index):
-                    print(midb3.loc[c]["cellID"], midb3.loc[c]["avg_spont_amps"])
+                df = df[df["avg_spont_amps"] >= 0]
 
+                # for i, c in enumerate(df.index):
+                #     print(df.loc[c]["cell_id"], df.loc[c]["avg_spont_amps"], df.loc[c]["protocol"])
                 self.compare_plot(
                     "cell_type",
                     "avg_spont_amps",
-                    midb3,
+                    df,
                     huefactor="temperature",
                     figno=101,
                     multivariate=False,
@@ -677,7 +847,7 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "avg_event_qcontent",
-                    midb2,
+                    df,
                     huefactor="temperature",
                     figno=102,
                     multivariate=False,
@@ -687,49 +857,213 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "avg_largest_event_qcontent",
-                    midb2,
+                    df,
                     huefactor="temperature",
                     figno=103,
                     multivariate=False,
                     title="largest event qcontent Amplitudes by Temperature",
                 )
             case _:
-                pass
+                plot_ok = False
+                print("Unrecognized plot selection: {plotwhat:s}")
+        if plot_ok:
+            mpl.show()
 
-    # import statsmodels.api as sm
-    # from statsmodels.formula.api import ols
+    def print_summary_stats(self, df, groups, cell_types):
+        # print summary stats on data
+        desc_stats = ["nanmean", "nanstd", "count"]
+        for g in groups:
+            for ct in cell_types:
+                print(f"\nCelltype: {ct:s}  Group: {g:s}")
+                print(
+                    df[(df["cell_type"] == ct) & (df["Group"] == g)].agg(
+                        {
+                            "tau1": desc_stats,
+                            "tau2": desc_stats,
+                            "Amplitude": desc_stats,
+                        }
+                    )
+                )
 
-    # # is maxscore different between celltypes?
-    # # midbs = midbs.reset_index()
-    # # for c in midbs.index:
-    # #     print(c)
-    # #     print(midbs.iloc[c]['cellID'],)
-    # #     print(' ', midbs.iloc[c]['maxscore'], midbs.iloc[c]['celltype'])
-    # # print(midbx.iloc[:]['celltype'])
-    # # print(midb2.loc[midb2['celltype'] == 'cartwheel'])
-    # c
-    # midby = midby.loc[midby['celltype'].isin(order)]
-    # model = ols("tau2 ~ C(celltype, Sum)", midby).fit()
-    # # print(midby.loc[midby['celltype'] == 'tuberculoventral'])
+    def plot_taus(
+        self,
+        df: pd.DataFrame,
+        plot_list: list,
+        cell_types: list = [
+            "bushy",
+            "t-stellate",
+            "d-stellate",
+            "octopus",
+            "pyramidal",
+            "cartwheel",
+            "tuberculoventral",
+        ],
+        groups: list = ["Control", "Noise", "Salicylate", "Saline"],
+    ):
 
-    # table = sm.stats.anova_lm(model, typ=2) # Type 2 ANOVA DataFrame
+        for ct in df["cell_type"].unique():
+            print("ct: ", ct)
 
-    # print(table)
-    # print(model.nobs)
+        if "Group" in df.columns:
+            df = df[df["Group"].isin(groups)]
 
-    # print(model.summary())
+        print("Dupes? : ", df[df.index.duplicated()])
+        df = df[~df.index.duplicated()]
+        print("Dupes2? : ", df[df.index.duplicated()])
+
+        print("Cell types in database: ")
+        for ct in df["cell_type"].unique():
+            print("cell_type: ", ct)
+        # exit()
+
+        # self.print_summary_stats(df, groups, cell_types)
+
+        f, ax = mpl.subplots(1, 3, figsize=(8, 4))
+        ax = np.array(ax).ravel()
+        pax = {}
+        print("plot_taus: dataframe columns: ", df.columns)
+        for ia, plot_what in enumerate(plot_list):
+            sns.set_theme(style="ticks", palette="pastel")
+            print(
+                "cell_types: ",
+                df["cell_type"].unique(),
+                df["Group"].unique(),
+                "plotwhat: ",
+                plot_what,
+            )
+            sns.boxplot(
+                x="cell_type",
+                y=plot_what,
+                data=df,
+                ax=ax[ia],
+                hue="temperature",  # "cell_type",
+                # hue_order="cell_type",
+                palette="Pastel2",  # ["g", "b", "orange", "magenta"],
+                # facecolor='w',
+                # edgecolor='k',
+                order=cell_types,
+                saturation=1.0,
+                width=0.8,
+            )
+            # except:
+            #     print("Failed to boxplot: ", dfp["cell_type"], dfp[plot_what])
+            sns.swarmplot(
+                x="cell_type",
+                y=plot_what,
+                data=df,
+                ax=ax[ia],
+                dodge=True,
+                hue="temperature",  # "cell_type",
+                # hue_order=HueOrder,
+                order=cell_types,
+                # palette = ["k", "k", "k", "k"],
+                size=3,
+                alpha=0.5,
+                edgecolor="k",
+                linewidth=1,
+            )
+            PH.nice_plot(ax[ia], position=-0.03, direction="outward", ticklength=4.0)
+            pax[plot_what] = ax[ia]
+        # sns.despine(offset=10, trim=True)
+
+        if "tau1" in pax.keys():
+            pax["tau1"].set_ylabel(r"$\tau_{rise}$ (ms)")
+            # pax["tau1"].set_ylim(0, 1.5)
+        if "tau2" in pax.keys():
+            pax["tau2"].set_ylabel(r"$\tau_{fall}$ (ms)")
+            # pax["tau2"].set_ylim(0, 15)
+        if "Amplitude" in pax.keys():
+            pax["Amplitude"].set_ylabel(r"EPSC (pA)")
+            # pax["Amplitude"].semilogy()
+            # pax["Amplitude"].set_ylim(0, 4000)
+        if "SR" in pax.keys():
+            pax["SR"].set_ylabel(r"SR (Hz)")
+            # pax["SR"].set_ylim(0, 30)
+        for aname in pax.keys():
+            pax[aname].set_xticklabels(cell_types, rotation=45, fontsize=8, ha="right")
+            # pax[aname].set_xlabel("Cell Type")
+        # mpl.tight_layout()
+        # Fit the ANOVA model
+        # print(df['SR'])
+
+        # for measure in pl:
+        #     print("Measure: ", measure)
+        #     dfok = df
+        #     if measure == "SR":
+        #         for index in df.index:
+        #             print(df.loc[index, measure])
+        #         dfok.dropna(subset=[measure])
+
+        #     for cell_type in cell_types:
+
+        #         model = ols(f'{measure} ~ Group', data=dfok[dfok['cell_type']==cell_type]).fit()
+
+        #         # Perform ANOVA
+        #         anova_table = sm.stats.anova_lm(model, typ=2)
+        #         print("\nCelltype: ", cell_type, "Measure: ", measure)
+        #         print(anova_table)
+        #         print()
+
+        # for measure in plot_what:
+        #     for cell_type in cell_types:
+        #         data = [
+        #             df.loc[ids, measure].values
+        #             for ids in df[df["cell_type"] == cell_type].groupby("Group").groups.values()
+        #         ]
+        #         dframe = df[df["cell_type"] == cell_type]
+        #         try:
+        #             dframe[measure] = dframe.apply(numeric, measure)
+        #         except:
+        #             print("Dframe columns, measure: ", dframe.columns, measure)
+        #             continue
+
+        #         for i in range(len(data)):
+        #             data[i] = [d for d in data[i] if not np.isnan(d)]
+        #         g = [['A']*len(data[0]), ['B']*len(data[1]), ['AA']*len(data[2]), ['AAA']*len(data[3])]
+        #         x = np.concatenate(data)
+        #         pth = sp.posthoc_tukey_hsd(x, np.concatenate(g))
+        #         print(pth)
+        # H, p = stats.kruskal(*data)
+        # print("\nCelltype: ", cell_type, "Measure: ", measure)
+        # if p < 0.05:
+        #     color = "m"
+        # else:
+        #     color = "w"
+        # # CP.cprint(color, f"Kruskal-Wallis H-test test: H={H:.5f}  p: {p:.3f}")
+        # welches anova
+
+        # aov = pg.welch_anova(dv=measure, between='Group', data=dframe)
+        # print(measure, cell_type)
+        # print("-"*80, "\n", "Welch Anova: \n",aov)
+        # # posthoc = sp.posthoc_mannwhitney(df[df['cell_type'] == cell_type], val_col=measure, group_col='Group', p_adjust = 'holm-sidak')
+        # # print("KW posthoc: ", posthoc)
+        # # unequal variances, use Games-Howell test:
+        # combinations = [["B", "A"], ["B", "AA"], ["B", "AAA"]]
+        # print(pg.pairwise_gameshowell(dv=measure, between='Group', data=dframe))
+        # print("="*80)
+
+        mpl.show()
+
+    def show_taus(df):
+        pl = ["Amplitude"]
+        for c in df.index:
+            dx = mdb.iloc[c]
+            print(dx.cellID)
+            if c > 3:
+                exit()
+            print("cellID: ", dx["cellID"], "tau1: ", dx["tau1"], "tau2: ", dx["tau2"])
 
     """
     Plot max score versus cell type, sort by temperature
     """
     # order = ['bushy', 't-stellate', 'd-stellate', 'pyramidal', 'tuberculoventral', 'cartwheel']
-    # midbs = midb2.loc[midb2['celltype'].isin(order)]
+    # midbs = midb2.loc[midb2['cell_type'].isin(order)]
     # compare_plot('celltype', 'maxscore', midbs, huefactor='temperature',  figno=61, multivariate=False)
 
     # # %%
     # print(evdb.head())
     # onecell = evdb.loc['2017.03.01_000/slice_000/cell_001']
-    # print('celltype: ', onecell['celltype'])
+    # print('cell_type: ', onecell['cell_type'])
     # print('SR: ', onecell['SR'])
     # print('prots: ', onecell['protocols'])
     # print('shufflescore: ', onecell['shufflescore'])
@@ -739,7 +1073,7 @@ class MapEventAnalyzer:
     # print('event_qcontent: ', len(onecell['event_qcontent']))
     # print('positions: ', len(onecell['event_amp'][0][0]))
     # print('largest_event_qcontent', onecell['largest_event_qcontent'])
-    # print('cell type: ', onecell['celltype'])
+    # print('cell type: ', onecell['cell_type'])
     # print('firstevent_latency: ', onecell['firstevent_latency'][2])
     # print('eventp: ', onecell['eventp'][2])
     # print('area_fraction_Z', onecell['area_fraction_Z'])
@@ -757,9 +1091,7 @@ class MapEventAnalyzer:
         #     print(day, sliceno, cellno)
         m = db.loc[
             (db["date"] == day) & (db["cell_cell"] == cellno) & (db["slice_slice"] == sliceno)
-        ]  # &
-        # (db['cell_type'] == celltype)]
-        # print('m: ', cellname, m['cell_type'].values)
+        ]
         return m["cell_type"].values
 
     def one_cell(self, d):
@@ -820,16 +1152,16 @@ class MapEventAnalyzer:
         cn = str(cn)
 
         P.figure_handle.suptitle(f"{str(Path(maps[0]).parent):s}  Type: {cn:s}")
-        scf = 1e12
+        # scf = 1e12
         all_averages = []
         all_fits = []
         all_tau1 = []
         all_tau2 = []
         all_amp = []
-        avg_fiterr = []
+        # avg_fiterr = []
         neventsum = 0
         results = []  # hold results to build dataframe at the end
-        for mapno in range(len(maps)):
+        for mapno, map in enumerate(maps):
             p = Path(maps[mapno])
             ax[mapno].set_title(str(p.name), fontsize=10)
             if (
@@ -856,19 +1188,17 @@ class MapEventAnalyzer:
                 )
                 continue
 
-            """
-            names of data in the map dictionary
-            dict_keys(['criteria', 'onsets', 'peaktimes', 'smpks', 'smpksindex', 
-            'avgevent', 'avgtb', 'avgnpts', 'avgevoked', 'avgspont', 'aveventtb', 
-            'fit_tau1', 'fit_tau2', 'fit_amp', 'spont_dur', 'ntraces', 'evoked_ev', 'spont_ev', 'measures', 'nevents'])
-            """
+            # names of data in the map dictionary
+            # dict_keys(['criteria', 'onsets', 'peaktimes', 'smpks', 'smpksindex',
+            # 'avgevent', 'avgtb', 'avgnpts', 'avgevoked', 'avgspont', 'aveventtb',
+            # 'fit_tau1', 'fit_tau2', 'fit_amp', 'spont_dur', 'ntraces', 'evoked_ev', 'spont_ev', 'measures', 'nevents'])
 
             nev = 0
-            avedat = None
+            # avedat = None
 
-            if d[maps[mapno]] is None or d[maps[mapno]]["events"] is None:
+            if d[map] is None or d[map]["events"] is None:
                 continue
-            minisum = d[maps[mapno]]["events"]
+            minisum = d[map]["events"]
             # print(minisum)
 
             for i, evx in enumerate(minisum):
@@ -919,13 +1249,13 @@ class MapEventAnalyzer:
             #     print("No average event data", maps[mapno])
             #     continue
             neventsum += nev
-            print("MAPS MAPNO: maps[mapno]: ", maps[mapno])
+            print("MAPS MAPNO: maps[mapno]: ", map)
             results.append(
                 {
-                    "cell_id": str(Path(maps[mapno]).parent),  # .replace("/", "~"),
+                    "cell_id": str(Path(maps).parent),  # .replace("/", "~"),
                     # + f"~map_{mapno:03d}",
                     "cell_type": cn,
-                    "map": str(Path(maps[mapno]).name),
+                    "map": str(Path(map).name),
                     "tau1": ev.average.fitted_tau1,
                     "tau2": ev.average.fitted_tau2,
                     "Amplitude": ev.average.amplitude * 1e12,
@@ -955,7 +1285,7 @@ class MapEventAnalyzer:
 
         df = pd.DataFrame(results)
 
-        ofile = Path(tau_path, str(Path(maps[mapno]).parent).replace("/", "~") + ".pdf")
+        ofile = Path(tau_path, str(Path(map).parent).replace("/", "~") + ".pdf")
         print("******* tau output file ", ofile)
         mpl.savefig(ofile)
         mpl.close("all")
@@ -974,11 +1304,13 @@ class MapEventAnalyzer:
         #         os.remove(fn)
         return df
 
-    # AGGREGATE taus (_taus.pkl):
-    # The next section reads the files in the base "event" directory and assembles the measurements
-    # into a new dataframe, which is written to disk.
-    # This might be named "NF107Ai32_Het_taus.pkl" for example. It is read by the code above.....
     def get_events(self):
+        """AGGREGATE taus (_taus.pkl):
+        Reads the files in the base "event" directory and assembles the measurements
+        into a new dataframe, which is written to disk.
+        The output file might be named "NF107Ai32_Het_taus.pkl" for example.
+        It is read by the code above.....
+        """
         print("Getting events")
         bp = Path(self.expts["databasepath"], self.expts["directory"], "events")
         files = sorted(bp.glob("*.pkl"))
@@ -1014,6 +1346,15 @@ class MapEventAnalyzer:
 
     # %%
     def plot_one(self, dp, axi):
+        """plot_one Plot one set of data into one axis
+
+        Parameters
+        ----------
+        dp : dataframe
+            data frame containing analyzed data to be plotted
+        axi : matplotlib.axes.Axes
+            axis into which the plot will be drawn
+        """
 
         Qlist = []
         Alist = []
@@ -1048,151 +1389,264 @@ class MapEventAnalyzer:
         ax = ax.ravel()
         for ia, i in enumerate(d.keys()):
             dp = d[i]
-            plot_one(dp, ax[ia])
+            self.plot_one(dp, ax[ia])
         mpl.show()
 
-        # %%
-        # df.filter(like='avgs')
         davg = df[df["cell"].str.contains("avgs", regex=False)]
-        for celltype in ["pyramidal", "tuberculoventral"]:
+        for cell_type in order:
             for c in davg["cell"]:
                 cn = c.split("~")
                 day = cn[0]
                 sliceno = cn[1]
                 cellno = cn[2]
-                print(day, sliceno, cellno)
-                m = db.loc[
+                # print(day, sliceno, cellno)
+                m = self.midb3.loc[
                     (db["date"] == day)
                     & (db["cell_cell"] == cellno)
                     & (db["slice_slice"] == sliceno)
-                    & (db["cell_type"] == celltype)
+                    & (db["cell_type"] == cell_type)
                 ]
                 print("m: ", m["cell_type"].values, davg.loc[davg["cell"] == c]["tau1"].values[0])
 
-        dbase = Path(expts["databasepath"], expts["directory"])
+        dbase = Path(self.expts["databasepath"], self.expts["directory"])
         df.to_pickle(Path(dbase, "NF107Ai32_Het_taus_x.pkl"))
         df.to_excel(Path(dbase, "NF107Ai32_Het_taus_x.xlsx"))
+
+    def _get_cell_protocol_data(self, proto: Union[str, pathlib.PurePosixPath]):
+        """
+        Get the protocol data for the cell in the path p
+        """
+        proto = pathlib.PurePosixPath(proto)  # make sure of type
+        with open(proto, "rb") as f:
+            protodata = pd.read_pickle(f)
+        return proto.name, protodata
 
     """
     Compute the depression ratio of evoked events for maps in cells that have 
     shuffle score > 1.3 and points in map with Z score > 2.1 for the first stimulus
     """
 
-    def depression_ratio(self, p=None, stim_N=4):
-        verbose = False
-        #     proto = pathlib.PurePosixPath(p)  # make sure of type
-        #     protocol, self.protodata = self._get_cell_protocol_data(p)
-        for i, c in enumerate(midb2.index):
-            dx = midb2.iloc[c]
-            for j, p in enumerate(dx["protocols"]):  # select protocol
-                if p is None:
+    # def _get_cell_protocol_data(self, fn):
+    #     # the pickled files have no subdirectory information in the filename, so strip that out
+    #     fnx = Path(fn).parts
+    #     fnx = fnx[-3:]
+    #     fn = "~".join(fnx)
+    #     eventspath = Path(self.expts['databasepath'], self.expts['directory'], "events")
+    #     # cprint("magenta", f"Fn: {str(fn):s}")
+    #     fn = Path(eventspath, fn + ".pkl") # Path(self.NM[self.database]["analyzeddatapath"], self.NM[self.database]['directory'], "events", fn + ".pkl")
+    #     with open(fn, "rb") as fh:
+    #         d = pd.read_pickle(fh)
+
+    #     protocols = sorted(
+    #         list(d.keys())
+    #     )  # keys include date/slice/cell/protocol as pathlib Path
+    #     return (protocols, d)
+
+    def depression_ratios(self, db: pd.DataFrame, stim_N: int = 4, verbose: bool = False):
+        """
+        Compute the depression ratio of evoked events for maps in cells that have
+        shuffle score > 1.3 and points in map with Z score > 2.1 for the first stimulus
+        """
+        for i, c in enumerate(db.index):
+            dx = db.iloc[c]
+            # print(dx['cell_id'])
+            cell_id = dx["cell_id"]
+            fn = FT.make_event_filename_from_cellid(dx["cell_id"])
+            eventfilename = fn
+            fn = Path(self.expts["databasepath"], self.expts["directory"], "events", fn)
+            with open(fn, "rb") as fh:
+                eventdata = pd.read_pickle(fh)
+            # print(eventdata.keys())
+            self.depression_ratio(
+                eventdata,
+                eventfilename=eventfilename,
+                db=db,
+                cell_id=cell_id,
+                stim_N=stim_N,
+                verbose=verbose,
+            )
+
+    def depression_ratio(
+        self,
+        eventdata: dict,
+        eventfilename: Union[str, Path],
+        cell_id: str,
+        db: pd.DataFrame,
+        stim_N: int = 4,
+        verbose: bool = False,
+    ):
+        ratio = np.nan
+        for j, protocol in enumerate(eventdata):  # for all protocols in this cell
+            prot = Path(protocol).name
+            evdata = eventdata[protocol]
+            # print(evdata.keys())
+            if not prot.startswith("Map_NewBlueLaser_VC_10Hz_0") or prot.find("plus") >= 0:
+                continue
+            print(cell_id, prot)
+            if "scores" not in evdata.keys():
+                print("No scores in eventdata")
+                print(evdata.keys())
+                print(evdata["ZScore"])
+
+                print(dir(evdata["events"][0]))
+                print(dir(MEDC))
+                evnx = MEDC.Reader(evdata["events"])
+                # evnx = dataclasses.asdict(evdata['events'][0])
+                flds = dataclasses.fields(evnx.data[0])
+                for f in flds:
+                    print(dir(f))
+                print(evnx.data[0].average)
+                exit()
+            print(
+                "Zscore: ",
+                evdata["ZScore"][0],
+                "\n   scores: ",
+                evdata["scores"],
+                "\n   shuffle: ",
+                evdata["shufflescore"],
+                "\n   Area Fract>Z: ",
+                evdata["area_fraction_Z"],
+                "\n  #Event Amp: ",
+                "\n   #Alleventlat: ",
+                evdata["allevent_latency"][0],
+            )
+
+            envx = evdata
+            if len(envx["stimtimes"]["start"]) < stim_N + 1:
+                # print('not enough stim times', self.events[proto]['stimtimes']['start'])
+                # print('in ', str(p))
+                continue
+            # print('Enough stim times', self.events[proto]['stimtimes']['start'])
+            # print('in ', str(p))
+            stimstarts = envx["stimtimes"]["start"]
+            stim1 = [stimstarts[0] + 0.0001, stimstarts[0] + 0.011]
+            stim5 = [stimstarts[stim_N] + 0.0001, stimstarts[stim_N] + 0.011]
+            # print('eventtimes: ', self.events[u]['eventtimes'])  # trials
+            # print('# positions: ', len(self.events[u]['positions']))  # 60 positions
+            protoevents = envx["events"]
+            amp1 = []
+            amp5 = []
+            tev1 = []
+            tev5 = []
+            if verbose:
+                print("p: ", str(p))
+                print(" # protoevents: ", len(protoevents))
+            for trial, pevent in enumerate(protoevents):
+                if verbose:
+                    print("zs trial: ", len(envx["ZScore"][trial]))
+                    print(envx["ZScore"][trial])
+                    print(envx["events"][trial][0].keys())  # ['event_amp'][trial])
+                    print(len(envx["events"][trial]))
+                    for i in range(len(envx["events"][trial])):
+                        print(
+                            "i peaktimes T: ",
+                            i,
+                            np.array(envx["events"][trial][i]["smpksindex"]) * 5e-2,
+                        )
+                        print(
+                            "i peaktimes pA: ",
+                            i,
+                            np.array(envx["events"][trial][i]["smpks"]) * 1e12,
+                        )
+                # print(trial, len(protoevents), len(envx['ZScore']))
+                spots = list(np.where(envx["ZScore"][trial] > 0.2)[0])
+                # print('spots: ', len(spots), spots)
+                if len(spots) == 0:  # no significant events
                     continue
-                prot = p.name
-                if prot.startswith("Map_NewBlueLaser_VC_10Hz_0") and prot.find("plus") < 0:
-                    print(dx["cellID"], prot)
+                for ispot in spots:  # now for all spots in this trial, get the events
+                    if (
+                        "smpksindex" in protoevents[trial].keys()
+                    ):  # handle both orders (old and new...)
+                        event_t = np.array(protoevents[trial]["smpksindex"][ispot]) * 5e-5  # time
+                        event_a = np.array(protoevents[trial]["smpks"][ispot])  # amplitude
+                    else:
+                        event_t = (np.array(protoevents[trial][ispot]["smpksindex"]) * 5e-5)[0]
+                        event_a = np.array(protoevents[trial][ispot]["smpks"])[0]
+                    iev1 = np.argwhere(
+                        (event_t > stim1[0]) & (event_t <= stim1[1])
+                    )  # select events in the window
+
+                    # print(f"\n{str(event_fn):s}  {str(p):s}")
+                    # print(event_t)
+                    # print(event_a)
+                    # print(iev1)
+                    # for i in range(len(event_t)):
+                    #     print(f"{i:d}  {event_t[i]:.3f}  {event_a[i]*1e12:.2f}")
+                    if len(iev1) > 0:
+                        amp1.append(np.max(event_a[iev1[0]]))
+                        tev1.append(event_t[iev1[0]][0])
+                    else:
+                        amp1.append(np.nan)
+                        tev1.append(np.nan)
+                    iev5 = np.argwhere((event_t > stim5[0]) & (event_t <= stim5[1]))
+                    if len(iev5) > 0:
+                        amp5.append(np.max(event_a[iev5[0]]))
+                        tev5.append(event_t[iev5[0]][0])
+                    else:
+                        amp5.append(np.nan)
+                        tev5.append(np.nan)
+                    # print('event indices: ', iev1, iev5)
+                    # print(Zs, protoevents[trial]['smpks'][zk], np.array(protoevents[trial]['smpksindex'][zk])*5e-5)
+            if verbose:
+                # print(amp1, amp5)
+                #      print('at:', np.array(amp5))
+                #      print(f"amp1: {np.array(amp1)*1e12:.1f}  amp5: {np.array(amp5)*1e12:.1f}")
+                print(tev1)
+                print(tev5)
+                print(amp1)
+                print(amp5)
+            if len(amp5) == 0:
+                amp5 = [0]
+            if len(amp1) == 0:
+                ratio = np.nan
+            else:
+                # print(amp1, amp5)
+                ratio = np.nanmean(amp5) / np.nanmean(amp1)
+            if verbose:
+                for i in range(len(amp1)):
                     print(
-                        dx["cellID"],
-                        "\n   scores: ",
-                        dx["scores"],
-                        "\n   shuffle: ",
-                        dx["shufflescore"],
-                        "\n   Area Fract>Z: ",
-                        dx["area_fraction_Z"],
-                        "\n  #Event Amp: ",
-                        dx["event_amp"][0],
-                        "\n   #Alleventlat: ",
-                        dx["allevent_latency"][0],
+                        f"amp1: {amp1[i]*1e12:.1f}  amp5: {amp5[i]*1e12:.1f} tev1: {tev1[i]*1e3:.1f}  tev5: {tev5[i]*1e3:.1f}"
                     )
-
-    # def xyz():
-    #     envx = self.protodata[p]
-    #     if len(envx['stimtimes']['start']) < stim_N+1:
-    #         # print('not enough stim times', self.events[proto]['stimtimes']['start'])
-    #         # print('in ', str(p))
-    #         return np.nan
-    #     # print('Enough stim times', self.events[proto]['stimtimes']['start'])
-    #     # print('in ', str(p))
-    #     stimstarts = envx['stimtimes']['start']
-    #     stim1 = [stimstarts[0]+0.0001, stimstarts[0]+0.011]
-    #     stim5 = [stimstarts[stim_N]+0.0001, stimstarts[stim_N]+0.011]
-    #     # print('eventtimes: ', self.events[u]['eventtimes'])  # trials
-    #     # print('# positions: ', len(self.events[u]['positions']))  # 60 positions
-    #     protoevents = envx['events']
-    #     amp1 = []
-    #     amp5 = []
-    #     tev1 = []
-    #     tev5 = []
-    #     if verbose:
-    #         print('p: ', str(p))
-    #         print(' # protoevents: ', len(protoevents))
-    #     for trial in range(len(protoevents)):
-    #         if verbose:
-    #             print('zs trial: ', len(envx['ZScore'][trial]))
-    #             print(envx['ZScore'][trial])
-    #             print(envx['events'][trial][0].keys()) #['event_amp'][trial])
-    #             print(len(envx['events'][trial]))
-    #             for i in range(len(envx['events'][trial])):
-    #                 print('i peaktimes T: ', i, np.array(envx['events'][trial][i]['smpksindex'])*5e-2)
-    #                 print('i peaktimes pA: ', i, np.array(envx['events'][trial][i]['smpks'])*1e12)
-    #         # print(trial, len(protoevents), len(envx['ZScore']))
-    #         spots = list(np.where(envx['ZScore'][trial] > 0.2)[0])
-    #         # print('spots: ', len(spots), spots)
-    #         if len(spots) == 0:  # no significant events
-    #             continue
-    #         for ispot in spots:  # now for all spots in this trial, get the events
-    #             if 'smpksindex' in protoevents[trial].keys():  # handle both orders (old and new...)
-    #                 event_t = np.array(protoevents[trial]['smpksindex'][ispot])*5e-5  # time
-    #                 event_a = np.array(protoevents[trial]['smpks'][ispot])  # amplitude
-    #             else:
-    #                 event_t = (np.array(protoevents[trial][ispot]['smpksindex'])*5e-5)[0]
-    #                 event_a = np.array(protoevents[trial][ispot]['smpks'])[0]
-    #             iev1 = np.argwhere((event_t > stim1[0]) & (event_t <= stim1[1]))  # select events in the window
-
-    #             # print(f"\n{str(event_fn):s}  {str(p):s}")
-    #             # print(event_t)
-    #             # print(event_a)
-    #             # print(iev1)
-    #             # for i in range(len(event_t)):
-    #             #     print(f"{i:d}  {event_t[i]:.3f}  {event_a[i]*1e12:.2f}")
-    #             if len(iev1) > 0:
-    #                 amp1.append(np.max(event_a[iev1[0]]))
-    #                 tev1.append(event_t[iev1[0]][0])
-    #             else:
-    #                 amp1.append(np.nan)
-    #                 tev1.append(np.nan)
-    #             iev5 = np.argwhere((event_t > stim5[0]) & (event_t <= stim5[1]))
-    #             if len(iev5) > 0:
-    #                 amp5.append(np.max(event_a[iev5[0]]))
-    #                 tev5.append(event_t[iev5[0]][0])
-    #             else:
-    #                 amp5.append(np.nan)
-    #                 tev5.append(np.nan)
-    #             # print('event indices: ', iev1, iev5)
-    #             # print(Zs, protoevents[trial]['smpks'][zk], np.array(protoevents[trial]['smpksindex'][zk])*5e-5)
-    #     if verbose:
-    #         # print(amp1, amp5)
-    #    #      print('at:', np.array(amp5))
-    #    #      print(f"amp1: {np.array(amp1)*1e12:.1f}  amp5: {np.array(amp5)*1e12:.1f}")
-    #         print(tev1)
-    #         print(tev5)
-    #         print(amp1)
-    #         print(amp5)
-    #     if len(amp5) == 0:
-    #         amp5 = [0]
-    #     if len(amp1) == 0:
-    #         ratio = np.nan
-    #     else:
-    #         # print(amp1, amp5)
-    #         ratio = np.nanmean(amp5)/np.nanmean(amp1)
-    #     if verbose:
-    #         for i in range(len(amp1)):
-    #             print(f"amp1: {amp1[i]*1e12:.1f}  amp5: {amp5[i]*1e12:.1f} tev1: {tev1[i]*1e3:.1f}  tev5: {tev5[i]*1e3:.1f}")
-    #     # print(f"Ratio: {ratio:.3f}")
-    #     return ratio
+        print(f"Ratio: {ratio:.3f}")
+        return ratio
 
 
 if __name__ == "__main__":
-    print("running main")
+
     MEA = MapEventAnalyzer("NF107Ai32_Het")
-    MEA.plot_data(MEA.merged_db, "tau2")
+    # print([c for c in sorted(MEA.merged_db.columns)])
+    # print("Merged as reported: \n", MEA.merged_db.cell_type)
+    # print("and celltypex: \n", MEA.merged_db["celltype_x"])
+    # print("Merged as reported: ", [c for c in sorted(MEA.merged_db.columns)])
+    # exit()
+    # MEA.plot_taus(
+    #     df=MEA.merged_db,
+    #     plot_list=["tau1", "tau2", "Amplitude"],
+    #     groups=["Control", "Noise", "Salicylate", "Saline"],
+    # )
+    # mpl.show()
+    # exit()
+    allp = False
+    if allp:
+        all_plots = [
+            "temperature",
+            "RMP",
+            "Rin",
+            "taum",
+            "tauh",
+            "tau_2",
+            "decay_tau",
+            "max_score",
+            "latency",
+            "max_amp",
+            "mean_amp",
+            "avg_spont_amp",
+            "avg_event_qcontent",
+            "avg_largest_event_qcontent",
+        ]
+        for p in all_plots:
+            MEA.plot_data(MEA.merged_db, p)
+    else:
+        MEA.plot_data(MEA.merged_db, "avg_largest_event_qcontent")
+    # # MEA.depression_ratios(MEA.merged_db)
     mpl.show()
