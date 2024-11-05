@@ -216,8 +216,8 @@ def numeric_age(row):
     """
     if isinstance(row.age, float):
         return row.age
-    row.age = int("".join(filter(str.isdigit, row.age)))
-    return float(row.age)
+    age = float(int("".join(filter(str.isdigit, row.age))))
+    return age
 
 def print_spike_keys(row):
     if pd.isnull(row.IV):
@@ -1355,14 +1355,14 @@ class Functions:
         self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
 
     def categorize_ages(self, row,  experiment):
-        row.age = numeric_age(row)
+        age = numeric_age(row)
         for k in experiment["age_categories"].keys():
             if (
-                row.age >= experiment["age_categories"][k][0]
-                and row.age <= experiment["age_categories"][k][1]
+                age >= experiment["age_categories"][k][0]
+                and age <= experiment["age_categories"][k][1]
             ):
-                row.age_category = k
-        return row.age_category
+                age_category = k
+        return age_category
 
 
     def get_selected_cell_data_FI(
