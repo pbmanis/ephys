@@ -346,7 +346,9 @@ class DataTables:
         self.end_date = "None"
         self.CD = None # not set up yet - 
         self.dataset = self.datasets[0]
+
         self.set_experiment(self.dataset)
+        print("Experiment: ", self.experiment)
         # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
         # defines the layout.
         self.CD = command_params.CommandParams()
