@@ -343,6 +343,21 @@ def make_cell_filename(
 
     return Path(file_name)
 
+def make_event_filename_from_cellid(cell_id: str):
+    """make_event_filename_from_cellid 
+    Make a full event filename string for a cell file
+    Parameters
+    cell_id: str or Path - cell_id in form dpath/2022.01.01_000/slice_000/cell_000
+
+    Returns
+    eventfile name in format:
+        2022_01_01_000~slice_000~cell_000.pkl
+    """
+
+    eventname = Path(cell_id)
+    eventname = Path(*eventname.parts[-3:])
+    eventfile= str(eventname).replace("/", "~")+".pkl"
+    return eventfile
 
 def compare_slice_cell(
     slicecell: str,
