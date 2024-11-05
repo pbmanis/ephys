@@ -20,6 +20,8 @@ re_golgi = re.compile(r"^golgi[ _]*[cell]*", re.IGNORECASE)
 re_horizontal = re.compile(r"^horizontal[ _]*[cell]*", re.IGNORECASE)
 re_fusiform = re.compile(r"^fusiform[ _]*[cell]*", re.IGNORECASE)
 re_vertical = re.compile(r"^vertical[ _]*[cell]*", re.IGNORECASE)
+re_typeB = re.compile(r"^type[ _]*B[ _]*[cell]*", re.IGNORECASE)
+re_chestnut = re.compile(r"^chestnut[ _]*[cell]*", re.IGNORECASE)
 
 re_cartwheel = re.compile(r"^cartwheel[ _]*[cell]*", re.IGNORECASE)
 re_unipolar_brush = re.compile(r"^unipolar[ _]*brush[ _]*[cell]*", re.IGNORECASE)
@@ -46,6 +48,8 @@ all_types = [
     [re_basket, "basket"],
     [re_golgi, "golgi"],
     [re_horizontal, "horizontal"],
+    [re_typeB, "type B"],
+    [re_chestnut, "chestnut"],
     [re_cartwheel, "cartwheel"],
     [re_unipolar_brush, "unipolar brush"],
     [re_multipolar, "multipolar"],
@@ -154,7 +158,7 @@ def test():
             "Vertical cell",
         ],
         "cartwheel": ["Cartwheel", "cartwheel cell", "Cartwheel cell"],
-        "unipolar brush": ["Unipolar brush", "unipolar brush cell", "Unipolar brush cell"],
+        "unipolar brush": ["Unipolar brush", "unipolar brush cell", "Unipolar brush cell", "ubc", "UBC"],
         "multipolar": ["Multipolar", "multipolar cell", "Multipolar cell"],
         "giant": ["Giant", "giant cell", "Giant cell", "GIANT"],
         "giant_maybe": ["giant_maybe", "Giant_maybe", "Giant_Maybe"],
@@ -162,6 +166,8 @@ def test():
         "unknown": ["Unknown", "unknown cell", "Unknown cell"],
         "no morphology": ["No morphology", "no morphology cell", "No morphology cell"],
         "glial": ["Glial", "glial cell", "Glial cell", "Glia"],
+        "horizontal": ["Horizontal bipolar", "horizontal bipolar cell", "Horizontal bipolar cell",  "horizontal"],
+        "chestnut": ["Chestnut", "chestnut cell", "Chestnut cell"],
     }
     for ct in variants.keys():
         for v in variants[ct]:
