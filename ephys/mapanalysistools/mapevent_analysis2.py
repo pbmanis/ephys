@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 import logging
 import os
 import pathlib
@@ -21,9 +22,11 @@ from pylibrary.plotting import plothelpers as PH
 import ephys.mini_analyses.mini_event_dataclass_reader_V1 as MEDC
 import ephys.tools.filename_tools as FT
 import ephys.tools.map_cell_types as MCT
+import ephys.gui.data_table_functions as DTF
 from ephys.tools.get_computer import get_computer
 from ephys.tools.get_configuration import get_configuration
 
+DTFuncs = DTF.Functions()
 """
 Third level of analysis for mapping data.
 
@@ -95,8 +98,8 @@ class MapEventAnalyzer:
         self.tau_db = None
         if not self.tau_db_name.is_file() or self.force_map_update:
             self.tau_db = self.get_events()  # create the file and get the data
-        self.merged_db = self.merge_db(tau_db=self.tau_db, verbose=True)
-        print("Merged database: \n", self.merged_db.cell_type)
+        self.merged_db = self.merge_db(tau_db=self.tau_db, verbose=False)
+        # print("Merged database: \n", self.merged_db.cell_type)
 
     def renamecells(self, db):
         for c in db.index:
@@ -184,6 +187,7 @@ class MapEventAnalyzer:
         )
 
         # add columns that need to be calculated (summarized)
+        midb2["age_category"] = ["" for _ in range(len(midb2a))]
         midb2["maxscore"] = ["" for _ in range(len(midb2))]
         midb2["maxscore_thr"] = ["" for _ in range(len(midb2))]
         midb2["agegroup"] = ["" for _ in range(len(midb2))]
@@ -227,42 +231,30 @@ class MapEventAnalyzer:
 
         for c in midb3.index:
             dx = midb3.iloc[c]
-            #         print(midb2.loc[c, 'cell_type'],)
-            # if midb3.loc[c, "cell_type"] not in [None, "None"]:
-            #     midb3.loc[c, "cell_type"] = midb3.loc[c, "cell_type"]
-            #         print('  ', midb2.loc[c, 'cell_type'])
-            # print("temperature" in dx.keys() )
             if dx["temperature"] in ["room temp", "", " ", "room temperature", "25", 25]:
                 #         print(f"resetting temp: <{str(dx['temperature']):s}>")
                 midb3.loc[c, "temperature"] = "25C"
-            re_age = re.compile(r"[~]*[pP]*[~]*(?P<age>[0-9]{1,3})[dD]*[, ]*")
-            if dx["age"] is None or dx["age"] == "":
-                m = None
-            else:
-                m = re_age.search(str(dx["age"]))
-            if m is not None:
-                value = int(m.group("age"))
-            else:
-                value = 0
-            if value < 21:
-                agegroup = 21  # 'P10-P21' 3 wk
-            elif value < 35:
-                agegroup = 35  # 'P21-P35' 5 wk
-            elif value < 63:
-                agegroup = 63  # 'P28-P56' 9 wk
-            else:
-                agegroup = 90  #'P65-P200'
-            #         print('agegroup: ', agegroup)
-            midb3.loc[c, "agegroup"] = agegroup
+
+            midb3.loc[c, "age_category"] = DTFuncs.categorize_ages(midb3.loc[c], self.expts)
+            # print(sorted([c for c in midb3.columns]))
+            # print([x[0] for x in dx.firstevent_latency if x is not None])
+            # print([x[0] for x in dx.allevent_latency if x is not None])
+            # print(dx.eventp)
+            # return
             midb3 = self.average_datasets(midb3, c, dx, "firstevent_latency", "latency", scf=1e3)
             midb3 = self.average_datasets(midb3, c, dx, "spont_amps", "avg_spont_amps", scf=-1e12)
             midb3 = self.average_datasets(midb3, c, dx, "event_qcontent", "avg_event_qcontent")
-            midb3 = self.average_datasets(midb3, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent")
-
             midb3 = self.average_datasets(
                 midb3, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent"
             )
 
+            midb3 = self.average_datasets(
+                midb3, c, dx, "largest_event_qcontent", "avg_largest_event_qcontent"
+            )
+            # print("\nLatencies")
+            # print("\nFirstEvent Latency")
+            # for i, lat in enumerate(midb3["firstevent_latency"].values):
+            #     print(i, lat)
             #     lat = []
             #         for l in range(len(dx['firstevent_latency'])):
             #             if dx['firstevent_latency'][l] is not None:
@@ -432,7 +424,7 @@ class MapEventAnalyzer:
             Scale factor for the data
         """
         data_out = np.nan
-        sa = np.squeeze(np.array(data))
+        sa =np.array(data)
         if sa.ndim == 0 or len(sa) == 0:
             print("no data in sa: ", sa.ndim)
             return np.nan
@@ -447,7 +439,21 @@ class MapEventAnalyzer:
             except ValueError as exc:
                 print(f"failed to apply {func}: {data} due to {exc}")
         return sa
-
+    # routine to flatten an array/list.
+    #
+    def flatten(self, l, ltypes=(list, tuple)):
+        i = 0
+        while i < len(l):
+            while isinstance(l[i], ltypes):
+                if not l[i]:
+                    l.pop(i)
+                    if not len(l):
+                        break
+                else:
+                    l[i : i + 1] = list(l[i])
+            i += 1
+        return l
+    
     def average_datasets(
         self,
         db: pd.DataFrame,
@@ -457,28 +463,32 @@ class MapEventAnalyzer:
         outmeasure: str,
         scf: float = 1.0,
     ):
-        sa = []
+        stopper = "2017.12.04_000/slice_001/cell_001"
+        sa = []  # array to hold the accepted data for the average
         if isinstance(dx[measure], float):
-            sa.extend([dx[measure]])
-        elif len(dx[measure]) == 1:
-            #         print(dx[measure])
-            sa.extend([dx[measure][0]])
+            dx[measure] = [dx[measure]]  # convert to element of the list
+        sa = [x for x in dx[measure] if x is not None]
+        if len(sa) > 1:
+            sa = list(itertools.chain.from_iterable(sa))
+        sa = np.array(sa).ravel()
+        if dx['cell_id'] == stopper:
+            print(f"cell_id: {dx['cell_id']}, {dx['cell_type']:s} {measure}: {dx[measure]}")
 
-        else:
-            for l in range(len(dx[measure])):
-                if dx[measure][l] is not None:
-                    if isinstance(dx[measure][l], float):
-                        sa.extend([dx[measure][l]])
-                    else:
-                        sa.extend(dx[measure][l])
-        # if measure == "spont_amps":
-        #     print("spont_amps: ", sa)
+        if measure == "firstevent_latency":
+            # first event latency is measured from the stimulus time, not trace onset
+            # see nrk-nf107/src/map_eventanalyzer.py/EventAnalyzer/score_events
+            sa = [x for x in sa if x > 0.0]  # limit to positive latencies
 
         san = self.compute_npfunc(sa, func=np.mean, scf=scf)
-        if measure == "spont_amps":
-            print("spont_amps: ", san)
+        # if measure == "spont_amps":
+        #     print("spont_amps: ", san)
             # exit()
         db.loc[c, outmeasure] = san
+        if dx['cell_id'] == stopper:
+            print(f"   san: {san}")
+            # import pyautogui
+            # pyautogui.hotkey('command', 'end') # print("\033\u0003")
+            raise ValueError()
         return db
 
     def compute_averages(self, db):
@@ -667,8 +677,7 @@ class MapEventAnalyzer:
             handles[0:nleg], labels[0:nleg]
         )  # , bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
-
-    def plot_data(self, df: pd.DataFrame, plotwhat: str):
+    def plot_data(self, df: pd.DataFrame, plotwhat: str, maxscore=0):
         """
         Plot decay tau versus cell type, sort by temperature
         """
@@ -676,17 +685,21 @@ class MapEventAnalyzer:
         #     if "_VC_increase_" in midb2.iloc[c]["data_complete"]:
         #         print(midb2.iloc[c]["cell_id"], midb2.iloc[c]["data_complete"])
         df = df.drop_duplicates(subset=["cell_id"])
+        df = df.sort_values(by=["cell_type", "cell_id"])
+        for i, dx in df.iterrows():
+            print(f"cell_id: {dx['cell_id']}, {dx['cell_type']}: {dx['latency']:.2f}, {dx['temperature']}")
         plot_ok = True
+        scored_df = df.loc[df["maxscore"] > maxscore]  # reduce data set by maxscore
         match plotwhat:
             case "temperature":
                 self.compare_plot(
                     "cell_type",
                     "tau2",
-                    df,
+                    scored_df,
                     huefactor=df["temperature",],
                     figno=1,
                     multivariate=False,
-                    title="Decay Tau by cell type, temperature",
+                    title=f"Decay Tau by cell type, temperature, {maxscore:.2f}",
                 )
 
             case "tau_2":
@@ -696,27 +709,25 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "tau2",
-                    df,
+                    scored_df,
                     huefactor="maxscore_thr",
                     figno=2,
                     multivariate=False,
-                    title="Decay Tau by cell type, maxscore threshold=1.3",
+                    title=f"Decay Tau by cell type, maxscore threshold={maxscore:.2f}",
                 )
 
             case "decay_tau":
                 """
                 Plot decay tau versus cell type, include only cells with maxscore > threshold
                 """
-                midbx = df.loc[df["maxscore"] > 1.3]  # reduce data set by maxscore
-                midbx = midbx.loc[midbx["cell_type"].isin(order)]
                 self.compare_plot(
                     "cell_type",
                     "tau2",
-                    midbx,
+                    scored_df,
                     huefactor="temperature",
                     figno=3,
                     multivariate=False,
-                    title="Decay tau by cell type, maxscore>1.3",
+                    title=f"Decay tau by cell type, maxscore>1.3",
                 )
 
                 """
@@ -731,7 +742,7 @@ class MapEventAnalyzer:
                     huefactor="agegroup",
                     figno=4,
                     multivariate=False,
-                    title="maxscore by cell type, age",
+                    title="Maxscore by cell type, age (all scores)",
                 )
 
                 """
@@ -745,7 +756,7 @@ class MapEventAnalyzer:
                     huefactor="agegroup",
                     figno=45,
                     multivariate=False,
-                    title="RMP by cell type, age",
+                    title="RMP by cell type, age (all cells)",
                 )
             case "Rin":
                 self.compare_plot(
@@ -755,7 +766,7 @@ class MapEventAnalyzer:
                     huefactor="agegroup",
                     figno=46,
                     multivariate=False,
-                    title="Rin by cell type, age",
+                    title="Rin by cell type, age (all cells)",
                 )
             case "taum":
                 self.compare_plot(
@@ -765,7 +776,7 @@ class MapEventAnalyzer:
                     huefactor="agegroup",
                     figno=47,
                     multivariate=False,
-                    title="Taum by cell type, age",
+                    title="Taum by cell type, age (all cells)",
                 )
             case "tauh":
                 self.compare_plot(
@@ -782,27 +793,26 @@ class MapEventAnalyzer:
                 Plot mean first event latency versus cell type, sort by maxscore true/false        """
 
             case "maxscore":
-                midby = df.loc[df["maxscore"] > 1.3]
                 self.compare_plot(
                     "cell_type",
                     "latency",
-                    midby,
+                    scored_df,
                     huefactor="temperature",
                     figno=5,
                     multivariate=False,
-                    title="Latency by cell type, temperature for Responding cells",
+                    title=f"Latency by cell type, temperature for Responding cells (maxscore>{maxscore:.2f})",
                 )
 
             case "latency":
-                midby = df.loc[df["temperature"].isin(["34C"])]
+                scored_df = scored_df.loc[df["temperature"].isin(["34C"])]
                 self.compare_plot(
                     "cell_type",
                     "latency",
-                    midby,
+                    scored_df,
                     huefactor="maxscore_thr",
                     figno=55,
                     multivariate=False,
-                    title="Latency by cell type, maxscore>1.3, at 34C",
+                    title=f"Latency by cell type, maxscore>{maxscore:.2f}, at 34C",
                 )
 
             case "max_amp":
@@ -812,11 +822,11 @@ class MapEventAnalyzer:
                 self.compare_plot(
                     "cell_type",
                     "max_amp",
-                    df,
+                    scored_df,
                     huefactor="maxscore_thr",
                     figno=6,
                     multivariate=False,
-                    title="Maximum Amplitude, maxscore thresh 1.3",
+                    title=f"Maximum Amplitude, maxscore thresh {maxscore:.2f}",
                 )
             case "mean_amp":
                 self.compare_plot(
@@ -826,7 +836,7 @@ class MapEventAnalyzer:
                     huefactor="maxscore_thr",
                     figno=6,
                     multivariate=False,
-                    title="Mean Amplitude, maxscore thresh 1.3",
+                    title=f"Mean Amplitude, maxscore thresh 1.3",
                 )
 
             case "avg_spont_amp":
@@ -841,27 +851,27 @@ class MapEventAnalyzer:
                     huefactor="temperature",
                     figno=101,
                     multivariate=False,
-                    title="Spontaneous Event Amplitudes by Temperature",
+                    title=f"Spontaneous Event Amplitudes by Temperature (all scores)",
                 )
             case "avg_event_qcontent":
                 self.compare_plot(
                     "cell_type",
                     "avg_event_qcontent",
-                    df,
+                    scored_df,
                     huefactor="temperature",
                     figno=102,
                     multivariate=False,
-                    title="Event Q content by Temperature",
+                    title=f"Event Q content by Temperature, {maxscore:.2f}",
                 )
             case "avg_largest_event_qcontent":
                 self.compare_plot(
                     "cell_type",
                     "avg_largest_event_qcontent",
-                    df,
+                    scored_df,
                     huefactor="temperature",
                     figno=103,
                     multivariate=False,
-                    title="largest event qcontent Amplitudes by Temperature",
+                    title=f"largest event qcontent Amplitudes by Temperature {maxscore:.2f}",
                 )
             case _:
                 plot_ok = False
@@ -1199,7 +1209,7 @@ class MapEventAnalyzer:
             if d[map] is None or d[map]["events"] is None:
                 continue
             minisum = d[map]["events"]
-            # print(minisum)
+            print("minisum keys: ", minisum.keys())
 
             for i, evx in enumerate(minisum):
                 ev = minisum[i]
