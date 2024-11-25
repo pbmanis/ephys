@@ -18,15 +18,11 @@ def transfer_cc_taum(row, excludes: list):
     of the best value for taum from the CC_taum protocol, if it exists.
     """
     row["CC_taum"] = [np.nan] * len(row["protocols"])
-    # print("row: ", "protocols: ", row["protocols"], "cctaum: ", row["CC_taum"])
     if "taum" not in row.keys():
         row["taum"] = row["CC_taum"]
-    # print("     ***** taum: ", row["taum"])
-    # print("excludes: ", excludes)
     n = 0
     for i, p in enumerate(row["protocols"]):
         proto = Path(p)
-        # print("proto: ", p)
         if str(proto) in excludes:
             CP.cprint("y", f"       Excluding: {proto!s}")
             continue
@@ -34,10 +30,12 @@ def transfer_cc_taum(row, excludes: list):
             return row["CC_taum"]
         pn = str(Path(p).name)
 
-        # print(i, pn, len(row["CC_taum"]))
         if pn.startswith("CC_taum"):
             if isinstance(row["taum"], list):
-                row["CC_taum"][n] = row["taum"][n]
+                if n < len(row["taum"]):
+                    row["CC_taum"][n] = row["taum"][n]
+                else:
+                    row["CC_taum"][n] = row["taum"][0]
             else:
                 row["CC_taum"][n] = row["taum"]
         else:
@@ -81,6 +79,8 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         raise ValueError
         print("     row keys: ", row.keys())
         return row
+    if parameter == "used_protocols":
+        return row
     if isinstance(row[parameter], float):
         row[parameter] = [row[parameter]]
     # if there is just one value, propagate it to all protocols
@@ -100,12 +100,12 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # Standard measurements: the mean of ALL of the measurements
     # collected across all protocols (data in a new column, representing the
     # mean)
-    # row[parameter + "_mean"] = np.nanmean(row[parameter])
 
     # now do the selection. Find out which protocols have the
     # lowest select_by measurement
     # these arrays are the same length as the number of protocols
     selector_values = np.array(row[select_by])
+    # print("parametre, row[parameter]: ", parameter, row[parameter])
     params = np.array(row[parameter])
     prots = row["protocols"]
     if verbose:
@@ -118,14 +118,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         )
         print("   row[parameter], selector values: ", params, selector_values)
 
-    # if params.shape != selector.shape:
-    #     print(
-    #         "Shapes do not match: ", row.cell_id, parameter, select_by, params.shape, selector.shape
-    #     )
-    #     print("    protocols: ", row["protocols"])
-    #     print("************************************************")
-    #     return row
-    valid_measures = np.argwhere(~np.isnan(params)).ravel()  #  & ~np.isnan(selector)).ravel()
+    valid_measures = np.argwhere(~np.isnan(params)).ravel()
     if verbose:
         print("Params: ", params)
         print("selector values: ", selector_values)
@@ -208,15 +201,14 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         return row
 
     if len(iprots) == 1:
-
         if isinstance(values, list):
             values = values[0]
-        CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
+        # CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
         row[parameter + f"_best{select_by:s}"] = values
         used_prots = f"{parameter:s}:{str(Path(prots[iprots[0]]).name):s}"
     elif len(iprots) > 1:
         used = ",".join([str(Path(prots[i]).name) for i in equal_mins])
-        CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
+        # CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
         row[parameter + f"_best{select_by:s}"] = np.mean(values)
         used_prots = f"{parameter:s}:{used:s}"
 
@@ -254,6 +246,7 @@ def innermost(datalist):
             continue
     return datalist  # no inner list found
 
+
 def populate_columns(
     data: pd.DataFrame,
     configuration: dict = None,
@@ -261,6 +254,7 @@ def populate_columns(
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
 ):
+    data = data.copy() # defrag dataframe.
     # populate the new columns for each parameter
     if "taums" not in data.columns:
         data["taums"] = np.nan
@@ -274,13 +268,10 @@ def populate_columns(
         b_str = p + f"_best{select_by:s}"
         if b_str not in data.columns:
             data[b_str] = np.nan
-    u = data.columns
-    # for u in data.columns:
-    #     if u.startswith("taum"):
-    #         print(u, data[u])
     if "age_category" not in data.columns:
         data["age_category"] = None
     age_cats = configuration["age_categories"]
+
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
     excludes = []
@@ -293,6 +284,7 @@ def populate_columns(
     data["used_protocols"] = ""
     data["age_category"] = data.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
     return data
+
 
 def check_types(data1, data2):
     # Compare 2 pandas series, element by element (e.g., rows)
@@ -344,11 +336,11 @@ def check_types(data1, data2):
                 d1 = data1.get(d)  # get the new type
                 if type(d1) != type(d2) and (type(d1) not in floats or type(d2) not in floats):
                     if type(d1) in floats and type(d2) is None:
-                        print("    converted d2 to float nan")
+                        # print("    converted d2 to float nan")
                         data2[d] = np.nan
                         d2 = data2.get(d)
                     if type(d2) in floats and type(d1) is None:
-                        print("    converted d1 to float nan")
+                        # print("    converted d1 to float nan")
                         data1[d] = np.nan
                         d1 = data1.get(d)
                     else:
@@ -394,13 +386,15 @@ def perform_selection(
     select_limits: list = [0, 1e10],
     data: pd.DataFrame = None,
     parameters: list = None,
+    configuration: dict = None,
 ):
-    fn = Path("/Users/pbmanis/Desktop/Python/Maness_Ank2_Nex/config/experiments.cfg")
-    print(fn.is_file())
-    select_by = "Rs"
-    cfg, d = get_configuration(str(fn))
+    assert configuration is not None
+    # fn = experiment['databasepath']
+    # print(fn.is_file())
+    # select_by = "Rs"
+    # cfg, d = get_configuration(str(fn))
 
-    expts = d[cfg[0]]
+    expts = configuration
     data = populate_columns(
         data,
         configuration=expts,
@@ -437,10 +431,6 @@ def perform_selection(
     return data
 
 
-
-
-
-values = "mean"  # or "lowest_Rs"
 parameters = [
     "Rs",
     "Rin",
@@ -462,41 +452,107 @@ parameters = [
     "used_protocols",
 ]
 
-if __name__ == "__main__":
-    # print(data.head(10))
-    import matplotlib.pyplot as mpl
 
-    fn = Path("/Users/pbmanis/Desktop/Python/Maness_Ank2_Nex/config/experiments.cfg")
-    print(fn.is_file())
-    select_by = "Rs"
-    cfg, d = get_configuration(str(fn))
+def get_best_and_mean(
+    data: pd.DataFrame, experiment: dict, parameters: list, select_by: str, select_limits: list
+):
+    """get_best_and_mean Taking the basic data frame that has
+    all the measures (as lists per protocol), we then generate
+    new columns for the measures associated with the best Rs
+    and the mean.
 
-    expts = d[cfg[0]]
+    Parameters
+    ----------
+    data : pandas dataframe
+        data table (this is the "assembled" data table)
+    expts : the configuration dictionary
+        all the various analysis control parameters for this experiment
+    parameters : a list of the parameters to do these computations on
+        list of strings
+    select_by : str
+        The parameter to select by (usually "Rs")
+    select_limits : list
+        values of of the select_by parameter that are acceptable.
 
-    assembled_filename = Path(expts["analyzeddatapath"], cfg[0], expts["assembled_filename"])
-    print(assembled_filename)
-    data = read_pickle(assembled_filename)
-    select_limits = [0, 1e9]
-    print("Parameters: ", parameters, "select_by", select_by)
+    Returns
+    -------
+    pandas dataframe
+        the updated data frame
+    """
     data = populate_columns(
         data,
-        configuration=expts,
+        configuration=experiment,
         parameters=parameters,
         select_by=select_by,
         select_limits=select_limits,
     )
-    data = perform_selection(
-        select_by=select_by, select_limits=select_limits, data=data, parameters=parameters
-    )
-    print("# Data columns: ", data.columns)
 
-    print(data["age_category"])
+    data = perform_selection(
+        data=data,
+        configuration=experiment,
+        parameters=parameters,
+        select_by=select_by,
+        select_limits=select_limits,
+    )
+    return data
+
+
+if __name__ == "__main__":
+    # print(data.head(10))
+    import matplotlib.pyplot as mpl
+
+    fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA//config/experiments.cfg")
+    fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
+    print(fn.is_file())
+    select_by = "Rs"
+    cfg, d = get_configuration(str(fn))
+
+    experiment = d[cfg[0]]
+    expts = experiment
+
+    assembled_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["assembled_filename"])
+    print(assembled_filename)
+    data = read_pickle(assembled_filename)
+    select_limits = [0, 1e9]
+    print("Parameters: ", parameters, "select_by", select_by)
+    print("Data columns: ", data.columns)
+    # for index in data.index:
+    #     print("index: ", index, data.loc[index]['AP_thr_V'])
+    # exit()
+    data = get_best_and_mean(
+        data=data,
+        experiment=experiment,
+        parameters=parameters,
+        select_by=select_by,
+        select_limits=select_limits,
+    )
+
+    #     data = populate_columns(
+    #     data,
+    #     configuration=expts,
+    #     parameters=parameters,
+    #     select_by=select_by,
+    #     select_limits=select_limits,
+    # )
+    # # print("populated data columns: ", data.columns)
+    # data = perform_selection(
+    #     select_by=select_by,
+    #     select_limits=select_limits,
+    #     data=data,
+    #     parameters=parameters,
+    #     configuration=expts,
+    # )
+    # print("# Data columns: ", data.columns)
+    # print(data['dvdt_rising_bestRs'])
+    # exit()
+    # print(data["age_category"])
     # for idx, row in data.iterrows():
     #     mpl.plot(data.iloc[idx].FI_Curve1[0], data.iloc[idx].FI_Curve1[1])
     #     mpl.plot(data.iloc[idx].FI_Curve4[0], data.iloc[idx].FI_Curve4[1])
     # mpl.show()
     yx = ["taum_bestRs", "taum_mean", "CC_taum_bestRs"]
-    f, ax = mpl.subplots(1, 3, figsize=(12, 6))
+    yx = ["AP_thr_V_bestRs", "AP_thr_V_mean", "dvdt_rising_bestRs", "dvdt_rising_mean"]
+    f, ax = mpl.subplots(1, len(yx), figsize=(12, 6))
     for i, axi in enumerate(ax):
         sns.boxplot(
             x="age_category",
@@ -521,7 +577,7 @@ if __name__ == "__main__":
         )
         axi.set_title(f"{yx[i]:s}")
         axi.set_ylabel(f"taum (s)")
-        axi.set_ylim(0, 0.08)
+        # axi.set_ylim(0, 0.08)
         axi.set_xticklabels(axi.get_xticklabels(), rotation=45)
     mpl.tight_layout()
     for idx, row in data.iterrows():
