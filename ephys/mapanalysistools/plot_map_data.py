@@ -32,7 +32,9 @@ color_sequence = ["k", "r", "b"]
 colormapname = "parula"
 
 # get the marker types and colors from a dictionary
-definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = define_markers.define_markers()
+definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = (
+    define_markers.define_markers()
+)
 
 
 def setMapColors(colormapname: str, reverse: bool = False) -> object:
@@ -252,6 +254,7 @@ class PlotMapData:
     def __init__(self, verbose=False):
         self.rasterized = False
         self.verbose = verbose
+        self.experiment = None
         self.reset_flags()
 
     def reset_flags(self):
@@ -271,6 +274,9 @@ class PlotMapData:
         self.Data = data
         self.MA = minianalyzer
         self.Data.timebase = self.MA.timebase
+    
+    def set_experiment(self, experiment: dict):
+        self.experiment = experiment
 
     def gamma_correction(self, image, gamma=2.2, imagescale=np.power(2, 16)):
         if gamma == 0.0:
@@ -706,9 +712,53 @@ class PlotMapData:
         bins = np.arange(range[0], range[1] + binwidth, binwidth)
         ax_histy.hist(ydata, bins=bins, orientation="horizontal", color=color)
         PH.nice_plot(ax_histy, direction="outward", ticklength=2)
-        # no labels
-        ax_histy.tick_params(axis="y", labelleft=False, labelsize=4)
+        # small labels
+        ax_histy.tick_params(axis="y", labelleft=True, labelsize=6)
         ax_histy.tick_params(axis="x", labelsize=6)
+
+    def event_ok(
+        self,
+        data,
+        samplerate: float,
+        base: float = 1e-3,
+        max_baseline_slope: float = 20.0e-12,
+        maxstd: float = 10e-12,
+        min_AP_slope: float = -1e-6,  # A/sec (nA/ms)
+        plot:bool=False,  # flag for testing.
+    ):
+        """
+        Check whether an event is ok to include for plotting and fitting
+        based on baseline slope
+        and baseline variability criterion
+        """
+        ev_bl = data[: int(base / samplerate)]
+        ev_dat = data - np.mean(ev_bl)
+        t_dat = np.arange(0, len(data) * samplerate, samplerate)
+        t_bl = np.arange(0, len(ev_bl) * samplerate, samplerate)
+        dIdT = np.gradient(ev_dat, samplerate)
+        if np.min(dIdT) < min_AP_slope:
+            return False 
+        if plot:
+            mpl.plot(t_dat, ev_dat, "k--", linewidth=0.5)
+        b, ev_slope = np.polynomial.polynomial.polyfit(t_bl, ev_bl, 1)
+        ev_slope = np.fabs(ev_slope)
+        std = np.std(ev_bl)
+        sl_line = b + ev_slope * t_bl
+        if plot:
+            mpl.plot(t_bl, sl_line, "r-", linewidth=0.5)
+        if np.std(ev_bl) > maxstd:
+            # print("std > maxvar: ", np.std(ev_bl), maxstd)
+            return False
+        if ev_slope > max_baseline_slope/base:
+            # print("sl > slopethr ", ev_slope, slope/base)
+            return False
+
+        # print("ok: sl= ", ev_slope,
+        #       "(sl thr: ", slope/base,
+        #       ")   var= ", np.std(ev_bl),
+        #       "var thr: ", maxstd,
+        #       )
+        return True
 
     def compute_event_fits(
         self,
@@ -754,11 +804,12 @@ class PlotMapData:
         ave = []
         npev = 0
         Res = {
+            "nevents": 0, # total number of events. 
             "avedat": None,
-            "aved": None,
+            "aved": None,  # averaged events (will likely be less than total number of events)
             "Amplitude": None,
             "Amplitude2": None,
-            "n_taus": params['n_taus'],
+            "n_taus": params["n_taus"],
             "tau1": None,
             "tau2": None,
             "tau3": None,
@@ -818,6 +869,7 @@ class PlotMapData:
                 evspont = event_data["events"][trial].spontaneous_event_trace_list[itrace]
                 # evs_ids = [(itrace, j) for j in evspont]
                 evs = evevoked if event_data["event_type"] == "avgevoked" else evspont
+                Res['nevents'] += len(evs)  # count up the number of events, regardless.
                 if (
                     evs is None or len(evs) == 0
                 ):  #  or evs == [[]]:  # skip if there are NO event to plot from this trace
@@ -827,7 +879,6 @@ class PlotMapData:
                         )
                     continue
                 used_ids = []
-
                 for j, jevent in enumerate(evs):
                     # evs is a list of lists of event onset indices in the current trace
                     event_id = (itrace, evs[j])  # construct key for allevents
@@ -836,24 +887,41 @@ class PlotMapData:
                         # raise ValueError(f"Event ID {event_id!s} has already been used")
                     used_ids.append(event_id)
                     if event_id not in allevents.keys():
-                        print(
-                            "   plot_event_traces:: missing event onset id in allevents: ", event_id
-                        )
+                        print("   plot_event_traces:: missing event onset id in allevents: ", event_id)
                         continue
-
+                    # print("# events in trace: ", len(evs))
                     evdata = allevents[event_id]
-
                     if len(evdata) == 0:
+                        continue
+                    npts = evdata.shape[0]
+                    plot=False
+                    if plot:
+                        mpl.plot(rate * np.arange(npts), evdata)
+                        mpl.xlim(0, npts * rate)
+                    if self.celltype is  not None:
+                        min_AP_slope = self.experiment['data_inclusion_criteria'][self.celltype]['dIdT_max']
+                    else:
+                        min_AP_slope = 1e-6
+                    evok = self.event_ok(
+                        data=evdata, samplerate=rate, base=1e-3, max_baseline_slope=20.0e-12, maxstd=25e-12,
+                        min_AP_slope=min_AP_slope,
+                        plot=plot
+                    )
+                    if plot:
+                        mpl.show()
+                        raise ValueError("STOP")
+                    if not evok:
                         continue
                     bl = np.mean(evdata[0:ptfivems])
                     evdata -= bl
-                    
+
                     ######################################################################
                     #  THESE are limiting factors in the plots, and can lead to incorrect estimates
                     # of the evoked and spont rates. Nice for plotting and seeing events,
                     # but not for quantitative analysis.
+                    # for that reason, they are commented out. 
                     ######################################################################
-                    # 
+                    #
                     # print("PARAMS: ", params)
                     # if (
                     #     params["plot_minmax"] is not None
@@ -884,7 +952,7 @@ class PlotMapData:
                         datahist += np.histogram(evdata, bins=256, range=(-1000e-12, 1000e-12))[0]
                     data_for_hist.append(np.min(evdata))
 
-                    # plot individual events.
+                    # plot the individual events that pass muster
                     ax.plot(
                         Res["tb"][: len(evdata)] * 1e3,
                         params["scale"] * evdata,
@@ -925,7 +993,7 @@ class PlotMapData:
             Res["avedat"],
             debug=False,
             label="Map average",
-            n_taus = params['n_taus'],
+            n_taus=params["n_taus"],
             inittaus=self.Pars.taus,  # start fit with seeded taus
             initdelay=params["tpre"],
         )
@@ -935,10 +1003,10 @@ class PlotMapData:
         if MA.fitresult is not None:
             Res["Amplitude1"] = MA.fitresult.values["amp"]
             Res["Amplitude2"] = MA.fitresult.values["amp2"]
-            Res["n_taus"] = params['n_taus']
+            Res["n_taus"] = params["n_taus"]
             Res["tau1"] = MA.fitresult.values["tau_1"]
             Res["tau2"] = MA.fitresult.values["tau_2"]
-            if params['n_taus'] == 2:
+            if params["n_taus"] == 2:
                 Res["tau3"] = MA.fitresult.values["tau_3"]
                 Res["tau4"] = MA.fitresult.values["tau_4"]
             else:
@@ -1042,13 +1110,14 @@ class PlotMapData:
                 "linetypes": linetypes,
                 "plot_minmax": plot_minmax,
                 "tpre": tpre,
-                "n_taus": n_taus, 
+                "n_taus": n_taus,
+                "max_absolute_baseline_slope": 20.0,  # pA/msec
             },
             results=results,
             datahist=datahist,
             Pars=self.Pars,
             MA=self.MA,
-            ax=ax
+            ax=ax,
         )
 
         # if self.Pars.sign == -1:
@@ -1059,17 +1128,24 @@ class PlotMapData:
         if self.fitting_results is not None:
             if self.fitting_results["bestfit"] is None or self.fitting_results["avedat"] is None:
                 return None
-            txt = f"Amp: {scale*self.fitting_results['Amplitude']:.1f}pA tau1:{1e3*self.fitting_results['tau1']:.2f}ms tau2: {1e3*self.fitting_results['tau2']:.2f}ms (N={self.fitting_results['aved'].shape[0]:d} del={self.fitting_results['bfdelay']:.4f})"
-            txt2 = f"Amp2: {scale*self.fitting_results['Amplitude2']:.1f}pA tau3:{1e3*self.fitting_results['tau3']:.2f}ms tau4: {1e3*self.fitting_results['tau4']:.2f}ms (N={self.fitting_results['aved'].shape[0]:d})"
+            txt = f"Amp: {scale*self.fitting_results['Amplitude']:.1f}pA tau1:{1e3*self.fitting_results['tau1']:.2f}ms "
+            txt += f"tau2: {1e3*self.fitting_results['tau2']:.2f}ms "
+            txt += f"(Navg={self.fitting_results['aved'].shape[0]:d} Ntot={self.fitting_results['nevents']:d} "
+            txt += f"del={self.fitting_results['bfdelay']:.4f})"
+            txt2 = None
+            if not np.isnan(self.fitting_results['tau3']):
+                txt2 = f"Amp2: {scale*self.fitting_results['Amplitude2']:.1f}pA tau3: {1e3*self.fitting_results['tau3']:.2f}ms "
+                txt2 += f"tau4: {1e3*self.fitting_results['tau4']:.2f} ms"
             if evtype == "avgspont" and events[0] is not None:
-                srate = float(self.fitting_results["aved"].shape[0]) / (
+                srate = float(self.fitting_results["nevents"]) / (
                     events[0].spont_dur[0] * mdata.shape[1]
                 )  # dur should be same for all trials
-                txt += f" SR: {srate:.2f} Hz"
+                txt += f"\nSR: {srate:.2f} Hz"
             if events[0] is None:
                 txt = txt + "SR: No events"
             ax.text(0.05, 0.97, txt, fontsize=6, transform=ax.transAxes)
-            ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
+            if txt2 is not None:
+                ax.text(0.05, 0.89, txt2, fontsize=6, transform=ax.transAxes)
 
             ax.plot(
                 self.fitting_results["tb"] * 1e3,
@@ -1106,7 +1182,7 @@ class PlotMapData:
             self.fitting_results["data_for_hist"] is not None
             and len(self.fitting_results["data_for_hist"]) > 10
         ):  # only add if we have some data to plot
-            marginal_ax = ax.inset_axes([1.0, 0, 0.05, 1], sharey=ax)
+            marginal_ax = ax.inset_axes([1.1, 0, 0.05, 1], sharey=ax)
             self.marginal_hist(
                 ax,
                 marginal_ax,
@@ -1385,9 +1461,18 @@ class PlotMapData:
                 spotsizes = spotsize * np.linspace(1.0, 0.2, len(measure[mtype]))
             else:
                 spotsizes = spotsize * np.ones(len(measure[measuretype]))
-        pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
+        # print("pos array before: ", np.array(pos).shape)
+        # for p in pos:
+        #     print("position: ", p*1e3)
+        # pos = self.scale_and_rotate(pos, scale=1.0, angle=angle)
+        # print("pos array: ", np.array(pos).shape)
+        # for p in pos:
+        #     print("position: ", p*1e3)
+
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
+        # raise ValueError()
+
         # make sure the keys are on the plot
         # for marker in markers:
         #     if marker in all_markernames:
@@ -1398,11 +1483,34 @@ class PlotMapData:
         #             ylim = [np.min([ylim[0], position[1]-msize]), np.max([ylim[1], position[1]+msize])]
 
         sign = measure["sign"]
-
+        nspots = len(pos)  # on trial 0
+        if "npulses" in list(measure["stimtimes"].keys()):
+            npulses = measure["stimtimes"]["npulses"]
+        else:
+            npulses = len(measure["stimtimes"]["starts"])
+        if isinstance(npulses, list):
+            npulses = npulses[0]
+        events = measure["events"]
         upscale = 1.0
         vmin = 0
         vmax = 1
         data = []
+        twin_resp = []
+        if measure["stimtimes"] is not None:
+            twin_base = [
+                0.0,
+                measure["stimtimes"]["starts"][0] - 0.001,
+            ]  # remember times are in seconds
+
+            stims = measure["stimtimes"]["starts"]
+            for j in range(len(stims)):
+                twin_resp.append(
+                    [
+                        stims[j] + self.Pars.direct_window,
+                        stims[j] + self.Pars.response_window,
+                    ]
+                )
+
         if measuretype == "ZScore":
             data = measure[measuretype]
 
@@ -1422,100 +1530,80 @@ class PlotMapData:
                 vmax = vmin + 1
 
         elif measuretype in ("A", "Q") and measure["events"][0] is not None:
-            events = measure["events"]
-            nspots = len(measure["events"][0])  # on trial 0
-            if "npulses" in list(measure["stimtimes"].keys()):
-                npulses = measure["stimtimes"]["npulses"]
-            else:
-                npulses = len(measure["stimtimes"]["start"])
-            if isinstance(npulses, list):
-                npulses = npulses[0]
+
             # data = np.zeros((measure['ntrials'], npulses, nspots))
             data = np.zeros((npulses, nspots))
-            if measure["stimtimes"] is not None:
-                twin_base = [
-                    0.0,
-                    measure["stimtimes"]["start"][0] - 0.001,
-                ]  # remember times are in seconds
-                twin_resp = []
-                stims = measure["stimtimes"]["start"]
-                for j in range(len(stims)):
-                    twin_resp.append(
-                        [
-                            stims[j] + self.Pars.direct_window,
-                            stims[j] + self.Pars.response_window,
-                        ]
-                    )
 
-            rate = measure["rate"]
-            nev = 0
-            nev_spots = 0
-            # print("event measures: ", events[0][0]["measures"])
-            for trial in range(measure["ntrials"]):
-                skips = False
-                for spot in range(nspots):  # for each spot
-                    for ipulse in range(npulses):
-                        if measuretype == "Q":
-                            # try:  # repeated trials not implemented here.
-                            #     u = isinstance(events[trial]["measures"][spot])
-                            # except:
-                            #     if not skips:
-                            #         CP.cprint("r", f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d} and subsequent")
-                            #         skips = True
-                            #     continue
-                            u = events[trial]
-                            try:
-                                u = events[trial]["measures"][spot]
-                            except:
-                                CP.cprint(
-                                    "r",
-                                    f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d}",
-                                )
-                                continue
-                            if not isinstance(events[trial]["measures"][spot], dict):
-                                continue
-                            if (
-                                len(events[trial]["measures"][spot]["Q"]) > ipulse
-                            ):  # there is only one, the first trial
-                                data[ipulse, spot] = events[trial]["measures"][spot]["Q"][ipulse]
+        rate = measure["rate"]
+        nev = 0
+        nev_spots = 0
+
+        # print("event measures: ", events[0][0]["measures"])
+        print("ntrials: ", measure["ntrials"])
+        for trial in range(measure["ntrials"]):
+            skips = False
+            for spot in range(nspots):  # for each spot
+                for ipulse in range(npulses):
+                    if measuretype == "Q":
+                        # try:  # repeated trials not implemented here.
+                        #     u = isinstance(events[trial]["measures"][spot])
+                        # except:
+                        #     if not skips:
+                        #         CP.cprint("r", f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d} and subsequent")
+                        #         skips = True
+                        #     continue
+                        u = events[trial]
+                        try:
+                            u = events[trial]["measures"][spot]
+                        except ValueError:
+                            CP.cprint(
+                                "r",
+                                f"Skipped Plotting Q for trial {trial:d} of {measure['ntrials']:d}, spots {nspots:d}, stimpulses: {npulses:d}",
+                            )
                             continue
-                        try:
-                            x = events[trial]
-                        except:
-                            raise ValueError("Unable to store events On trial: ", trial)
-                        try:
-                            smpki = events[trial]["smpksindex"][0][spot]
-                        except:
-                            try:
-                                smpki = events[trial]["smpksindex"][spot]
-                            except:
-                                # continue
-                                print("on Spot: ", spot)
-                                print(smpki)
-                                smpki = events[trial]["smpksindex"]
-                                raise ValueError(smpki)
-                        tri = np.ndarray(0)
-                        tev = twin_resp[ipulse]  # go through stimuli
-                        iev0 = int(tev[0] / rate)
-                        iev1 = int(tev[1] / rate)
-                        if not isinstance(smpki, (list, np.ndarray)):
-                            smpki = np.ndarray([smpki])
-                        idx = np.where((smpki >= iev0) & (smpki <= iev1))[0]
-                        if len(smpki) > 0:
-                            tri = np.concatenate(
-                                (
-                                    tri.copy(),
-                                    smpki[idx],
-                                ),
-                                axis=0,
-                            ).astype(int)
+                        if not isinstance(events[trial]["measures"][spot], dict):
+                            continue
+                        if (
+                            len(events[trial]["measures"][spot]["Q"]) > ipulse
+                        ):  # there is only one, the first trial
+                            data[ipulse, spot] = events[trial]["measures"][spot]["Q"][ipulse]
+                        continue
+                    try:
+                        x = events[trial]
+                    except ValueError:
+                        raise ValueError("Unable to store events On trial: ", trial)
+                    if x is None:
+                        continue
+                    try:
+                        smpki = np.array(events[trial].smpkindex[spot])
+                    except ValueError:
+                        # continue
+                        # print("on Spot: ", spot)
+                        # print(smpki)
+                        smpki = events[trial]["smpkindex"]
+                        raise ValueError("Unable to parse events[trial] smpkindex")
+                    tri = np.ndarray(0)
+                    tev = twin_resp[ipulse]  # go through stimuli
+                    iev0 = int(tev[0] / rate)
+                    iev1 = int(tev[1] / rate)
+                    if not isinstance(smpki, (list, np.ndarray)):
+                        smpki = np.ndarray([smpki])
+                    idx = np.where((smpki >= iev0) & (smpki <= iev1))[0]
+                    if len(smpki) > 0:
+                        tri = np.concatenate(
+                            (
+                                tri.copy(),
+                                smpki[idx],
+                            ),
+                            axis=0,
+                        ).astype(int)
 
-                        smpki = list(smpki)
-                        for t in range(len(tri)):
-                            if tri[t] in smpki:
-                                r = smpki.index(tri[t])  # find index
-                                data[ipulse, spot] += sign * events[trial]["smpks"][spot][r]
-                                nev_spots += 1
+                    smpki = list(smpki)
+                    for t in range(len(tri)):
+                        if tri[t] in smpki:
+                            r = smpki.index(tri[t])  # find index
+                            data[ipulse, spot] += sign * events[trial]["smoothed_peaks"][spot][r]
+                            nev_spots += 1
 
             vmin = 0.0
             vmax = np.max(data)
@@ -1607,7 +1695,7 @@ class PlotMapData:
                         ri += rs
 
         measures, poly = get_markers.plot_mosaic_markers(
-            markers, axp, mark_colors=mark_colors, mark_symbols=mark_symbols, mark_alpha = mark_alpha
+            markers, axp, mark_colors=mark_colors, mark_symbols=mark_symbols, mark_alpha=mark_alpha
         )
 
         tickspace = scaler.tickSpacing
@@ -1643,8 +1731,8 @@ class PlotMapData:
             ha="center",
             va="bottom",
         )
-        # axp.set_xlim(xlim)
-        # axp.set_ylim(ylim)
+        axp.set_xlim(xlim)
+        axp.set_ylim(ylim)
         if imageHandle is not None and imagefile is not None:
             axp.set_aspect("equal")
         axp.set_aspect("equal")
@@ -1713,7 +1801,9 @@ class PlotMapData:
         )  # a1 is cal bar
         spotsize = 42e-6
         self.P = PH.Plotter(self.plotspecs, label=True, figsize=(10.0, 8.0))
+
         self.nreps = result["ntrials"]
+        raise ValueError
         now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
         mpl.text(
             0.96,
@@ -1759,6 +1849,7 @@ class PlotMapData:
         markers: Union[dict, None] = None,
         plot_minmax: Union[list, None] = None,
         cal_height: Union[float, None] = None,
+        celltype: str="",
     ) -> bool:
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {dataset.name:s}")
@@ -1786,8 +1877,11 @@ class PlotMapData:
             label = "AU"
 
         # build a figure
+        self.celltype = celltype
         self.nreps = results["ntrials"]
-
+        # print("plot_map_data::display_one_map: ", results.keys())
+        # print("result: ", results['ntrials'])
+        # raise ValueError
         l_c1 = 0.1  # column 1 position
         l_c2 = 0.50  # column 2 position
         trw = 0.32  # trace x width
