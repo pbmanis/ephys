@@ -55,6 +55,8 @@ class acq4_reader:
         Nothing
         """
         self.protocol = None
+        self.last_protocol = None  # to keep from having to look for subdirs many times.
+        self.last_dirs = []
         self.bad_clamp_mode = False
         if pathtoprotocol is not None:
             self.setProtocol(pathtoprotocol)
@@ -162,6 +164,8 @@ class acq4_reader:
         Sorted list of the directories in the path
         """
         p = Path(p)  # convert if not already
+        if self.last_protocol == p:
+            return self.last_dirs
         dirs = [d for d in list(p.glob("*")) if d.is_dir()]
         CP.cprint("c", f"Found {len(dirs):d} directories under {str(p):s}")
         # CP.cprint("c", f"   all dirs: {str(dirs)!s}")
@@ -169,6 +173,8 @@ class acq4_reader:
         dirs = sorted(list(dirs))  # make sure these are in proper order...
         # for i, dir in enumerate(dirs):
         #     CP.cprint("c", f"   {i:04d} {str(dir.name)!s}")
+        self.last_dirs = dirs  # save for the next time
+        self.last_protocol = Path(p)
         return dirs
 
     def checkProtocol(
@@ -721,7 +727,6 @@ class acq4_reader:
 
         self.error_info = None  # clear any previous error info
         dirs = self.subDirs(self.protocol)
-        # CP.cprint("c", f"acq4_read: Found {len(dirs):d} directories under {self.protocol:s}")
         if len(dirs) == 0:
             if Path(self.protocol).is_dir():
                 self.error_info = f"Protocol dir exists, but is empty or has malformed structure: {self.protocol!s}"
@@ -1841,15 +1846,4 @@ def one_test():
 
 if __name__ == "__main__":
     pass
-# one_test()
-# AR = acq4_reader()
-# datapath = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim/Rig2(PBM)/L23_intrinsic/2022.12.07_000/slice_000/cell_002/CCIV_long_HK_000/000/MultiClamp1.ma"
-# print(Path(datapath).is_file())
-# AR.setProtocol(datapath)
-# d = AR.getDataInfo(datapath)
-# print(d)
 
-# AR = acq4_reader()
-#
-# datapath = '/Users/pbmanis/Documents/Lab/data/Maness_PFC_stim/2019.03.19_000/slice_000/cell_001'
-# d = AR.subDirs(datapath)
