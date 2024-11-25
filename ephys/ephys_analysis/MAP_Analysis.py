@@ -842,6 +842,7 @@ class MAP_Analysis(Analysis):
         plotevents = True
         self.AM.Pars.overlay_scale = 0.0
         PMD.set_Pars_and_Data(pars=self.AM.Pars, data=self.AM.Data, minianalyzer=self.MA)
+        PMD.set_experiment(self.experiment)
         if self.mapsZQA_plot:
             mapok = PMD.display_position_maps(
                 dataset_name=self.mapdir, result=self.result, pars=self.AM.Pars
@@ -867,6 +868,7 @@ class MAP_Analysis(Analysis):
                 average=False,
                 rasterized=False,
                 datatype=self.AM.Pars.datatype,
+                celltype = self.this_celltype,
             )  # self.AM.rasterized, firstonly=True, average=False)
 
         msg = f"Map analysis done: {str(self.map_name):s}"
