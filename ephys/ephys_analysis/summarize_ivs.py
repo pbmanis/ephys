@@ -344,18 +344,18 @@ class GetAllIVs:
         For example, the experiments dictionary might contain:
 
         '''
-            rawdatadisk = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/Maness_Ank2_PFC_stim"
-            resultdisk = "/Users/pbmanis/Desktop/Python/ank2/ank2_datasets"
+            rawdatadisk = "/Volumes/Pegasus_002/ManisLab_Data3/ThePatcher/SomeGeneWasKOd"
+            resultdisk = "/Users/pbmanis/Desktop/Python/somegene/somegene_datasets"
             experiments = {
-                "Ank2B": {
+                "somegene": {
                     "rawdatapath": rawdatadisk,
                     "databasepath": resultdisk,# location of database files (summary, coding, annotation)
                     "analyzeddatapath": resultdisk, # analyzed data set directory
                     "directory": "", # directory for the raw data, under rawdatadisk
-                    "pdfFilename": "Ank2B_IVs.pdf", # PDF figure output file
-                    "db_directory": "ANK2",
+                    "pdfFilename": "somegene_IVs.pdf", # PDF figure output file
+                    "db_directory": "TheGene",
                     "datasummaryFilename": "Intrinsics",
-                    "iv_analysisFilename": "ANK2_NEX_IVs.pkl",
+                    "iv_analysisFilename": "SomeGene_IVs.pkl",
                     "coding_file": None,
                     "coding_sheet": None,
                     "annotationFilename": None,
