@@ -260,7 +260,7 @@ class AnalyzeMap(object):
             self.Pars.analysis_window[0] = self.AR.tend + 0.010
 
         # get the laser pulse times
-        print("Getting laser or LED from: ", protocolFilename)
+        print("Getting laser or LED from: ", Path(protocolFilename).name)
 
         if "laser" in str(protocolFilename) or "Laser" in str(protocolFilename):
             self.AR.getLaserBlueTimes()
