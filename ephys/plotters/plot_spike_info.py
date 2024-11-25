@@ -10,6 +10,7 @@ from typing import Optional
 import textwrap
 import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
+import concurrent.futures
 import numpy as np
 import pandas as pd
 import pylibrary.plotting.plothelpers as PH
@@ -26,7 +27,7 @@ from statsmodels.stats.multitest import multipletests
 
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools.get_computer import get_computer
-import ephys.tools.show_combined_datafile  as SCD
+import ephys.tools.show_combined_datafile as SCD
 from ephys.gui import data_table_functions
 from ephys.tools import filter_data, fitting, utilities
 
@@ -43,8 +44,9 @@ Fitter = fitting.Fitting()
 # by pyqtgraph)
 
 # These functions are wrappers for the PlotSpikeInfo class methods,
-# and were orginally in data_tables.py, associated with the 
+# and were orginally in data_tables.py, associated with the
 # parametertree parsing.
+
 
 def concurrent_categorical_data_plotting(
     filename: str,
@@ -52,6 +54,7 @@ def concurrent_categorical_data_plotting(
     plot_title: str = "My Title",
     parameters: dict = None,
     data_class: str = "spike_measures",  # what kind of data to plot
+    representation: str = "bestRs",
     picker_active: bool = False,
     infobox: dict = None,
 ):
@@ -65,8 +68,13 @@ def concurrent_categorical_data_plotting(
     hue_category = parameters["hue_category"]
     pick_display_function = parameters["pick_display_function"]
 
-    PSI_ = PlotSpikeInfo(datasummary, experiment, pick_display=picker_active,
-                         pick_display_function=pick_display_function)
+    PSI_ = PlotSpikeInfo(
+        datasummary,
+        experiment,
+        pick_display=picker_active,
+        pick_display_function=pick_display_function,
+        representation=representation,
+    )
     df = PSI_.preload(filename)
     if mode == "categorical":
         print("categorical")
@@ -82,6 +90,7 @@ def concurrent_categorical_data_plotting(
             measures=experiment[data_class],
             colors=colors,
             enable_picking=picker_active,
+            representation=representation,
         )
     elif mode == "continuous":
         df = PSI_.preload(filename)
@@ -92,13 +101,12 @@ def concurrent_categorical_data_plotting(
             df,
             xname=group_by,
             measures=experiment[data_class],
+            representation=representation,
         )
     cc_plot.figure_handle.suptitle(plot_title, fontweight="bold", fontsize=18)
-    picked_cellid = (
-        cc_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
-            "pick_event",
-            lambda event: PSI_.pick_handler(event, picker_funcs1),
-        )
+    picked_cellid = cc_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
+        "pick_event",
+        lambda event: PSI_.pick_handler(event, picker_funcs1),
     )
 
     cc_plot.figure_handle.text(
@@ -138,8 +146,9 @@ def concurrent_selected_fidata_data_plotting(
     pick_display_function = parameters["pick_display_function"]
 
     P2 = FUNCS.get_selected_cell_data_FI(
-                                experiment=experiment, assembleddata=assembleddata,
-                            )
+        experiment=experiment,
+        assembleddata=assembleddata,
+    )
 
     # P2.figure_handle.suptitle("Firing Rate", fontweight="bold", fontsize=18)
     # picked_cellid = P2.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
@@ -487,7 +496,11 @@ def get_datasummary(experiment):
     if not datasummary.exists():
         raise ValueError(f"Data summary file {datasummary!s} does not exist")
     df_summary = pd.read_pickle(datasummary)
-    df_summary.rename({'Subject': "animal_identifier", "animal identifier": "animal_identifier"}, axis=1, inplace=True)
+    df_summary.rename(
+        {"Subject": "animal_identifier", "animal identifier": "animal_identifier"},
+        axis=1,
+        inplace=True,
+    )
     print(df_summary.columns)
     print(df_summary.cell_type.unique())
     return df_summary
@@ -634,8 +647,8 @@ def numeric_age(row):
 
 
 def make_datetime_date(row, colname="date"):
-    if colname == 'date' and 'Date' in row.keys():
-        colname = 'Date'
+    if colname == "date" and "Date" in row.keys():
+        colname = "Date"
     if pd.isnull(row[colname]) or row[colname] == "nan":
         row.shortdate = 0
         return row.shortdate
@@ -655,13 +668,21 @@ def make_datetime_date(row, colname="date"):
 
 
 class PlotSpikeInfo(QObject):
-    def __init__(self, dataset, experiment, pick_display=False, pick_display_function=None):
+    def __init__(
+        self,
+        dataset,
+        experiment,
+        pick_display=False,
+        pick_display_function=None,
+        representation: str = "all",
+    ):
         self.set_experiment(dataset, experiment)
         self.transforms = {
             # "maxHillSlope": np.log10,
         }
         self.pick_display = pick_display
         self.pick_display_function = pick_display_function
+        self.representation = representation
 
     def set_experiment(self, dataset, experiment):
         """set_experiment Update the selected dataset and experiment so we
@@ -684,6 +705,7 @@ class PlotSpikeInfo(QObject):
 
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
         df3 = pd.read_excel(coding_file, sheet_name=coding_sheet)
+        # print(df3.head())
         for index in df.index:
             row = df.loc[index]
             if pd.isnull(row.date):
@@ -712,6 +734,12 @@ class PlotSpikeInfo(QObject):
                         & (df3.slice_slice == row.slice_slice)
                         & (df3.cell_cell == row.cell_cell)
                     )
+                    print("mask: ", mask)
+                    print("df3.date: ", row.date)
+                    print("df3.slice_slice: ", row.slice_slice)
+                    print("df3.cell_cell: ", row.cell_cell)
+                    print("coding name: ", coding_name)
+                    print("Mask: ", df3[mask][coding_name].astype(str))
                     df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
             else:
                 # print("Assigning nan to : ", df.loc[index].cell_id)
@@ -778,7 +806,7 @@ class PlotSpikeInfo(QObject):
             self.experiment["remove_expression"] = None
         df = FD.filter_data_entries(
             df,
-            remove_groups = self.experiment["remove_groups"],
+            remove_groups=self.experiment["remove_groups"],
             remove_expression=self.experiment["remove_expression"],
             excludeIVs=self.experiment["excludeIVs"],
             exclude_internals=["cesium", "Cesium"],
@@ -815,24 +843,21 @@ class PlotSpikeInfo(QObject):
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
         cell_list = list(set(df.cell_id))
-        
-        # print("cell_list: ", cell_list)
-        # cell_list = ["2024.05.16_000_S0C0"]
-        # cell_list = ["2024.05.15_000_S6C1"]
+
         cell_list = sorted(cell_list)
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
         computer_name = get_computer()
         nworkers = self.experiment["NWORKERS"][computer_name]
         cells_to_do = [cell for cell in cell_list if cell is not None]
-     
+
         # here we should check to see if cell has been done in the current file,
         # and remove it from the list.
-        combined_file =  Path(
-                self.experiment["analyzeddatapath"],
-                self.experiment["directory"],
-                self.experiment["assembled_filename"],
-            )
+        combined_file = Path(
+            self.experiment["analyzeddatapath"],
+            self.experiment["directory"],
+            self.experiment["assembled_filename"],
+        )
         # first be sure that we even have a combined file!
         if combined_file.is_file():
             already_done = pd.read_pickle(
@@ -848,7 +873,8 @@ class PlotSpikeInfo(QObject):
         # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
         # instrument up to to a limited set of the data for testing
         # The limit numbers refer to the IV data table.
-        ilimit = None # list(range(67, 78))
+        ilimit = None  # list(range(67, 78))
+        tasks = 1
         if ilimit is None:
             limit = len(cells_to_do)
             tasks = range(limit)
@@ -861,17 +887,30 @@ class PlotSpikeInfo(QObject):
 
         result = [None] * len(tasks)
         results = dfdict
-        parallel = False
+        parallel = True
         if parallel:
-            with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
-                for i, x in tasker:
-                    result = FUNCS.compute_FI_Fits(
-                        self.experiment, df, cell_list[i], protodurs=self.experiment["FI_protocols"]
-                    )
-                    tasker.results[cell_list[i]] = result
+            with concurrent.futures.ProcessPoolExecutor(max_workers=nworkers) as executor:
+                results = executor.map(
+                    FUNCS.compute_FI_Fits,
+                    [self.experiment] * len(tasks),
+                    [df] * len(tasks),
+                    [cell_list[i] for i in tasks],
+                    [self.experiment["FI_protocols"]] * len(tasks),
+                )
+                for i, result in enumerate(results):
+                    if result is not None:
+                        df_new = pd.concat(
+                            [df_new, pd.Series(result).to_frame().T], ignore_index=True
+                        )
+            # with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
+            #     for i, x in tasker:
+            #         result = FUNCS.compute_FI_Fits(
+            #             self.experiment, df, cell_list[i], protodurs=self.experiment["FI_protocols"]
+            #         )
+            #         tasker.results[cell_list[i]] = result
 
-            for r in results: 
-                df_new = pd.concat([df_new, pd.Series(results[r]).to_frame().T], ignore_index=True)
+            # for r in results:
+            #     df_new = pd.concat([df_new, pd.Series(results[r]).to_frame().T], ignore_index=True)
         else:
 
             # do each cell in the database
@@ -884,14 +923,16 @@ class PlotSpikeInfo(QObject):
                     if icell not in ilimit:
                         continue
                 if cell is None:
-                    CP("r", f"Cell # {icell:d} in the database is None")
+                    CP("r", f"    Cell # {icell:d} in the database is None")
                     continue
-                CP("c", f"Computing FI_Fits for cell: {cell:s}")  # df[df.cell_id==cell].cell_type)
+                CP(
+                    "c", f"    Computing FI_Fits for cell: {cell:s}"
+                )  # df[df.cell_id==cell].cell_type)
                 datadict = FUNCS.compute_FI_Fits(
                     self.experiment, df, cell, protodurs=self.experiment["FI_protocols"]
                 )
                 if datadict is None:
-                    print("datadict is none for cell: ", cell)
+                    print("    datadict is none for cell: ", cell)
                     continue
                 df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
         return df_new
@@ -936,15 +977,40 @@ class PlotSpikeInfo(QObject):
                 df.loc[len(df) - 1, "Group"] = group
         return df
 
-    def clear_missing_groups(self, row, data):
-        if pd.isnull(row[data]):
-            return np.NaN
-        if "remove_expression" in self.experiment.keys():
-            if self.experiment['remove_expression'] is not None:
-                if row.Group in self.experiment["remove_expression"]:
-                    return np.NaN  # replace removed groups (such as "ND") with nan
-        if row[data] in [" ", "", "", "nan"] or len(row[data]) == 0:
-            return np.NaN
+    def clear_missing_groups(self, row, data, replacement=None):
+        """clear_missing_groups Remove groups that are nan or empty
+        by replacing them with "Group = np.nan", unless
+        "replacement" is not None, in which case the group
+        is replaced with the value of "replacement"
+
+        Parameters
+        ----------
+        row : _type_
+            _description_
+        data : _type_
+            _description_
+        replacement : str, optional
+            _description_, by default "Ctl"
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        # print("clear missing groups for : ", data, row[data])
+        if "remove_groups" in self.experiment.keys():
+            # print("config has groups to remove: ", self.experiment["remove_groups"])
+            if self.experiment["remove_groups"] is not None:
+                if row.Group in self.experiment["remove_groups"]:
+                    print("row group: ", row.Group, " is in removables")
+                    row[data] = np.nan
+                    return row
+        if pd.isnull(row[data]) or len(row[data]) == 0 or row[data] == 'nan':
+            # print("row[data] is" , row[data])
+            if replacement is not None:
+                row[data] = replacement
+            else:
+                row[data] = np.nan
         return row
 
     def bar_pts(
@@ -980,24 +1046,31 @@ class PlotSpikeInfo(QObject):
             df_x = df[df["cell_type"] == celltype]
         else:
             df_x = df
-
+        # print("dfx type 1: ", type(df_x))
+        
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
+        # print("dfx type 2: ", type(df_x))
         if colors is None:  # set all to blue
             colors = {df_x[g]: "b" for g in plot_order}
         # df_x.dropna(subset=[groups], inplace=True)  # drop anything unassigned
         df_x[yname] = df_x[yname].astype(float)  # make sure values to be plotted are proper floats
+        # print("dfx type 3: ", type(df_x))
         if df_x[yname].isnull().values.all(axis=0):
             return None
         df_x = self.fill_missing_groups(df_x, xname, celltype)  # make sure emtpy groups have nan
-        df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname)
-        # df_x = df_x[df_x[xname] == "Preweaning"]
+        # print("dfx type 4: ", type(df_x))
+        if "default_group" in self.experiment.keys():
+            df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname, replacement=self.experiment["default_group"])
+        else:
+            df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname)
+        # print("dfx type 5: ", type(df_x))
+        # print("uniques: ", df_x[xname].unique())
         df_x.dropna(subset=[xname], inplace=True)
-        # print(df_x[xname].unique())
-        # print("bar_pts: ")
-        CP("y", f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}")
-        # print("      X values: ", xname)
-        # print("Hue category: ", hue_category)
-
+        CP(
+            "y",
+            f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
+        )
+ 
         dodge = True
         if (
             "hue_palette" in self.experiment.keys()
@@ -1013,13 +1086,16 @@ class PlotSpikeInfo(QObject):
         else:
             dodge = False
             hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
-        if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
+        if (
+            "remove_expression" in self.experiment.keys()
+            and self.experiment["remove_expression"] is not None
+        ):
             for expression in self.experiment["remove_expression"]:
                 if expression in hue_palette:
                     hue_palette.pop(expression)
                 if expression in hue_order:
                     hue_order.remove(expression)
-                    
+
         # if hue_category == "sex":
         #     print("setting hue_palette via sex")
         #     hue_palette = {
@@ -1032,14 +1108,9 @@ class PlotSpikeInfo(QObject):
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
 
-            # dodge = False
+        # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
-
-        print("hue cat: ", hue_category)
-        print("hue order: ", hue_order)
-        print("hue_palette", hue_palette)
-        print("plot_order: ", plot_order)
 
         # must use scatterplot if you want to use picking.
         if enable_picking:
@@ -1087,9 +1158,9 @@ class PlotSpikeInfo(QObject):
                 clip_on=False,
             )
 
-        print("xname: ", xname)
-        print(df_x[xname])
-        print(df_x[yname])
+        # print("xname: ", xname)
+        # print(df_x[xname])
+        # print(df_x[yname])
         if not all(np.isnan(df_x[yname])):
             sns.boxplot(
                 data=df_x,
@@ -1190,10 +1261,13 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
+            # print("measure: ", row[measure])
             if isinstance(row[measure], list):
+                # meanmeasure = np.nanmean(row[measure])*scale
+                # print(type(meanmeasure))
                 row[measure] = np.nanmean(row[measure]) * scale
             else:
-                row[measure] = row[measure]*scale
+                row[measure] = row[measure] * scale
 
         return row[measure]
 
@@ -1226,18 +1300,18 @@ class PlotSpikeInfo(QObject):
         # print("Rs row: ", row['Rs'])
         # for protocol in row['Rs'].keys():
         #     rs.append(row['Rs'][protocol])
-        rsa = np.mean(row['Rs'])
-        row['Rs'] = rsa
+        rsa = np.mean(row["Rs"])
+        row["Rs"] = rsa
         return row
-    
+
     def average_CNeut(self, row):
         rs = []
         # for protocol in row['CNeut'].keys():
         #     rs.append(row['CNeut'][protocol])
-        rsa = np.mean(row['CNeut'])
-        row['CNeut'] = rsa
+        rsa = np.mean(row["CNeut"])
+        row["CNeut"] = rsa
         return row
-    
+
     def place_legend(self, P):
         legend_text = {
             "Ctl: Control (sham)  (P56)": "g",
@@ -1256,31 +1330,25 @@ class PlotSpikeInfo(QObject):
             )
 
     def remove_nans(self, row, measure):
-        print("\n***", row[measure])
-
-        print(type(row[measure]))
         if isinstance(row[measure], list):
-            m = [x for x in row[measure]] #  if not pd.isnull(x)]
+            m = [x for x in row[measure]]  #  if not pd.isnull(x)]
             if len(m) == 1 and (np.isnan(m[0]) or m[0] == "nan"):
-                m =  "NA"
-            print("   List reduced to: ", m)
+                m = "NA"
             return m
         elif isinstance(row[measure], float):
             row[measure] = [row[measure]]
-            print("   Float set to : ", row[measure])
             return row[measure]
         elif np.isnan(row[measure]):
-
-            print("    Nan: ", row[measure])
-            return "NA"
+         return "NA"
         else:
-            raise ValueError(f"measure is not a list or float: {row[measure]!s}")    
+            raise ValueError(f"measure is not a list or float: {row[measure]!s}")
+
     def make_subject_name(self, row):
         sn = Path(row.cell_id).name
         sn = sn.split("_")[0]
         row["Subject"] = sn
         return row
-    
+
     def export_r(
         self, df: pd.DataFrame, xname: str, measures: str, hue_category: str, filename: str
     ):
@@ -1302,7 +1370,6 @@ class PlotSpikeInfo(QObject):
             "CC_taum",  # CC_taum protocol
             "tauh",
             "Gh",
-            
             "dvdt_falling",
             "dvdt_rising",
             "AP_thr_V",
@@ -1311,41 +1378,56 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",
-
             "AdaptRatio",
-            "FIMax_1"
-            "FIMax_4",
+            "FIMax_1" "FIMax_4",
             "maxHillSlope",
             "I_maxHillSlope",
         ]
-        df = SCD.populate_columns(df, configuration=self.experiment, select_by= "Rs", select_limits=[0, 1e9],
-                                  parameters=parameters)
+        df = SCD.populate_columns(
+            df,
+            configuration=self.experiment,
+            select_by="Rs",
+            select_limits=[0, 1e9],
+            parameters=parameters,
+        )
         if "animal identifier" in columns:
             df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
-        ensure_cols = ["Group", "age", "sex", "cell_type", "cell_expression", 
-                       "cell_id", "Rs", "CNeut", "Subject", "protocols", "used_protocols"]
+        ensure_cols = [
+            "Group",
+            "age",
+            "sex",
+            "cell_type",
+            "cell_expression",
+            "cell_id",
+            "Rs",
+            "CNeut",
+            "Subject",
+            "protocols",
+            "used_protocols",
+        ]
         for c in ensure_cols:
             if c not in columns:
                 columns.append(c)
-
         select_by = "Rs"
         df_R = df[[c for c in columns if c != "AP_peak_V"]]
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
-        if 'Rs' in df_R.columns:
+        if "Rs" in df_R.columns:
             df_R = df_R.apply(self.average_Rs, axis=1)
-        if 'CNeut' in df_R.columns:
+        if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_CNeut, axis=1)
 
         # for meas in measures:
         #     if meas in df_R.columns:
         #         print("meas: ", meas)
         df_R = SCD.perform_selection(
-            select_by=select_by, select_limits=[0, 1e9], data=df_R, parameters=measures)
-    
-                # df_R[meas] = df_R.apply(self.remove_nans, measure=meas, axis=1)
-        # print("df_R :")
-        # print(df_R.head(20))
+            select_by=select_by,
+            select_limits=[0, 1e9],
+            data=df_R,
+            parameters=measures,
+            configuration=self.experiment,
+        )
+
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
 
@@ -1356,6 +1438,7 @@ class PlotSpikeInfo(QObject):
         hue_category=None,
         plot_order: Optional[list] = None,
         measures: Optional[list] = None,
+        representation: str = "all",
         colors=None,
         enable_picking=False,
     ):
@@ -1372,13 +1455,15 @@ class PlotSpikeInfo(QObject):
         """
         df = df.copy()  # make sure we don't modifiy the incoming
         print("summary plot incoming x : ", df[xname].unique())
-                                                
+
         # Remove cells for which the FI Hill slope is maximal at 0 nA:
         #    These have spont.
         # df = df[df["I_maxHillSlope"] > 1e-11]
         # for p in plot_order:
         #     print(p, df[df['age_category'] == p]['ID'])
-        print("summary_plot_spike_parameters_categorical: incoming x categories: ", df[xname].unique())
+        print(
+            "summary_plot_spike_parameters_categorical: incoming x categories: ", df[xname].unique()
+        )
 
         ncols = len(measures)
         letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
@@ -1405,11 +1490,21 @@ class PlotSpikeInfo(QObject):
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
-        print(df.cell_type.unique())
+        # print(df.cell_type.unique())
         df = self.rescale_values(df)
+        if representation in ["bestRs", "mean"]:
+            df = SCD.get_best_and_mean(
+                df,
+                experiment=self.experiment,
+                parameters=measures,
+                select_by="Rs",
+                select_limits=[0, 1e9],
+            )
+            for i, m in enumerate(measures):
+                measures[i] = f"{m:s}_{representation:s}"
+
         # print("plot order: ", plot_order)
         for icol, measure in enumerate(measures):
-            # print("measure: ", measure)
             # if measure in ["AP_thr_V", "AHP_depth_V"]:
             #     CP("y", f"{measure:s}: {df[measure]!s}")
 
@@ -1417,15 +1512,16 @@ class PlotSpikeInfo(QObject):
                 tf = self.transforms[measure]
             else:
                 tf = None
-            print(":: cell types ::", self.experiment["celltypes"])
+            # print(":: cell types ::", self.experiment["celltypes"])
             for i, celltype in enumerate(self.experiment["celltypes"]):
-                print("measure y: ", measure, "celltype: ", celltype)
+                # print("measure y: ", measure, "celltype: ", celltype)
                 axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
                 if celltype not in self.ylims.keys():
                     ycell = "default"
                 else:
                     ycell = celltype
-                if measure not in self.ylims[ycell]:
+                x_measure = "_".join((measure.split("_"))[:-1])
+                if x_measure not in self.ylims[ycell]:
                     continue
                 if measure not in df.columns:
                     continue
@@ -1440,7 +1536,7 @@ class PlotSpikeInfo(QObject):
                     plot_order=plot_order,
                     colors=colors,
                     logx=False,
-                    ylims=self.ylims[ycell][measure],
+                    ylims=self.ylims[ycell][x_measure],
                     transform=tf,
                     xlims=None,
                     enable_picking=enable_picking,
@@ -1454,7 +1550,7 @@ class PlotSpikeInfo(QObject):
                     axp.set_xlabel("")
                 else:
                     self.relabel_xaxes(axp)
-                self.relabel_yaxes(axp, measure=measure)
+                self.relabel_yaxes(axp, measure=x_measure)
 
                 # if icol > 0:
                 #     axp.set_ylabel("")
@@ -1480,11 +1576,11 @@ class PlotSpikeInfo(QObject):
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
-        if "dvdt_rising" in measures:
+        if any(c.startswith("dvdt_rising") for c in measures):
             fn = "spike_shapes.csv"
-        elif "AdaptRatio" in measures:
+        elif any(c.startswith("AdaptRatio") for c in measures):
             fn = "firing_parameters.csv"
-        elif "RMP" in measures:
+        elif any(c.startswith("RMP") for c in measures):
             fn = "rmtau.csv"
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
@@ -1569,11 +1665,6 @@ class PlotSpikeInfo(QObject):
         dfp[y] = dfp[y] * yscale
         if transform is not None:
             dfp[y] = dfp[y].apply(transform, axis=1)
-        # print("regplot : ", x, y)
-        # print(dfp.columns)
-        # dfp = dfp.dropna(subset=[x, y])
-        # print(dfp[x])
-        # print(dfp[y])
 
         # sns.regplot(
         #     data=dfp,
@@ -1582,12 +1673,16 @@ class PlotSpikeInfo(QObject):
         #     ax=ax,
         #     logx=logx,
         # )
+
         ax.scatter(x=dfp[x], y=dfp[y], c="b", s=4, picker=True)
+        if y.endswith("_bestRs") or y.endswith("_mean"):
+            y = "_".join([*y.split("_")[:-1]])  # reassemble without the trailing label
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
         if ylims is not None:
             # print(ylims[celltype])
-            ax.set_ylim(ylims[celltype][y])
+            if y in ylims[celltype]:
+                ax.set_ylim(ylims[celltype][y])
         if xlims is not None:
             ax.set_xlim(xlims)
         picker_func = Picker()
@@ -1645,7 +1740,7 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data.copy()
-        print("database celltypes: ", dfp.cell_type.unique())
+        # print("database celltypes: ", dfp.cell_type.unique())
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
         dfp = dfp.apply(self.apply_scale, axis=1, measure=y, scale=yscale)
@@ -1672,7 +1767,7 @@ class PlotSpikeInfo(QObject):
             ax.set_xlim(xlims)
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
-        print("Plotted measure: ", y, "for celltype: ", celltype)
+        # print("Plotted measure: ", y, "for celltype: ", celltype)
         # print("dfp: ", dfp)
         return picker_func
 
@@ -1714,21 +1809,22 @@ class PlotSpikeInfo(QObject):
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
         if isinstance(row.RMP_Zero, float):
-            r0 = [row.RMP_Zero] # handle case where there is only one float value
+            r0 = [row.RMP_Zero]  # handle case where there is only one float value
         else:
             r0 = row.RMP_Zero
         for i, r0 in enumerate(r0):
             if r0 > min_RMP:
                 row.RMP_Zero[i] = np.nan
         return row.RMP_Zero
-    
+
     def summary_plot_spike_parameters_continuous(
         self,
         df,
         measures,
-        xname: str="",
+        xname: str = "",
         logx=False,
         xlims=None,
+        representation: str = "bestRs",  # bestRs, mean, all
     ):
         """Make a summary plot of spike parameters for selected cell types.
 
@@ -1759,10 +1855,22 @@ class PlotSpikeInfo(QObject):
         df["age"] = df.apply(numeric_age, axis=1)
         df["shortdate"] = df.apply(make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
-        df.dropna(subset=["age"], inplace=True)
+        # df.dropna(subset=["age"], inplace=True)
         df = self.rescale_values(df)
+        if representation in ["bestRs", "mean"]:
+            df = SCD.get_best_and_mean(
+                df,
+                experiment=self.experiment,
+                parameters=measures,
+                select_by="Rs",
+                select_limits=[0, 1e9],
+            )
+            for i, m in enumerate(measures):
+                measures[i] = f"{m:s}_{representation:s}"
+
+        # print("DF columns after get best...", df.columns)
         if "max_age" in self.experiment.keys():
-            df = df[(df.Age > 0) & (df.Age <= self.experiment["max_age"])]
+            df = df[(df.Age >= 0) & (df.Age <= self.experiment["max_age"])]
         # df = df[df.SR == 1]
         if xlims is None:
             xlims = (0, 600)
@@ -1881,6 +1989,7 @@ class PlotSpikeInfo(QObject):
         plot_order: list,
         hue_category: str = None,
         measures: list = None,
+        representation: str = "all",
         colors=None,
         enable_picking=True,
     ):
@@ -1892,11 +2001,21 @@ class PlotSpikeInfo(QObject):
         print("\nSummary Plot rmtau categorical")
         print("# of entries in the table: ", len(df))
         df = df.copy()
-        print("len df: ", len(df))
+        # print("len df: ", len(df))
         letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         measures = ["RMP", "RMP_Zero", "Rin", "taum"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))]
         self.rescale_values(df)
+        if representation in ["bestRs", "mean"]:
+            df = SCD.get_best_and_mean(
+                df,
+                experiment=self.experiment,
+                parameters=measures,
+                select_by="Rs",
+                select_limits=[0, 1e9],
+            )
+            for i, m in enumerate(measures):
+                measures[i] = f"{m:s}_{representation:s}"
         picker_funcs = {}
         figure_width = len(measures) * 2.75
         P = PH.regular_grid(
@@ -1917,9 +2036,20 @@ class PlotSpikeInfo(QObject):
         )
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
 
+        if representation in ["bestRs", "mean"]:
+            df = SCD.get_best_and_mean(
+                df,
+                experiment=self.experiment,
+                parameters=measures,
+                select_by="Rs",
+                select_limits=[0, 1e9],
+            )
+            for i, m in enumerate(measures):
+                measures[i] = f"{m:s}_{representation:s}"
+
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
-        print("self.experiment celltypes: ", self.experiment["celltypes"])
+        # print("self.experiment celltypes: ", self.experiment["celltypes"])
         for i, celltype in enumerate(self.experiment["celltypes"]):
             let = letters[i]
 
@@ -2073,7 +2203,7 @@ class PlotSpikeInfo(QObject):
             horizontalspacing=0.1,
             fontsize={"label": 12, "tick": 8, "panel": 16},
         )
-        print(P.axdict)
+        # print(P.axdict)
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         pos = {
@@ -2089,7 +2219,7 @@ class PlotSpikeInfo(QObject):
             "default": [0.4, 0.15],
         }
 
-        mode= "mean" # "individual"
+        mode = "mean"  # "individual"
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
         if mode == "mean":
             P.figure_handle.suptitle("FI Mean, SEM ", fontweight="normal", fontsize=18)
@@ -2106,7 +2236,7 @@ class PlotSpikeInfo(QObject):
                 ax = P.axarr[ir, ic]
                 ax.set_title(celltype.title(), y=1.05)
                 ax.set_xlabel("I$_{inj}$ (nA)")
-                if ic in [0, 1]: 
+                if ic in [0, 1]:
                     ax.set_ylabel("Rate (sp/s)")
                 elif ic == 2:
                     ax.set_ylabel("Firing 'Area' (pA*Hz)")
@@ -2132,7 +2262,7 @@ class PlotSpikeInfo(QObject):
                     #                    :-4
                     #               ]  # get protocol, strip number
                     # print("This protocol: ", this_protocol, "sel: ", protosel, cdd["protocol"][index])
-                    # 
+                    #
                     # if this_protocol not in protosel:
                     #     continue
                     if pd.isnull(cdd["cell_id"][index]):
@@ -2145,13 +2275,13 @@ class PlotSpikeInfo(QObject):
                         print(cdd.columns)
                         print("Did you run the assembly on the final IV analysis files?")
                         continue
-                    #raise KeyError("No FI data")
-                    
+                    # raise KeyError("No FI data")
+
                     if len(FI_data[0]) == 0:
                         print("FI data is empty", cdd.cell_id[index])
 
                         continue
-                    print("FIdata: ", len(FI_data[0]))
+                    # print("FIdata: ", len(FI_data[0]))
                     FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
                     if FI_data.shape == (2, 0):  # no fi data from the excel table....
                         print("No FI data from excel table?")
@@ -2173,7 +2303,9 @@ class PlotSpikeInfo(QObject):
                     maxi = 1000e-12
                     ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
                     if ptype in ["individual", "mean"]:
-                        fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
+                        fix, fiy, fiystd, yn = FUNCS.avg_group(
+                            np.array(FI_data[0]), FI_data[1], ndim=1
+                        )
 
                         ax.plot(
                             fix[:ilim] * 1e9,
@@ -2223,17 +2355,21 @@ class PlotSpikeInfo(QObject):
                     ax.set_xlabel("Group")
                     fi_list = []
                     for i, group in enumerate(fi_group_sum.keys()):
-                        ax.scatter(0.75+i + np.random.random(len(fi_group_sum[group]))*0.5, fi_group_sum[group], 
-                            color=colors[group], marker="o", s=8.0)
+                        ax.scatter(
+                            0.75 + i + np.random.random(len(fi_group_sum[group])) * 0.5,
+                            fi_group_sum[group],
+                            color=colors[group],
+                            marker="o",
+                            s=8.0,
+                        )
                         fi_list.append(fi_group_sum[group])
                     ax.boxplot(fi_list, widths=0.8)
-                    ax.set_xlim(-0.5, 2.5)
-                    ax.set_ylim(0, 1500)
+                    ax.set_xlim(-0.5, 5.5)
+                    ax.set_ylim(0, 6000)
                     p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
                     print(p, t)
                     print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
                 print("group: ", group, "ptype: ", ptype)
-              
 
             yoffset = 0.025
             xoffset = 0.0
@@ -2259,7 +2395,10 @@ class PlotSpikeInfo(QObject):
                         color=colors[group],
                         transform=ax.transAxes,
                     )
-                    print("Pyramidal legend: ", f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}")
+                    print(
+                        "Pyramidal legend: ",
+                        f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
+                    )
                 else:
                     if (celltype, group) in NCells.keys():
                         textline = f"{group:s} N={NCells[(celltype, group)]:>3d}"
@@ -2493,7 +2632,9 @@ class PlotSpikeInfo(QObject):
                 for d in dg[measure].values:
                     dv.append(np.nanmean(d))
                 # I know this is not the most efficient way to do this, but it is fast enough.
-                dv = [d for d in dv if ~np.isnan(d)]  # clean out nan's. Should not be necessary, but MW/KW doesn't like them.
+                dv = [
+                    d for d in dv if ~np.isnan(d)
+                ]  # clean out nan's. Should not be necessary, but MW/KW doesn't like them.
                 data.append(dv)
                 dictdata[group].append(dv)
 
@@ -2711,7 +2852,7 @@ class PlotSpikeInfo(QObject):
                 row.AP_thr_V = [row.AP_thr_V]
             if isinstance(row.AHP_trough_V, float):
                 row.AHP_trough_V = [row.AHP_trough_V]
-            row["AHP_depth_V"] = [np.nan]*len(row.AP_thr_V)
+            row["AHP_depth_V"] = [np.nan] * len(row.AP_thr_V)
             for i, apv in enumerate(row.AHP_trough_V):
                 row.AHP_depth_V[i] = row.AHP_trough_V[i] - row.AP_thr_V[i]
                 if row.AHP_depth_V[i] > 0:
@@ -2729,7 +2870,7 @@ class PlotSpikeInfo(QObject):
         if isinstance(row.AHP_trough_T, float):
             row.AHP_trough_T = [row.AHP_trough_T]
         for i, att in enumerate(row.AP_thr_T):  # base index on threshold measures
-            #print(row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
+            # print(row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
             row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
             if row.AHP_trough_T[i] < 0:
                 row.AHP_trough_T[i] = np.nan
@@ -2769,9 +2910,9 @@ class PlotSpikeInfo(QObject):
             # handle variations in the column name (historical changes)
             idname = "Subject"
             row[idname] = df_summary.loc[df_summary.cell_id == cell_id_match][
-                    "animal_identifier"
-                ].values[0]  
-            # else: 
+                "animal_identifier"
+            ].values[0]
+            # else:
             #     print("row keys: ", sorted(row.keys()))
             #     if "Subject" in row.keys():
             #         print("Found subject column but not animal[_]identifier: ", row["Subject"])
@@ -2818,19 +2959,21 @@ class PlotSpikeInfo(QObject):
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
         if cell_id_match is None:
+            CP("y", f"get cell expression: cell id match is None: {cell_id:s}, \n{df_summary.cell_id.values!s}")
             return ""
+        # print("cell id match ok: ", cell_id)
         if cell_id_match is not None:
             row.cell_expression = df_summary.loc[
                 df_summary.cell_id == cell_id_match
             ].cell_expression.values[0]
 
-            if row.cell_expression in [" ", "nan"]:
+            if row.cell_expression in [" ", "nan", "NaN", np.nan] or pd.isnull(row.cell_expression):
                 row.cell_expression = "ND"
             if "remove_expression" in self.experiment.keys():
                 if row.cell_expression in self.experiment["remove_expression"]:
                     for re in self.experiment["remove_expression"]:
                         if row.cell_expression == re:
-                            row.cell_expression = np.nan
+                            row.cell_expression = 'ND'
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
@@ -2859,11 +3002,39 @@ class PlotSpikeInfo(QObject):
         return df
 
     def preprocess_data(self, df, experiment):
+        pd.options.mode.copy_on_write = True
         """preprocess_data Clean up the data, add columns, etc."""
         df_summary = get_datasummary(experiment)
-        print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
-        print("   Preprocess_data: df column names: ", sorted(df.columns))
+        # print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
+        # print("df summary ids: ")
+        # for cid in df_summary.cell_id:
+        #     print("    ",cid)
+        # print(" ")
+        # print("df ids: ")
+        # for cid in df.cell_id:
+        #     print("    ", cid)
+        # print("*"*80)
+
+        # print("   Preprocess_data: df column names: ", sorted(df.columns))
+        # print("df: ")
+        # for d in df.to_dict(orient="records"):
+        #     print(f"<{d['cell_id']!s}, type(d['cell_id'])")
+        
+
+        # print("summary: ")
+        # for d in df_summary.to_dict(orient="records"):
+            # print(f"<{d['cell_id']!s}, ty")
+        # note df will have "short" names: Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0
+        # df_summary will have long names: Rig2(MRK)/L23_intrinsic/2024.10.22_000/slice_000/cell_000
+        # print("-2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+        # print("-1 ", df_summary['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+ 
         df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
+
+        # print("df idsid df after getting Subject: ")
+        # for cid in df.cell_id:
+        #     print("    ", cid)
+        # print("*"*80)
 
         if "cell_layer" not in df.columns:
             layers = df_summary.cell_layer.unique()
@@ -2873,9 +3044,10 @@ class PlotSpikeInfo(QObject):
                 df["cell_layer"] = ""
                 df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
 
+        # print("1!  prior to checking expression: ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         if "cell_expression" not in df.columns:
             expression = df_summary.cell_expression.unique()
-            if len(expression) == 1 and expression == [" "]:  # no layer designations
+            if len(expression) == 1 and expression == [" "]:  # no expressiondesignations
                 df["cell_expression"] = "ND"
             else:
                 df["cell_expression"] = ""
@@ -2883,16 +3055,33 @@ class PlotSpikeInfo(QObject):
                     self.get_cell_expression, df_summary=df_summary, axis=1
                 )
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
-        print("   Preprocess_data: Groups: ", df.Group.unique())
+
+
+        gu = df.Group.unique()
+        # print("0!  ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+
+#  ******************************************************************************
+        CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")
+        print("   Preprocess_data: Groups: ", gu)
+        # gu_nonan = [g for g in gu if pd.notnull(g)]
+        for g in gu:
+            print(f"    {g!s}  (N={len(df.loc[df.Group == g]):d})")
+            for x in df.loc[df.Group == g].cell_id:
+                print("        ", x)
+            # if g in ["A", "AA"] and i0 < 20:
+            #         print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
+            #         i0 += 1
+        # print("=" * 80)
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
         df["RMP"] = df.apply(self.clean_rmp, axis=1)
         if "RMP_Zero" in df.columns:
             df["RMP_Zero"] = df.apply(self.clean_rmp_zero, axis=1)
         else:
-            df["RMP_Zero"] = np.nan  # not determined... 
+            df["RMP_Zero"] = np.nan  # not determined...
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
+        # print("2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         df["age_category"] = df.apply(self.categorize_ages, axis=1)
         df["FIRate"] = df.apply(self.getFIRate, axis=1)
         df["Group"] = df["Group"].astype("str")
@@ -2901,36 +3090,57 @@ class PlotSpikeInfo(QObject):
         if "AHP_depth_V" not in df.columns:
             df["AHP_depth_V"] = np.nan
         df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
+        # print("3 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+  
         if "AHP_trough_V" not in df.columns:
             df["AHP_trough_V"] = np.nan
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
+        # print("4 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+        # print("df ids after getting all cleaning 1: ")
+        # for cid in df.cell_id:
+        #     print("    ", cid)
+        # print("*"*80)
+
         groups = df.Group.unique()
-        print("   Preprocess_data:  Groups: ", groups)
+        # print("   Preprocess_data:  Groups: ", groups)
         expressions = df.cell_expression.unique()
-        print("   Preprocess_data:  Expressions: ", expressions)
+        # print("   Preprocess_data:  Expression: ", expressions)
         # print("   experiment keys: ", self.experiment.keys())
-        if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
-            print(df.columns)
+        if (
+            "remove_expression" in self.experiment.keys()
+            and self.experiment["remove_expression"] is not None
+        ):
             print("REMOVING specific cell_expression")
             for expression in self.experiment["remove_expression"]:  # expect a list
                 df = df[df.cell_expression != expression]
                 print("   Preprocess_data: Removed expression: ", expression)
+        # print("5: expression removed", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+        
+
         # self.data_table_manager.update_table(data=df)
+        if "groupname" not in df.columns:
+            df["groupname"] = np.nan
         df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
+        # print("5.0: groups removed ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         if len(groups) > 1:
-            df.dropna(subset=["Group"], inplace=True)  # remove empty groups
+            # df.dropna(subset=["Group"], inplace=True)  # remove empty groups
             df.drop(df.loc[df.Group == "nan"].index, inplace=True)
+            # print("5.2: groups removed ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         print(
             "           Preprocess_data: # Groups found after dropping nan: ",
             df.Group.unique(),
             len(df.Group.unique()),
         )
+        # print("5.10: groups removed ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+        # raise ValueError()
         df["age"] = df.apply(numeric_age, axis=1)
         df["shortdate"] = df.apply(make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
+        # print("5: age/sr/shortdate ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+    
         # print("        # entries in dataframe after filtering: ", len(df))
         # if "cell_id2" not in df.columns:
         #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
@@ -2956,14 +3166,24 @@ class PlotSpikeInfo(QObject):
                     r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
                 )
 
-                print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
+                # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
+                dropped = False
+
                 if re_day.match(fn) is not None:  # specified a day, not a cell:
                     df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
-                    CP("r", f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}")
+                    CP(
+                        "r",
+                        f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}",
+                    )
+                    dropped = True
                 elif re_slice.match(fn) is not None:  # specified day and slice
                     fns = re_slice.match(fn)
                     df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
-                    CP("r", f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}")
+                    CP(
+                        "r",
+                        f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}",
+                    )
+                    dropped = True
                 elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
                     fnc = re_slicecell2.match(fn)
                     # generate an id with 1 number for the slice and 1 for the cell,
@@ -2974,27 +3194,39 @@ class PlotSpikeInfo(QObject):
                     fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
                     fns = [fn1, fn1a, fn2, fn2a]
                     # print(df.cell_id.unique())
+                    dropped = False
                     for i, f in enumerate(fns):
                         if fnpath is not None:
                             fns[i] = str(Path(fnpath, f))  # add back the leading path
                         if not df.loc[df.cell_id == fns[i]].empty:
                             df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
-                            CP("m", f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}")
-                        else:
-                            CP("r", f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)")
-
+                            CP(
+                                "m",
+                                f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
+                            )
+                            dropped = True
+                        elif not dropped:
+                            pass
+                            # CP(
+                            #     "r",
+                            #     f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)",
+                            # )
+                elif not dropped:
+                    CP("y", f"   Preprocess_data: {filename:s} not dropped, but was found in exclusion list")
+                else:
+                    CP("y", f"   Preprocess_data: No exclusions found for {filename:s}")
         gu = df.Group.unique()
-        print("   Preprocess_data: Groups after exclusions: ")
+        print("   Preprocess_data: Groups and cells after exclusions: ")
 
-        for g in sorted(gu):
-            print(f"    {g:s}  (N={len(df.loc[df.Group == g]):d})")
-            i0 = 0
-            for x in df.loc[df.Group == g].cell_id:
-                print("        ", x)
-                if g in ["A", "AA"] and i0 < 20:
-                    print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
-                    i0 += 1
-        print("="*80)
+        # for g in sorted(gu):
+        #     print(f"    {g:s}  (N={len(df.loc[df.Group == g]):d})")
+        #     i0 = 0
+        #     for x in df.loc[df.Group == g].cell_id:
+        #         print("        ", x)
+        #     # if g in ["A", "AA"] and i0 < 20:
+        #     #         print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
+        #     #         i0 += 1
+        # print("=" * 80)
         # now apply any external filters that might be specified in the configuration file
         if "filters" in self.experiment.keys():
             print("   Preprocess_data: Filters is set: ")
@@ -3004,6 +3236,7 @@ class PlotSpikeInfo(QObject):
 
         # print("age categories: ", df.age_category.unique())
         # print("preload returns with Group list: ", df.Group.unique())
+        # raise ValueError('preprocess')
         return df
 
     def do_stats(
