@@ -470,7 +470,7 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
     celltype = str(celltype).replace("\n", "")
     if celltype == " ":  # no cell type
         celltype = "unknown"
-    # CP("m", f"get cell: df_tmp cell type: {celltype:s}")
+    CP("m", f"get cell: df_tmp cell type: {celltype:s}")
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
@@ -511,9 +511,11 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
     datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
 
     if datapath2.is_file():
-        # CP("c", f"...  {datapath2!s} is OK")
+        CP("c", f"...  datapath: {datapath2!s} is OK")
         datapath = datapath2
     else:
+        print("tried datapath: ", datapath2, celltype)
+        print(f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         raise ValueError
         return None, None
@@ -547,6 +549,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
+    print("get cell: ", experiment, df, cell_id)
     datapath = get_cell_pkl_filename(experiment, df, cell_id)
     df_tmp = df[df.cell_id == cell_id]
     try:
@@ -557,6 +560,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         except ValueError:
             CP("r", f"Could not read {datapath!s}")
             raise ValueError("Failed to read compressed pickle file")
+        
     if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
         CP(
             "y",
