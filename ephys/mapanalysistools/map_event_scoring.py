@@ -33,7 +33,7 @@ import ephys.ephys_analysis.poisson_score as EPPS
 import matplotlib.pyplot as mpl
 import seaborn as sns
 
-mode = 1 # set for old files
+mode = 1  # set for old files
 if mode == 0:
     import ephys.mini_analyses.mini_event_dataclasses as MEDC
     import ephys.mini_analyses.mini_event_dataclass_reader as MEDR
@@ -100,7 +100,11 @@ class MapEventScoring:
     def __init__(self, dataSummary, experiment):
         self.dataSummary = dataSummary  # pandas dataframe with the datasummary
         self.experiment = experiment  # experiment name (configuration file)
-        df_file = Path(self.experiment['databasepath'], self.experiment['directory'], self.experiment['datasummaryFilename'])
+        df_file = Path(
+            self.experiment["databasepath"],
+            self.experiment["directory"],
+            self.experiment["datasummaryFilename"],
+        )
         with open(df_file, "rb") as fh:
             self.dataSummary = pickle.load(fh)
 
@@ -304,7 +308,67 @@ class MapEventScoring:
             else:
                 yield el
 
+    def get_spontaneous_events(
+        self, ev: dict, stimtimes: list, nspots: int = 1, scale: float = 1.0
+    ):
+        spont_evt_index = [i for i, t in enumerate(ev["time"]) if t < stimtimes[0][0]]
+        spont_evt_amps = ev["amp"][spont_evt_index]
+        if len(spont_evt_amps) > 0:
+            cprint(
+                "g",
+                f"    mean spont amp: {np.mean(spont_evt_amps)*scale:.2f} (SD: {np.std(spont_evt_amps)*scale:.2f}, N={len(spont_evt_amps):d}",
+            )
+        else:
+            cprint("y", f"    No spont events")
 
+        ev_evt_index = [
+            i
+            for i, t in enumerate(ev["time"])
+            if t > stimtimes[0][0] and t < stimtimes[0][0] + 0.015
+        ]
+        ev_evt_amps = ev["amp"][ev_evt_index]
+        nspont = len(spont_evt_index)
+        if nspont > 0:
+            spont_rate = len(spont_evt_index) / (
+                stimtimes[0][0] * nspots
+            )  # count up events and divide by total time examined
+        else:
+            spont_rate = 0.0
+        spontaneous_amplitudes = ev["amp"][spont_evt_index]
+        print("            SpontRate: {0:.3f} [N={1:d}]".format(spont_rate, nspont))
+
+        print(
+            "            Mean spont amp (all trials): {0:.2f} pA  SD {1:.2f} N={2:4d}".format(
+                np.nanmean(spont_evt_amps) * scale,
+                np.nanstd(spont_evt_amps) * scale,
+                np.shape(spont_evt_amps)[0],
+            )
+        )
+        return spontaneous_amplitudes, spont_rate, nspont  # spont_evt_index, spont_evt_amps
+
+    def check_protocol(self, protocol_name):
+        sign = -1
+        pmode = "0"
+        scale=1.0
+        if protocol_name.find("_IC_") >= 0:
+            sign = 1
+            scale = 1e3
+            pmode = "I"
+        elif protocol_name.find("_VC_") >= 0:  # includes "increase" protocol
+            scale = 1e12
+            pmode = "V"
+        elif protocol_name.find("VGAT_5mspulses") >= 0:
+            sign = 1
+            pmode = "V"
+            scale = 1e12
+        elif protocol_name.find("CC_VGAT_5mspulses") >= 0:
+            sign = -1
+            scale = 1e3
+            pmode = "I"
+        else:
+            scale = 1.0
+        return sign, scale, pmode
+    
     def score_events(
         self,
         filename,
@@ -313,7 +377,7 @@ class MapEventScoring:
         plotflag=False,
         force=False,
         sel_celltype=None,
-        mode:int=1,
+        mode: int = 1,
     ):
         """
         Calculate various scores and information about events and maps
@@ -345,31 +409,64 @@ class MapEventScoring:
                     'lastanalysistime': datetime.datetime.now()}
         """
 
-        cprint("g",    f"    Starting ScoreEvents on Cell {str(filename):s}")
-        Logger.info(f"Starting ScoreEvents on Cell {str(filename):s}")
         assert (
             len(eventwindow) == 2
         )  # need to be sure eventwindow is properly formatted on the call
-        SH = shuffler.Shuffler()  # get am instance of the shuffling code.
 
         if str(filename).find("_alt") > 0 or str(filename).find("_signflip") > 0:
             Logger.warning(f"Protocol {fn!s} is an alternate or signflip protocol, skipping")
             return None, False
+        # check the cell type:
         ds_sel = self.dataSummary[self.dataSummary["cell_id"] == filename]
-        print("ds_sel: ", ds_sel)
-        fn = FT.make_event_filename_from_cellid(filename)
+        celltype = ds_sel["cell_type"].values[0]
+        if sel_celltype is not None and sel_celltype != celltype:
+            cprint(
+                "r",
+                f"celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}",
+            )
+            Logger.error(
+                f"Protocol {ds_sel:s}  celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}"
+            )
+            # raise()
+            return None, False
 
-        eventfilename = Path(self.experiment["databasepath"], self.experiment["directory"], "events", fn)
+        # skip some cell types that are not well represented in the database
+        if (
+            celltype
+            in [
+                "None",
+                "glial",
+                "unknown",
+                " ",
+                "horizontal bipolar",
+                "chestnut",
+                "ml-stellate",
+                "0",
+            ]
+            or len(celltype) == 0
+        ):
+            return
+        cprint("g", f"    Proceeding to score events for {str(filename):s} celltype:  <{celltype:s}>")
+        temperature = ds_sel["temperature"]
+        age = ds_sel["age"]
+
+        # passed all screening 
+        Logger.info(f"Starting ScoreEvents on Cell {str(filename):s}")
+        
+        SH = shuffler.Shuffler()  # get am instance of the shuffling code.
+        
+        # read the cell's event file
+        fn = FT.make_event_filename_from_cellid(filename)
+        eventfilename = Path(
+            self.experiment["databasepath"], self.experiment["directory"], "events", fn
+        )
         cprint("g", f"    Reading event file: {eventfilename!s}")
         with open(eventfilename, "rb") as fh:
             eventdata = pd.read_pickle(fh)
-       
         protocols = list(eventdata.keys())
         nmaps = len(protocols)
-
         if protocols is None:
             return None, False
-
 
         # cprint("yellow", f"forceflag: {force:b}")
         # if not force:  # check for, and just return existing data
@@ -415,7 +512,9 @@ class MapEventScoring:
         eventp = [[0.0]] * len(protocols)
         event_amp = [[0.0]] * len(protocols)
         firstevent_latency = [None] * len(protocols)
+        fel_allspikes = []
         allevent_latency = [None] * len(protocols)
+        ael_allspikes = []
         spont_rate = [[0.0]] * len(protocols)
         spontevent_amp = [[0.0]] * len(protocols)
         event_Q_Content = [[0.0]] * len(protocols)
@@ -428,70 +527,23 @@ class MapEventScoring:
         paired_pulse_ratio = [None] * len(protocols)
         cprint("g", "    initialized result arrays")
 
-        celltype = ds_sel["cell_type"].values[0]
-        if plotflag:
-            self.plot_setup(nmaps)
+        if plotflag:  # check if we need to set up the plot
+            self.plot_setup(nmaps, cell_id=filename, celltype=celltype)
 
+        ############################################
+        # loop over all protocols in the event data
+        # and make plots of the response latency/spont, etc.
+        ############################################
         for i, protocol in enumerate(protocols):
-            if sel_celltype is not None and sel_celltype != celltype:
-                cprint(
-                    "r",
-                    f"celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}",
-                )
-                Logger.error(
-                    f"Protocol {dxf:s}  celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}"
-                )
-                # raise()
-                continue
-            cprint("y", f"    Celltype: {celltype:s}")
-            # skip some cell types that are not well represented in the database
-            if (
-                celltype
-                in [
-                    "None",
-                    "glial",
-                    "unknown",
-                    " ",
-                    "horizontal bipolar",
-                    "chestnut",
-                    "ml-stellate",
-                    "0",
-                ]
-                or len(celltype) == 0
-            ):
-                continue
-            cprint("g", f"    Proceeding with celltype:  <{celltype:s}>")
-            temperature = ds_sel['temperature']
-            age = ds_sel['age']
+
             this_eventlist = eventdata[protocol]
             if this_eventlist is None:
                 cprint("red", f"    No data in protocol {str(protocol):s}")
                 raise ValueError()
-                continue
-
-            # this_eventlist = evl[str(dxp)]
 
             protocol_name = str(Path(protocol).parts[-1])
-            sign = -1
-            pmode = "0"
-            if protocol_name.find("_IC_") >= 0:
-                sign = 1
-                scale = 1e3
-                pmode = "I"
-            elif protocol_name.find("_VC_") >= 0:  # includes "increase" protocol
-                scale = 1e12
-                pmode = "V"
-            elif protocol_name.find("VGAT_5mspulses") >= 0:
-                sign = 1
-                pmode = "V"
-                scale = 1e12
-            elif protocol_name.find("CC_VGAT_5mspulses") >= 0:
-                sign = -1
-                scale = 1e3
-                pmode = "I"
-            else:
-                scale = 1.0
-
+            sign, scale, pmode = self.check_protocol(protocol_name)
+            print("\nProtocol: ", protocol_name)
             if "stimtimes" not in list(this_eventlist.keys()):
                 cprint(
                     "red",
@@ -500,12 +552,15 @@ class MapEventScoring:
                 continue
             # area_fraction is the fractional area of the map where the scores exceed 1SD above
             # the baseline (Z Scored; charge based)
-            ngtthr = (np.array(this_eventlist["ZScore"][0]) > area_z_threshold).sum()
 
+            ngtthr = (np.array(this_eventlist["ZScore"][0]) > area_z_threshold).sum()
+            print("Z score: ", this_eventlist["ZScore"][0], len(this_eventlist["ZScore"]), "number gt threshold: ", ngtthr,
+                  "total number of spots: ", len(this_eventlist["positions"]), 
+                  len(this_eventlist["ZScore"][0]))
             # get the positions
-            posxy = this_eventlist["positions"] # dfn[dxf]["positions"]
+            posxy = this_eventlist["positions"]  # dfn[dxf]["positions"]
             print("stimtimes 0:", this_eventlist["stimtimes"])
-            print("posxy: ", posxy)
+            # print("posxy: ", posxy)
             this_eventlist = self.fix_increase_file(protocol_name, this_eventlist)
 
             te = 0
@@ -567,7 +622,7 @@ class MapEventScoring:
             # prepare the event array for PoissonScore
             # PoissonScore.score expects the events to be a list of data in a record array format
             evp = []
-            for trial in range(len(evtimes)):  # across all *trials* in the map
+            for trial, evtime in enumerate(evtimes):  # across all *trials* in the map
                 evtx = []
                 evax = []
                 ev_tr = evtimes[trial]
@@ -611,10 +666,12 @@ class MapEventScoring:
                                 firstevent_latency[i] = [evw[0] - st[0]]
                             else:
                                 firstevent_latency[i].extend([evw[0] - st[0]])
+                            fel_allspikes.extend([np.array(evw > st[0]) - st[0]])
                         if allevent_latency[i] == None:
                             allevent_latency[i] = [t - st[0] for t in evw]
                         else:
                             allevent_latency[i].extend([t - st[0] for t in evw if not pd.isnull(t)])
+                        ael_allspikes.extend([np.array(evw) - st[0]])
                 else:
                     cprint("red", f"    Protocol Excluded on type: {str(protocol):s}")
 
@@ -623,52 +680,24 @@ class MapEventScoring:
             ev["amp"] = np.array(evamps_flat)
             if len(evtimes) == 0:  # evp:
                 cprint("red", "    No data in protocol?")
-                sr = 0.0
                 continue  # no data in this protocol?
+
             # print('evp: ', evp)
             # compute spont detected event rate, and get average event amplitude for spont events
-            spont_evt_index = [i for i, t in enumerate(ev["time"]) if t < stimtimes[0][0]]
-            spont_evt_amps = ev["amp"][spont_evt_index]
-            if len(spont_evt_amps) > 0:
-                cprint(
-                    "g",
-                    f"    mean spont amp: {np.mean(spont_evt_amps)*scale:.2f} (SD: {np.std(spont_evt_amps)*scale:.2f}, N={len(spont_evt_amps):d}",
-                )
-            else:
-                cprint("y", f"    No spont events")
-            ev_evt_index = [
-                i
-                for i, t in enumerate(ev["time"])
-                if t > stimtimes[0][0] and t < stimtimes[0][0] + 0.015
-            ]
-            ev_evt_amps = ev["amp"][ev_evt_index]
-            nspont = len(spont_evt_index)
-            if nspont > 0:
-                sr = len(spont_evt_index) / (
-                    stimtimes[0][0] * nspots
-                )  # count up events and divide by total time examined
-            else:
-                sr = 0.0
-            spontaneous_amplitudes = ev["amp"][spont_evt_index]
-            print("            SpontRate: {0:.3f} [N={1:d}]".format(sr, nspont))
-
-            print(
-                "            Mean spont amp (all trials): {0:.2f} pA  SD {1:.2f} N={2:4d}".format(
-                    np.nanmean(spont_evt_amps) * scale,
-                    np.nanstd(spont_evt_amps) * scale,
-                    np.shape(spont_evt_amps)[0],
-                )
+            spontaneous_amplitudes, spont_rate_i, nspont = self.get_spontaneous_events(
+                ev, stimtimes, nspots=nspots, scale=scale
             )
 
             firststimt = this_eventlist["stimtimes"]["starts"][0]
             # finally, calculate the Poisson Score
             if evp[0].shape[0] > 0:
                 # mscore_n, mscore, mean_ev_amp = SH.shuffle_score(evp, stimtimes, nshuffle=5000, maxt=0.6)  # spontsonly...
-                mscore_n, prob = EPPS.PoissonScore.score(evp, rate=sr, tMax=0.6, normalize=True)
+                mscore_n, prob = EPPS.PoissonScore.score(evp, rate=spont_rate_i, tMax=0.6, normalize=True)
             else:
                 mscore_n = np.ones(len(stimtimes))
                 prob = 1.0
             cprint("g", f"    Poisson score: {mscore_n:6.4f}")
+            
             mscore = mscore_n
             mean_ev_amp = 1.0
             if not isinstance(mscore, list):
@@ -699,7 +728,7 @@ class MapEventScoring:
                     ev_prob.extend([1.0])
                     ev_prob_response_events[ist] = []
 
-            for ist in range(len(ev_prob_response_events)):
+            for it, ist in enumerate(ev_prob_response_events):
                 if len(ev_prob_response_events[ist]) > 0:
                     meanp = np.mean(prob[ev_prob_response_events[ist]])
                 else:
@@ -783,24 +812,27 @@ class MapEventScoring:
                 if mscore[j] > 0:
                     print("prob: ", prob)
                     print("probs: ", probs)
+                    print(f"        Stim/trial {j:2d} ShuffleScore= {mscore[j]:6.4f}", end= " ")
                     print(
-                        f"        Stim/trial {j:2d} ShuffleScore= {mscore[j]:6.4f}", end="")
-                    print(f"Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g}", end="")
-                    print(f"EventP: {detevt[j]:6.3e} Z: {Z:7.4f}, P(Z): {(1.0-self.z2p(Z)):.3e}",
-                        end=""
+                        f"Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g}",
+                        end=" ",
                     )
                     print(
-                        f" Event Amp re Spont: {event_qcontent[j]:g}", end="")
-                    print(f"Largest re spont: {largest_event_qcontent[j]:7.4f}"
+                        f"EventP: {detevt[j]:6.3e} Z: {Z:7.4f}, P(Z): {(1.0-self.z2p(Z)):.3e}",
+                        end=" ",
                     )
+                    print(f" Event Amp re Spont: {event_qcontent[j]:g}", end=" ")
+                    print(f"Largest re spont: {largest_event_qcontent[j]:7.4f}")
 
                 else:
+                    print(f"        Stim/Trial {j:2d} ShuffleScore= {mscore[j]:6.4f}", end=" ")
                     print(
-                        f"        Stim/Trial {j:2d} ShuffleScore= {mscore[j]:6.4f}", end="")
-                    print(f"Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g}", end="")
+                        f"Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g}",
+                        end=" ",
+                    )
                     print(f"EventP: {detevt[j]:6.3e} P(Z): {(1.0-self.z2p(Z)):.3e}")
 
-            mscore[mscore == 0.0] = 100
+            # mscore[mscore == 0.0] = 100
             # build result arrays
             allprotos[i] = protocol_name
             shufflescore[i] = Z
@@ -814,7 +846,7 @@ class MapEventScoring:
             event_amp[i] = detamp
 
             scores[i] = 1.0 - self.z2p(Z)  # take max score for the stimuli here
-            spont_rate[i] = sr
+            spont_rate[i] = spont_rate_i
             spontevent_amp[i] = spontaneous_amplitudes
 
             validdata[i] = True
@@ -831,13 +863,15 @@ class MapEventScoring:
 
             positions[i] = posxy
             if plotflag:
-                self.plot_one_map(evtimes, this_eventlist, i, protocol=protocol)
+                self.plot_one_map(evtimes, this_eventlist, i, protocol=protocol, mscore=m_shc)
 
         ########
         # END OF i loop over protocols
         ########
 
         if plotflag:
+            f, ax = mpl.subplots(2, 1)
+            f.suptitle(f"{Path(filename).parent}  {str(celltype):s}")
             fxl = []
             firstevent_latency = self.flatten(firstevent_latency)
             for ifl in firstevent_latency:
@@ -849,7 +883,7 @@ class MapEventScoring:
                 if ifl is None:
                     continue
                 afl.extend(ifl)
-            f, ax = mpl.subplots(2, 1)
+
             fbins = np.linspace(0, eventwindow[1], int(eventwindow[1] / 0.00010))
             abins = np.linspace(0, eventwindow[1], int(eventwindow[1] / 0.00010))
             if len(fxl) < 20:
@@ -858,10 +892,20 @@ class MapEventScoring:
             if len(afl) < 20:
                 abins = "auto"
             ax[1].hist(afl, abins, histtype="bar", density=False)
+            ax[0].set_title("First Event Latency")
+            ax[1].set_title("All Event Latency")
+            ax[0].set_xlabel("Time (s)")
+            ax[1].set_xlabel("Time (s)")
+            ax[0].set_ylabel("Count")
+            ax[1].set_ylabel("Count")
+            ax[0].set_xlim(-0.005, 0.020)
+            ax[1].set_xlim(-0.005, 0.020)
             mpl.show()
 
         if plotflag:
-            self.P.figure_handle.suptitle(str(filename.parent))  # .replace(r"_", r"\_"))
+            self.P.figure_handle.suptitle(
+                f"{Path(filename).parent}  {str(celltype):s}"
+            )  # .replace(r"_", r"\_"))
             mpl.show()
 
         for i, d in enumerate(depression_ratio):
@@ -905,7 +949,7 @@ class MapEventScoring:
         # print('RES: ', result)
         return result, True
 
-    def plot_setup(self, nmaps):
+    def plot_setup(self, nmaps, cell_id: str = "", celltype: str = ""):
         rc = PH.getLayoutDimensions(nmaps, pref="width")
         self.P = PH.regular_grid(
             rc[0],
@@ -921,11 +965,20 @@ class MapEventScoring:
         )
         self.binstuff = list(np.arange(0, 0.6, 0.005))
         self.axl = self.P.axarr.ravel()
-    
-    def plot_one_map(self, evtimes, this_eventlist, i:int=0, protocol:Union[str, Path]=""):
+        self.P.figure_handle.suptitle(f"{cell_id:s}  {celltype:s}")
+
+    def plot_one_map(
+        self,
+        evtimes,
+        this_eventlist,
+        i: int = 0,
+        protocol: Union[str, Path] = "",
+        mscore: Union[float, List[float]] = 0.0,
+    ):
         evtimes = list(self.flatten(evtimes))
         evt = np.hstack(np.array(evtimes).ravel())
         print(evt)
+        print(mscore)
         n, bins, patches = self.axl[i].hist(
             evt, bins=self.binstuff, histtype="stepfilled", color="k", align="right"
         )
@@ -936,6 +989,8 @@ class MapEventScoring:
         self.axl[i].set_title(
             str(Path(protocol).parts[-1]), fontsize=10
         )  # .replace(r"_", r"\_"), fontsize=10)
+        self.axl[i].text(0.02, 0.95, f"mscore: {mscore:6.3f}", transform=self.axl[i].transAxes)
+
 
 if __name__ == "__main__":
 
