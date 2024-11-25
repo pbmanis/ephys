@@ -651,8 +651,8 @@ class DataTables:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
                     self.PSI.set_experiment(self.dataset, self.experiment)
-                    # print("New configuration: ", self.experimentname)
-                    # print(self.experiment)
+                    print("New configuration: ", self.experimentname)
+                    print(self.experiment)
 
                 case "Update DataSummary":
                     # FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
@@ -1496,7 +1496,7 @@ class DataTables:
         title: str = "My Title",
         colors: dict = {},
     ):
-        # data class must be in the experimeng configuration file, top level keys.
+        # data class must be in the experiment configuration file, top level keys.
         # e.g.:
         # spike_measures: ["dvdt_rising", "dvdt_falling", "AP_HW", "AP_thr_V", "AHP_depth_V", "AHP_trough_T"]
         # rmtau_measures: ["RMP", "Rin", "taum"]
