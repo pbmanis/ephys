@@ -144,6 +144,9 @@ class IVPlotter(object):
         if isinstance(self.plot_df["Spikes"][protocol], str):
             CP("r", f"Spikes for {protocol} is a string: {self.plot_df['Spikes'][protocol]!s}")
             return None, None
+        if self.plot_df["Spikes"][protocol] is None:
+            CP("r", f"Spikes for {protocol} is None")
+            return None, None
         if "spikes" in self.plot_df["Spikes"][protocol].keys():
             spikes = self.plot_df["Spikes"][protocol]["spikes"]
         else:
