@@ -1,5 +1,9 @@
 """ Get ages and weights of mice form a set of experiments, and plot them. 
 data are keyed by sex as well.
+
+dirs defines the experiments/datasets to be included. Each key is a
+label for the experiment, and the value is a list of directories to be included.
+
 """
 from datetime import datetime, timezone
 from pathlib import Path
