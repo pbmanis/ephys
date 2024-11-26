@@ -1387,3 +1387,5 @@ class SpikeAnalysis:
         )
     #     print("LIGHT AS A FEATHER")
     # print("RETURN TO FOREVER")
+if __name__ == "__main__":
+    pass
