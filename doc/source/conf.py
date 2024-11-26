@@ -19,11 +19,11 @@
 # -- Project information -----------------------------------------------------
 
 project = 'ephys'
-copyright = '2019-2023, Paul B Manis'
+copyright = '2019-2024, Paul B Manis'
 author = 'Paul B Manis'
 
 # The full version, including alpha/beta/rc tags
-release = '0.6'
+release = '0.7'
 
 
 # -- General configuration ---------------------------------------------------
@@ -57,7 +57,7 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = []
+exclude_patterns = ['config/*.cfg', 'ephys/config/*.cfg']
 
 # The master toctree document.
 master_doc = 'index'
