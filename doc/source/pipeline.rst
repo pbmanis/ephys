@@ -1,39 +1,28 @@
-ACQ4 Data Processing Pipelines
-==============================
+EPHYS: Acq4 Data Processing GUI and Pipeline
+=====================================
 
 
-Required Packages
------------------
+Installation
+------------
 
-#  pyqtgraph
-#  pylibrary (github.com/pbmanis/pylibrary)
-#  ephysanalysis (github.com/pbmanis/ephysanalysis)
-#  mapanalysistools (github.com/pbmanis/mapanalysistools)
-#  mini_analysis (github.com/pbmanis/mini_analysis)
-#  montager ()
+Ephys requires Python 3 (currently, 3.11) and is best run in a separate Python environment. All of the requirements are listed in the 'requirements_local.txt' file,
+and the environment can be built using the 'make_env.sh' script. This script will create a new environment called 'ephys_venv' and install all of the required packages.
 
-General Packages
-These can all be "conda install... " into the environment
-----------------
-matplotlib
-pandas
-numpy
-scipy
-mahotas
-termcolor
-seaborn
-tifffile
-numba
-openpyxl (and it's dependencies)
+Mac OS or Linux:
+
+To build the enviromnent:
+
+./make_env.sh
+
+To make the environment active, use the command:
+
+    source ephys_venv/bin/activate
+
+or make an alias on the commandline to activate the environment.
 
 
 
-
-Although the code might run under Python 2.7, we strongly recommend running it under a recent version of Python 3.
-
-We also recommend setting up a python3 environment in anaconda (or however you prefer) so that there is a clean
-environment to work in.
-
+Deprecated:
 Processing pipeline
 -------------------
 
