@@ -35,7 +35,34 @@ def get_configuration(configfile):
     return config
 
 
-objective_data = get_configuration("ephys/config/fix_objective_data.cfg")
+# default dict for objective data:
+objective_data = {
+    "Objectives": {
+        # format name: "magnification na type"
+        "4x 0.1na ACHROPLAN": 4.0,
+        "5x 0.25na ACHROPLAN": 5.0,
+        "10x 0.3na W N-ACHROPLAN": 10.0,
+        "20x 0.5na W N-ACHROPLAN": 20.0,
+        "40x 0.75na W ACHROPLAN": 40.0,
+        "40x 0.8na ACHROPLAN": 40.0,
+        "63x 0.9na ACHROPLAN": 63.0,
+    },
+    "CineScales": {
+        1.0: 1.0,  # scale factor for cine data
+        0.5: 0.5,
+        0.3: 0.3,
+    },
+    # This is the coupler between the camera and microscope.
+    # our couplers are 1x or 0.5x.
+    "Cameras": {
+        # information about the cameras - specifically, the pixel size
+        "RetigaR1": {"pixelsize": 6.54e-6},
+        "Electro": {"pixelsize": 6.45e-6},
+        "Prism95B": {"pixelsize": 11.0e-6},
+        "Retiga2000DC": {"pixelsize": 7.40e-6},
+    },
+    "LastFile": "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32_Het/Parasagittal/2020.07.07_000/slice_000/cell_000",
+}
 
 
 @dataclass
@@ -49,8 +76,9 @@ class Changer:
 
 
 class FixObjective(pg.QtWidgets.QWidget):
-    def __init__(self, app=None):
+    def __init__(self, objective_data=None, app=None):
         super(FixObjective, self).__init__()
+        self.objective_data = objective_data
         self.app = app
         self.write = False
         self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32_Het"
@@ -58,14 +86,14 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.filelistpath = "../fixobjective.toml"
         self.last_file = None
         self.selected_camera = "RetigaR1"
-        self.selected_cinescale = '1.0'
+        self.selected_cinescale = "1.0"
         self.ptreewid = 250
         self.update_camera_settings()
 
     def update_camera_settings(self):
-        self.camera = objective_data["Cameras"][self.selected_camera]
-        self.cinescale = objective_data["CineScales"][self.selected_cinescale]
-        self.pixelsize = objective_data["Cameras"][self.selected_camera]["pixelsize"]
+        self.camera = self.objective_data["Cameras"][self.selected_camera]
+        self.cinescale = self.objective_data["CineScales"][self.selected_cinescale]
+        self.pixelsize = self.objective_data["Cameras"][self.selected_camera]["pixelsize"]
         self.refscale = [
             (1.0 / self.cinescale) * self.pixelsize,
             -(1.0 / self.cinescale) * self.pixelsize,
@@ -77,7 +105,7 @@ class FixObjective(pg.QtWidgets.QWidget):
             sel = FS.FileSelector(dialogtype="dir", startingdir=self.datadir)
             current_filename = sel.fileName
         else:
-            current_filename = objective_data["LastFile"]
+            current_filename = self.objective_data["LastFile"]
             # if self.filelistpath.is_file():
             #     file_dict = toml.load(self.filelistpath)
             #     current_filename = file_dict["MostRecent"]
@@ -85,7 +113,7 @@ class FixObjective(pg.QtWidgets.QWidget):
             #     print("No Previous Files Found")
             #     return
         print("Current Filename: ", current_filename)
-    
+
         self.objdata.filename = current_filename
         self.read_index(objective=self.objdata, write=False)
         self.show_index()
@@ -125,7 +153,7 @@ class FixObjective(pg.QtWidgets.QWidget):
     #     # ["<font-family:'Courier New' color='blue' size='10'>"]
     #     # imagelist = [""]
     #     # videolist = [""]
-  
+
     #     # I'm sure there is a better way to do this, but parametrees are poorly documented
     #     # and few practical examples
     #     # u = self.ptreedata.children()
@@ -161,9 +189,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         print("self.index: ")
         # print(self.index)
         self.textbox.setCurrentFont(QtGui.QFont("Courier New"))
-        text = (
-            []
-        )  # ["<font color='red' size='3' font-family='monospace'>Hello PyQt5!\nHello"]
+        text = []  # ["<font color='red' size='3' font-family='monospace'>Hello PyQt5!\nHello"]
         # ["<font-family:'Courier New' color='blue' size='10'>"]
         for k in self.index.keys():
             print("index is: ", k)
@@ -189,7 +215,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         # print('self.index: ', self.index)
         for fn in fns:
             objname = self.index[fn]["objective"]
-            if objname not in list(objective_data["Objectives"].keys()):
+            if objname not in list(self.objective_data["Objectives"].keys()):
                 print(f"Objective {objname:s} not found in list of known objectives.")
                 continue
             print("objective(s) found: ", objname)
@@ -249,7 +275,7 @@ class FixObjective(pg.QtWidgets.QWidget):
             binning = self.index[imagefile]["binning"]
             new_objective = objective.to_objective  # string name
             magnification_new_objective = float(
-                objective_data["Objectives"][new_objective]
+                self.objective_data["Objectives"][new_objective]
             )  # new magnification
             self.index[imagefile]["transform"]["scale"] = (
                 binning[0] * self.refscale[0] / magnification_new_objective,
@@ -264,12 +290,8 @@ class FixObjective(pg.QtWidgets.QWidget):
             d = datetime.datetime.now()
             dstr = d.strftime("%Y-%m-%d %H:%M:%S")
             self.index[imagefile]["objective"] = objective.to_objective
-            self.index[imagefile][
-                "note"
-            ] = f"Objective scale corrected from {old_objective:s}"
-            self.index[imagefile][
-                "note"
-            ] += f" to {new_objective:s} on {dstr:s} by PBM"
+            self.index[imagefile]["note"] = f"Objective scale corrected from {old_objective:s}"
+            self.index[imagefile]["note"] += f" to {new_objective:s} on {dstr:s} by PBM"
             print(
                 "New objective: ", self.index[imagefile]["objective"]
             )  # pp.pprint(index[imagfile] )
@@ -293,15 +315,15 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.show_index()
 
     def build_ptree(self):
-        cameras = list(objective_data["Cameras"].keys())
-        objectives = list(objective_data["Objectives"].keys())
-        cinescales = list(objective_data["CineScales"].keys())
+        cameras = list(self.objective_data["Cameras"].keys())
+        objectives = list(self.objective_data["Objectives"].keys())
+        cinescales = list(self.objective_data["CineScales"].keys())
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
             {"name": "Set Directory/Protocol", "type": "action"},
             {"name": "Reload Last Protocol", "type": "action"},
             {"name": "Images", "type": "str", "value": ""},
-            {"name": "Videos", "type": "str",  "value": ""},
+            {"name": "Videos", "type": "str", "value": ""},
             {
                 "name": "Camera",
                 "type": "list",
@@ -396,7 +418,6 @@ class FixObjective(pg.QtWidgets.QWidget):
         win_wid = 1024
         win_ht = 512
 
-
         self.win.setWindowTitle("No File")
 
         # self.buttons = pg.QtGui.QGridLayout()
@@ -454,4 +475,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    objective_data = get_configuration("ephys/config/fix_objective_data.cfg")
+    main(objective_data=objective_data)
