@@ -798,6 +798,7 @@ class acq4_reader:
 
         else:
             if check:
+                print("Just checking - no data to load")
                 return False
             else:
                 raise ValueError
