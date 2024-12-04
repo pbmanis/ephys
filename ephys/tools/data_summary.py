@@ -1037,8 +1037,13 @@ class DataSummary:
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
             if outfile.suffix != ".pkl":
                 outfile = outfile.with_suffix(".pkl")
+            print("outfile: ", outfile)
+            print("is file: ", Path(outfile).is_file())
+            print("is parent path: ", Path(outfile).parent.is_dir())
             df.to_pickle(outfile)
             print(f"Wrote NEW pandas dataframe to pickled file: {str(outfile):s}")
+            df.to_excel(excelfile, index=False)
+            print(f"Wrote excel verion of dataframe to: {str(excelfile):s}")
             maindf = df
 
         elif self.outputMode == "pandas" and self.append:
