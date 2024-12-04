@@ -1405,9 +1405,9 @@ class Functions:
         )
         fig = P.figure_handle
         ax = P.axarr
-        dropout_plot = False
+        dropout_plot = True
         iplot = 0
-        firing_failure_calculation = False
+        firing_failure_calculation = True
         N = len(assembleddata)
         if "firing_failure_analysis" in experiment.keys():
             if experiment["firing_failure_analysis"]["compute"]:
