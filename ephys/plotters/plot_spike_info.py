@@ -2354,18 +2354,35 @@ class PlotSpikeInfo(QObject):
                     ax.set_title("Summed FI", y=1.05)
                     ax.set_xlabel("Group")
                     fi_list = []
+                    # sumdf = pd.DataFrame(fi_group_sum)
                     for i, group in enumerate(fi_group_sum.keys()):
+                        fi_list.append(fi_group_sum[group])
                         ax.scatter(
                             0.75 + i + np.random.random(len(fi_group_sum[group])) * 0.5,
                             fi_group_sum[group],
                             color=colors[group],
                             marker="o",
+                            # hue="sex",
+                            # hue_order=["M", "F"],
                             s=8.0,
                         )
-                        fi_list.append(fi_group_sum[group])
-                    ax.boxplot(fi_list, widths=0.8)
+
+                        ax.boxplot(fi_list, widths=0.8,
+                                    )
+                    # self.bar_pts(
+
+                    #         df,
+                    #     xname="Group",
+                    #     yname="FI_sum",
+                    #     celltype = "pyramidal",
+                    #     hue_category = "sex",
+                    #     ax = ax,
+                    #     # plot_order: Optional[list] = None,
+                    #     # colors: Optional[dict] = None,
+                    #     enable_picking=False,
+                    # )
                     ax.set_xlim(-0.5, 5.5)
-                    ax.set_ylim(0, 6000)
+                    ax.set_ylim(0, 1500)
                     p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
                     print(p, t)
                     print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
