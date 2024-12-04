@@ -12,20 +12,19 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-import tomllib as toml
 from pylibrary.tools import cprint as CP
 from pylibrary.tools import fileselector as FS
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 import ephys.tools.minicalcs as minicalcs
 
-from ..datareaders import acq4_reader
-from ..ephys_analysis import rm_tau_analysis, spike_analysis
-from ..mini_analyses import minis_methods, minis_methods_common
+from ephys.datareaders import acq4_reader
+from ephys.ephys_analysis import rm_tau_analysis, spike_analysis
+from ephys.mini_analyses import minis_methods, minis_methods_common
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 
-from . import digital_filters
-from . import functions as FN
+from ephys.tools import digital_filters
+from ephys.tools import functions as FN
 
 
 all_modules = [
@@ -48,6 +47,14 @@ class MiniViewer(pg.QtWidgets.QWidget):
         super(MiniViewer, self).__init__()
         self.app = app
         self.verbose = False
+        self.settings = pg.QtCore.QSettings("ManisLab", "MiniViewer")
+        self.recent_files = {"Previous": [], "MostRecent": []}
+        self.recent_files_filename = "mini_viewer_recent_files.cfg"
+        if Path(self.recent_files_filename).is_file():
+            self.recent_files = pg.configfile.readConfigFile(self.recent_files_filename)
+            self.settings.setValue("recent_files", self.recent_files["Previous"])
+        else:  # create empty recent_files file
+            pg.configfile.writeConfigFile(self.recent_files, self.recent_files_filename)
         self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael"
         self.AR = (
             acq4_reader.acq4_reader()
@@ -120,6 +127,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.event_post_time = 0.015
         self.method = None
         self.Order = 7
+        self.pars = MEDC.AnalysisPars()
+        self.pars.risepower = self.risepower
 
         self.thresh_reSD = 3.0
         self.ZC_mindur = 1e-3  # sec
@@ -158,13 +167,14 @@ class MiniViewer(pg.QtWidgets.QWidget):
             sel = FS.FileSelector(dialogtype="dir", startingdir=self.datadir)
             current_filename = sel.fileName
         else:
-            if self.filelistpath.is_file():
-                file_dict = toml.load(self.filelistpath)
-                current_filename = file_dict["MostRecent"]
-                sel = current_filename
+            self.recent_files = {}
+            self.recent_files = pg.configfile.readConfigFile(self.recent_files_filename)
+            if len(self.recent_files["MostRecent"]) > 0:
+                current_filename = self.recent_files["MostRecent"][0]
+            if current_filename is None:
+                print("No recent files found")
             else:
-                print("No Previous Files Found")
-                return
+                sel = current_filename
         if sel is None:
             return
         self.clampfiles = []
@@ -176,6 +186,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
                 # print(p)
             wtparts = Path(current_filename).parts
             wt = "/".join(wtparts[-4:])
+        else:
+            wt = "No File"
         self.fileName = current_filename
         self.win.setWindowTitle(wt)
         self.w1.slider.setValue(0)
@@ -184,20 +196,16 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.w1.slider.setTickInterval(10)
         self.protocolPath = self.fileName
         self.compare_data = False  # new prototocol; trigger new comparision if needed
-        # first attempt to read the current recent files file
-        if self.filelistpath.is_file():  # read the old file
-            file_dict = toml.load(self.filelistpath)
-            if "Previous" not in list(file_dict.keys()):
-                file_dict["Previous"] = []
-            file_dict["MostRecent"] = str(self.fileName)
-            if self.fileName not in file_dict["Previous"]:
-                file_dict["Previous"].insert(0, str(self.fileName))
-            file_dict["Previous"] = file_dict["Previous"][: self.maxPreviousFiles]
+        if self.recent_files == {}:
+            # first attempt to read the current recent files file
+            self.recent_files = {"Previous": [str(self.fileName)], "MostRecent": [str(self.fileName)]}
+        else:
+            if self.fileName not in self.recent_files["Previous"]:
+                self.recent_files["Previous"].insert(0, str(self.fileName))
+            self.recent_files["Previous"] = self.recent_files["Previous"][: self.maxPreviousFiles]
+        pg.configfile.writeConfigFile(self.recent_files, self.recent_files_filename)
+        self.settings.setValue("recent_files", self.recent_files["Previous"])
 
-        else:  # create a new file
-            file_dict = {"MostRecent": str(self.fileName), "Previous": []}
-        with open(self.filelistpath, "w") as fh:
-            toml.dump(file_dict, fh)
         self.load_data()
 
     def setProtocol(self, date, sliceno, cellno, protocolName):
@@ -222,9 +230,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def load_data(self):
         self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
+        print("Loading data from: ", self.protocolPath)
         # self.info = self.AR.getDataInfo(Path(mapdir))  # copy out the info
-
-        if self.AR.getData():  # get that data.
+        self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
+        if self.AR.getData(silent=False):  # get that data.
             self.filters_applied = False
             # trim time window if needed
             dt = 1.0 / self.AR.sample_rate[0]
@@ -241,8 +250,6 @@ class MiniViewer(pg.QtWidgets.QWidget):
             self.maxT = self.AR.sample_rate[0] * self.trace_end_index
             self.w1.slider.setValue(0)
             # load depends on the analysis...
-
-            self.MA = minis_methods.MiniAnalyses()  # get a minianalysis instance
 
             self.MA.setup(
                 datasource="MiniAnalyses",
@@ -266,6 +273,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
             if self.verbose:
                 print("after filter application: ", self.MA.filters)
             self.update_traces()
+        else:
+            print("Data not loaded")
 
     def apply_filtering(self):
         """Apply filtering all at once to all traxes upon reading"""
@@ -280,7 +289,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
         print("Preparing data...")
         if self.verbose:
             print(self.filters)
-        self.MA.prepare_data(data=self.mod_data)
+        self.MA.prepare_data(data=self.mod_data, pars=self.pars)
         if self.verbose:
             print("data prepared ", self.MA.data_prepared)
         self.mod_data = self.MA.data
@@ -355,9 +364,10 @@ class MiniViewer(pg.QtWidgets.QWidget):
         self.curves = []
         self.lines = []
         self.curve_set = False
-        if self.current_trace >= self.AR.data_array.shape[0]:
-            self.dataplot.setTitle(f"Trace > Max traces: {self.AR.data_array.shape[0]:d}")
+        if self.current_trace >= np.array(self.AR.data_array).shape[0]:
+            self.dataplot.setTitle(f"Trace > Max traces: {np.array(self.AR.data_array).shape[0]:d}")
             return
+        
         self.curves.append(
             self.dataplot.plot(
                 self.AR.time_base[: self.trace_end_index],
@@ -374,6 +384,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
 
     def update_analysis(self):
         print("self.method: ", self.method)
+        self.risepower = 4
         self.MA.set_filters(self.filters)
         self.MINC = minicalcs.MiniCalcs(parent=self)
 
@@ -503,7 +514,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "Channel Name",
                         "type": "list",
-                        "values": [
+                        "limits": [
                             "Clamp1.ma",
                             "MultiClamp1.ma",
                             "Clamp2.ma",
@@ -534,13 +545,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "Detrend Method",
                         "type": "list",
-                        "values": ["None", "meegkit", "scipy"],
+                        "limits": ["None", "meegkit", "scipy"],
                         "default": "meegkit",
                     },
                     {
                         "name": "LPF",
                         "type": "list",
-                        "values": [
+                        "limits": [
                             "None",
                             500.0,
                             1000.0,
@@ -560,7 +571,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "HPF",
                         "type": "list",
-                        "values": [
+                        "limits": [
                             "None",
                             0.1,
                             0.5,
@@ -576,7 +587,7 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "Notch Frequency",
                         "type": "list",
-                        "values": [
+                        "limits": [
                             "None",
                             "60HzHarm",
                             "60HzHarm+4K",
@@ -607,13 +618,13 @@ class MiniViewer(pg.QtWidgets.QWidget):
                     {
                         "name": "Method",
                         "type": "list",
-                        "values": ["AJ", "CB", "RS", "ZC"],
+                        "limits": ["AJ", "CB", "RS", "ZC"],
                         "value": "AJ",
                     },
                     {
                         "name": "Sign",
                         "type": "list",
-                        "values": ["+", "-"],
+                        "limits": ["+", "-"],
                         "value": "-",
                     },
                     {

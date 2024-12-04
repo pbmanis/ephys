@@ -71,12 +71,13 @@ class MiniCalcs():
     def AJ(self):
         self.parent._getpars()
         self.parent.method = minis_methods.AndradeJonas()
-        rate = self.parent.MA.dt_seconds # np.mean(np.diff(self.parent.tb))
+        rate = self.parent.MA.dt_seconds  # np.mean(np.diff(self.parent.tb))
         jmax = int((2 * self.parent.tau1 + 3 * self.parent.tau2) / rate)
         CP.cprint("g", f"showdata AJ threshold: {self.parent.thresh_reSD:8.2f}")
         print("template len: ", jmax, "template max t: ", rate * (jmax - 1), rate)
         self.parent.method.setup(
             ntraces=self.parent.mod_data.shape[0],
+            risepower=self.parent.risepower,
             tau1=self.parent.tau1,
             tau2=self.parent.tau2,
             dt_seconds=rate,
@@ -100,7 +101,7 @@ class MiniCalcs():
                 itrace=i,
                 # data_nostim=None,
                 llambda=5.0,
-                prepare_data = False
+                prepare_data = True
             )  # assumes times are all in same units of msec
             self.parent.mod_data[i, : self.parent.imax] = self.parent.method.data  # # get filtered data
             # self.parent.method.reset_filters()
@@ -229,7 +230,7 @@ class MiniCalcs():
                 )
 
                 self.parent.scatter.append(self.parent.dataplot.plot(
-                    np.array(self.parent.tb[minimethod.summary.onsets[self.parent.current_trace]])+self.parent.MA.idelay,
+                    np.array(self.parent.tb[minimethod.summary.onsets[self.parent.current_trace]]), # +self.parent.MA.idelay,
                     self.parent.current_data[minimethod.summary.onsets[self.parent.current_trace]],
                     # np.array(minimethod.summary.amplitudes[self.parent.current_trace]),
                     pen = None, symbol='o', symbolPen=None, symbolSize=5,
