@@ -489,7 +489,7 @@ class MiniAnalyses:
 
         return np.dot(x, sinc_)
 
-    def prepare_data(self, data: np.ndarray, pars: Optional[MEDC.AnalysisPars] = None):
+    def prepare_data(self, data: np.ndarray, pars: MEDC.AnalysisPars = None):
         """
         This function prepares the incoming data for the mini analyses.
         0. Remove obtrusive artifacts with "sample-and-hold" method
@@ -1468,7 +1468,7 @@ class MiniAnalyses:
         print("    # Included Events found: ", len(all_event_indices))
         print("    # Incomplete Events found: ", len(incomplete_event_list))
         print("    # Overlapping Events found: ", len(overlapping_event_list))
-        print("    # Wrong chage Events found: ", len(wrong_charge_sign_event_list))
+        print("    # Events with the wrong charge found: ", len(wrong_charge_sign_event_list))
         print("    # Tarnished events: ", len(tarnished_events))
         # get the clean events (non overlapping, correct charge, complete in trace)
 

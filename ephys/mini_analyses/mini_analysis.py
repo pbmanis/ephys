@@ -377,20 +377,16 @@ class MiniAnalysis:
                 result = acqr.getData(check=True)
                 if result is False:
                     CP("r", f"******* Get data failed to find a file : {str(fn):s}")
-                    CP("r", f"        dataname: {fn:s}")
+                    # CP("r", f"        dataname: {fn:s}")
                 continue
-            acqr.getData()
-            acqr.data_array = np.ndarray(acqr.data_array)
-
+            if not acqr.getData():
+                CP("r", f"******* Get data failed to find a file : {str(fn):s}")
+                continue
+            acqr.data_array = np.array(acqr.data_array)
             oktraces = [
                 x for x in range(acqr.data_array.shape[0]) if x not in exclude_traces
             ]
             data = np.array(acqr.data_array[oktraces])
-            # print(exclude_traces)
-            # print(oktraces)
-            # print(data.shape)
-            # print(dir(acqr))
-            # print(acqr.sample_rate)
             dt_seconds = acqr.sample_interval
             min_index = int(self.min_time / dt_seconds)
             if self.max_time > 0.0:
@@ -398,8 +394,14 @@ class MiniAnalysis:
             else:
                 max_index = data.shape[1]
             data = data[:, min_index:max_index]
-            time_base = acqr.time_base[min_index:max_index]
+            time_base = np.array(acqr.time_base[min_index:max_index])
             time_base = time_base - self.min_time
+            try:
+                np.min(time_base)
+            except ValueError:
+                print("no time base? : ", time_base)
+                raise ValueError("No time base")
+                
             if not datanameposted and not check:
                 self.P.figure_handle.suptitle(
                     f"{mouse:s}\n{self.cell_summary['genotype']:s} {protocolname:s}",
@@ -407,8 +409,9 @@ class MiniAnalysis:
                     weight="normal",
                 )
                 datanameposted = True
-                mousedata.replace('"', "")
-                mousedata.replace("'", "")
+                # print("mousedata: ", mousedata)
+                # mousedata.replace('"', "")
+                # mousedata.replace("'", "")
                 textdata = wrapper.wrap(str(mousedata))
                 textdata = "\n".join(textdata)
 
@@ -431,7 +434,7 @@ class MiniAnalysis:
                 engine=engine,
                 data=data,
                 time_base=time_base,
-                template_maxt=template_tmax,
+                template_tmax=template_tmax,
                 template_pre_time=self.template_pre_time,
                 dt_seconds=dt_seconds,
                 mousedata=mousedata,
@@ -523,8 +526,11 @@ class MiniAnalysis:
             filters.Notch_frequencies=mousedata["notch"]
             filters.Notch_Q = mousedata["notch_Q"]
             filters.Detrend_method = None
-            print("Calling setup for Andrade-Jonas (2012)")
-            print("threshold: ", float(mousedata["thr"]))
+            # print("Calling setup for Andrade-Jonas (2012)")
+            # print("threshold: ", float(mousedata["thr"]))
+            self.pars = MEDC.AnalysisPars()
+            self.pars.risepower = 4.0
+
             aj.setup(
                 ntraces=ntraces,
                 tau1=mousedata["rt"],
@@ -534,7 +540,7 @@ class MiniAnalysis:
                 dt_seconds=dt_seconds,
                 delay=0.,  # delay before analysis into each trace/sweep
                 sign=self.sign,
-                risepower=4.0,
+                risepower=self.pars.risepower,
                 min_event_amplitude=float(
                     mousedata["min_event_amplitude"]
                 ),  # self.min_event_amplitude,
@@ -545,14 +551,14 @@ class MiniAnalysis:
             
             )
             aj.set_timebase(time_base)
-            aj.prepare_data(data=data)
+            aj.prepare_data(data=data, pars =self.pars)
             for i in tracelist:
                 aj.deconvolve(
                     aj.data[i], timebase=aj.timebase,  itrace=i, llambda=10.0,
-                    prepare_data = False,
+                    prepare_data = False,  # must be false - preparation was already done
                 )  # , order=order) # threshold=float(mousedata['thr']),
                 # data[i] = aj.data.copy()
-            raise()
+
             aj.identify_events(order=order)
             summary = aj.summarize(aj.data)
             summary = aj.average_events(  # also does the fitting
@@ -776,10 +782,13 @@ class MiniAnalysis:
                              yl, 'r-', linewidth=0.5)
             self.axEPSC.plot([aev[i]['t90'], aev[i]['t90']],
                              yl, 'b-', linewidth=0.5)
-        print("10-90 rt: ", self.cell_summary['averaged'][0]['risetenninety'])
-        print("t10, t90: ", self.cell_summary['averaged'][0]['t10'], self.cell_summary['averaged'][0]['t90'])
-        print("t37: ", self.cell_summary['averaged'][0]['decaythirtyseven'])
-
+        if len(self.cell_summary["averaged"]) > 0:
+            print("10-90 rt: ", self.cell_summary['averaged'][0]['risetenninety'])
+            print("t10, t90: ", self.cell_summary['averaged'][0]['t10'], self.cell_summary['averaged'][0]['t90'])
+            print("t37: ", self.cell_summary['averaged'][0]['decaythirtyseven'])
+        else:
+            self.axEPSC.text(0.5, 0.5, s="No data", ha="center", va="center", transform=self.axEPSC.transAxes)
+            return
         self.axEPSC.text(
             1.0,
             0.28,
@@ -1120,6 +1129,13 @@ class MiniAnalysis:
         scf = 1e12
         ampls = np.array(self.cell_summary["amplitudes"]) * scf
         nevents = len(ampls)
+        print("nevents: ", nevents)
+        if nevents == 0: 
+            self.axAmps.text(0.5, 0.5, "No events", fontsize=14, ha="center", va="center", transform=self.axAmps.transAxes,
+                             bbox=dict(facecolor='red', alpha=0.5))
+            self.axIntvls.text(0.5, 0.5, "No events", fontsize=14, ha="center", va="center", transform=self.axIntvls.transAxes,
+                                bbox=dict(facecolor='red', alpha=0.5))
+            return
         amp, ampbins, amppa = self.axAmps.hist(ampls, histBins, alpha=0.5, density=True)
         # fit to normal distribution
         ampnorm = scipy.stats.norm.fit(ampls)  #

@@ -385,12 +385,10 @@ class AndradeJonas(MiniAnalyses):
         # cprint('r', "STARTING AJ")
         assert data.ndim == 1
         self.starttime = timeit.default_timer()
-
         if prepare_data:
             self.prepare_data(data)  # also generates a timebase
-            data = self.data
             timebase = self.timebase # get timebase associated with prepare_data
-        else:
+        # else:
             assert timebase is not None
         if self.template is None:
             self._make_template(timebase)
@@ -399,7 +397,6 @@ class AndradeJonas(MiniAnalyses):
 
         data -= np.mean(data)
         # Weiner filtering
-
         templ = self.template.copy()
         if templ.shape[0] < data.shape[0]:
             templ = np.hstack((templ, np.zeros(data.shape[0] - templ.shape[0])))
