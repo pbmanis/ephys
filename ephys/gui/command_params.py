@@ -36,9 +36,11 @@ class CommandParams:
 
     def create_params(self):
         # print(self.experiment)
+
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues,
             # "value": cellvalues[0]},
+
             {"name": "Create New DataSet", "type": "action"},
             {
                 "name": "Choose Experiment",
