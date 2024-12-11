@@ -352,7 +352,7 @@ class DataTables:
         # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
         # defines the layout.
         self.CD = command_params.CommandParams()
-        self.CD.set_datasets(self.dataset)
+        self.CD.set_datasets(self.datasets)
         self.CD.set_experiment(self.experiment)
         self.params, self.ptree, self.ptreedata = self.CD.create_params()
 
@@ -653,6 +653,9 @@ class DataTables:
                     self.PSI.set_experiment(self.dataset, self.experiment)
                     print("New configuration: ", self.experimentname)
                     print(self.experiment)
+                    self.load_data_summary()
+                    self.Dock_DataSummary.raiseDock()
+                    self.load_assembled_data()
 
                 case "Update DataSummary":
                     # FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
