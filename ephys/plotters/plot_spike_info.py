@@ -843,14 +843,13 @@ class PlotSpikeInfo(QObject):
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
         cell_list = list(set(df.cell_id))
-
         cell_list = sorted(cell_list)
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
         computer_name = get_computer()
         nworkers = self.experiment["NWORKERS"][computer_name]
         cells_to_do = [cell for cell in cell_list if cell is not None]
-
+   
         # here we should check to see if cell has been done in the current file,
         # and remove it from the list.
         combined_file = Path(
@@ -1158,9 +1157,7 @@ class PlotSpikeInfo(QObject):
                 clip_on=False,
             )
 
-        # print("xname: ", xname)
-        # print(df_x[xname])
-        # print(df_x[yname])
+
         if not all(np.isnan(df_x[yname])):
             sns.boxplot(
                 data=df_x,
@@ -2841,6 +2838,7 @@ class PlotSpikeInfo(QObject):
 
         df = self.combine_by_cell(df)
         print("\nWriting assembled data to : ", fn)
+        print(df.head())
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
         df.to_pickle(fn)
 
@@ -2926,7 +2924,7 @@ class PlotSpikeInfo(QObject):
         if cell_id_match is not None:  # we have a match, so save as the Subject
             # handle variations in the column name (historical changes)
             idname = "Subject"
-            row[idname] = df_summary.loc[df_summary.cell_id == cell_id_match][
+            row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][
                 "animal_identifier"
             ].values[0]
             # else:
@@ -2934,7 +2932,7 @@ class PlotSpikeInfo(QObject):
             #     if "Subject" in row.keys():
             #         print("Found subject column but not animal[_]identifier: ", row["Subject"])
             #     raise ValueError("could not match animal id/Subject with column")
-        return row[idname]
+        return row.Subject
 
     def get_cell_layer(self, row, df_summary):
         cell_id = row.cell_id
@@ -3045,7 +3043,7 @@ class PlotSpikeInfo(QObject):
         # df_summary will have long names: Rig2(MRK)/L23_intrinsic/2024.10.22_000/slice_000/cell_000
         # print("-2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         # print("-1 ", df_summary['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
- 
+        df["Subject"] = ""
         df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
 
         # print("df idsid df after getting Subject: ")
