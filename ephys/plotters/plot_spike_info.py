@@ -2251,7 +2251,9 @@ class PlotSpikeInfo(QObject):
                     group = cdd[group_by][index]
                     if (celltype, group) not in NCells.keys():
                         NCells[(celltype, group)] = 0
-
+                    print("group: ", group)
+                    if  pd.isnull(group):
+                        continue
                     # if cdd["protocol"][index].startswith("CCIV_"):
                     #     this_protocol = "CCIV_"
                     # else:
@@ -2379,7 +2381,7 @@ class PlotSpikeInfo(QObject):
                     #     enable_picking=False,
                     # )
                     ax.set_xlim(-0.5, 5.5)
-                    ax.set_ylim(0, 1500)
+                    ax.set_ylim(0, 6000)
                     p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
                     print(p, t)
                     print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
@@ -2667,7 +2669,7 @@ class PlotSpikeInfo(QObject):
             desc_stat = ""
             for gr in dictdata.keys():  # gr is the group (e.g., genotype, treatment, etc)
                 # print(dictdata[gr], len(dictdata[gr][0]))
-                desc_stat += f"Group: {gr:s}  N: {np.sum(~np.isnan(dictdata[gr])):d}, median: {scale*np.nanmedian(dictdata[gr]):.6f},"
+                desc_stat += f"Group: {gr!s}  N: {np.sum(~np.isnan(dictdata[gr])):d}, median: {scale*np.nanmedian(dictdata[gr]):.6f},"
                 desc_stat += f"mean: {scale*np.nanmean(dictdata[gr]):.6f}"
                 desc_stat += f"  std: {scale*np.nanstd(dictdata[gr]):.6f}, QR: {scale*np.nanquantile(dictdata[gr], 0.25):.6f}"
                 desc_stat += f"- {scale*np.nanquantile(dictdata[gr], 0.75):.6f}"
