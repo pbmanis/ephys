@@ -549,7 +549,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
-    print("get cell: ", experiment, df, cell_id)
+    # print("get cell: ", experiment, df, cell_id)
     datapath = get_cell_pkl_filename(experiment, df, cell_id)
     df_tmp = df[df.cell_id == cell_id]
     try:
