@@ -238,9 +238,10 @@ class Functions:
         return the index to the first row and the data from that row
         """
         self.selected_index_rows = table_manager.table.selectionModel().selectedRows()
-        if self.selected_index_rows is None:
+        if self.selected_index_rows is None or len(self.selected_index_rows) == 0:
             return None, None
         else:
+            print("selected: ", self.selected_index_rows)
             index_row = self.selected_index_rows[0]
             selected = table_manager.get_table_data(index_row)  # table_data[index_row]
             if selected is None:
@@ -2100,7 +2101,12 @@ class Functions:
             pd.isnull(cell_group) and len(df[df.cell_id == cell].Group.values) > 1
         ):  # incase first value is nan
             cell_group = df[df.cell_id == cell].Group.values[1]
-        df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
+        try:
+            df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
+        except:
+            print(df.cell_id)
+            print([x for x in df.cell_id.values])
+            raise ValueError(f"Couldn't get cell: {cell:s} from dataframe")
         if df_cell is None:
             return None
         # print("    df_tmp group>>: ", df_tmp.Group.values)
