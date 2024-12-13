@@ -587,8 +587,10 @@ class SpikeAnalysis:
             LCS["AP_peak_T"] = sp.peak_T
             if sp.halfwidth_interpolated is not None:
                 LCS["AP_HW"] = sp.halfwidth_interpolated * 1e3
-            else:  # if interpolated halfwidth is not available, use the raw halfwidth
+            elif sp.halfwidth is not None:  # if interpolated halfwidth is not available, use the raw halfwidth
                 LCS["AP_HW"] = sp.halfwidth * 1e3
+            else: # if that is not available, we do not have a measure to use... 
+                LCS["AP_HW"] = np.nan
 
             LCS["AP_begin_V"] = 1e3 * sp.AP_begin_V
             LCS["AHP_depth"] = 1e3 * (sp.AP_begin_V - sp.trough_V)
