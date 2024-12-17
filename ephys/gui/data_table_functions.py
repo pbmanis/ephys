@@ -531,6 +531,8 @@ class Functions:
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
         if exclude_flag:
             CP("r", f"Cell has entries in exclusion table: {exclude_flag!s}")
+        else:
+            CP("c", f"Cell has no entries in exclusion table: {exclude_flag!s}")
         if exclude_flag:
             exclude_table = experiment["excludeIVs"][day_slice_cell]
             CP("r", f"    excluded table data: {exclude_table!s}")
