@@ -1155,6 +1155,7 @@ class PlotSpikeInfo(QObject):
                 picker=enable_picking,
                 zorder=100,
                 clip_on=False,
+
             )
 
 
@@ -1271,8 +1272,8 @@ class PlotSpikeInfo(QObject):
     def rescale_values(self, df):
         rescaling = {
             "AP_HW": 1e6,  # convert to usec
-            "AP_thr_V": 1,
-            "AHP_depth_V": 1,
+            "AP_thr_V": 1e3,
+            "AHP_depth_V": 1e3,
             "AHP_trough_V": 1e3,
             "AHP_trough_T": 1e3,
             "FISlope": 1e-9,
@@ -2194,7 +2195,7 @@ class PlotSpikeInfo(QObject):
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.12,
-                "rightmargin": 0.15,
+                "rightmargin": 0.22,
             },
             verticalspacing=0.2,
             horizontalspacing=0.1,
@@ -2226,17 +2227,18 @@ class PlotSpikeInfo(QObject):
         NCells: Dict[tuple] = {}
         picker_funcs: Dict = {}
         found_groups = []
-        fi_group_sum = {}
+
         fi_dat = {}  # save raw fi
         for ic, ptype in enumerate(["mean", "individual", "sum"]):
             for ir, celltype in enumerate(self.experiment["celltypes"]):
+                fi_group_sum = pd.DataFrame(columns=["Group", "sum", "sex", "cell_type", "cell_expression"])
                 ax = P.axarr[ir, ic]
                 ax.set_title(celltype.title(), y=1.05)
                 ax.set_xlabel("I$_{inj}$ (nA)")
                 if ic in [0, 1]:
                     ax.set_ylabel("Rate (sp/s)")
                 elif ic == 2:
-                    ax.set_ylabel("Firing 'Area' (pA*Hz)")
+                    ax.set_ylabel("Firing 'Area' (nA*Hz)")
                 if celltype != "all":
                     cdd = df[df["cell_type"] == celltype]
                 else:
@@ -2249,10 +2251,12 @@ class PlotSpikeInfo(QObject):
                     FIx_all: dict = {k: [] for k in N.keys()}
                 for index in cdd.index:
                     group = cdd[group_by][index]
+                    sex = cdd["sex"][index]
+
                     if (celltype, group) not in NCells.keys():
                         NCells[(celltype, group)] = 0
-                    print("group: ", group)
-                    if  pd.isnull(group):
+                    # print("group: ", group)
+                    if pd.isnull(group):
                         continue
                     # if cdd["protocol"][index].startswith("CCIV_"):
                     #     this_protocol = "CCIV_"
@@ -2298,7 +2302,6 @@ class PlotSpikeInfo(QObject):
                     NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
                     if group not in found_groups:
                         found_groups.append(group)
-                        fi_group_sum[group] = []
                     maxi = 1000e-12
                     ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
                     if ptype in ["individual", "mean"]:
@@ -2322,7 +2325,8 @@ class PlotSpikeInfo(QObject):
                             FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
 
                     elif ptype == "sum":
-                        fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
+                        fi_group_sum.loc[len(fi_group_sum)] = [group, 1e-3*np.sum(np.array(FI_dat_saved[1])), sex, celltype, "None"]
+                        # fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
 
                 if ptype == "mean":
                     max_FI = 1.0
@@ -2348,43 +2352,31 @@ class PlotSpikeInfo(QObject):
                         )
 
                         ax.set_xlim(0, max_FI)
-                if ptype == "sum":
+                if ptype == "sum" and ir == 0:
                     ax = P.axarr[ir, ic]
                     ax.set_title("Summed FI", y=1.05)
                     ax.set_xlabel("Group")
-                    fi_list = []
-                    # sumdf = pd.DataFrame(fi_group_sum)
-                    for i, group in enumerate(fi_group_sum.keys()):
-                        fi_list.append(fi_group_sum[group])
-                        ax.scatter(
-                            0.75 + i + np.random.random(len(fi_group_sum[group])) * 0.5,
-                            fi_group_sum[group],
-                            color=colors[group],
-                            marker="o",
-                            # hue="sex",
-                            # hue_order=["M", "F"],
-                            s=8.0,
+                    
+                    if not all(np.isnan(fi_group_sum["sum"])):
+                        print("fi_group_sum: ", fi_group_sum.head())
+                        self.bar_pts(
+                            fi_group_sum,
+                            xname="Group",
+                            yname="sum",
+                            celltype = "pyramidal",
+                            # hue_category = "sex",
+                            ax = ax,
+                            plot_order = self.experiment["plot_order"]["age_category"],
+                            colors = self.experiment["plot_colors"],
+                            enable_picking=False,
                         )
-
-                        ax.boxplot(fi_list, widths=0.8,
-                                    )
-                    # self.bar_pts(
-
-                    #         df,
-                    #     xname="Group",
-                    #     yname="FI_sum",
-                    #     celltype = "pyramidal",
-                    #     hue_category = "sex",
-                    #     ax = ax,
-                    #     # plot_order: Optional[list] = None,
-                    #     # colors: Optional[dict] = None,
-                    #     enable_picking=False,
-                    # )
-                    ax.set_xlim(-0.5, 5.5)
-                    ax.set_ylim(0, 6000)
-                    p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
-                    print(p, t)
-                    print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
+                        ax.set_xlim(-0.5, 5.5)
+                        ax.set_ylim(self.experiment['ylims']['limits1']["summed_FI_limits"])
+                        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+                        PH.talbotTicks(ax, axes="y", density=(1, 1))
+                        # p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
+                        # print(p, t)
+                        # print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
                 print("group: ", group, "ptype: ", ptype)
 
             yoffset = 0.025
@@ -2874,7 +2866,7 @@ class PlotSpikeInfo(QObject):
                 row.AHP_depth_V[i] = row.AHP_trough_V[i] - row.AP_thr_V[i]
                 if row.AHP_depth_V[i] > 0:
                     row.AHP_depth_V[i] = np.nan
-            return row.AHP_depth_V[i]
+            return row.AHP_depth_V[i]  # convert to mV here
         else:
             CP("c", "LowestCurrentSpike in row keys")
 
