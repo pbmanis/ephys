@@ -431,8 +431,8 @@ class RmTauAnalysis:
             )
             whichdata = whichdata.flatten()
            
-            for i in whichdata:
-                print("command levels to test:", i, self.Clamps.commandLevels[i] * 1e12)
+            # for i in whichdata:
+            #     print("command levels to test:", i, self.Clamps.commandLevels[i] * 1e12)
             if debug:
                 print("\n\nNot averaging: TAU estimates with traces: ", whichdata)
                 print("c_range: ", c_range * 1e12)
@@ -621,7 +621,7 @@ class RmTauAnalysis:
             self.analysis_summary["taum_fitted"] = self.taum_fitted
             self.analysis_summary["taum_fitmode"] = "multiple"
             self.analysis_summary["taum_traces"] = self.taum_whichdata
-            print("WHICH: ", self.taum_whichdata)
+            # print("WHICH: ", self.taum_whichdata)
         #
         # ------------------------------------------------------------------
         # Fit single traces, old way
