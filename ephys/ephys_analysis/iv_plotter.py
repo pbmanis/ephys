@@ -202,18 +202,17 @@ class IVPlotter(object):
         P.figure_handle.suptitle(f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}", fontsize=8)
         dv = 50.0
         jsp = 0
-        print("cell id: ", self.plot_df["cell_id"])
+        # print("cell id: ", self.plot_df["cell_id"])
         res = CIE.include_exclude(cell_id=self.plot_df["cell_id"], 
                                        inclusions=self.experiment["includeIVs"], exclusions=self.experiment["excludeIVs"], allivs=allprots["CCIV"]),
-        print("CIE RESULT: ", res)
         validivs, additional_ivs, additional_iv_records = res[0][0], res[0][1], res[0][2]
         self.allow_partial = False
         self.record_list = None
         print("getting data for protocol: ", protocol)
-        if len(additional_iv_records) > 0 and protocol in additional_iv_records.keys():
+        if additional_iv_records is not None and len(additional_iv_records) > 0 and protocol in additional_iv_records.keys():
             self.allow_partial = True
             self.record_list = additional_iv_records[protocol][1]
-        print(" allow partial,  record_list: ", self.allow_partial, self.record_list)
+        # print(" allow partial,  record_list: ", self.allow_partial, self.record_list)
         if not self.AR.getData(allow_partial=self.allow_partial, record_list=self.record_list):
             return None, None
         # create a color map ans use it for all data in the plot
@@ -387,22 +386,24 @@ class IVPlotter(object):
                 weight="normal",
                 font="Arial",
             )
-        P.axdict["B"].plot(
-            spike_dict["FI_Curve"][0][valid_traces] * 1e9,
-            spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
-            "grey",
-            linestyle="-",
-            # markersize=4,
-            linewidth=0.5,
-        )
+        if not cc_taum_protocol:
+ 
+            P.axdict["B"].plot(
+                spike_dict["FI_Curve"][0][valid_traces] * 1e9,
+                spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
+                "grey",
+                linestyle="-",
+                # markersize=4,
+                linewidth=0.5,
+            )
 
-        P.axdict["B"].scatter(
-            spike_dict["FI_Curve"][0][valid_traces] * 1e9,
-            spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
-            color=trace_colors,
-            s=16,
-            linewidth=0.5,
-        )
+            P.axdict["B"].scatter(
+                spike_dict["FI_Curve"][0][valid_traces] * 1e9,
+                spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
+                color=trace_colors,
+                s=16,
+                linewidth=0.5,
+            )
 
         clist = ["r", "b", "g", "c", "m"]  # only 5 possiblities
         linestyle = ["-", "--", "-.", "-", "--"]
@@ -630,20 +631,21 @@ class IVPlotter(object):
 
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
-        for k, i in enumerate(spikes.keys()):
-            if i not in valid_traces:
-                continue
-            if len(spikes[i]) == 0 or spikes[i][0] is None or spikes[i][0].dvdt is None:
-                continue
-            n_dvdt = len(spikes[i][0].dvdt)
-            P.axdict["E"].plot(
-                spikes[i][0].V[:n_dvdt],
-                spikes[i][0].dvdt,
-                linewidth=0.35,
-                color=trace_colors[i],
-            )
-            if i == 0:
-                break  # only plot the first one
+        if not cc_taum_protocol:
+            for k, i in enumerate(spikes.keys()):
+                if i not in valid_traces:
+                    continue
+                if len(spikes[i]) == 0 or spikes[i][0] is None or spikes[i][0].dvdt is None:
+                    continue
+                n_dvdt = len(spikes[i][0].dvdt)
+                P.axdict["E"].plot(
+                    spikes[i][0].V[:n_dvdt],
+                    spikes[i][0].dvdt,
+                    linewidth=0.35,
+                    color=trace_colors[i],
+                )
+                if i == 0:
+                    break  # only plot the first one
         P.axdict["E"].set_xlabel("V (mV)")
         P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
 

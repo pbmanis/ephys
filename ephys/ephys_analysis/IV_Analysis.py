@@ -866,7 +866,7 @@ class IVAnalysis(Analysis):
             self.SP.analyzeSpikes_brief(mode="poststimulus")
         # self.SP.fitOne(function='fitOneOriginal')
         if track:
-            print("   brief spike analysis completed", full_spike_analysis)
+            print("    Brief spike analysis completed", full_spike_analysis)
         tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
         if str(self.datapath).find("_taum"):
             tau_end = self.AR.tstart + self.AR.tend
