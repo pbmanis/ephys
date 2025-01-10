@@ -117,10 +117,11 @@ def interpolate_halfwidth(tr, xr, kup, halfv, kdown):
 class SpikeAnalysis:
     def __init__(self):
         pass
-        self.spike_detector = "Kalluri"  # This seems to be the best method to use.
-        self.reset_analysis()
+        self.spike_detector = None  # Must force this to be st
+        self.detector_pars = None
+        self._reset_analysis()
 
-    def reset_analysis(self):
+    def _reset_analysis(self):
         self.threshold = 0.0
         self.Clamps = None
         self.analysis_summary = {}
@@ -198,7 +199,7 @@ class SpikeAnalysis:
         self.min_peaktotrough = 0.010  # change in V on falling phase to be considered a spike
         self.max_spike_look = max_spike_look  # sec over which to measure spike widths
 
-    def set_detector(self, detector: str = "argrelmax"):
+    def set_detector(self, detector: str = "argrelmax", pars: Union[dict, None] = None):
         assert detector in [
             "argrelmax",
             "threshold",
@@ -207,6 +208,7 @@ class SpikeAnalysis:
             "find_peaks_cwt",
         ]
         self.spike_detector = detector
+        self.detector_pars = pars
 
     def analyzeSpikes(self, reset=True, track:bool=False):
         """
@@ -234,6 +236,10 @@ class SpikeAnalysis:
         Nothing, but see the list of class variables that are modified
 
         """
+        print("spike analysis: AnalyzeSpikes started")
+        print("spike detector: ", self.spike_detector)
+        print("threshold: ", self.threshold)
+
         if reset:
             self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
         self.analysis_summary['analysistimestamp'] = datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
@@ -273,6 +279,7 @@ class SpikeAnalysis:
                 mindip=1e-2,
                 refract=self.refractory,
                 peakwidth=self.peakwidth,
+                pars=self.detector_pars,
                 data_time_units=self.time_units,
                 data_volt_units=self.volt_units,
                 verify=self.verify,
@@ -370,6 +377,7 @@ class SpikeAnalysis:
                 detector=self.spike_detector,
                 refract=self.refractory,
                 peakwidth=self.peakwidth,
+                pars=self.detector_pars,
                 verify=self.verify,
                 debug=False,
             )
@@ -672,6 +680,7 @@ class SpikeAnalysis:
 
             min_point = kpeak
             band = 1e-3  # 1 mV change ends minimum search
+            min_v = None # self.Clamps.traces[trace_number][0]  # set min to start of trace
             for km in range(kpeak-1, t_step_start, -1):
                 delta = self.Clamps.traces[trace_number][km] - self.Clamps.traces[trace_number][km + 1]
                 if delta < 0:
@@ -679,6 +688,8 @@ class SpikeAnalysis:
                     min_v = self.Clamps.traces[trace_number][km]  # save current minimum
                     continue
                 elif delta > 0:
+                    if min_v is None:
+                        continue
                     if self.Clamps.traces[trace_number][km] > (min_v + band):
                         break  # end of minimum, report the prior minimum point
             kprevious = min_point

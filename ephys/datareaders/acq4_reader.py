@@ -709,6 +709,7 @@ class acq4_reader:
         pos: int = 1,
         check: bool = False,
         allow_partial: bool = False,
+        record_list: list = [],  # if allow partial, if this list is not None, we only return the records in this list, otherwise we return all lthe partial records
         downsample: int = 1,
         silent: bool = True,
     ):
@@ -876,20 +877,31 @@ class acq4_reader:
                 CP.cprint("m", "acq4_reader: Skipping non-important data")
                 continue
             self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
-            try:
-                tr = EM.MetaArray(file=fn)
-            except:
-                if allow_partial:  # just get what we can
-                    CP.cprint("r", f"acq4_reader: Failed to read traces in file: {str(fn):s}, but allowing partial read")
+            if allow_partial and record_list is not None:
+                if i not in record_list:
                     continue
-                if not silent:
-                    # print(allow_partial)
-                    msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
-                    CP.cprint("r", msg)
-                    # raise ValueError(f"file failed: {str(fn):s}")
-                    CP.cprint("r", f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
-                    raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
-                return False
+                else:
+                    try:
+                        tr = EM.MetaArray(file=fn)
+                    except:
+                        CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, when allowing partial read")
+                        CP.cprint("y", f"    Record {i:d} will be skipped; record list is: {record_list}")
+                        continue
+            else:
+                try:
+                    tr = EM.MetaArray(file=fn)
+                except:
+                    if allow_partial:  # just get what we can
+                        CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, but allowing partial read")
+                        continue
+                    if not silent:
+                        # print(allow_partial)
+                        msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
+                        CP.cprint("r", msg)
+                        # raise ValueError(f"file failed: {str(fn):s}")
+                        CP.cprint("r", f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
+                        raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
+                    return False
                 # continue
 
             tr_info = tr[0].infoCopy()
@@ -1058,6 +1070,8 @@ class acq4_reader:
             else:
                 print("sequence parameter keys: ", seqkeys)
                 raise ValueError(" cannot determine the protocol repetitions")
+            if allow_partial and record_list is not None:
+                self.commandLevels = self.commandLevels[record_list]
         return True
 
     def getClampCommand(

@@ -10,6 +10,7 @@ import ephys.datareaders.acq4_reader as acq4_reader
 from ephys.ephys_analysis.analysis_common import Analysis
 import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filename_tools
+from ephys.tools import check_inclusions_exclusions as CIE
 import ephys.gui.data_table_functions as data_table_functions
 from matplotlib.backends.backend_pdf import PdfPages
 import colorcet
@@ -37,6 +38,8 @@ class IVPlotter(object):
         df_summary:pd.DataFrame,
         file_out_path: Union[Path, str],
         decorate=True,
+        allow_partial:bool=False,
+        record_list:Union[list, None]=None,
     ):
         self.df_summary = df_summary
         self.experiment = experiment
@@ -46,6 +49,8 @@ class IVPlotter(object):
         self.plotting_alternation = 1
         self.downsample = 1
         self.nfiles = 0
+        self.allow_partial = allow_partial
+        self.record_list = record_list
 
     def finalize_plot(self, plot_handle, protocol_directory, pdf, acq4reader):
         """finalize_plot Generate each iv plot in the temporary directory
@@ -69,7 +74,7 @@ class IVPlotter(object):
             CP("g", msg)
             self.nfiles += 1
 
-    def plot_IVs(self, df_selected=None, types: str = "IV"):
+    def plot_IVs(self, df_selected=None, types: str = "IV", allprots: list = None):
         if df_selected is None or df_selected[types] is None:
             return
         assert types in ["IV", "MAP"], f"types must be IV or MAP, not {types!s}"
@@ -134,13 +139,13 @@ class IVPlotter(object):
         with PdfPages(Path(pdffile)) as pdf:
             for iv in self.plot_df["IV"].keys():
                 protodir = Path(self.file_out_path, iv)
-                plot_handle, acq4 = self.plot_one_iv(iv)
+                plot_handle, acq4 = self.plot_one_iv(iv, allprots=allprots)
                 self.finalize_plot(
                     plot_handle, protocol_directory=protodir, pdf=pdf, acq4reader=acq4
                 )
 
-    def plot_one_iv(self, protocol, pubmode=False) -> Union[None, object]:
-        # print(self.plot_df["Spikes"][protocol])
+    def plot_one_iv(self, protocol, pubmode=False, allprots: list=None) -> Union[None, object]:
+        print("Plotting IV: ", protocol)
         if isinstance(self.plot_df["Spikes"][protocol], str):
             CP("r", f"Spikes for {protocol} is a string: {self.plot_df['Spikes'][protocol]!s}")
             return None, None
@@ -197,8 +202,19 @@ class IVPlotter(object):
         P.figure_handle.suptitle(f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}", fontsize=8)
         dv = 50.0
         jsp = 0
-
-        if not self.AR.getData():
+        print("cell id: ", self.plot_df["cell_id"])
+        res = CIE.include_exclude(cell_id=self.plot_df["cell_id"], 
+                                       inclusions=self.experiment["includeIVs"], exclusions=self.experiment["excludeIVs"], allivs=allprots["CCIV"]),
+        print("CIE RESULT: ", res)
+        validivs, additional_ivs, additional_iv_records = res[0][0], res[0][1], res[0][2]
+        self.allow_partial = False
+        self.record_list = None
+        print("getting data for protocol: ", protocol)
+        if len(additional_iv_records) > 0 and protocol in additional_iv_records.keys():
+            self.allow_partial = True
+            self.record_list = additional_iv_records[protocol][1]
+        print(" allow partial,  record_list: ", self.allow_partial, self.record_list)
+        if not self.AR.getData(allow_partial=self.allow_partial, record_list=self.record_list):
             return None, None
         # create a color map ans use it for all data in the plot
         # the map represents the index into the data array,
@@ -213,7 +229,17 @@ class IVPlotter(object):
         ]
         cc_taum_protocol = str(protocol).find("_taum") > 1
         if not cc_taum_protocol:  # plot all traces (if doing taum, then only plot the mean)
-            for trace_number in range(self.AR.traces.shape[0]):
+            # print("\n\nSpike current array: ", spike_dict["FI_Curve"][0]*1e9, "\n\n")
+            traces = np.argsort(spike_dict["FI_Curve"][0])  # sort by current level
+            if self.allow_partial:
+                traces = np.argsort(spike_dict["FI_Curve"][0][self.record_list])
+            valid_traces = traces
+            print("protocol: ", protocol, "traces: ", traces)
+            # list(range(self.AR.traces.shape[0]))
+            # if spike_dict["FI_Curve"][0][0] > spike_dict["FI_Curve"][0][-1]:
+            #     traces = traces.reverse()  # check for reverse acquisition order
+            dv = 100.0
+            for trace_number in traces:
                 if self.plotting_alternation > 1:
                     if i % self.plotting_alternation != 0:
                         continue
@@ -258,9 +284,11 @@ class IVPlotter(object):
                         ptps = spike_dict[window]
                         if len(ptps[trace_number]) == 0:
                             continue
-                        uindx = [int(u / self.AR.sample_interval) + 1 for u in ptps[trace_number]]
-                        spike_times = ptps[trace_number] # np.array(self.AR.time_base[uindx])
+                        uindx = [int(u / (self.AR.sample_interval)) + 1 for u in ptps[trace_number] if (int(u / (self.AR.sample_interval)) + 1) < self.AR.traces.shape[1]]
+                        spike_times =  np.array(self.AR.time_base[uindx]) #  ptps[trace_number] # np.array(self.AR.time_base[uindx])
                         peak_aps = np.array(self.AR.traces[trace_number, uindx])
+                        if len(peak_aps) < len(spike_times):
+                            spike_times = spike_times[:len(peak_aps)]
                         P.axdict["A"].plot(
                             spike_times * 1e3,
                             idv + peak_aps * 1e3,
@@ -360,8 +388,8 @@ class IVPlotter(object):
                 font="Arial",
             )
         P.axdict["B"].plot(
-            spike_dict["FI_Curve"][0] * 1e9,
-            spike_dict["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
+            spike_dict["FI_Curve"][0][valid_traces] * 1e9,
+            spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
             "grey",
             linestyle="-",
             # markersize=4,
@@ -369,8 +397,8 @@ class IVPlotter(object):
         )
 
         P.axdict["B"].scatter(
-            spike_dict["FI_Curve"][0] * 1e9,
-            spike_dict["FI_Curve"][1] / (self.AR.tend - self.AR.tstart),
+            spike_dict["FI_Curve"][0][valid_traces] * 1e9,
+            spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
             color=trace_colors,
             s=16,
             linewidth=0.5,
@@ -504,6 +532,8 @@ class IVPlotter(object):
         # Plot the spike intervals as a function of time into the stimulus
         spk_isi = None
         for i, spike_tr in enumerate(spikes):  # this is the trace number
+            if self.allow_partial and spike_tr not in valid_traces:
+                continue 
             # print("Spike tr: ", i, spike_tr)
             spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
@@ -567,6 +597,8 @@ class IVPlotter(object):
             #     isi_skips[spike_tr] = np.count_nonzero(spk_isi[4:] > mode_thr*isi_mode[spike_tr])
             #     isi_curr[spike_tr] = fi_currents[i]
             for i, spike_tr in enumerate(spikes):  # this is the trace number
+                if spike_tr not in valid_traces:
+                    continue
                 spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
                 spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
                 if (None in spk_tr) or (len(spk_tr) <= 7):
@@ -599,6 +631,8 @@ class IVPlotter(object):
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
         for k, i in enumerate(spikes.keys()):
+            if i not in valid_traces:
+                continue
             if len(spikes[i]) == 0 or spikes[i][0] is None or spikes[i][0].dvdt is None:
                 continue
             n_dvdt = len(spikes[i][0].dvdt)

@@ -153,7 +153,7 @@ class cmdargs:
     alternate_fit2: bool = False  # second alternate
     fit_gap: float = 0.002  # gap in fit for time constants
     measuretype: str = "ZScore"  # display measure for spot plot in maps
-    spike_detector: str = "Kalluri"  # see Utilities find_spikes for method
+    spike_detector: Union[str, None] = None  # Needs to be explicitely set. See Utilities find_spikes for method
     spike_threshold: float = -0.035
     zscore_threshold: float = 1.96
     artifact_suppression: bool = False
@@ -282,6 +282,8 @@ class Analysis:
         self.cell_tempdir = None
         self.annotated_dataframe: Union[pd.DataFrame, None] = None
         self.allprots: List = []
+        self.allow_partial:bool = False
+        self.record_list: List = []
 
         # load up the analysis modules (don't allow multiple instances to exist)
         self.SP = EP.spike_analysis.SpikeAnalysis()
@@ -324,9 +326,25 @@ class Analysis:
             e.g.,
             exclusions = {'2023.01.01_000/slice_000/cell_000': {'protocols': ['CCIV_4nA_Max'], 'reason': 'bad seal'},
                             ... etc.}
+            This is set up in the configuration file
         """
         self.exclusions = exclusions
 
+    def set_inclusions(self, inclusions: dict):
+        """Set the datasets from the incomplete list that will be included 
+
+        Args:
+            inclusions (Union[dict, None], optional): a dict of the files. Defaults to None.
+            The dict consists of cell_id keys, followed by a list of protocols, and the reason:
+            e.g.,
+            inclusions = {'2023.01.01_000/slice_000/cell_000': {'protocols': ['CCIV_4nA_Max'],
+            'records': 'recordlist', # [[0, 10], [0, 20]]  Nested, with each protocol in sequence
+            'reason': 'some useful data here for FI'},
+                            ... etc.}
+            This is set up in the configuration file
+        """
+        self.inclusions = inclusions
+        
     def set_experiment(self, expt: dict):
         self.experiment = expt
 
@@ -489,6 +507,7 @@ class Analysis:
             "extra_subdirectories": self.extra_subdirectories,
             "artifact": self.artifactFilename,
             "exclusions": self.exclusions,
+            "inclusions": self.inclusions,
             "IVs (excel)": self.IVs,
             "IV analysis (hdft)": self.iv_analysisFilename,
         }
@@ -667,8 +686,10 @@ class Analysis:
             file_out_path=Path(self.analyzeddatapath),
             df_summary=self.df,
             decorate=True,
+            allow_partial=self.allow_partial,
+            record_list=self.record_list,
         )
-        self.IVplotter.plot_IVs(df_selected=self.df.iloc[icell], types="IV")
+        self.IVplotter.plot_IVs(df_selected=self.df.iloc[icell], types="IV", allprots=self.allprots)
 
     def update_annotations(self):
         if self.annotated_dataframe is not None:
@@ -1099,7 +1120,7 @@ class Analysis:
             "c",
             f"Entering do_cell with icell = {icell} (dataframe index, not table index), cell_id: {self.df.iloc[icell].cell_id}",
         )
-        # print(type(icell))
+        self.allprots = []  # initialize the list of all protocols for this cell
         if len(icell.values) > 0:
             icell = icell.values[0]
         # print(icell.values)
@@ -1186,7 +1207,7 @@ class Analysis:
                 #     return False
 
         prots = self.df.iloc[icell]["data_complete"]
-        allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
+        self.allprots = self.gather_protocols(prots.split(", "), self.df.iloc[icell])
 
         if self.dry_run:
             msg = f"\n    IV_Analysis:do_cell:: Would process day: {datestr:s} slice: {slicestr:s} cell: {cellstr:s}"
@@ -1205,17 +1226,17 @@ class Analysis:
             self.merge_pdfs(celltype, thiscell=self.df.iloc[icell].cell_id, pdf=pdf)
             return False
 
-        elif fullfile.is_dir() and len(allprots) == 0:
+        elif fullfile.is_dir() and len(self.allprots) == 0:
             # check whether the cell has any protocols
             msg = "Cell found, but no protocols were found"
             CP.cprint("m", "Cell found, but no protocols were found")
             Logger.warning(msg)
             return False
 
-        elif fullfile.is_dir() and len(allprots) > 0:
+        elif fullfile.is_dir() and len(self.allprots) > 0:
             # check for the protocol paths
-            for prottype in allprots.keys():
-                for prot in allprots[prottype]:
+            for prottype in self.allprots.keys():
+                for prot in self.allprots[prottype]:
                     ffile = Path(self.df.iloc[icell].data_directory, prot)
                     if not ffile.is_dir():
                         msg = f"file/protocol day={icell:d} not found: {str(ffile):s}\n"
@@ -1224,27 +1245,27 @@ class Analysis:
                         Logger.error(msg)
                         exit()
         else:
-            msg = f"   Cell OK, with {len(allprots['stdIVs'])+len(allprots['CCIV_long']):4d} IV protocols"
-            msg += f" and {len(allprots['maps']):4d} map protocols"
+            msg = f"   Cell OK, with {len(self.allprots['stdIVs'])+len(self.allprots['CCIV_long']):4d} IV protocols"
+            msg += f" and {len(self.allprots['maps']):4d} map protocols"
             msg += f"  Electrode: {self.df.iloc[icell]['internal']:s}"
             CP.cprint("g", msg)
             Logger.info(msg)
             if self.map_flag:
                 for i, p in enumerate(sorted(prots)):
-                    if p in allprots["maps"]:
+                    if p in self.allprots["maps"]:
                         print("      {0:d}. {1:s}".format(i + 1, str(p.name)))
         # if self.dry_run:
         #     return
 
         if self.verbose:
-            for k in list(allprots.keys()):
+            for k in list(self.allprots.keys()):
                 print("protocol type: {:s}:".format(k))
-                for m in allprots[k]:
+                for m in self.allprots[k]:
                     print("    {0:s}".format(str(m)))
-                if len(allprots[k]) == 0:
+                if len(self.allprots[k]) == 0:
                     print("    No protocols of this type")
             print("All protocols: ")
-            print([allprots[p] for p in allprots.keys()])
+            print([self.allprots[p] for p in self.allprots.keys()])
 
         # DISPATCH according to requested analysis:
         if self.iv_flag:
@@ -1257,7 +1278,7 @@ class Analysis:
             if self.cell_tempdir is not None:
                 self.make_tempdir()  # clean up temporary directory
             # analyze_ivs uses multiprocessing, so avoid inserting calls to matplotlib in it
-            self.analyze_ivs(icell=icell, allprots=allprots, celltype=celltype, pdf=pdf)
+            self.analyze_ivs(icell=icell, allprots=self.allprots, celltype=celltype, pdf=pdf)
             if self.dry_run:
                 return True
             # print("do_cell: self.analyzeddatapath: ", self.analyzeddatapath)
@@ -1317,13 +1338,13 @@ class Analysis:
             gc.collect()
 
         elif self.vc_flag:
-            self.analyze_vcs(icell, allprots)
+            self.analyze_vcs(icell, self.allprots)
             gc.collect()
 
         elif self.map_flag:
             if self.cell_tempdir is not None:
                 self.make_tempdir()
-            self.analyze_maps(icell=icell, allprots=allprots, celltype=celltype, plotmap=True, pdf=pdf)
+            self.analyze_maps(icell=icell, allprots=self.allprots, celltype=celltype, plotmap=True, pdf=pdf)
             # analyze_maps stores events in an "events" subdirectory under the main
             # dataset directory, with filenames tagged by cell
             # It also merges the PDFs for that cell in the celltype-specific directory

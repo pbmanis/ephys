@@ -23,6 +23,7 @@ from ephys.datareaders.acq4_reader import acq4_reader
 from ephys.ephys_analysis.rm_tau_analysis import RmTauAnalysis
 from ephys.ephys_analysis.spike_analysis import SpikeAnalysis
 import ephys.tools.filename_tools as filename_tools
+from ephys.tools import check_inclusions_exclusions as CIE
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
@@ -70,8 +71,25 @@ Logger.addHandler(logging_fh)
 # setFileConfig(filename="iv_analysis.log", encoding='utf=8')
 
 
-def concurrent_iv_analysis(ivanalysis: object, icell, i, x, cell_directory, validivs, nfiles):
-    result = ivanalysis.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+def concurrent_iv_analysis(
+    ivanalysis: object,
+    icell: int,
+    i: int,
+    x: int,
+    cell_directory: Union[Path, str],
+    validivs: list,
+    additional_iv_records: Union[dict, None] = None,
+    nfiles: int = 0,
+):
+    result = ivanalysis.analyze_iv(
+        icell=icell,
+        i=i,
+        x=x,
+        cell_directory=cell_directory,
+        allivs=validivs,
+        additional_iv_records=additional_iv_records,
+        nfiles=nfiles,
+    )
     return result
 
 
@@ -86,7 +104,8 @@ class IVAnalysis(Analysis):
         self.AR: object = acq4_reader()
         self.RM: rm_tau_analysis = RmTauAnalysis()
         self.SP: spike_analysis = SpikeAnalysis()
-
+        self.allow_partial = False
+        self.record_list = []
         Logger.info("Instantiating IVAnalysis class")
 
     def __enter__(self):
@@ -177,6 +196,8 @@ class IVAnalysis(Analysis):
             return False
         else:
             return True
+
+ 
 
     def analyze_ivs(
         self,
@@ -336,49 +357,13 @@ class IVAnalysis(Analysis):
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
         print("iv_analysis:analyze_ivs: allivs: ", allivs)
-        validivs = []
-        if self.exclusions is not None:
-            if cell_id in self.exclusions:
-                print("cell_id is in exclusions")
-                # exclude ALL protocols for this cell
-                if self.exclusions[cell_id] in ["all", ["all"]]:
-                    msg = "All protocols for this cell are excluded from analysis in the configuration file."
-                    CP.cprint("r", msg)
-                    Logger.info(msg)
-                    return  # nothing to do - entire cell is excluded.
-                # exclude all protocols except those in the "exceptions" key
-                elif self.exclusions[cell_id] in ["allexcept", ["allexcept"]]:
-                    if (
-                        "exceptions" not in self.exclusions[cell_id].keys()
-                    ):  # confirm that there is an exceptions key
-                        raise ValueError("No 'exceptions' key in the 'allexcept' exclusion")
-                    print("appending excepted protocols from 'allexcept': ")
-                    for protocol in allivs:
-                        if Path(protocol).name in self.exclusions[cell_id]["exceptions"]:
-                            validivs.append(protocol)
-                else:
-                    print("appending valid protocols: ")
-                    for protocol in allivs:
-                        if Path(protocol).name not in self.exclusions[cell_id]["protocols"]:
-                            validivs.append(protocol)
-                    # validivs.append([protocol for protocol in allivs if Path(protocol).name not in self.exclusions[cell_id]['protocols']])
-            else:
-                validivs = allivs
+        validivs = CIE.check_exclusions(cell_id, self.exclusions, allivs)
+        validivs, additional_ivs, additional_iv_records = CIE.check_inclusions(cell_id, self.inclusions, validivs)
 
-        else:
-            print("iv_analysis: analye_ivs:: No exclusions set")
-            validivs = allivs
-        # build a list of all exclusions
-        # exclude_ivs = []
-        # print("exclusions: ", self.exclusions)
-        # for cell_id in self.exclusions.keys():
-        #     for ex_proto in self.exclusions[cell_id]["protocols"]:
-        #         exclude_ivs.append(str(Path(ex_cell, ex_proto)))
-        # print("Excluded IVs: ", exclude_ivs)
-        # # the exclusion list is shorter (we hope), so let's iterate over it for removal
-        # for iv_proto in exclude_ivs:
-        #     if iv_proto in validivs:
-        #         validivs.remove(iv_proto)
+        print("validivs: ", validivs)
+        print("additional ivs: ", additional_ivs)
+        print("additional iv records: ", additional_iv_records)
+
         CP.cprint("m", f"Valid IVs: {validivs!s}")
 
         # only update IVs if the there is a new IV class to analysis for this cell
@@ -414,6 +399,7 @@ class IVAnalysis(Analysis):
                     x=x,
                     cell_directory=cell_directory,
                     allivs=validivs,
+                    additional_iv_records=additional_iv_records,
                     nfiles=nfiles,
                     # pdf=pdf,
                 )
@@ -457,6 +443,7 @@ class IVAnalysis(Analysis):
                                 x,
                                 cell_directory,
                                 validivs,
+                                additional_iv_records,
                                 nfiles,
                             )
                         result, nfiles = f.result()
@@ -495,6 +482,7 @@ class IVAnalysis(Analysis):
                         x=x,
                         cell_directory=cell_directory,
                         allivs=validivs,
+                        additional_iv_records=additional_iv_records,
                         nfiles=nfiles,
                         # pdf=pdf,
                     )
@@ -589,7 +577,8 @@ class IVAnalysis(Analysis):
         x: int,
         cell_directory: Union[Path, str],
         allivs: list,
-        nfiles: int,
+        additional_iv_records: Union[dict, None] = None,
+        nfiles: int = 0,
     ):
         """
         Compute various measures (input resistance, spike shape, etc) for ONE IV
@@ -716,8 +705,10 @@ class IVAnalysis(Analysis):
         if "tauh_voltage" in self.experiment.keys():
             tauh_voltage = self.experiment["tauh_voltage"]
         else:
-            raise ValueError("No tauh_voltage (steady-state voltage when measuring tauh) defined in configuration")
-        
+            raise ValueError(
+                "No tauh_voltage (steady-state voltage when measuring tauh) defined in configuration"
+            )
+
         if "fitting_adjustments" in self.experiment.keys():
             cell_id = self.df.at[icell, "cell_id"]
             if cell_id in self.experiment["fitting_adjustments"].keys():
@@ -725,8 +716,6 @@ class IVAnalysis(Analysis):
                 taum_current_range = self.experiment["fitting_adjustments"][cell_id][
                     "taum_current_range"
                 ]
-
-
 
         self.plot_mode(mode=self.IV_pubmode)
         print("analyze iv: calling compute_iv")
@@ -743,6 +732,7 @@ class IVAnalysis(Analysis):
             tauh_voltage=tauh_voltage,
             taum_bounds=taum_bounds,
             taum_current_range=taum_current_range,
+            additional_iv_records=additional_iv_records,
         )
 
         iv_result = self.RM.analysis_summary
@@ -775,6 +765,7 @@ class IVAnalysis(Analysis):
         tauh_voltage: float = -80.0,
         taum_bounds: List = [0.0002, 0.050],
         taum_current_range: List = [-10.0e-12, 200e-12],
+        additional_iv_records: Union[dict, None] = None,
     ) -> bool:
         """
         Simple computation of spikes, FI and subthreshold IV for one protocol
@@ -785,7 +776,20 @@ class IVAnalysis(Analysis):
             self.AR.setProtocol(self.datapath)  # define the protocol path where the data is
         if track:
             print("protocol set")
-        if not self.AR.getData(silent=True):  # get that data.
+        self.allow_partial = False
+        self.record_list = []
+        if additional_iv_records is not None:
+            # find the records and protocol for this cell in the protocol list
+            CP.cprint("m", "Allowing partial read with records")
+            for prot in additional_iv_records.keys():
+                print("checking protocol: ", prot, " against", self.datapath)
+                if str(self.datapath).endswith(str(prot)):
+                    self.allow_partial = True
+                    self.record_list = additional_iv_records[prot][1]
+                    CP.cprint("m", f"Found additional (abbreviated) IV protocol: {prot:s} {len(self.record_list):d} records")
+
+        print("allow partial: ", self.allow_partial, "record_list: ", self.record_list)
+        if not self.AR.getData(silent=True, allow_partial=self.allow_partial, record_list=self.record_list):  # get that data.
             msg = (
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
@@ -793,7 +797,8 @@ class IVAnalysis(Analysis):
             # if self.parallel_mode not in ["day", "cell"]:
             #     Logger.error(msg)
             return None
-    
+        CP.cprint("g", f"AR.getData found data with shape:  {self.AR.traces.shape}  prot = {self.datapath:s}")
+
         if self.important_flag_check:
             if not self.AR.protocol_important:
                 return None  # skip this protocol
@@ -802,9 +807,7 @@ class IVAnalysis(Analysis):
             print("Decimating with: ", self.decimate)
             self.AR.traces = functions.downsample(self.AR.traces, n=self.downsample, axis=1)
             self.AR.cmd_wave = functions.downsample(self.AR.cmd_wave, n=self.downsample, axis=1)
-            self.AR.time_base = functions.downsample(
-                self.AR.time_base, n=self.downsample, axis=0
-            )
+            self.AR.time_base = functions.downsample(self.AR.time_base, n=self.downsample, axis=0)
         if track:
             print("getdata - done")
 
@@ -850,6 +853,9 @@ class IVAnalysis(Analysis):
             mode="schmitt",
             max_spike_look=max_spike_look,
         )
+        self.SP.set_detector(self.experiment["spike_detector"], self.experiment["detector_pars"])
+        print("attempt to set spike detector to: ", self.experiment["spike_detector"])
+        print(" got: ", self.SP.spike_detector)
         if track:
             print("setup complete, now analyze spikes", full_spike_analysis)
         self.SP.analyzeSpikes(track=track)
