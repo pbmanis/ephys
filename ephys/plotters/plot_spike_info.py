@@ -612,7 +612,28 @@ def make_cell_id(row):
     row["cell_id"] = cell_id
     return row
 
+def set_subject(row):
+    """set_subject if subject is empty, set to date name
 
+    Parameters
+    ----------
+    row : pandas dataframe row  
+        _description_
+
+    Returns
+    -------
+    _type_pandas_dataframe_row
+        _description_
+    """
+    print("row subj: ", row["Subject"])
+    if row["Subject"] in ["", " ", None]:
+        subj = Path(row.cell_id).name
+        print("   subj: ", subj, subj[:10])
+        row["Subject"] = subj[:10]
+    if row["Subject"] is None:
+        row["Subject"] = "NoID"
+    return row["Subject"]
+    
 def get_age(age_value):
     if isinstance(age_value, pd.Series):
         age = age_value.values[0]
@@ -945,6 +966,11 @@ class PlotSpikeInfo(QObject):
         list_ = list_.replace("]", '"]')
         list_ = list_.replace("\n", "")
         return list_
+
+    def remove_brackets(self, text):
+        text = text.replace(",[", ",")
+        text = text.replace("],", ",")
+        return text
 
     def print_for_prism(self, row, celltype="tuberculoventral"):
         if row.cell_type != celltype:
@@ -1377,7 +1403,8 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_T",
             "AHP_depth_V",
             "AdaptRatio",
-            "FIMax_1" "FIMax_4",
+            "FIMax_1",
+            "FIMax_4",
             "maxHillSlope",
             "I_maxHillSlope",
         ]
@@ -1428,7 +1455,15 @@ class PlotSpikeInfo(QObject):
 
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
+        # now remove brackets from the csv data, then rewrite
+        with open(filename, "r") as file:
+            data = file.read().replace(",[", ",").replace("],", ",")
 
+        with open(filename, "w") as file:
+            file.write(data)
+            
+
+    
     def summary_plot_spike_parameters_categorical(
         self,
         df,
@@ -1451,6 +1486,12 @@ class PlotSpikeInfo(QObject):
             colors: dict, optional: dictionary of colors to use for the categories
             enable_picking: bool, optional: enable picking of data points
         """
+        print(df.columns)
+        print("animal ID: ", df['animal_identifier'].unique())
+        df["Subject"] = df.apply(set_subject, axis=1)
+        print("subjects: ", df['Subject'].unique())
+        # print("ID: ", df['ID'].unique())
+        # return
         df = df.copy()  # make sure we don't modifiy the incoming
         print("summary plot incoming x : ", df[xname].unique())
 
@@ -1473,14 +1514,14 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"]) + 1.0),
             panel_labels=plabels,
-            labelposition=(0.01, 0.95),
+            labelposition=(0.01, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.1,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.04,
+            verticalspacing=0.1,
             horizontalspacing=0.07,
         )
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
@@ -2022,14 +2063,14 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
-            labelposition=(0.01, 0.95),
+            labelposition=(0.01, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.12,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.04,
+            verticalspacing=0.12,
             horizontalspacing=0.07,
         )
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
@@ -2190,7 +2231,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(8 + 1.0, 3 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
-            labelposition=(0.01, 0.95),
+            labelposition=(0.01, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -2237,8 +2278,8 @@ class PlotSpikeInfo(QObject):
                 ax.set_xlabel("I$_{inj}$ (nA)")
                 if ic in [0, 1]:
                     ax.set_ylabel("Rate (sp/s)")
-                elif ic == 2:
-                    ax.set_ylabel("Firing 'Area' (nA*Hz)")
+                elif ic == 2 and ptype == "sum":
+                    ax.set_ylabel(self.experiment['new_ylabels']['summed_FI'])
                 if celltype != "all":
                     cdd = df[df["cell_type"] == celltype]
                 else:
@@ -2325,7 +2366,7 @@ class PlotSpikeInfo(QObject):
                             FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
 
                     elif ptype == "sum":
-                        fi_group_sum.loc[len(fi_group_sum)] = [group, 1e-3*np.sum(np.array(FI_dat_saved[1])), sex, celltype, "None"]
+                        fi_group_sum.loc[len(fi_group_sum)] = [group, np.sum(np.array(FI_dat_saved[1])), sex, celltype, "None"]
                         # fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
 
                 if ptype == "mean":
@@ -2366,11 +2407,11 @@ class PlotSpikeInfo(QObject):
                             celltype = "pyramidal",
                             # hue_category = "sex",
                             ax = ax,
-                            plot_order = self.experiment["plot_order"]["age_category"],
+                            plot_order = self.experiment["plot_order"][group_by], # ["age_category"],
                             colors = self.experiment["plot_colors"],
                             enable_picking=False,
                         )
-                        ax.set_xlim(-0.5, 5.5)
+                        # ax.set_xlim(-0.5, 5.5)
                         ax.set_ylim(self.experiment['ylims']['limits1']["summed_FI_limits"])
                         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
                         PH.talbotTicks(ax, axes="y", density=(1, 1))
