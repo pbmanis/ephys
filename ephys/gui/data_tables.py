@@ -652,7 +652,7 @@ class DataTables:
                     self.experiment = self.experiments[self.experimentname]
                     self.PSI.set_experiment(self.dataset, self.experiment)
                     print("New configuration: ", self.experimentname)
-                    print(self.experiment)
+                    print(" With: \n", self.experiment)
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
                     self.load_assembled_data()
@@ -1463,6 +1463,11 @@ class DataTables:
         else:
             CP.cprint("y", "No IV exclusions set")
             return
+        if "includeIVs" in self.experiment.keys():
+            IV.set_inclusions(self.experiment["includeIVs"])
+            # CP.cprint("y", self.experiment['includeIVs'])
+        else:
+            CP.cprint("y", "No IV inclusions set")
         IV.setup()
         CP.cprint("c", "analyze_ivs datatables: setup completed")
         IV.run(mode="IV")
