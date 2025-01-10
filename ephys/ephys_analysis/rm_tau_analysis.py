@@ -235,8 +235,7 @@ class RmTauAnalysis:
         # We need to exclude traces with spikes on them either befor or during
         # the current pulse (it happens). Probably don't care about rebound spikes?
         baselinespikes = [False] * len(self.Spikes.analysis_summary["baseline_spikes"])
-        print("spike count: ", len(self.Spikes.spikecount), "# baseline: ", len(baselinespikes))
-        print("Command levels: ", 1e9*self.Clamps.commandLevels)
+
         for i, bspk in enumerate(self.Spikes.analysis_summary["baseline_spikes"]):
             baselinespikes[i] = len(bspk) > 0
         poststimulusspikes = [False] * len(self.Spikes.analysis_summary["poststimulus_spikes"])
