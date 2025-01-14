@@ -625,10 +625,10 @@ def set_subject(row):
     _type_pandas_dataframe_row
         _description_
     """
-    print("row subj: ", row["Subject"])
+    # print("row subj: ", row["Subject"])
     if row["Subject"] in ["", " ", None]:
         subj = Path(row.cell_id).name
-        print("   subj: ", subj, subj[:10])
+        # print("   subj: ", subj, subj[:10])
         row["Subject"] = subj[:10]
     if row["Subject"] is None:
         row["Subject"] = "NoID"
@@ -822,7 +822,7 @@ class PlotSpikeInfo(QObject):
         else:
             df = df_summary
             df["Group"] = "Control"
-        FD = filter_data.FilterDataset(df)
+        FD = filter_data.FilterDataset(df, self.experiment["junction_potential"])
         if "remove_expression" not in self.experiment.keys():
             self.experiment["remove_expression"] = None
         df = FD.filter_data_entries(
@@ -1132,7 +1132,7 @@ class PlotSpikeInfo(QObject):
         #     }
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
-
+        out_of_bounds_markers = "^" #  for h in hue_order]
         # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
@@ -1160,8 +1160,9 @@ class PlotSpikeInfo(QObject):
                 zorder=100,
                 clip_on=False,
             )
-        else:
 
+        else:
+            # main strip plot, but data are clipped to axes
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -1180,10 +1181,36 @@ class PlotSpikeInfo(QObject):
                 linewidth=0.5,
                 picker=enable_picking,
                 zorder=100,
-                clip_on=False,
-
+                clip_on=True,
             )
+            # put "out of bounds markers" on the plot at the top and bottom of the axes
+            ymax = ax.get_ylim()
+            df_outbounds = df_x[df_x[yname] > ymax[1]]
+            df_outbounds[yname] = ymax[1] + 0.025*(ymax[1] - ymax[0])
+            print("out of bounds: ", df_outbounds)
+            print("ymax: ", ymax)
 
+            sns.stripplot(
+                x=xname,
+                y=yname,
+                hue=hue_category,
+                data=df_outbounds,
+                order=plot_order,
+                hue_order=hue_order,
+                marker = out_of_bounds_markers,
+                dodge=dodge,
+                size=3.5,
+                # fliersize=None,
+                jitter=0.25,
+                alpha=1.0,
+                ax=ax,
+                palette=hue_palette,
+                edgecolor="k",
+                linewidth=0.5,
+                picker=enable_picking,
+                zorder=100,
+                clip_on=False,
+            )
 
         if not all(np.isnan(df_x[yname])):
             sns.boxplot(
@@ -1486,7 +1513,7 @@ class PlotSpikeInfo(QObject):
             colors: dict, optional: dictionary of colors to use for the categories
             enable_picking: bool, optional: enable picking of data points
         """
-        print(df.columns)
+        # print(df.columns)
         print("animal ID: ", df['animal_identifier'].unique())
         df["Subject"] = df.apply(set_subject, axis=1)
         print("subjects: ", df['Subject'].unique())
@@ -1514,7 +1541,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"]) + 1.0),
             panel_labels=plabels,
-            labelposition=(0.01, 1.02),
+            labelposition=(-0.15, 1.05),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -1615,12 +1642,14 @@ class PlotSpikeInfo(QObject):
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
+        datestring = datetime.datetime.now().strftime("%d-%b-%Y")
+
         if any(c.startswith("dvdt_rising") for c in measures):
-            fn = "spike_shapes.csv"
+            fn =  f"spike_shapes_{datestring}.csv"# "spike_shapes.csv"
         elif any(c.startswith("AdaptRatio") for c in measures):
-            fn = "firing_parameters.csv"
+            fn = f"firing_parameters_{datestring}.csv" # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
-            fn = "rmtau.csv"
+            fn = f"rmtau_{datestring}.csv"
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
@@ -1789,6 +1818,10 @@ class PlotSpikeInfo(QObject):
         #     raise ValueError(f"Missing Hue category for plot; xname is: {xname:s}")
         # print("calling barpts. Hue_category: ", hue_category, "Plot order: ", plot_order)
         # print("x categories: ", dfp[xname].unique())
+        if ylims is not None:
+            ax.set_ylim(ylims)
+        if xlims is not None:
+            ax.set_xlim(xlims)
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
@@ -1800,10 +1833,7 @@ class PlotSpikeInfo(QObject):
             colors=colors,
             enable_picking=enable_picking,
         )
-        if ylims is not None:
-            ax.set_ylim(ylims)
-        if xlims is not None:
-            ax.set_xlim(xlims)
+
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
         # print("Plotted measure: ", y, "for celltype: ", celltype)
@@ -1826,31 +1856,79 @@ class PlotSpikeInfo(QObject):
                 row.Rin[i] = np.nan
         return row.Rin
 
+    def adjust_AHP_depth_V(self, row):
+
+        if isinstance(row.AHP_depth_V, float):
+            row.AHP_depth_V = [row.AHP_depth_V + 1e-3*self.experiment["junction_potential"]]
+        else:
+            row.AHP_depth_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AHP_depth_V]
+        return row.AHP_depth_V
+
+    def adjust_AHP_trough_V(self, row):
+        if isinstance(row.AHP_trough_V, float):
+            row.AHP_trough_V = [row.AHP_trough_V + 1e-3*self.experiment["junction_potential"]]
+        else:
+            row.AHP_trough_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AHP_trough_V]
+        return row.AHP_trough_V
+    
+    def adjust_AP_thr_V(self, row):
+        if isinstance(row.AP_thr_V, float):
+            row.AP_thr_V = [row.AP_thr_V + 1e-3*self.experiment["junction_potential"]]
+        else:
+            row.AP_thr_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AP_thr_V]
+        return row.AP_thr_V
+
     def clean_rmp(self, row):
-        min_RMP = -55.0
+        """clean_rmp check that the RMP is in range (from the config file),
+        and adjust for the junction potential
+
+        Parameters
+        ----------
+        row : pandas series
+            data row
+
+        Returns
+        -------
+        RMP values: list
+            _description_
+        """
         if "data_inclusion_criteria" in self.experiment.keys():
             if row.cell_type in self.experiment["data_inclusion_criteria"].keys():
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
         if isinstance(row.RMP, float):
-            row.RMP = [row.RMP]
+            row.RMP = [row.RMP + self.experiment["junction_potential"]]
+        else:
+            row.RMP = [rmp + self.experiment["junction_potential"] for rmp in row.RMP]
         for i, rmp in enumerate(row.RMP):
             if rmp > min_RMP:
                 row.RMP[i] = np.nan
         return row.RMP
 
     def clean_rmp_zero(self, row):
-        min_RMP = -55.0
+        """clean_rmp_zero adjust RMP measured at zero current, much like clean_rmp.
+
+        Parameters
+        ----------
+        row : pandas series
+            cell data row
+
+        Returns
+        -------
+        row.RMP_Zero : list
+            adjusted RMP_zeros.
+        """
+
         if "data_inclusion_criteria" in self.experiment.keys():
             if row.cell_type in self.experiment["data_inclusion_criteria"].keys():
                 min_RMP = self.experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
         if isinstance(row.RMP_Zero, float):
-            r0 = [row.RMP_Zero]  # handle case where there is only one float value
+            r0 = [row.RMP_Zero + self.experiment["junction_potential"]]  # handle case where there is only one float value
         else:
-            r0 = row.RMP_Zero
+            r0 = [rmp_0 + self.experiment["junction_potential"] for rmp_0 in row.RMP_Zero]
         for i, r0 in enumerate(r0):
             if r0 > min_RMP:
                 row.RMP_Zero[i] = np.nan
@@ -1919,7 +1997,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(16, 9),
             panel_labels=plabels,
-            labelposition=(0.01, 0.95),
+            labelposition=(-0.05, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -2063,7 +2141,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(figure_width, 2.5 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
-            labelposition=(0.01, 1.02),
+            labelposition=(-0.05, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -2140,7 +2218,9 @@ class PlotSpikeInfo(QObject):
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
-        self.export_r(df, xname, measures, hue_category, "rmtau.csv")
+        datestring = datetime.datetime.now().strftime("%d-%b-%Y")
+        fn = f"rmtau_{datestring}.csv"
+        self.export_r(df, xname, measures, hue_category, filename=fn)
         return P, picker_funcs
 
     def limit_to_max_rate_and_current(self, fi_data, imax=None, id="", limit=0.9):
@@ -2231,7 +2311,7 @@ class PlotSpikeInfo(QObject):
             order="rowsfirst",
             figsize=(8 + 1.0, 3 * len(self.experiment["celltypes"])),
             panel_labels=plabels,
-            labelposition=(0.01, 1.02),
+            labelposition=(-0.05, 1.02),
             margins={
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
@@ -3053,7 +3133,7 @@ class PlotSpikeInfo(QObject):
 
     def preprocess_data(self, df, experiment):
         pd.options.mode.copy_on_write = True
-        """preprocess_data Clean up the data, add columns, etc."""
+        """preprocess_data Clean up the data, add columns, etc., apply junction potential corrections, etc."""
         df_summary = get_datasummary(experiment)
         # print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
         # print("df summary ids: ")
@@ -3112,12 +3192,12 @@ class PlotSpikeInfo(QObject):
 
 #  ******************************************************************************
         CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")
-        print("   Preprocess_data: Groups: ", gu)
+        # print("   Preprocess_data: Groups: ", gu)
         # gu_nonan = [g for g in gu if pd.notnull(g)]
-        for g in gu:
-            print(f"    {g!s}  (N={len(df.loc[df.Group == g]):d})")
-            for x in df.loc[df.Group == g].cell_id:
-                print("        ", x)
+        # for g in gu:
+        #     print(f"    {g!s}  (N={len(df.loc[df.Group == g]):d})")
+        #     for x in df.loc[df.Group == g].cell_id:
+        #         print("        ", x)
             # if g in ["A", "AA"] and i0 < 20:
             #         print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
             #         i0 += 1
@@ -3137,13 +3217,20 @@ class PlotSpikeInfo(QObject):
         df["Group"] = df["Group"].astype("str")
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
-        if "AHP_depth_V" not in df.columns:
-            df["AHP_depth_V"] = np.nan
-        df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
-        # print("3 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-  
+        if "AP_thr_V" not in df.columns:
+            df["AP_thr_V"] = np.nan
+        else:
+            df["AP_thr_V"] = df.apply(self.adjust_AP_thr_V, axis=1)
         if "AHP_trough_V" not in df.columns:
             df["AHP_trough_V"] = np.nan
+        else:
+            df["AHP_trough_V"] = df.apply(self.adjust_AHP_trough_V, axis=1)
+        if "AHP_depth_V" not in df.columns:
+            df["AHP_depth_V"] = np.nan
+        else:
+            df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
+        df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
+
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
