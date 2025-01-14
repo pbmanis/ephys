@@ -1854,7 +1854,11 @@ class Functions:
             except:
                 raise ValueError("couldn't zip the data sets: ")
             if len(FI_Data_I) > 0:  # has data...
-                print("averaging FI data")
+                # print("averaging FI data")
+                # print("   FI_Data_I : ", FI_Data_I*1e9)
+                # print("   FI_Data_FR: ", FI_Data_FR)
+
+                # raise ValueError()
                 FI_Data_I_ = np.array(FI_Data_I)
                 FI_Data_FR_ = np.array(FI_Data_FR)
                 f1_index = np.where((FI_Data_I_ >= 0.0) & (FI_Data_I_ <= max_current))[
@@ -2220,6 +2224,25 @@ class Functions:
         firing_last_spikes: list = []
         latencies: list = []
         protofails = 0
+        # check protocols for AT least the minimum required
+
+        if "FI_protocols_required" in experiment.keys():
+            all_required_protocols = False
+            CP("y", "\nChecking for required protocols")
+            print("protocols: ", protocols)
+            print("Protocols required: ", experiment["FI_protocols_required"].keys())
+            for ip, protocol in enumerate(protocols):
+                short_proto_name = Path(protocol).name[:-4]
+                print("    short_proto_name: ", short_proto_name)
+                if short_proto_name in experiment["FI_protocols_required"].keys():
+                    all_required_protocols = True
+            CP("g", f"Have required protocols: {all_required_protocols}")
+            if not all_required_protocols:
+                CP("y", f"    >>>> Not all required FI protocols found for cell: {cell:s}")
+                return None
+            print("\n")
+
+
         # check the protocols
         for ip, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
@@ -2270,15 +2293,10 @@ class Functions:
                     )
                 else:
                     continue
-            # get mean rate from second to last spike
+            # get mean rate from second spike to the last spike in the train
             current = []
             rate = []
             last_spike = []
-            # print("protocol: ", protocol)
-            # print("# traces with spikes: ", len(df_cell.Spikes[protocol]['spikes']))
-            # for k in df_cell.Spikes[protocol]['spikes'].keys():
-            #     print(df_cell.Spikes[protocol]['spikes'][k].keys())
-            # raise
 
             for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
                 if len(spikes) == 0:
@@ -2323,11 +2341,6 @@ class Functions:
             FI_Data_I1, FI_Data_FR1, FI_Data_FR1_Std, FI_Data_N1 = self.average_FI(
                 FI_Data_I1_, FI_Data_FR1_, 1e-9
             )
-        if len(FI_Data_I4_) > 0:
-            FI_Data_I4, FI_Data_FR4, FI_Data_FR4_Std, FI_Data_N1 = self.average_FI(
-                FI_Data_I4_, FI_Data_FR4_, 4e-9
-            )
-        if len(FI_Data_I1) > 0:
             # do a curve fit on the first 1 nA of the protocol
             hill_max_derivs, hill_i_max_derivs, FI_fits, linfits = self.fit_FI_Hill(
                 FI_Data_I=FI_Data_I1,
@@ -2343,7 +2356,11 @@ class Functions:
                 cell=cell,
                 celltype=df_tmp.cell_type.values[0],
             )
-
+        if len(FI_Data_I4_) > 0:
+            FI_Data_I4, FI_Data_FR4, FI_Data_FR4_Std, FI_Data_N1 = self.average_FI(
+                FI_Data_I4_, FI_Data_FR4_, 4e-9
+            )
+        
         # save the results
         datadict["FI_Curve1"] = [FI_Data_I1, FI_Data_FR1]
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
