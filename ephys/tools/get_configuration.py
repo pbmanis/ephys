@@ -143,6 +143,7 @@ def validate_configuration(experiments, datasets):
         "plot_colors",
         "ylims",
         
+        "junction_potential",
         "spike_measures",
         "rmtau_measures",
         "FI_measures",
