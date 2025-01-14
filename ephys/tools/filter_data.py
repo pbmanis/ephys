@@ -50,13 +50,14 @@ class FilterSettings:
         0.020  # minimum absolute heighe of action potential, from RMP, in V
     )
     min_sample_rate: float = 1e4  # minimum sampling rate, in Hz (points per second)
-    junctionpotential: float = -12  # junction potential, in mV
+    junctionpotential: float = 0.  # junction potential, in mV
 
 
 class FilterDataset:
-    def __init__(self, dataframe: pd.DataFrame):
+    def __init__(self, dataframe: pd.DataFrame, junctionpotential: float = .0):
         self.df = dataframe
         self.FS = FilterSettings()
+        self.FS.junctionpotential = junctionpotential
 
     def set_RMP(self, rmplimits: list):
         assert isinstance(rmplimits, list)
