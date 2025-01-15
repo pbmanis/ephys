@@ -236,9 +236,9 @@ class SpikeAnalysis:
         Nothing, but see the list of class variables that are modified
 
         """
-        print("spike analysis: AnalyzeSpikes started")
-        print("spike detector: ", self.spike_detector)
-        print("threshold: ", self.threshold)
+        print("AnalyzeSpikes started")
+        print("    Spike detector: ", self.spike_detector)
+        print("    Spike threshold: ", self.threshold)
 
         if reset:
             self.analysis_summary["FI_Growth"] = []  # permit analysis of multiple growth functions.
@@ -260,12 +260,12 @@ class SpikeAnalysis:
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         # maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
         if track:
-            print("in analyze spikes")
+            print("    In analyze spikes")
         for trace_number in range(ntraces):  # this is where we would parallelize the analysis for spikes
             # if we could, but can only have ONE parallelization at a time (using top level)
             # The question is whether this would be faster? 
             if track:
-                CP.cprint("r", f"AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
+                CP.cprint("r", f"    AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
             spikes = self.U.findspikes(
                 self.Clamps.time_base,
                 np.array(self.Clamps.traces[trace_number]),
@@ -325,7 +325,7 @@ class SpikeAnalysis:
             twin
         )
         self.spikes_counted = True
-        print("spike analysis: AnalyzeSpikes finished")
+        print("    spike analysis: AnalyzeSpikes finished")
 
     def analyzeSpikes_brief(self, mode="baseline"):
         """
