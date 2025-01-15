@@ -854,12 +854,13 @@ class IVAnalysis(Analysis):
             max_spike_look=max_spike_look,
         )
         self.SP.set_detector(self.experiment["spike_detector"], self.experiment["detector_pars"])
-        print("attempt to set spike detector to: ", self.experiment["spike_detector"])
-        print(" got: ", self.SP.spike_detector)
+        print("Set spike detector to: ", self.experiment["spike_detector"])
+
         if track:
             print("setup complete, now analyze spikes", full_spike_analysis)
         self.SP.analyzeSpikes(track=track)
         if full_spike_analysis:
+            print("    Analyzing spike shapes")
             self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
             # self.SP.analyzeSpikes_brief(mode="evoked")
             self.SP.analyzeSpikes_brief(mode="baseline")
@@ -870,13 +871,26 @@ class IVAnalysis(Analysis):
         tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
         if str(self.datapath).find("_taum"):
             tau_end = self.AR.tstart + self.AR.tend
+        # check if we define specific regions in the configuration file for this analysis
+        if "Rin_window" in self.experiment.keys():
+            rin_region = self.AR.tstart + np.array(self.experiment["Rin_window"])
+            print("rin_region from window in config file: ", rin_region)
+        else:
+            print("rin_region from default: ", [self.AR.tstart, tau_end])
+            rin_region = [self.AR.tstart, tau_end]
         print("Starting RM analyze")
+        # check whether we need to limit the protocols that are used
+        rin_protocols = None
+        if "Rin_protocols" in self.experiment.keys():
+            rin_protocols = list(self.experiment["Rin_protocols"].keys())
         self.RM.analyze(
-            rmpregion=[0.0, self.AR.tstart - 0.001],
-            tauregion=[self.AR.tstart, tau_end],
+            rmp_region=[0.0, self.AR.tstart - 0.001],
+            tau_region=[self.AR.tstart, tau_end],
+            rin_region=rin_region,
+            rin_protocols=rin_protocols,
             to_peak=to_peak,
             tgap=fit_gap,
             average_flag=average_flag,
-        )
+         )
         print("     RM analyze finished")
         return True

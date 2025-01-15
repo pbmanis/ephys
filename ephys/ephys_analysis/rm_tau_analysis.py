@@ -26,6 +26,7 @@ for acq4
 
 import datetime
 import numpy as np
+from typing import Union
 from scipy.signal import savgol_filter  # for smoothing
 import ephys.tools as TOOLS
 from pathlib import Path
@@ -126,38 +127,58 @@ class RmTauAnalysis:
 
     def analyze(
         self,
-        rmpregion=[0.0, 0.05],
-        tauregion=[0.1, 0.125],
+        rmp_region=[0.0, 0.05],
+        tau_region=[0.1, 0.125],
+        rin_region: Union[list, None] = None,
+        rin_protocols: Union[list, None] = None,
         to_peak=False,
         tgap=0.0005,
         average_flag: bool = False,
     ):
         # print("self.clamps: ", self.Clamps)
-        # print("rmpregion: ", rmpregion)
-        # print("tauregion: ", tauregion)
+        print("starting rm_tau analysis, average_flag: ", average_flag)
+        print("    rmpregion: ", rmp_region)
+        print("    tauregion: ", tau_region)
+        print("    rin_region: ", rin_region)
         self.analysis_summary["analysistimestamp"] = datetime.datetime.now().strftime(
             "%m/%d/%Y, %H:%M:%S"
         )
-        if tauregion[1] > self.Clamps.tend:
-            tauregion[1] = self.Clamps.tend
+        if tau_region[1] > self.Clamps.tend:
+            tau_region[1] = self.Clamps.tend
         stepdur = self.Clamps.tend - self.Clamps.tstart
-        self.rmp_analysis(time_window=rmpregion)
+        self.rmp_analysis(time_window=rmp_region)
         self.tau_membrane(
-            time_window=tauregion, peak_time=to_peak, tgap=tgap, average_flag=average_flag
+            time_window=tau_region, peak_time=to_peak, tgap=tgap, average_flag=average_flag
         )
-        # print("IN rmtauanalysis, analyze, average_flag: ", average_flag)
+
         if not average_flag:
-            r_pk = self.Clamps.tstart + 0.4 * stepdur
-            r_ss = self.Clamps.tstart + 0.9 * stepdur  # steady-state region
-            self.ivss_analysis(time_window=[r_ss, self.Clamps.tend])
-            self.ivpk_analysis(time_window=[self.Clamps.tstart, r_pk])  # peak region
-            # print("r_ss: ", r_ss, self.Clamps.tend)
-            self.tau_h(
-                self.tauh_voltage,
-                peak_timewindow=[r_pk, r_ss],  # self.Clamps.tstart, r_pk],
-                steadystate_timewindow=[r_ss, self.Clamps.tend],
-                printWindow=False,
-            )
+            # make sure protocol in in the range of those we want to analyze
+            r_pk = [self.Clamps.tstart, self.Clamps.tstart + 0.4 * stepdur]
+            if rin_region is None:  # default values
+                r_ss = [self.Clamps.tstart + 0.9 * stepdur, self.Clamps.tend]  # steady-state region
+            else:  # use a defined input
+                r_ss = rin_region
+            this_protocol = Path(self.Clamps.protocol).name[:-4]
+            if rin_protocols is not None and this_protocol not in rin_protocols:
+                print("    Protocol is not in list of protocols supporting Rin analysis")
+                print("    This protocol: ", this_protocol, "\n    Supporting protocols: ", rin_protocols)
+                # raise ValueError("Protocol does not match rin_protocols")
+                return
+            print("    RM.analyze: rss: ", r_ss)
+            self.ivss_analysis(time_window=r_ss)
+            self.ivpk_analysis(time_window=r_pk)  # peak region
+            try:
+                self.tau_h(
+                    self.tauh_voltage,
+                    peak_timewindow=[r_pk[0], r_ss[0]],  # self.Clamps.tstart, r_pk],
+                    steadystate_timewindow=[r_ss[0], self.Clamps.tend],
+                    printWindow=False,
+                )
+            except ValueError:
+                print("Error in tau_h analysis")
+                print("r_pk: ", r_pk, "r_ss: ", r_ss)
+                print("rin region: ", rin_region)
+                raise ValueError("Error in tau_h analysis")
 
     def tau_membrane(
         self,
@@ -218,7 +239,7 @@ class RmTauAnalysis:
         self.analysis_summary["taum_fitted"] = []
         self.analysis_summary["taum_fitmode"] = "average"
         self.analysis_summary["taum_traces"] = []
-        self.analysis_summary["ivss_cmd"] =[]
+        self.analysis_summary["ivss_cmd"] = []
 
         if debug:
             print("taum")
@@ -244,21 +265,26 @@ class RmTauAnalysis:
         if not average_flag and USE_OLD_FIT:  # unless we are averaging for a single command level!
             ineg_valid = self.Clamps.commandLevels < -10e-12
             if len(ineg_valid) != len(self.Spikes.spikecount):
-                print("rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
+                print("    taum - rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
                 print(len(ineg_valid), len(self.Spikes.spikecount))
                 assert len(ineg_valid) == len(self.Spikes.spikecount)
             ineg_valid = ineg_valid & (self.Spikes.spikecount == 0)
 
             if not any(ineg_valid):  # no valid traces to use
-                print("rm_tau_analysis: No valid traces for taum measure in this protocol")
+                print("    taum - rm_tau_analysis: No valid traces for taum measure in this protocol")
                 return
         if not average_flag and USE_NEW_FIT_8_24:
             # include traces with no baseline spikes or stimulus-time spikes;
             # post stimulus spikes are ok.
             ineg_valid = self.Clamps.commandLevels < 0.0
 
+            # print("baseline spikes: ", len(baselinespikes))
+            # print("poststimulus spikes: ", len(poststimulusspikes))
+            # print("spikecount: ", self.Spikes.spikecount)
             if len(ineg_valid) != len(self.Spikes.spikecount):
-                print("ERROR: # traces in ineg_valid bool array is not the same as the number of traces in spikecount")
+                print(
+                    "ERROR: # traces in ineg_valid bool array is not the same as the number of traces in spikecount"
+                )
                 print("Clamp traces: ", self.Clamps.traces.shape)
                 print("Command levels: ", self.Clamps.commandLevels.shape)
                 print("rm_tau_analysis: len(ineg_valid) != len(self.Spikes.spikecount)")
@@ -267,9 +293,11 @@ class RmTauAnalysis:
                 print("len poststimulus spikes: ", len(poststimulusspikes))
                 # assert len(ineg_valid) == len(self.Spikes.spikecount)
             ineg_valid = [
-                ineg_valid[i] and not baselinespikes[i] and (self.Spikes.spikecount[i] == 0)
+                ineg_valid[ibls]
+                and not baselinespikes[ibls]
+                and (self.Spikes.spikecount[ibls] == 0)
                 # and not poststimulusspikes[i]
-                for i in range(len(ineg_valid))
+                for ibls in range(len(ineg_valid))
             ]
         if average_flag:  # averaging for a single command level
             # establish valid traces for averaging
@@ -284,7 +312,7 @@ class RmTauAnalysis:
             ]
 
         # print("ineg valid: ", ineg_valid)
-        # assert 1 == 0
+
         if len(list(self.taum_fitted.keys())) > 0 and self.dataPlot is not None:
             [self.taum_fitted[k].clear() for k in list(self.taum_fitted.keys())]
         self.taum_fitted = {}
@@ -431,16 +459,19 @@ class RmTauAnalysis:
                 & (self.Clamps.commandLevels <= c_range[1])
             )
             whichdata = whichdata.flatten()
-           
+
             # for i in whichdata:
             #     print("command levels to test:", i, self.Clamps.commandLevels[i] * 1e12)
             if debug:
                 print("\n\nNot averaging: TAU estimates with traces: ", whichdata)
                 print("c_range: ", c_range * 1e12)
                 print(self.Clamps.commandLevels * 1e12)
-                print((self.Clamps.commandLevels >= c_range[0]) )
+                print((self.Clamps.commandLevels >= c_range[0]))
                 print((self.Clamps.commandLevels <= c_range[1]))
-                print((self.Clamps.commandLevels >= c_range[0]) & (self.Clamps.commandLevels <= c_range[1]))
+                print(
+                    (self.Clamps.commandLevels >= c_range[0])
+                    & (self.Clamps.commandLevels <= c_range[1])
+                )
 
                 print("taum_current_range: ", self.taum_current_range)
                 print([l for l in self.Clamps.commandLevels * 1e12])
@@ -729,7 +760,7 @@ class RmTauAnalysis:
         self.taum_whichdata = okdata
         taus = []
         for j in range(len(fpar)):
-            if  np.isnan(fpar[j][2]): 
+            if np.isnan(fpar[j][2]):
                 continue
             outstr = ""
             taus.append(fpar[j][2])
@@ -743,8 +774,6 @@ class RmTauAnalysis:
         else:
             self.taum_taum = np.NaN
             self.analysis_summary["taum"] = np.NaN
-        
-
 
         if len(self.taum_pars) > 0:
             if isinstance(self.taum_pars, list):
@@ -800,7 +829,8 @@ class RmTauAnalysis:
         """
         compute steady-state IV curve - from the mean voltage
         across the stimulus set over the defined time region
-        (this usually will be the last half or third of the trace)
+        (this usually will be the last half or third of the trace,
+        but may be specifically defined)
 
         Parameters
         ----------
@@ -827,15 +857,20 @@ class RmTauAnalysis:
 
         self.ivss_v_all = data1.mean(axis=1)  # all traces
         self.analysis_summary["Rin"] = np.nan
+        print("len self.Spikes.nospk: ", len(self.Spikes.nospk))
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
             # however, handle case where there are spikes at currents LESS
             # than some of those with no spikes.
             ivss_valid = self.Clamps.commandLevels < 0.5e-9
             if len(ivss_valid) != len(self.Spikes.spikecount):
+                print("valid traces for IVSS is not the same as the number of traces in spikecount")
                 return  # somehow is invalid...
             ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
             if not any(ivss_valid):
+                print("No valid traces for IVSS analysis")
+                print(ivss_valid)
+                print(self.Spikes.spikecount)  
                 return
             self.ivss_v = self.ivss_v_all[ivss_valid]
             self.ivss_cmd_all = self.Clamps.commandLevels[ivss_valid]
@@ -872,7 +907,7 @@ class RmTauAnalysis:
                     pf, np.array(self.ivss_cmd)
                 )  # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.0)
-                self.rss_fit = {"I": imids, "V": np.polyval(pf, imids)}
+                self.rss_fit = {"I": imids, "V": np.polyval(pf, imids), "pars": pf}
                 # print('fit V: ', self.rss_fit['V'])
                 # slope = slope[[slope > 0 ] and [self.ivss_cmd[:-1] > -0.8] ] # only consider positive slope points
                 l = int(len(slope) / 2)
@@ -896,7 +931,7 @@ class RmTauAnalysis:
                     self.ivss_cmd[minloc],
                     self.ivss_v[minloc],
                     minloc,
-                ]  # where it was found
+                ]  # where it was founds
                 self.analysis_summary["Rin"] = self.r_in * 1.0e-6
                 self.analysis_summary["ivss_cmd"] = self.ivss_cmd
                 self.analysis_summary["ivss_v"] = self.ivss_v
