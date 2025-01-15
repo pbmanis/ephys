@@ -232,7 +232,7 @@ class DataTables:
         # self.FIGS = figures.Figures(parent=self)
         self.ptreedata = None  # flag this as not set up initially
         self.table_manager = None  # get this later
-        ptreewidth = 350
+        ptreewidth = 390
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
         self.infobox_x = 0.02
@@ -271,6 +271,7 @@ class DataTables:
         win_width = 1600
         right_docks_width = 1600 - ptreewidth - 20
         right_docks_height = 800
+
         self.win.resize(1600, 1024)
         # Initial Dock Arrangment
         self.Dock_Params = PGD.Dock("Params", size=(ptreewidth, 1024))
@@ -393,7 +394,7 @@ class DataTables:
         
         self.ptree.setParameters(self.ptreedata)
 
-        self.ptree.setMaximumWidth(ptreewidth + 50)
+        self.ptree.setMaximumWidth(ptreewidth)
         self.ptree.setMinimumWidth(ptreewidth)
 
         self.Dock_Params.addWidget(self.ptree)  # put the parameter three here
