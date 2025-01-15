@@ -173,7 +173,7 @@ class IVPlotter(object):
             },
             "A2": {"pos": [0.05, 0.50, 0.05, 0.12], "labelpos": (x, y), "noaxes": False},
             "B": {"pos": [0.62, 0.30, 0.78, 0.13], "labelpos": (x, y), "noaxes": False},
-            "C": {"pos": [0.75, 0.17, 0.62, 0.13], "labelpos": (x, y)},
+            "C": {"pos": [0.75, 0.17, 0.60, 0.13], "labelpos": (x, y)},
             "D1": {"pos": [0.62, 0.30, 0.40, 0.12], "labelpos": (x, y)},
             "D2": {"pos": [0.62, 0.30, 0.24, 0.12], "labelpos": (x, y)},
             "E": {"pos": [0.62, 0.30, 0.08, 0.12], "labelpos": (x, y)},
@@ -404,6 +404,10 @@ class IVPlotter(object):
                 s=16,
                 linewidth=0.5,
             )
+            xlims = list(P.axdict["B"].get_xlim())  # returns tuple but we need to modify...
+            if xlims[0] > 0:
+                xlims[0] = 0.0
+                P.axdict["B"].set_xlim(xlims)
 
         clist = ["r", "b", "g", "c", "m"]  # only 5 possiblities
         linestyle = ["-", "--", "-.", "-", "--"]
@@ -435,19 +439,30 @@ class IVPlotter(object):
             # print("    Keys in the ivs: ", ivs.keys())
 
         elif str(protocol).find("_taum") < 0:  # not a taum protocol
-            P.axdict["C"].plot(
-                np.array(ivs["ivss_cmd"]) * 1e9,
-                np.array(ivs["ivss_v"]) * 1e3,
-                "grey",
-                # markersize=4,
-                linewidth=1.0,
-            )
+            # P.axdict["C"].plot(
+            #     np.array(ivs["ivss_cmd"]) * 1e9,
+            #     np.array(ivs["ivss_v"]) * 1e3,
+            #     "grey",
+            #     # markersize=4,
+            #     linewidth=1.0,
+            # )
             P.axdict["C"].scatter(
                 np.array(ivs["ivss_cmd"]) * 1e9,
                 np.array(ivs["ivss_v"]) * 1e3,
                 color=trace_colors[0 : len(ivs["ivss_cmd"])],
-                s=16,
+                s=12,
             )
+            if "ivss_fit" in ivs.keys() and len(ivs["ivss_cmd"]) > 0:
+                ifit = np.linspace(np.min(ivs["ivss_cmd"]), np.max(ivs["ivss_cmd"]), 50)
+                # print("ivs: ", ivs)
+                print(ifit)
+                fit = np.polyval(ivs["ivss_fit"]['pars'], ifit)
+                P.axdict["C"].plot(
+                    ifit * 1e9,
+                    fit * 1e3,
+                    "--k",
+                    linewidth=0.75,
+                )
         if not pubmode:
             if isinstance(ivs["CCComp"], float):
                 enable = "Off"
@@ -702,13 +717,13 @@ class IVPlotter(object):
                 "--k",
                 linewidth=0.75,
             )
-        for k in self.RM.tauh_fitted.keys():
-            P.axdict["A"].plot(
-                self.RM.tauh_fitted[k][0] * 1e3,
-                self.RM.tauh_fitted[k][1] * 1e3,
-                "--r",
-                linewidth=0.750,
-            )
+        # for k in self.RM.tauh_fitted.keys():
+        #     P.axdict["A"].plot(
+        #         self.RM.tauh_fitted[k][0] * 1e3,
+        #         self.RM.tauh_fitted[k][1] * 1e3,
+        #         "--r",
+        #         linewidth=0.750,
+        #     )
         if pubmode:
             PH.calbar(
                 P.axdict["A"],
