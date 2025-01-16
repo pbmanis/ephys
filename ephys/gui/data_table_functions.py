@@ -271,6 +271,38 @@ class Functions:
                     rows.append(selected)
             return rows
 
+    def get_current_table_selection(self, table_manager):
+        index_rows = table_manager.table.selectionModel().selectedRows()
+        selected_cell_ids = []
+        for selected_row_number in index_rows:
+            if selected_row_number is None:
+                print("No selected rows")
+                break
+            cell_id = table_manager.get_selected_cellid_from_table(
+                selected_row_number
+            )
+            if cell_id is None:
+                # print("cell id is none?")
+                continue
+            else:
+                selected_cell_ids.append(cell_id)
+        return selected_cell_ids
+    
+    def set_current_table_selection(self, table_manager, cell_ids):
+        """ set_current_table_selection: Set the current table selection to the cell_ids in the list
+        Used to restore the selection after a table update.
+        """
+        if len(cell_ids) == 0:
+            return  # nothing to select
+        selection = pg.Qt.QtCore.QItemSelection()  # create a selection object
+        for row in range(table_manager.table.model().rowCount()):
+            index_rows = table_manager.table.model().index(row, 0)
+            if table_manager.get_selected_cellid_from_table(index_rows) in cell_ids:
+                selection.select(index_rows, index_rows)
+        mode = pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Select | pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Rows
+        results = table_manager.table.selectionModel().select(selection, mode)
+        return results
+
     def get_datasummary(self, experiment):
         datasummary = Path(
             experiment["analyzeddatapath"],

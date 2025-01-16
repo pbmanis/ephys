@@ -645,6 +645,9 @@ class DataTables:
                     self.set_experiment(data)
 
                 case "Reload Configuration":
+                    # first, get the current selection in the main table
+                    self.current_cell_ids = FUNCS.get_current_table_selection(table_manager=self.DS_table_manager)
+
                     self.datasets, self.experiments = get_configuration(config_file_path)
                     if self.datasets is None:
                         print("Unable to get configuration file from: ", config_file_path)
@@ -656,6 +659,7 @@ class DataTables:
                     print(" With: \n", self.experiment)
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
+                    FUNCS.set_current_table_selection(table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids)
                     self.load_assembled_data()
 
                 case "Update DataSummary":
