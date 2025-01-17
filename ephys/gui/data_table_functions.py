@@ -301,6 +301,7 @@ class Functions:
                 selection.select(index_rows, index_rows)
         mode = pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Select | pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Rows
         results = table_manager.table.selectionModel().select(selection, mode)
+        table_manager.table.scrollTo(selection.indexes()[0])
         return results
 
     def get_datasummary(self, experiment):
