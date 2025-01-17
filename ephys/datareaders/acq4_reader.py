@@ -340,7 +340,7 @@ class acq4_reader:
             CP.cprint(
                 "r", "Directory '%s' is not managed or '.index' file not found" % (str(indexFile))
             )
-            print("_readIndex 334:  ", indexFile, " is file: ", indexFile.is_file())
+            print("_readIndex 343:  ", indexFile, " is file: ", indexFile.is_file())
             raise FileNotFoundError
             return self._index
         self._index = configfile.readConfigFile(indexFile)
@@ -830,6 +830,7 @@ class acq4_reader:
         # get traces marked "important"
         # if no such traces exist, then accept ALL traces
         important = []
+        self.trace_StartTimes = np.zeros(len(dirs))
         for i, d in enumerate(dirs):
             if self.importantFlag:
                 important.append(self._getImportant(self.getIndex(d)))
@@ -876,51 +877,47 @@ class acq4_reader:
             ):  # only return traces marked "important"
                 CP.cprint("m", "acq4_reader: Skipping non-important data")
                 continue
+            self.rec_info = self.getDataInfo(fn)
             self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
-            if allow_partial and record_list is not None:
+            if allow_partial and record_list is not None:  # only get the records in the list - allows us to capture incomplete protocols
                 if i not in record_list:
                     continue
                 else:
                     try:
                         tr = EM.MetaArray(file=fn)
-                    except:
+                    except FileExistsError:
                         CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, when allowing partial read")
                         CP.cprint("y", f"    Record {i:d} will be skipped; record list is: {record_list}")
                         continue
-            else:
+            else:  # this is the canonical case: get all records.
                 try:
                     tr = EM.MetaArray(file=fn)
-                except:
+                except ValueError:
                     if allow_partial:  # just get what we can
                         CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, but allowing partial read")
                         continue
                     if not silent:
-                        # print(allow_partial)
                         msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
                         CP.cprint("r", msg)
-                        # raise ValueError(f"file failed: {str(fn):s}")
                         CP.cprint("r", f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
                         raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
                     return False
-                # continue
 
+            self.trace_StartTimes[i] = self.rec_info[1]['startTime']
             tr_info = tr[0].infoCopy()
             self.parseClampInfo(tr_info)
             self.WCComp = self.parseClampWCCompSettings(tr_info)
             self.CCComp = self.parseClampCCCompSettings(tr_info)
-            # if i == 0:
-            #     pp.pprint(info)
             if self.bad_clamp_mode:
                 if tr.hasColumn("Channel", "primary"):
                     tr["Channel":"primary"] *= self.v_scalefactor
             cmd = self.getClampCommand(tr)
-
+            self.trace_StartTimes[i] = self.rec_info[1]['startTime']
             self.traces.append(tr)
             self.trace_index.append(i)
             trx.append(tr.view(np.ndarray))
             if tr.hasColumn("Channel", "primary"):  # hascolumn is a metaarray method
                 self.data_array.append(tr["Channel":"primary"])
-                # self.data_array.append(tr.view(np.ndarray)[self.primary_trace_index])
             if tr.hasColumn("Channel", "command"):
                 self.cmd_wave.append(tr["Channel":"command"])
             else:
@@ -937,12 +934,10 @@ class acq4_reader:
             self.time_base.append(tr.xvals("Time"))
             sr = tr_info[1]["DAQ"]["primary"]["rate"]
             self.sample_rate.append(self.samp_rate)
-            # print ('i: %d   cmd: %f' % (i, sequence_values[i]*1e12))
+
         if tr is None and allow_partial is False and not silent:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
-        # CP.cprint("r", f"Mode: {self.mode:s}")
-        # assert self.mode is not None
         if self.mode is None:
             units = "A"  # just fake it
             self.mode = "VC"
@@ -980,7 +975,6 @@ class acq4_reader:
             self.values = np.zeros(ntr)  # fake
         else:
             ntr = len(self.values)
-        # print('acq4_read: cmd: ', cmd)
         if isinstance(cmd, list):
             uni = "None"
         else:
@@ -1028,8 +1022,6 @@ class acq4_reader:
         self.commandLevels = np.array([0.0])
         if index is not None:
             seqparams = index["."]["sequenceParams"]
-            # print('sequence params: ', seqparams)
-            # self.printIndex(index)
             stimuli = index["."]["devices"][self.shortdname]["waveGeneratorWidget"]["stimuli"]
             if "Pulse" in list(stimuli.keys()):
                 self.tstart = stimuli["Pulse"]["start"]["value"]
@@ -1069,7 +1061,7 @@ class acq4_reader:
                 self.repetitions = 1
             else:
                 print("sequence parameter keys: ", seqkeys)
-                raise ValueError(" cannot determine the protocol repetitions")
+                raise ValueError(" cannot determine the protocol repetitions with available scanner keys")
             if allow_partial and record_list is not None:
                 self.commandLevels = self.commandLevels[record_list]
         return True
