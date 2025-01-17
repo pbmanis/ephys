@@ -82,7 +82,7 @@ def create_logger(
     level = logging.DEBUG
     Logger.setLevel(level)
     # create file handler which logs even debug messages
-    logging_fh = logging.FileHandler(filename=log_file)
+    logging_fh = logging.FileHandler(filename=Path("logs", log_file)
     logging_fh.setLevel(level)
     logging_sh = logging.StreamHandler()
     logging_sh.setLevel(level)

@@ -76,7 +76,7 @@ Logger = logging.getLogger("MapEventScoring")
 level = logging.DEBUG
 Logger.setLevel(level)
 # create file handler which logs even debug messages
-logging_fh = logging.FileHandler(filename="map_scoring.log")
+logging_fh = logging.FileHandler(filename="logs/map_scoring.log")
 logging_fh.setLevel(level)
 logging_sh = logging.StreamHandler()
 logging_sh.setLevel(level)

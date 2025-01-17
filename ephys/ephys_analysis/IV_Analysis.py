@@ -57,7 +57,7 @@ Logger = logging.getLogger("AnalysisLogger")
 level = logging.DEBUG
 Logger.setLevel(level)
 # create file handler which logs even debug messages
-logging_fh = logging.FileHandler(filename="iv_analysis.log")
+logging_fh = logging.FileHandler(filename="logs/iv_analysis.log")
 logging_fh.setLevel(level)
 logging_sh = logging.StreamHandler()
 logging_sh.setLevel(level)
