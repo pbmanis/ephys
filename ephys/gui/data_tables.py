@@ -264,6 +264,8 @@ class DataTables:
         )
 
         self.win = pg.QtWidgets.QMainWindow()
+        self.status_bar_message("Starting...", color="green", weight="bold")
+        
         # use dock system instead of layout.
         self.dockArea = PGD.DockArea()
         self.win.setCentralWidget(self.dockArea)
@@ -345,7 +347,7 @@ class DataTables:
         self.cellID = None
         self.start_date = "None"
         self.end_date = "None"
-        self.CD = None # not set up yet - 
+        self.CD = None  # not set up yet -
         self.dataset = self.datasets[0]
 
         self.set_experiment(self.dataset)
@@ -390,8 +392,6 @@ class DataTables:
         self.bspline_s = 1.0
         self.revcorr_window = [-2.7, -0.5]
 
-
-        
         self.ptree.setParameters(self.ptreedata)
 
         self.ptree.setMaximumWidth(ptreewidth)
@@ -461,7 +461,8 @@ class DataTables:
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         self.table_manager.update_table(self.table_manager.data, QtCore=QtCore, QtGui=QtGui)
-
+        FUNCS.set_status_bar(self.win.statusBar())
+        self.status_bar_message("Ready", color="green", weight="bold")
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
         # through the command_dispatcher.
@@ -567,6 +568,24 @@ class DataTables:
         self.display_from_table_by_row(row, mode=mode)
         return
 
+    def show_message_box(self, title, message):
+        msgbox = pg.QtWidgets.QMessageBox()
+
+        title = f"<center>{title!s}</center>"
+        text = "{}<br><br>{}".format(title, "\n".join(textwrap.wrap(message, width=120)))
+        msgbox.setText(text)
+        msgbox.setFont(QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Normal))
+        # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
+        msgbox.exec()
+
+    def status_bar_message(self, message, color: str="white", weight: str = "normal"):
+        pl = "{padding-left"
+        closure = "}"
+        self.win.statusBar().setStyleSheet(
+            f"QStatusBar\{pl:s}:8px;background:rgba(0,0,0,255);color:{color:s};font-weight:{weight:s};{closure:s}"
+        )
+        self.win.statusBar().showMessage(message)
+
     def handleSortIndicatorChanged(self, index, order):
         """
         If the sorting changes, and we are not reloading the modules,
@@ -646,11 +665,17 @@ class DataTables:
 
                 case "Reload Configuration":
                     # first, get the current selection in the main table
-                    self.current_cell_ids = FUNCS.get_current_table_selection(table_manager=self.DS_table_manager)
+                    self.current_cell_ids = FUNCS.get_current_table_selection(
+                        table_manager=self.DS_table_manager
+                    )
 
                     self.datasets, self.experiments = get_configuration(config_file_path)
                     if self.datasets is None:
                         print("Unable to get configuration file from: ", config_file_path)
+                        self.status_bar_message(
+                            f"Unable to get configuration file from: {config_file_path:s}",
+                            color="red",
+                        )
                     if self.experimentname not in self.datasets:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
@@ -659,8 +684,13 @@ class DataTables:
                     print(" With: \n", self.experiment)
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
-                    FUNCS.set_current_table_selection(table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids)
+                    FUNCS.set_current_table_selection(
+                        table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids
+                    )
                     self.load_assembled_data()
+                    self.status_bar_message(
+                        f"Configuration loaded from {config_file_path:s}", color="green"
+                    )
 
                 case "Update DataSummary":
                     # FUNCS.textappend(f"Updating DataSummary NOT IMPLEMENTED", color="r")
@@ -1296,7 +1326,9 @@ class DataTables:
                 case "Tools":
                     match path[1]:
                         case "Reload":
-                            print("reloading...")
+                            # set reload button to red.
+
+                            self.status_bar_message("Reloading...", color="red")
                             # get the current list selection - first put tabke in the
                             # same order we will see later
                             self.doing_reload = True
@@ -1305,52 +1337,22 @@ class DataTables:
                             )  # by date
                             selected_rows = self.table.selectionModel().selectedRows()
                             selection_model = self.table.selectionModel()
-                            reload.reloadAll(debug=True)
-                            print("\033[1000B")
-                            # self.table_manager = table_manager.TableManager(
-                            #     parent=self,
-                            #     table=self.table,
-                            #     experiment=self.experiment,
-                            #     selvals=self.selvals,
-                            #     altcolormethod=self.alt_colors,
-                            # )
-
+                            reload.reloadAll(
+                                debug=True
+                            )  # reload raises an error if it fails, so we don't need to check.
+                            self.status_bar_message("Reloaded ok", color="green")
                             print("   reload ok")
                             print("-" * 80)
 
-                            # if self.assembleddata is not None:
-                            #     self.table_manager.build_table(
-                            #         self.assembleddata,
-                            #         mode="scan",
-                            #         QtCore=QtCore,
-                            #         QtGui=QtGui,
-                            #     )
-                            #     self.table.setSortingEnabled(True)
-                            #     self.table.horizontalHeader().sortIndicatorChanged.connect(
-                            #         self.handleSortIndicatorChanged
-                            #     )
-                            #     self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
-                            #     self.table.sortByColumn(
-                            #         0, QtCore.Qt.SortOrder.AscendingOrder
-                            #     )  # by date
-                            #     self.alt_colors(self.table)  # reset the color list.
-                            #     # now reapply the original selection
                             mode = (
                                 QtCore.QItemSelectionModel.SelectionFlag.Select
                                 | QtCore.QItemSelectionModel.SelectionFlag.Rows
                             )
                             for row in selected_rows:
                                 selection_model.select(row, mode)  # for row in selected_rows:
-                            # try:
-                            #     self.table_manager.update_table(
-                            #         self.table_manager.data, QtCore=QtCore, QtGui=QtGui
-                            #     )
-                            # except AttributeError:
-                            #     pass
-                            # leave current dock up
-                            # self.Dock_DataSummary.raiseDock()
 
                             FUNCS.textappend("Reload OK", color="g")
+                            # self.show_message_box(title="Reload", message="Reload OK")
                             self.doing_reload = False
 
                         case "View IndexFile":

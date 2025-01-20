@@ -231,7 +231,11 @@ class Functions:
         # self.textbox = None
         self.cursor = []  # a list to hold cursors (need to keep a live reference)
         self.textbox = None
-        
+        self.status_bar = None
+    
+    def set_status_bar(self, status_bar):
+        self.status_bar = status_bar
+
     def get_row_selection(self, table_manager):
         """
         Find the selected rows in the currently managed table, and if there is a valid selection,
@@ -561,26 +565,32 @@ class Functions:
     def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
         if experiment["excludeIVs"] is None:
             return False
+        print("check_excluded_dataset in include list: ", day_slice_cell, day_slice_cell in experiment["includeIVs"])
+        print("     and in exclude list: ", day_slice_cell in experiment["excludeIVs"])
+        include_flag = day_slice_cell in experiment["includeIVs"]
+        if include_flag and protocol in experiment["includeIVs"][day_slice_cell]['protocols']:  # inclusions
+            CP("g", f"    Cell/protocol has entries in Inclusion table: {include_flag!s}")
+            return False
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
         if exclude_flag:
-            CP("r", f"Cell has entries in exclusion table: {exclude_flag!s}")
-        else:
-            CP("c", f"Cell has no entries in exclusion table: {exclude_flag!s}")
-        if exclude_flag:
+            CP("r", f"    Cell has entries in exclusion table: {exclude_flag!s}")
             exclude_table = experiment["excludeIVs"][day_slice_cell]
-            CP("r", f"    excluded table data: {exclude_table!s}")
-            CP("r", f"    testing protocol: {protocol!s}")
+            CP("r", f"        excluded table data: {exclude_table!s}")
+            CP("r", f"        testing protocol: {protocol!s}")
             proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
-            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"]:
+            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"] or exclude_table["protocols"] == ["All"]:
                 CP(
                     "y",
-                    f"    Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
+                    f"        Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
                 )
                 # cannot log when multiprocessing.
                 # Logger.info(
                 #     f"    Excluded cell: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}"
                 # )
                 return True
+        else:
+            CP("c", f"    Cell has no entries in exclusion table: {exclude_flag!s}")
+            return False
         print("    Protocol passed: ", protocol)
         return False
 
@@ -2133,6 +2143,8 @@ class Functions:
         ValueError
             _description_
         """
+        if self.status_bar is not None:
+            self.status_bar.showMessage(f"Computing FI fits for cell: {cell:s}")
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
         cell_group = df[df.cell_id == cell].Group.values[0]
@@ -2145,6 +2157,7 @@ class Functions:
         except:
             print(df.cell_id)
             print([x for x in df.cell_id.values])
+            self.status_bar.showMessage(f"Couldn't get cell: {cell:s} from dataframe")
             raise ValueError(f"Couldn't get cell: {cell:s} from dataframe")
         if df_cell is None:
             return None
@@ -2158,6 +2171,8 @@ class Functions:
         for protocol in protocol_list:
             if not self.check_excluded_dataset(day_slice_cell, experiment, protocol):
                 protocols.append(protocol)
+            # else:
+            #     raise ValueError(f"Code stop #3 cell: {day_slice_cell:s}  protocol: {protocol:s}")
         srs = []
         dur = []
         Rs = []
@@ -2168,10 +2183,12 @@ class Functions:
         for nprot, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
+            if self.status_bar is not None:
+                self.status_bar.showMessage(f"Reading data for cell: {cell:s}, protocol: {protocol:s}")
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
-            if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
-                continue
+            # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
+                # continue
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
                 fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
@@ -2179,7 +2196,7 @@ class Functions:
                 fullpath = Path(experiment["rawdatapath"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
-                    if not AR.getData(fullpath):
+                    if not AR.getData(fullpath, allow_partial=True, record_list=[0]):  # just get the first record.
                         continue
                     sample_rate = AR.sample_rate[0]
                     duration = AR.tend - AR.tstart
@@ -2192,6 +2209,8 @@ class Functions:
                     valid_prots.append(protocol)
                 except ValueError:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
+                    if self.status_bar is not None:
+                        self.status_bar.showMessage(f"Acq4Read failed to read data file: {str(fullpath):s}")
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = valid_prots  # only count valid protocols
@@ -2266,12 +2285,14 @@ class Functions:
             print("Protocols required: ", experiment["FI_protocols_required"].keys())
             for ip, protocol in enumerate(protocols):
                 short_proto_name = Path(protocol).name[:-4]
-                print("    short_proto_name: ", short_proto_name)
+                # print("    short_proto_name: ", short_proto_name)
                 if short_proto_name in experiment["FI_protocols_required"].keys():
                     all_required_protocols = True
             CP("g", f"Have required protocols: {all_required_protocols}")
             if not all_required_protocols:
                 CP("y", f"    >>>> Not all required FI protocols found for cell: {cell:s}")
+                if self.status_bar is not None:
+                    self.status_bar.showMessage(f"Not all required FI protocols found for cell: {cell:s}")
                 return None
             print("\n")
 
@@ -2315,6 +2336,8 @@ class Functions:
                 fidata = df_cell.Spikes[protocol]["FI_Curve"]
             except KeyError:
                 print("FI curve not found for protocol: ", protocol, "for cell: ", cell)
+                if self.status_bar is not None:
+                    self.status_bar.showMessage(f"FI curve not found for protocol: {protocol:s} for cell: {cell:s}")
                 # print(df_cell.Spikes[protocol])
                 protofails += 1
                 if protofails > 4:
@@ -2456,6 +2479,8 @@ class Functions:
             datadict["last_spikes"] = scipy.stats.binned_statistic(
                 fc, fs, bins=bins, statistic=np.nanmean
             ).statistic
+        if self.status_bar is not None:    
+           self.status_bar.showMessage(f"Finished computing FI fits for cell: {cell:s}")
         return datadict
 
     def compare_cell_id(self, cell_id: str, cell_ids: list):
