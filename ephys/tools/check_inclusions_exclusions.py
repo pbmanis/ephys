@@ -25,12 +25,12 @@ def check_exclusions(cell_id: str, exclusions: dict, allivs: list):
                 CP.cprint("r", msg)
                 return  # nothing to do - entire cell is excluded.
             # exclude all protocols except those in the "exceptions" key
-            elif exclusions[cell_id] in ["allexcept", ["allexcept"]]:
+            elif exclusions[cell_id] in ["except", ["except"]]:
                 if (
                     "exceptions" not in exclusions[cell_id].keys()
                 ):  # confirm that there is an exceptions key
-                    raise ValueError("No 'exceptions' key in the 'allexcept' exclusion")
-                print("   ... Appending excepted protocols from 'allexcept': ")
+                    raise ValueError("No 'exceptions' key in the 'except' exclusion")
+                print("   ... Appending excepted protocols from 'except': ")
                 for protocol in allivs:
                     if Path(protocol).name in exclusions[cell_id]["exceptions"]:
                         validivs.append(protocol)
