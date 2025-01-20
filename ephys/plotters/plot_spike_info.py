@@ -612,12 +612,13 @@ def make_cell_id(row):
     row["cell_id"] = cell_id
     return row
 
+
 def set_subject(row):
     """set_subject if subject is empty, set to date name
 
     Parameters
     ----------
-    row : pandas dataframe row  
+    row : pandas dataframe row
         _description_
 
     Returns
@@ -633,7 +634,8 @@ def set_subject(row):
     if row["Subject"] is None:
         row["Subject"] = "NoID"
     return row["Subject"]
-    
+
+
 def get_age(age_value):
     if isinstance(age_value, pd.Series):
         age = age_value.values[0]
@@ -839,7 +841,7 @@ class PlotSpikeInfo(QObject):
         CP("m", "Finished reading files\n")
         return df
 
-    def combine_by_cell(self, df, valid_protocols=None):
+    def combine_by_cell(self, df, valid_protocols=None, status_bar:object=None):
         """
         Rules for combining cells and pulling the data from the original analysis:
         1. Combine data from cells with the same ID
@@ -870,7 +872,7 @@ class PlotSpikeInfo(QObject):
         computer_name = get_computer()
         nworkers = self.experiment["NWORKERS"][computer_name]
         cells_to_do = [cell for cell in cell_list if cell is not None]
-   
+
         # here we should check to see if cell has been done in the current file,
         # and remove it from the list.
         combined_file = Path(
@@ -982,6 +984,19 @@ class PlotSpikeInfo(QObject):
             print(f"{x*1e9:.2f}  {row.spsec[i]:.1f}")
         print("")
 
+    def get_stats_dir(self):
+        """get_stats_dir set the directory for the statistics files (CSV etc)
+
+        Returns
+        -------
+        str with the directory name or '.' of not specified
+        """
+        if "stats_dir" in self.experiment.keys():
+            stats_dir = self.experiment["stats_dir"]
+        else:
+            stats_dir = "."
+        return stats_dir
+
     def fill_missing_groups(self, df, groups, celltype):
         """fill_missing_celltypes : add missing cell types in groups,
         to the data frame but with
@@ -1030,7 +1045,7 @@ class PlotSpikeInfo(QObject):
                     print("row group: ", row.Group, " is in removables")
                     row[data] = np.nan
                     return row
-        if pd.isnull(row[data]) or len(row[data]) == 0 or row[data] == 'nan':
+        if pd.isnull(row[data]) or len(row[data]) == 0 or row[data] == "nan":
             # print("row[data] is" , row[data])
             if replacement is not None:
                 row[data] = replacement
@@ -1072,7 +1087,7 @@ class PlotSpikeInfo(QObject):
         else:
             df_x = df
         # print("dfx type 1: ", type(df_x))
-        
+
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
         # print("dfx type 2: ", type(df_x))
         if colors is None:  # set all to blue
@@ -1085,17 +1100,22 @@ class PlotSpikeInfo(QObject):
         df_x = self.fill_missing_groups(df_x, xname, celltype)  # make sure emtpy groups have nan
         # print("dfx type 4: ", type(df_x))
         if "default_group" in self.experiment.keys():
-            df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname, replacement=self.experiment["default_group"])
+            df_x = df_x.apply(
+                self.clear_missing_groups,
+                axis=1,
+                data=xname,
+                replacement=self.experiment["default_group"],
+            )
         else:
             df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname)
         # print("dfx type 5: ", type(df_x))
         # print("uniques: ", df_x[xname].unique())
         df_x.dropna(subset=[xname], inplace=True)
-        CP(
-            "y",
-            f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
-        )
- 
+        # CP(
+        #     "y",
+        #     f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
+        # )
+
         dodge = True
         if (
             "hue_palette" in self.experiment.keys()
@@ -1132,7 +1152,7 @@ class PlotSpikeInfo(QObject):
         #     }
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
-        out_of_bounds_markers = "^" #  for h in hue_order]
+        out_of_bounds_markers = "^"  #  for h in hue_order]
         # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
@@ -1186,9 +1206,9 @@ class PlotSpikeInfo(QObject):
             # put "out of bounds markers" on the plot at the top and bottom of the axes
             ymax = ax.get_ylim()
             df_outbounds = df_x[df_x[yname] > ymax[1]]
-            df_outbounds[yname] = ymax[1] + 0.025*(ymax[1] - ymax[0])
-            print("out of bounds: ", df_outbounds)
-            print("ymax: ", ymax)
+            df_outbounds[yname] = ymax[1] + 0.025 * (ymax[1] - ymax[0])
+            # print("out of bounds: ", df_outbounds)
+            # print("ymax: ", ymax)
 
             sns.stripplot(
                 x=xname,
@@ -1197,7 +1217,7 @@ class PlotSpikeInfo(QObject):
                 data=df_outbounds,
                 order=plot_order,
                 hue_order=hue_order,
-                marker = out_of_bounds_markers,
+                marker=out_of_bounds_markers,
                 dodge=dodge,
                 size=3.5,
                 # fliersize=None,
@@ -1390,7 +1410,7 @@ class PlotSpikeInfo(QObject):
             row[measure] = [row[measure]]
             return row[measure]
         elif np.isnan(row[measure]):
-         return "NA"
+            return "NA"
         else:
             raise ValueError(f"measure is not a list or float: {row[measure]!s}")
 
@@ -1488,9 +1508,7 @@ class PlotSpikeInfo(QObject):
 
         with open(filename, "w") as file:
             file.write(data)
-            
 
-    
     def summary_plot_spike_parameters_categorical(
         self,
         df,
@@ -1514,9 +1532,9 @@ class PlotSpikeInfo(QObject):
             enable_picking: bool, optional: enable picking of data points
         """
         # print(df.columns)
-        print("animal ID: ", df['animal_identifier'].unique())
+        print("animal ID: ", df["animal_identifier"].unique())
         df["Subject"] = df.apply(set_subject, axis=1)
-        print("subjects: ", df['Subject'].unique())
+        print("subjects: ", df["Subject"].unique())
         # print("ID: ", df['ID'].unique())
         # return
         df = df.copy()  # make sure we don't modifiy the incoming
@@ -1643,13 +1661,13 @@ class PlotSpikeInfo(QObject):
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
         datestring = datetime.datetime.now().strftime("%d-%b-%Y")
-
+        stats_dir = self.get_stats_dir()
         if any(c.startswith("dvdt_rising") for c in measures):
-            fn =  f"spike_shapes_{datestring}.csv"# "spike_shapes.csv"
+            fn = Path(stats_dir, f"spike_shapes_{datestring}.csv")  # "spike_shapes.csv"
         elif any(c.startswith("AdaptRatio") for c in measures):
-            fn = f"firing_parameters_{datestring}.csv" # "firing_parameters.csv"
+            fn = Path(stats_dir, f"firing_parameters_{datestring}.csv")  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
-            fn = f"rmtau_{datestring}.csv"
+            fn = Path(stats_dir, f"rmtau_{datestring}.csv")
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
@@ -1859,23 +1877,29 @@ class PlotSpikeInfo(QObject):
     def adjust_AHP_depth_V(self, row):
 
         if isinstance(row.AHP_depth_V, float):
-            row.AHP_depth_V = [row.AHP_depth_V + 1e-3*self.experiment["junction_potential"]]
+            row.AHP_depth_V = [row.AHP_depth_V + 1e-3 * self.experiment["junction_potential"]]
         else:
-            row.AHP_depth_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AHP_depth_V]
+            row.AHP_depth_V = [
+                ap + 1e-3 * self.experiment["junction_potential"] for ap in row.AHP_depth_V
+            ]
         return row.AHP_depth_V
 
     def adjust_AHP_trough_V(self, row):
         if isinstance(row.AHP_trough_V, float):
-            row.AHP_trough_V = [row.AHP_trough_V + 1e-3*self.experiment["junction_potential"]]
+            row.AHP_trough_V = [row.AHP_trough_V + 1e-3 * self.experiment["junction_potential"]]
         else:
-            row.AHP_trough_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AHP_trough_V]
+            row.AHP_trough_V = [
+                ap + 1e-3 * self.experiment["junction_potential"] for ap in row.AHP_trough_V
+            ]
         return row.AHP_trough_V
-    
+
     def adjust_AP_thr_V(self, row):
         if isinstance(row.AP_thr_V, float):
-            row.AP_thr_V = [row.AP_thr_V + 1e-3*self.experiment["junction_potential"]]
+            row.AP_thr_V = [row.AP_thr_V + 1e-3 * self.experiment["junction_potential"]]
         else:
-            row.AP_thr_V = [ap + 1e-3*self.experiment["junction_potential"] for ap in row.AP_thr_V]
+            row.AP_thr_V = [
+                ap + 1e-3 * self.experiment["junction_potential"] for ap in row.AP_thr_V
+            ]
         return row.AP_thr_V
 
     def clean_rmp(self, row):
@@ -1926,7 +1950,9 @@ class PlotSpikeInfo(QObject):
             else:
                 min_RMP = self.experiment["data_inclusion_criteria"]["default"]["RMP_min"]
         if isinstance(row.RMP_Zero, float):
-            r0 = [row.RMP_Zero + self.experiment["junction_potential"]]  # handle case where there is only one float value
+            r0 = [
+                row.RMP_Zero + self.experiment["junction_potential"]
+            ]  # handle case where there is only one float value
         else:
             r0 = [rmp_0 + self.experiment["junction_potential"] for rmp_0 in row.RMP_Zero]
         for i, r0 in enumerate(r0):
@@ -2219,7 +2245,8 @@ class PlotSpikeInfo(QObject):
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
         datestring = datetime.datetime.now().strftime("%d-%b-%Y")
-        fn = f"rmtau_{datestring}.csv"
+
+        fn = Path(self.get_stats_dir(), f"rmtau_{datestring}.csv")
         self.export_r(df, xname, measures, hue_category, filename=fn)
         return P, picker_funcs
 
@@ -2352,14 +2379,16 @@ class PlotSpikeInfo(QObject):
         fi_dat = {}  # save raw fi
         for ic, ptype in enumerate(["mean", "individual", "sum"]):
             for ir, celltype in enumerate(self.experiment["celltypes"]):
-                fi_group_sum = pd.DataFrame(columns=["Group", "sum", "sex", "cell_type", "cell_expression"])
+                fi_group_sum = pd.DataFrame(
+                    columns=["Group", "sum", "sex", "cell_type", "cell_expression"]
+                )
                 ax = P.axarr[ir, ic]
                 ax.set_title(celltype.title(), y=1.05)
                 ax.set_xlabel("I$_{inj}$ (nA)")
                 if ic in [0, 1]:
                     ax.set_ylabel("Rate (sp/s)")
                 elif ic == 2 and ptype == "sum":
-                    ax.set_ylabel(self.experiment['new_ylabels']['summed_FI'])
+                    ax.set_ylabel(self.experiment["new_ylabels"]["summed_FI"])
                 if celltype != "all":
                     cdd = df[df["cell_type"] == celltype]
                 else:
@@ -2446,7 +2475,13 @@ class PlotSpikeInfo(QObject):
                             FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
 
                     elif ptype == "sum":
-                        fi_group_sum.loc[len(fi_group_sum)] = [group, np.sum(np.array(FI_dat_saved[1])), sex, celltype, "None"]
+                        fi_group_sum.loc[len(fi_group_sum)] = [
+                            group,
+                            np.sum(np.array(FI_dat_saved[1])),
+                            sex,
+                            celltype,
+                            "None",
+                        ]
                         # fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
 
                 if ptype == "mean":
@@ -2477,23 +2512,23 @@ class PlotSpikeInfo(QObject):
                     ax = P.axarr[ir, ic]
                     ax.set_title("Summed FI", y=1.05)
                     ax.set_xlabel("Group")
-                    
+
                     if not all(np.isnan(fi_group_sum["sum"])):
                         print("fi_group_sum: ", fi_group_sum.head())
                         self.bar_pts(
                             fi_group_sum,
                             xname="Group",
                             yname="sum",
-                            celltype = "pyramidal",
+                            celltype="pyramidal",
                             # hue_category = "sex",
-                            ax = ax,
-                            plot_order = self.experiment["plot_order"][group_by], # ["age_category"],
-                            colors = self.experiment["plot_colors"],
+                            ax=ax,
+                            plot_order=self.experiment["plot_order"][group_by],  # ["age_category"],
+                            colors=self.experiment["plot_colors"],
                             enable_picking=False,
                         )
                         # ax.set_xlim(-0.5, 5.5)
-                        ax.set_ylim(self.experiment['ylims']['limits1']["summed_FI_limits"])
-                        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+                        ax.set_ylim(self.experiment["ylims"]["limits1"]["summed_FI_limits"])
+                        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
                         PH.talbotTicks(ax, axes="y", density=(1, 1))
                         # p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
                         # print(p, t)
@@ -2903,6 +2938,7 @@ class PlotSpikeInfo(QObject):
         coding_sheet: Optional[str] = None,
         coding_level: Optional[str] = None,
         exclude_unimportant: bool = False,
+        status_bar: object = None
     ):
         """assemble_datasets : Assemble the datasets from the summary and coding files,
         then combine FI curves (selected) in IV protocols for each cell.
@@ -2951,7 +2987,7 @@ class PlotSpikeInfo(QObject):
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
 
-        df = self.combine_by_cell(df)
+        df = self.combine_by_cell(df, status_bar=status_bar)
         print("\nWriting assembled data to : ", fn)
         print(df.head())
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
@@ -3089,7 +3125,10 @@ class PlotSpikeInfo(QObject):
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
         if cell_id_match is None:
-            CP("y", f"get cell expression: cell id match is None: {cell_id:s}, \n{df_summary.cell_id.values!s}")
+            CP(
+                "y",
+                f"get cell expression: cell id match is None: {cell_id:s}, \n{df_summary.cell_id.values!s}",
+            )
             return ""
         # print("cell id match ok: ", cell_id)
         if cell_id_match is not None:
@@ -3103,7 +3142,7 @@ class PlotSpikeInfo(QObject):
                 if row.cell_expression in self.experiment["remove_expression"]:
                     for re in self.experiment["remove_expression"]:
                         if row.cell_expression == re:
-                            row.cell_expression = 'ND'
+                            row.cell_expression = "ND"
         else:
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
@@ -3131,41 +3170,165 @@ class PlotSpikeInfo(QObject):
         df = self.preprocess_data(df, self.experiment)
         return df
 
-    def preprocess_data(self, df, experiment):
-        pd.options.mode.copy_on_write = True
-        """preprocess_data Clean up the data, add columns, etc., apply junction potential corrections, etc."""
-        df_summary = get_datasummary(experiment)
-        # print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
-        # print("df summary ids: ")
-        # for cid in df_summary.cell_id:
-        #     print("    ",cid)
-        # print(" ")
-        # print("df ids: ")
-        # for cid in df.cell_id:
-        #     print("    ", cid)
-        # print("*"*80)
+    def print_preprocessing(self, df_summary):
+        print("   Preprocess_data: df_summary column names: ", sorted(df_summary.columns))
+        print("df summary ids: ")
+        for cid in df_summary.cell_id:
+            print("    ", cid)
+        print(" ")
+        print("df ids: ")
+        for cid in df.cell_id:
+            print("    ", cid)
+        print("*" * 80)
 
-        # print("   Preprocess_data: df column names: ", sorted(df.columns))
-        # print("df: ")
-        # for d in df.to_dict(orient="records"):
-        #     print(f"<{d['cell_id']!s}, type(d['cell_id'])")
-        
+        print("   Preprocess_data: df column names: ", sorted(df.columns))
+        print("df: ")
+        for d in df.to_dict(orient="records"):
+            print(f"<{d['cell_id']!s}, type(d['cell_id'])")
 
-        # print("summary: ")
-        # for d in df_summary.to_dict(orient="records"):
-            # print(f"<{d['cell_id']!s}, ty")
+        print("summary: ")
+        for d in df_summary.to_dict(orient="records"):
+            print(f"<{d['cell_id']!s}, ty")
         # note df will have "short" names: Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0
         # df_summary will have long names: Rig2(MRK)/L23_intrinsic/2024.10.22_000/slice_000/cell_000
         # print("-2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         # print("-1 ", df_summary['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+
+    def check_list_contained(self, A:list, B: list):
+        # check if any of values in A are in B. 
+        A_str = ' '.join(map(str, A))
+        B_str = ' '.join(map(str, B))
+        # find all instances of A within B, case insensitive
+        instances = re.findall(A_str, B_str, re.IGNORECASE)
+        # return True if any instances were found, False otherwise
+        return len(instances) > 0
+
+
+    def check_include_exclude(self, df):
+        # Note that prior to this step, excluded IVs may have been analyzed
+        # so that the pdf and pkl files are present. If the analysis was updated,
+        # then the files *may* represent the updated analysis, but there may still be some
+        # excluded IVs on the disk.
+        # Note: this is tricky, as we may also have 'included' partial datasets
+        # Included IVs should *always* take precedence over the exclusion rules,
+        # as they will have partial data that is being "rescued" and should NOT be excluded.
+        # for the same cell and protocol!
+
+        if len(self.experiment["excludeIVs"]) ==  0:
+            return df
+        re_check_all = re.compile(r"All", re.IGNORECASE)
+        re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
+        re_slice = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})$")
+        re_slicecell = re.compile(
+            r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$"
+        )
+        # get slice and cell nubmers
+        re_slicecell2 = re.compile(
+            r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
+        )
+        includes = list(self.experiment["includeIVs"].keys())
+
+        CP("c", "Parsing/checking excluded and included IV datasets (noise, etc)")
+
+        for filename, key in self.experiment["excludeIVs"].items():
+            # so we should test for inclusion here first, for a cell and it's protocols.
+            # includes are always fully specified day/slice/cell names, with protocols.
+            # includes always take precedence. Note that the analysis will have already excluded the
+            # protocols in the exclude list, so we can skip those here.
+            if filename in includes: 
+                CP("c", f"   Preprocess_data: {filename:s} is in inclusion list (which takes precedence), so it will not be excluded.")
+                continue
+            # everything after this relates only to exclusion by day, slice, or cell. 
+            fparts = Path(filename).parts
+            fn = str(Path(*fparts[-3:]))
+            # print(fn)
+            # raise ValueError("Stop here")
+        
+            if len(fparts) > 3:
+                fnpath = str(Path(*fparts[:-3]))  # just day/slice/cell
+            else:
+                fnpath = None  # no leading path
+            reason = key["reason"]
+            protocols = key['protocols']
+            # includes will ALWAYS be fully specified day/slice/cell names, with protocols.
+
+            # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
+            dropped = False
+
+            if re_day.match(fn) is not None:  # specified a day, not a cell:
+                df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
+                CP(
+                    "r",
+                    f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}",
+                )
+                dropped = True
+            elif re_slice.match(fn) is not None:  # specified day and slice
+                fns = re_slice.match(fn)
+                df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
+                CP(
+                    "r",
+                    f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}",
+                )
+                dropped = True
+            elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
+                fnc = re_slicecell2.match(fn)
+                # generate an id with 1 number for the slice and 1 for the cell,
+                # test variations with _ between S and C as well
+                fn1 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}C{int(fnc['cellno']):1d}"
+                fn1a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}_C{int(fnc['cellno']):1d}"
+                fn2 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}C{int(fnc['cellno']):02d}"
+                fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
+                fns = [fn1, fn1a, fn2, fn2a]
+                # print(df.cell_id.unique())
+                dropped = False
+                for i, f in enumerate(fns):
+                    if fnpath is not None:
+                        fns[i] = str(Path(fnpath, f))  # add back the leading path
+                    if not df.loc[df.cell_id == fns[i]].empty:
+                        if self.check_list_contained(["all"], protocols):
+                            df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
+                            CP(
+                                "r",
+                                f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
+                            )
+                            dropped = True
+                        # otherwise, the excluded protocols were NOT analyzed in the first place, so we can continue
+                        # df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
+                        # CP(
+                        #     "m",
+                        #     f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
+                        # )
+                        # dropped = True
+                    elif not dropped:
+                        CP(
+                            "y",
+                            f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)",
+                        )
+            elif not dropped:
+                CP(
+                    "y",
+                    f"   Preprocess_data: {filename:s} not dropped, but was found in exclusion list",
+                )
+            else:
+                CP("y", f"   Preprocess_data: No exclusions found for {filename:s}")
+            # if fn == "2023.09.11_000/slice_001/cell_001":
+            #     print("Dropped: ", dropped)
+            #     raise ValueError("Dropped: ", dropped)
+
+        return df
+    
+
+    def preprocess_data(self, df, experiment):
+        pd.options.mode.copy_on_write = True
+        """preprocess_data Clean up the data, add columns, etc., apply junction potential corrections, etc."""
+        df_summary = get_datasummary(experiment)
+        # self.print_preprocessing(df_summary)
+
+        # generate a subject column
         df["Subject"] = ""
         df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
 
-        # print("df idsid df after getting Subject: ")
-        # for cid in df.cell_id:
-        #     print("    ", cid)
-        # print("*"*80)
-
+        # generate a usable layer column
         if "cell_layer" not in df.columns:
             layers = df_summary.cell_layer.unique()
             if len(layers) == 1 and layers == [" "]:  # no layer designations
@@ -3174,7 +3337,7 @@ class PlotSpikeInfo(QObject):
                 df["cell_layer"] = ""
                 df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
 
-        # print("1!  prior to checking expression: ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
+        # generate a usable cell expression column (e.g., is cell labeled or not)
         if "cell_expression" not in df.columns:
             expression = df_summary.cell_expression.unique()
             if len(expression) == 1 and expression == [" "]:  # no expressiondesignations
@@ -3186,22 +3349,8 @@ class PlotSpikeInfo(QObject):
                 )
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
 
-
-        gu = df.Group.unique()
-        # print("0!  ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-
-#  ******************************************************************************
+        #  ******************************************************************************
         CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")
-        # print("   Preprocess_data: Groups: ", gu)
-        # gu_nonan = [g for g in gu if pd.notnull(g)]
-        # for g in gu:
-        #     print(f"    {g!s}  (N={len(df.loc[df.Group == g]):d})")
-        #     for x in df.loc[df.Group == g].cell_id:
-        #         print("        ", x)
-            # if g in ["A", "AA"] and i0 < 20:
-            #         print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
-            #         i0 += 1
-        # print("=" * 80)
         df["sex"] = df.apply(self.clean_sex_column, axis=1)
         df["Rin"] = df.apply(self.clean_rin, axis=1)
         df["RMP"] = df.apply(self.clean_rmp, axis=1)
@@ -3235,18 +3384,11 @@ class PlotSpikeInfo(QObject):
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
-        # print("4 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        # print("df ids after getting all cleaning 1: ")
-        # for cid in df.cell_id:
-        #     print("    ", cid)
-        # print("*"*80)
 
         groups = df.Group.unique()
-        # print("   Preprocess_data:  Groups: ", groups)
-        expressions = df.cell_expression.unique()
-        # print("   Preprocess_data:  Expression: ", expressions)
-        # print("   experiment keys: ", self.experiment.keys())
-        if (
+
+        #        expressions = df.cell_expression.unique()
+        if (  # remove specific expression labels from teh data set?
             "remove_expression" in self.experiment.keys()
             and self.experiment["remove_expression"] is not None
         ):
@@ -3254,10 +3396,7 @@ class PlotSpikeInfo(QObject):
             for expression in self.experiment["remove_expression"]:  # expect a list
                 df = df[df.cell_expression != expression]
                 print("   Preprocess_data: Removed expression: ", expression)
-        # print("5: expression removed", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        
 
-        # self.data_table_manager.update_table(data=df)
         if "groupname" not in df.columns:
             df["groupname"] = np.nan
         df["groupname"] = df.apply(rename_groups, experiment=self.experiment, axis=1)
@@ -3267,94 +3406,21 @@ class PlotSpikeInfo(QObject):
             df.drop(df.loc[df.Group == "nan"].index, inplace=True)
             # print("5.2: groups removed ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         print(
-            "           Preprocess_data: # Groups found after dropping nan: ",
+            "           Preprocess_data: # Groups found after dropping 'nan' groups: ",
             df.Group.unique(),
             len(df.Group.unique()),
         )
-        # print("5.10: groups removed ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        # raise ValueError()
+
         df["age"] = df.apply(numeric_age, axis=1)
         df["shortdate"] = df.apply(make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
-        # print("5: age/sr/shortdate ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-    
-        # print("        # entries in dataframe after filtering: ", len(df))
-        # if "cell_id2" not in df.columns:
-        #     df["cell_id2"] = df.apply(make_cell_id2, axis=1)
-        # print("cell ids: \n", df.cell_id)
-        if len(self.experiment["excludeIVs"]) > 0:
-            CP("c", "Parsing Excluded IV datasets (noise, etc)")
-            # print(self.experiment["excludeIVs"])
-            for filename, key in self.experiment["excludeIVs"].items():
-                fparts = Path(filename).parts
-                fn = str(Path(*fparts[-3:]))
-                if len(fparts) > 3:
-                    fnpath = str(Path(*fparts[:-3]))  # just day/slice/cell
-                else:
-                    fnpath = None  # no leading path
-                reason = key["reason"]
-                re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
-                re_slice = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})$")
-                re_slicecell = re.compile(
-                    r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$"
-                )
-                # get slice and cell nubmers
-                re_slicecell2 = re.compile(
-                    r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
-                )
 
-                # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
-                dropped = False
-
-                if re_day.match(fn) is not None:  # specified a day, not a cell:
-                    df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
-                    CP(
-                        "r",
-                        f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}",
-                    )
-                    dropped = True
-                elif re_slice.match(fn) is not None:  # specified day and slice
-                    fns = re_slice.match(fn)
-                    df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
-                    CP(
-                        "r",
-                        f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}",
-                    )
-                    dropped = True
-                elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
-                    fnc = re_slicecell2.match(fn)
-                    # generate an id with 1 number for the slice and 1 for the cell,
-                    # test variations with _ between S and C as well
-                    fn1 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}C{int(fnc['cellno']):1d}"
-                    fn1a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}_C{int(fnc['cellno']):1d}"
-                    fn2 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}C{int(fnc['cellno']):02d}"
-                    fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
-                    fns = [fn1, fn1a, fn2, fn2a]
-                    # print(df.cell_id.unique())
-                    dropped = False
-                    for i, f in enumerate(fns):
-                        if fnpath is not None:
-                            fns[i] = str(Path(fnpath, f))  # add back the leading path
-                        if not df.loc[df.cell_id == fns[i]].empty:
-                            df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
-                            CP(
-                                "m",
-                                f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
-                            )
-                            dropped = True
-                        elif not dropped:
-                            pass
-                            # CP(
-                            #     "r",
-                            #     f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)",
-                            # )
-                elif not dropped:
-                    CP("y", f"   Preprocess_data: {filename:s} not dropped, but was found in exclusion list")
-                else:
-                    CP("y", f"   Preprocess_data: No exclusions found for {filename:s}")
+        # Now make sure the excluded IV data is removed from the dataset and that included 
+        # datasets are properly included.
+        df = self.check_include_exclude(df)
+        # raise ValueError("Stop here 2")
         gu = df.Group.unique()
-        print("   Preprocess_data: Groups and cells after exclusions: ")
-
+        # print("   Preprocess_data: Groups and cells after exclusions: ")
         # for g in sorted(gu):
         #     print(f"    {g:s}  (N={len(df.loc[df.Group == g]):d})")
         #     i0 = 0
@@ -3364,6 +3430,7 @@ class PlotSpikeInfo(QObject):
         #     #         print("        ", df.loc[df.cell_id == x].I_maxHillSlope.values)
         #     #         i0 += 1
         # print("=" * 80)
+
         # now apply any external filters that might be specified in the configuration file
         if "filters" in self.experiment.keys():
             print("   Preprocess_data: Filters is set: ")
@@ -3371,9 +3438,6 @@ class PlotSpikeInfo(QObject):
                 print("      Preprocess_data: Filtering on: ", key, values)
                 df = df[df[key].isin(values)]
 
-        # print("age categories: ", df.age_category.unique())
-        # print("preload returns with Group list: ", df.Group.unique())
-        # raise ValueError('preprocess')
         return df
 
     def do_stats(
