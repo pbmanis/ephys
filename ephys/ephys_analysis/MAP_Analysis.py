@@ -27,7 +27,7 @@ Logger = logging.getLogger("AnalysisLogger")
 level = logging.DEBUG
 Logger.setLevel(level)
 # create file handler which logs even debug messages
-logging_fh = logging.FileHandler(filename="map_analysis.log")
+logging_fh = logging.FileHandler(filename="logs/map_analysis.log")
 logging_fh.setLevel(level)
 logging_ch = logging.StreamHandler()
 logging_ch.setLevel(level)
