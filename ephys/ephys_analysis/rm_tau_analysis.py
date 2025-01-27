@@ -175,10 +175,11 @@ class RmTauAnalysis:
                     printWindow=False,
                 )
             except ValueError:
+                
                 print("Error in tau_h analysis")
                 print("r_pk: ", r_pk, "r_ss: ", r_ss)
                 print("rin region: ", rin_region)
-                raise ValueError("Error in tau_h analysis")
+                pass# raise ValueError("Error in tau_h analysis")
 
     def tau_membrane(
         self,
