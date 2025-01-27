@@ -357,8 +357,11 @@ class IVAnalysis(Analysis):
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
         print("iv_analysis:analyze_ivs: allivs: ", allivs)
-        validivs = CIE.check_exclusions(cell_id, self.exclusions, allivs)
-        validivs, additional_ivs, additional_iv_records = CIE.check_inclusions(cell_id, self.inclusions, validivs)
+        # validivs = CIE.check_exclusions(cell_id, self.exclusions, allivs)
+        validivs, additional_ivs, additional_iv_records = CIE.include_exclude(cell_id, 
+                                                                              inclusions = self.inclusions,
+                                                                               exclusions= self.exclusions,
+                                                                                 allivs=allivs)
 
         print("validivs: ", validivs)
         print("additional ivs: ", additional_ivs)
