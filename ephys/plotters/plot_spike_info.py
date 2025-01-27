@@ -728,7 +728,7 @@ class PlotSpikeInfo(QObject):
 
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
         df3 = pd.read_excel(coding_file, sheet_name=coding_sheet)
-        # print(df3.head())
+        print(df3.head())
         for index in df.index:
             row = df.loc[index]
             if pd.isnull(row.date):
@@ -737,6 +737,8 @@ class PlotSpikeInfo(QObject):
                 coding_name = self.experiment["coding_name"]
             else:
                 coding_name = "Group"
+            # print(row.date, df3.date.values)
+            print("date in the date values: ", row.date, row.date in df3.date.values)
             if row.date in df3.date.values:
                 if "sex" in df3.columns:  # update sex? Should be in main table.
                     df.loc[index, "sex"] = df3[df3.date == row.date].sex.astype(str).values[0]
@@ -744,14 +746,18 @@ class PlotSpikeInfo(QObject):
                     df.loc[index, "cell_expressoin"] = (
                         df3[df3.date == row.date].cell_expression.astype(str).values[0]
                     )
-                if level == "date":
+                print("Level: ", level.lower())
+                if level.lower() == "date":
+                    print("row.date: ", row.date)
                     df.loc[index, "Group"] = (
                         df3[df3.date == row.date][coding_name].astype(str).values[0]
                     )
-                elif level == "slice":
+                    if df.loc[index, "Group"] == np.nan:
+                        print("     df.loc[index, 'Group']: ", df.loc[index, "Group"])
+                elif level.lower() == "slice":
                     mask = (df3.date == row.date) & (df3.slice_slice == row.slice_slice)
                     df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
-                elif level == "cell":
+                elif level.lower() == "cell":
                     mask = (
                         (df3.date == row.date)
                         & (df3.slice_slice == row.slice_slice)
@@ -821,9 +827,13 @@ class PlotSpikeInfo(QObject):
         # print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
         if coding_file is not None:  # add coding from the coding file
             df = self.read_coding_file(df_summary, coding_file, coding_sheet, coding_level)
+            print("coding file: ", coding_file, " sheet: ", coding_sheet, " level: ", coding_level)
+            print("Groups from coding file: ", df["Group"].unique())
+            print(df.columns)
         else:
             df = df_summary
             df["Group"] = "Control"
+        # raise ValueError("Need to fix the coding file reading")
         FD = filter_data.FilterDataset(df, self.experiment["junction_potential"])
         if "remove_expression" not in self.experiment.keys():
             self.experiment["remove_expression"] = None
@@ -1141,15 +1151,18 @@ class PlotSpikeInfo(QObject):
                 if expression in hue_order:
                     hue_order.remove(expression)
 
-        # if hue_category == "sex":
-        #     print("setting hue_palette via sex")
-        #     hue_palette = {
-        #         "F": "#FF000088",
-        #         "M": "#0000ff88",
-        #         " ": "k",
-        #         "AIE": "#444488FF",
-        #         "CON": "#9999ddFF",
-        #     }
+        if hue_category == "sex":
+            #######
+            ### Technically, this should ONLY be set from the configuration file. 
+            ####### 
+            # print("setting hue_palette via sex")
+            hue_palette = {
+                "F": "#FF000088",
+                "M": "#0000ff88",
+                " ": "k",
+                "AIE": "#444488FF",
+                "CON": "#9999ddFF",
+            }
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
         out_of_bounds_markers = "^"  #  for h in hue_order]
@@ -1609,6 +1622,13 @@ class PlotSpikeInfo(QObject):
                     continue
                 if measure not in df.columns:
                     continue
+                # print("%"*80)
+                # print("df columns: ", df.columns)
+                # print("measure: ", measure)
+                # print("plot_order: ", plot_order)
+                # print("hue_category: ", hue_category)
+                # print("xname: ", xname)
+                # print("%"*80)
                 # try:
                 picker_func = self.create_one_plot_categorical(
                     data=df,
@@ -1840,6 +1860,7 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
+        # print("-"*80, "\nBar pts:hue: ", hue_category, "plot_order: ", plot_order, "\n", "-"*80)
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
@@ -2512,7 +2533,7 @@ class PlotSpikeInfo(QObject):
                     ax = P.axarr[ir, ic]
                     ax.set_title("Summed FI", y=1.05)
                     ax.set_xlabel("Group")
-
+                    print("SUM: ", fi_group_sum)
                     if not all(np.isnan(fi_group_sum["sum"])):
                         print("fi_group_sum: ", fi_group_sum.head())
                         self.bar_pts(
@@ -3226,8 +3247,11 @@ class PlotSpikeInfo(QObject):
         re_slicecell2 = re.compile(
             r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
         )
-        includes = list(self.experiment["includeIVs"].keys())
-
+        if self.experiment["includeIVs"] is not None:
+            includes = list(self.experiment["includeIVs"].keys())
+        else:
+            includes = []
+            
         CP("c", "Parsing/checking excluded and included IV datasets (noise, etc)")
 
         for filename, key in self.experiment["excludeIVs"].items():
