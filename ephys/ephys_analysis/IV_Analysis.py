@@ -204,7 +204,7 @@ class IVAnalysis(Analysis):
         icell,
         allprots: dict,
         celltype: str,
-        pdf=None,
+        pdf:Union[Path, str, None]=None,
     ):
         """
         Overall analysis of IV protocols for one cell in the day
@@ -218,7 +218,7 @@ class IVAnalysis(Analysis):
             dictionary of protocols for the day/slice/cell
 
         pdf : None
-            if not none, then is the pdffile to write the data to
+            if not none, then this is the pdffile to write the data to
 
         Returns
         -------
