@@ -514,7 +514,7 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
         CP("c", f"...  datapath: {datapath2!s} is OK")
         datapath = datapath2
     else:
-        print("tried datapath: ", datapath2, celltype)
+        # print("tried datapath: ", datapath2, celltype)
         print(f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         raise ValueError
