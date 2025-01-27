@@ -582,7 +582,7 @@ class DataTables:
         pl = "{padding-left"
         closure = "}"
         self.win.statusBar().setStyleSheet(
-            f"QStatusBar\{pl:s}:8px;background:rgba(0,0,0,255);color:{color:s};font-weight:{weight:s};{closure:s}"
+            f"QStatusBar {pl:s}:8px; background:rgba(0,0,0,255); color:{color:s}; font-weight:{weight:s};{closure:s}"
         )
         self.win.statusBar().showMessage(message)
 
@@ -680,8 +680,8 @@ class DataTables:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
                     self.PSI.set_experiment(self.dataset, self.experiment)
-                    print("New configuration: ", self.experimentname)
-                    print(" With: \n", self.experiment)
+                    # print("New configuration: ", self.experimentname)
+                    # print(" With: \n", self.experiment)
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
                     FUNCS.set_current_table_selection(
