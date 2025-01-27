@@ -1,3 +1,13 @@
+    """ Command parameters for the GUI
+
+    Parametertree (pyqtgraph) setup for the datatables GUI
+
+
+    Returns
+    -------
+    tuple
+        parametertree data sets
+    """
 from pyqtgraph.parametertree import Parameter, ParameterTree
 
 Age_Values = [  # this is just for selecting age ranges in the GUI
