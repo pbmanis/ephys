@@ -570,12 +570,13 @@ class Functions:
     def check_excluded_dataset(self, day_slice_cell, experiment, protocol):
         if experiment["excludeIVs"] is None:
             return False
-        print("check_excluded_dataset in include list: ", day_slice_cell, day_slice_cell in experiment["includeIVs"])
         print("     and in exclude list: ", day_slice_cell in experiment["excludeIVs"])
-        include_flag = day_slice_cell in experiment["includeIVs"]
-        if include_flag and protocol in experiment["includeIVs"][day_slice_cell]['protocols']:  # inclusions
-            CP("g", f"    Cell/protocol has entries in Inclusion table: {include_flag!s}")
-            return False
+        if experiment["includeIVs"] is not None:
+            print("check_excluded_dataset in include list: ", day_slice_cell, day_slice_cell in experiment["includeIVs"])
+            include_flag = day_slice_cell in experiment["includeIVs"]
+            if include_flag and protocol in experiment["includeIVs"][day_slice_cell]['protocols']:  # inclusions
+                CP("g", f"    Cell/protocol has entries in Inclusion table: {include_flag!s}")
+                return False
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
         if exclude_flag:
             CP("r", f"    Cell has entries in exclusion table: {exclude_flag!s}")
@@ -2160,9 +2161,10 @@ class Functions:
         try:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         except:
-            print(df.cell_id)
-            print([x for x in df.cell_id.values])
-            self.status_bar.showMessage(f"Couldn't get cell: {cell:s} from dataframe")
+            print("datatable functions:ComputeFIFits:get_cell failed to find:\n    ",df.cell_id)
+            print("Here are the cell_ids in the dataframe: ", [x for x in df.cell_id.values])
+            if self.status_bar is not None:
+                self.status_bar.showMessage(f"Couldn't get cell: {cell:s} from dataframe")
             raise ValueError(f"Couldn't get cell: {cell:s} from dataframe")
         if df_cell is None:
             return None
