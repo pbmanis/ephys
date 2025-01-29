@@ -27,7 +27,7 @@ from statsmodels.stats.multitest import multipletests
 
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools.get_computer import get_computer
-import ephys.tools.show_combined_datafile as SCD
+import ephys.tools.show_assembled_datafile as SAD
 from ephys.gui import data_table_functions
 from ephys.tools import filter_data, fitting, utilities
 
@@ -547,6 +547,7 @@ cols = [
     "AP_HW",
     "AP15Rate",
     "AdaptRatio",
+    "AdaptIndex",
     "AHP_trough_V",
     "AHP_trough_T",
     "AHP_depth_V",
@@ -570,6 +571,7 @@ datacols = [
     "AP_HW",
     "AP15Rate",
     "AdaptRatio",
+    "AdaptIndex",
     "AHP_trough_V",
     "AHP_trough_T",
     "AHP_depth_V",
@@ -581,10 +583,10 @@ datacols = [
 
 """
 Each protocol has:
-"Spikes: ", dict_keys(['FI_Growth', 'AdaptRatio', 'FI_Curve', 
-    'FiringRate', 'AP1_Latency', 'AP1_HalfWidth', 
-'AP1_HalfWidth_interpolated', 'AP2_Latency', 'AP2_HalfWidth', 
-    'AP2_HalfWidth_interpolated',
+"Spikes: ", dict_keys(['FI_Growth', 'AdaptRatio', 'AdaptIndex',
+    'FI_Curve',  'FiringRate', 
+    'AP1_Latency', 'AP1_HalfWidth', 
+    'AP1_HalfWidth_interpolated', 'AP2_Latency', 'AP2_HalfWidth', 'AP2_HalfWidth_interpolated',
     'FiringRate_1p5T', 'AHP_depth_V', 'AHP_Trough', 'spikes', 'iHold', 
     'pulseDuration', 'baseline_spikes', 'poststimulus_spikes',
     "LowestCurrentSpike])
@@ -791,6 +793,7 @@ class PlotSpikeInfo(QObject):
         coding_sheet: Optional[str] = "Sheet1",
         coding_level: Optional[str] = "date",
         exclude_unimportant=False,
+        status_bar: Optional[object] = None,
     ):
         """combine_summary_and_coding: combine the summary data with the coding file
 
@@ -849,6 +852,7 @@ class PlotSpikeInfo(QObject):
         )
 
         CP("m", "Finished reading files\n")
+        status_bar("Finished reading files")
         return df
 
     def combine_by_cell(self, df, valid_protocols=None, status_bar:object=None):
@@ -860,10 +864,15 @@ class PlotSpikeInfo(QObject):
             a. Use only the first spike at the lowest current level that evoke spikes
                 for AP HW, AP_thr_V, AP15Rate, AdaptRatio, AHP_trough_V, AHP_depth_V, AHP_trough_T
                 This is in ['spikes']["LowestCurrentSpike"]
+
             b. Do not use traces that are above the spike firing rate turnover point (non-monotonic)
+            c. compute the Adaptation Index (Manis et al., 2019, PLoS One) for a selected firing rate
+                range. (e.g., 20-40 Hz)
+
 
         """
         CP("y", "Combine by cell")
+        self.status_bar = status_bar
 
         df = df.apply(make_cell_id, axis=1)
         df.dropna(subset=["cell_id"], inplace=True)
@@ -1463,12 +1472,13 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_T",
             "AHP_depth_V",
             "AdaptRatio",
+            "AdaptIndex",
             "FIMax_1",
             "FIMax_4",
             "maxHillSlope",
             "I_maxHillSlope",
         ]
-        df = SCD.populate_columns(
+        df = SAD.populate_columns(
             df,
             configuration=self.experiment,
             select_by="Rs",
@@ -1505,7 +1515,7 @@ class PlotSpikeInfo(QObject):
         # for meas in measures:
         #     if meas in df_R.columns:
         #         print("meas: ", meas)
-        df_R = SCD.perform_selection(
+        df_R = SAD.perform_selection(
             select_by=select_by,
             select_limits=[0, 1e9],
             data=df_R,
@@ -1590,7 +1600,7 @@ class PlotSpikeInfo(QObject):
         # print(df.cell_type.unique())
         df = self.rescale_values(df)
         if representation in ["bestRs", "mean"]:
-            df = SCD.get_best_and_mean(
+            df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
                 parameters=measures,
@@ -2002,6 +2012,7 @@ class PlotSpikeInfo(QObject):
             "AP_HW",
             "AP_thr_V",
             "AdaptRatio",
+            "AdaptIndex",
             "FISlope",
             "maxHillSlope",
             "FIMax_1",
@@ -2022,7 +2033,7 @@ class PlotSpikeInfo(QObject):
         # df.dropna(subset=["age"], inplace=True)
         df = self.rescale_values(df)
         if representation in ["bestRs", "mean"]:
-            df = SCD.get_best_and_mean(
+            df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
                 parameters=measures,
@@ -2171,7 +2182,7 @@ class PlotSpikeInfo(QObject):
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(len(measures))]
         self.rescale_values(df)
         if representation in ["bestRs", "mean"]:
-            df = SCD.get_best_and_mean(
+            df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
                 parameters=measures,
@@ -2201,7 +2212,7 @@ class PlotSpikeInfo(QObject):
         self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
 
         if representation in ["bestRs", "mean"]:
-            df = SCD.get_best_and_mean(
+            df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
                 parameters=measures,
@@ -2963,6 +2974,8 @@ class PlotSpikeInfo(QObject):
     ):
         """assemble_datasets : Assemble the datasets from the summary and coding files,
         then combine FI curves (selected) in IV protocols for each cell.
+        We also calculate some spike rate measures
+
 
         Parameters
         ----------
@@ -2978,6 +2991,9 @@ class PlotSpikeInfo(QObject):
             _description_, by default False
         fn : str, optional
             _description_, by default ""
+        status_bar: Union[object, None], optional 
+            The function to call to put a message on the status bar
+
         """
         print(
             f"Assembling:\n  coding file: {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
@@ -2988,6 +3004,7 @@ class PlotSpikeInfo(QObject):
             coding_sheet=coding_sheet,
             coding_level=coding_level,
             exclude_unimportant=exclude_unimportant,
+            status_bar=status_bar
         )
         if "protocol" not in df.columns:
             df["protocol"] = ""
@@ -3485,6 +3502,7 @@ class PlotSpikeInfo(QObject):
                 "AHP_trough_T",
                 # "AP15Rate",
                 "AdaptRatio",
+                "AdaptIndex",
                 # "FISlope",
                 "maxHillSlope",
                 "I_maxHillSlope",
@@ -3614,6 +3632,7 @@ if __name__ == "__main__":
             dfa,
             measures=[
                 "AdaptRatio",
+                "AdaptIndex",
                 "FISlope",
                 "maxHillSlope",
                 "I_maxHillSlope",

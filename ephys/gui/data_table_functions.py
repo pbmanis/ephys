@@ -82,7 +82,7 @@ def create_logger(
     level = logging.DEBUG
     Logger.setLevel(level)
     # create file handler which logs even debug messages
-    filename=Path("logs", log_file)
+    filename = Path("logs", log_file)
     if not filename.is_file():
         filename.parent.mkdir(parents=True, exist_ok=True)
         with open(filename, "w") as f:
@@ -126,6 +126,7 @@ datacols = [
     "AP_peak_V",
     "AP15Rate",
     "AdaptRatio",
+    "AdaptIndex",
     "AHP_trough_V",
     "AHP_depth_V",
     "AHP_trough_T",
@@ -158,6 +159,7 @@ iv_keys: list = [
 spike_keys: list = [
     "FI_Growth",
     "AdaptRatio",
+    "AdaptIndex",
     "FI_Curve",
     "FiringRate",
     "AP1_Latency",
@@ -196,6 +198,7 @@ mapper: dict = {
 mapper1: dict = {
     "AP15Rate": "FiringRate_1p5T",
     "AdaptRatio": "AdaptRatio",
+    "AdaptIndex": "AdaptIndex",
 }
 
 iv_mapper: dict = {
@@ -224,6 +227,7 @@ def numeric_age(row):
     age = float(int("".join(filter(str.isdigit, row.age))))
     return age
 
+
 def print_spike_keys(row):
     if pd.isnull(row.IV):
         return row
@@ -237,7 +241,7 @@ class Functions:
         self.cursor = []  # a list to hold cursors (need to keep a live reference)
         self.textbox = None
         self.status_bar = None
-    
+
     def set_status_bar(self, status_bar):
         self.status_bar = status_bar
 
@@ -287,18 +291,16 @@ class Functions:
             if selected_row_number is None:
                 print("No selected rows")
                 break
-            cell_id = table_manager.get_selected_cellid_from_table(
-                selected_row_number
-            )
+            cell_id = table_manager.get_selected_cellid_from_table(selected_row_number)
             if cell_id is None:
                 # print("cell id is none?")
                 continue
             else:
                 selected_cell_ids.append(cell_id)
         return selected_cell_ids
-    
+
     def set_current_table_selection(self, table_manager, cell_ids):
-        """ set_current_table_selection: Set the current table selection to the cell_ids in the list
+        """set_current_table_selection: Set the current table selection to the cell_ids in the list
         Used to restore the selection after a table update.
         """
         if len(cell_ids) == 0:
@@ -308,7 +310,10 @@ class Functions:
             index_rows = table_manager.table.model().index(row, 0)
             if table_manager.get_selected_cellid_from_table(index_rows) in cell_ids:
                 selection.select(index_rows, index_rows)
-        mode = pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Select | pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Rows
+        mode = (
+            pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Select
+            | pg.Qt.QtCore.QItemSelectionModel.SelectionFlag.Rows
+        )
         results = table_manager.table.selectionModel().select(selection, mode)
         table_manager.table.scrollTo(selection.indexes()[0])
         return results
@@ -572,9 +577,15 @@ class Functions:
             return False
         print("     and in exclude list: ", day_slice_cell in experiment["excludeIVs"])
         if experiment["includeIVs"] is not None:
-            print("check_excluded_dataset in include list: ", day_slice_cell, day_slice_cell in experiment["includeIVs"])
+            print(
+                "check_excluded_dataset in include list: ",
+                day_slice_cell,
+                day_slice_cell in experiment["includeIVs"],
+            )
             include_flag = day_slice_cell in experiment["includeIVs"]
-            if include_flag and protocol in experiment["includeIVs"][day_slice_cell]['protocols']:  # inclusions
+            if (
+                include_flag and protocol in experiment["includeIVs"][day_slice_cell]["protocols"]
+            ):  # inclusions
                 CP("g", f"    Cell/protocol has entries in Inclusion table: {include_flag!s}")
                 return False
         exclude_flag = day_slice_cell in experiment["excludeIVs"]
@@ -584,7 +595,11 @@ class Functions:
             CP("r", f"        excluded table data: {exclude_table!s}")
             CP("r", f"        testing protocol: {protocol!s}")
             proto = Path(protocol).name  # passed protocol has day/slice/cell/protocol
-            if proto in exclude_table["protocols"] or exclude_table["protocols"] == ["all"] or exclude_table["protocols"] == ["All"]:
+            if (
+                proto in exclude_table["protocols"]
+                or exclude_table["protocols"] == ["all"]
+                or exclude_table["protocols"] == ["All"]
+            ):
                 CP(
                     "y",
                     f"        Excluded cell/protocol: {day_slice_cell:s}, {proto:s} because: {exclude_table['reason']:s}",
@@ -1406,7 +1421,7 @@ class Functions:
         x, y = event.xdata, event.ydata
         self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
 
-    def categorize_ages(self, row,  experiment):
+    def categorize_ages(self, row, experiment):
         age = numeric_age(row)
         for k in experiment["age_categories"].keys():
             if (
@@ -1415,7 +1430,6 @@ class Functions:
             ):
                 age_category = k
         return age_category
-
 
     def get_selected_cell_data_FI(
         self,
@@ -1498,17 +1512,17 @@ class Functions:
             # One analysis is this:
             # for each cell class,
             #   for each cell, for each level, plot the latency of the LAST spike in the train
-            LS = dict.fromkeys(list(experiment['group_map'].keys()), {})
+            LS = dict.fromkeys(list(experiment["group_map"].keys()), {})
             n1 = dict.fromkeys(list(LS.keys()), [])
             # {
             #     "+/+": {},
             #     "-/-": {},   # dict keys are current level, lastspikes are arrays of spikes
             # }  # last spike dict: keys are current level, lastspikes are arrays of spikes .
             # LS[I]{genotype1: dict of {I: , lastspikesarray of latencies, genotype2: array of latencies}
-            Ns:dict = {}
-            
+            Ns: dict = {}
+
             for ells in LS.keys():
-                Ns[ells] = [] # {"+/+": [], "-/-": []}  # track cells used.
+                Ns[ells] = []  # {"+/+": [], "-/-": []}  # track cells used.
             for selected in assembleddata.itertuples():
                 pcolor = colors[nplots].colors
                 grp = selected.Group
@@ -1589,7 +1603,7 @@ class Functions:
                     ucurr = np.around(current, 2)
 
                     print(grp)
-                    if (isinstance(grp, float) and np.isnan(grp)):
+                    if isinstance(grp, float) and np.isnan(grp):
                         continue
                     if grp is None or (isinstance(grp, float) and np.isnan(grp)):
                         grp = cell_df["age_category"]
@@ -1604,14 +1618,14 @@ class Functions:
                 # filled for GFP+ or EYFP+
                 # open for GFP- or EYFP-
 
-                if (isinstance(grp, float) and np.isnan(grp)):
+                if isinstance(grp, float) and np.isnan(grp):
                     continue
                 Ns[grp].append(selected.cell_id)
                 gcolor = "k"
                 symbol = "o"
                 fillstyle = "full"
                 facecolor = "lightgrey"
-                
+
                 if grp in ["+/+", "-/-", "+/-"]:
                     match grp:
                         case "+/+":
@@ -1807,7 +1821,7 @@ class Functions:
                     #     bins=np.linspace(0, 1, 20, endpoint=True),
                     # )
                     n1[grp].append([icurr, np.sum(h1), h1[-1], h1[0]])
-                    # n2.append([icurr, np.sum(h2), h2[-1], h1[0]])                          
+                    # n2.append([icurr, np.sum(h2), h2[-1], h1[0]])
                     # print(np.array(LS["+/+"][current]))
                     # print(h1)
                     yd = 0.035
@@ -1815,9 +1829,23 @@ class Functions:
                     color = experiment["plot_colors"][grp]
                     if np.sum(h1) > 0:
                         if pmode == 0:
-                            ax[1, 1].bar(b1[:-1]-0.05, yd*h1/np.sum(h1), width=0.05, color=color, alpha=0.7, bottom=current)
+                            ax[1, 1].bar(
+                                b1[:-1] - 0.05,
+                                yd * h1 / np.sum(h1),
+                                width=0.05,
+                                color=color,
+                                alpha=0.7,
+                                bottom=current,
+                            )
                         if pmode == 1:
-                            ax[1,1].stairs(edges=b1, values=yd*h1/np.sum(h1)+icurr, color=color, alpha=0.7, baseline=icurr, fill=None)
+                            ax[1, 1].stairs(
+                                edges=b1,
+                                values=yd * h1 / np.sum(h1) + icurr,
+                                color=color,
+                                alpha=0.7,
+                                baseline=icurr,
+                                fill=None,
+                            )
                     # if np.sum(h2) > 0:
                     #     if pmode == 0:
                     #         ax[1, 1].bar(b2[:-1] + 0.05, yd*h2/np.sum(h2), width=0.05, color="salmon", alpha=0.7, bottom=current)
@@ -1828,14 +1856,21 @@ class Functions:
                     # n1[grp] = np.array(n1[grp])#.reshape(-1, 4)
                     # n2 = np.array(n2)#.reshape(-1, 4)
                     # print(n1[:,0])
-                    ax[2, 0].plot(np.array(n1[grp])[:,0], np.array(n1[grp])[:, 2]/np.array(n1[grp])[:,1], color = experiment["plot_colors"][grp],
-                                marker="o", linestyle="-", markersize=4, fillstyle=fillstyle, markerfacecolor=experiment["plot_colors"][grp],
-                                clip_on=False)
+                    ax[2, 0].plot(
+                        np.array(n1[grp])[:, 0],
+                        np.array(n1[grp])[:, 2] / np.array(n1[grp])[:, 1],
+                        color=experiment["plot_colors"][grp],
+                        marker="o",
+                        linestyle="-",
+                        markersize=4,
+                        fillstyle=fillstyle,
+                        markerfacecolor=experiment["plot_colors"][grp],
+                        clip_on=False,
+                    )
                 # ax[2, 0].plot(n2[:,0], n2[:, 2]/n2[:,1], "ro-")
-                ax[2,0].set_ylim(0, 1)
-                ax[2,0].set_xlim(0, 1)
+                ax[2, 0].set_ylim(0, 1)
+                ax[2, 0].set_xlim(0, 1)
                 ax[1, 1].set_ylim(0.4, 1.05)
-    
 
         # plot some summary stuff
         # sns.jointplot(
@@ -2124,7 +2159,7 @@ class Functions:
         """compute_FI_Fits
         Assemble data from multiple protocols to compute the FI curve for a cell.
         This allows us to splice together data from multiple protocols to get a complete FI curve.
-        We also assemble other data (input resistances, etc).
+        We also assemble other data (input resistances, adaptation indices, etc).
 
         Parameters
         ----------
@@ -2161,7 +2196,7 @@ class Functions:
         try:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         except:
-            print("datatable functions:ComputeFIFits:get_cell failed to find:\n    ",df.cell_id)
+            print("datatable functions:ComputeFIFits:get_cell failed to find:\n    ", df.cell_id)
             print("Here are the cell_ids in the dataframe: ", [x for x in df.cell_id.values])
             if self.status_bar is not None:
                 self.status_bar.showMessage(f"Couldn't get cell: {cell:s} from dataframe")
@@ -2181,7 +2216,8 @@ class Functions:
             # else:
             #     raise ValueError(f"Code stop #3 cell: {day_slice_cell:s}  protocol: {protocol:s}")
         srs = []
-        dur = []
+        durations = []
+        delays = []
         Rs = []
         CNeut = []
         important = []
@@ -2191,11 +2227,13 @@ class Functions:
             if protocol.endswith("0000"):  # bad protocol name
                 continue
             if self.status_bar is not None:
-                self.status_bar.showMessage(f"Reading data for cell: {cell:s}, protocol: {protocol:s}")
+                self.status_bar.showMessage(
+                    f"Reading data for cell: {cell:s}, protocol: {protocol:s}"
+                )
             day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
             # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
-                # continue
+            # continue
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
                 fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
@@ -2203,21 +2241,27 @@ class Functions:
                 fullpath = Path(experiment["rawdatapath"], protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
-                    if not AR.getData(fullpath, allow_partial=True, record_list=[0]):  # just get the first record.
+                    if not AR.getData(
+                        fullpath, allow_partial=True, record_list=[0]
+                    ):  # just get the first record.
                         continue
                     sample_rate = AR.sample_rate[0]
                     duration = AR.tend - AR.tstart
+                    delay = AR.tstart
                     srs.append(sample_rate)
                     Rs.append(AR.CCComp["CCBridgeResistance"])
                     CNeut.append(AR.CCComp["CCNeutralizationCap"])
-                    dur.append(duration)
+                    durations.append(duration)
+                    delays.append(delay)
                     important.append(AR.checkProtocolImportant(fullpath))
                     CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
                     valid_prots.append(protocol)
                 except ValueError:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
                     if self.status_bar is not None:
-                        self.status_bar.showMessage(f"Acq4Read failed to read data file: {str(fullpath):s}")
+                        self.status_bar.showMessage(
+                            f"Acq4Read failed to read data file: {str(fullpath):s}"
+                        )
                     raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = valid_prots  # only count valid protocols
@@ -2245,7 +2289,8 @@ class Functions:
             "important": important,
             "protocols": list(df_cell.IV),
             "sample_rate": srs,
-            "duration": dur,
+            "delay": delay,
+            "duration": duration,
             "Rs": Rs,
             "CNeut": CNeut,
             "holding": None,
@@ -2282,32 +2327,36 @@ class Functions:
         firing_rates: list = []
         firing_last_spikes: list = []
         latencies: list = []
+        adaptation_indices: list = []
+        adaptation_rates: list = []
         protofails = 0
         # check protocols for AT least the minimum required
 
         if "FI_protocols_required" in experiment.keys():
-            all_required_protocols = False
+            any_required_protocols = False
             CP("y", "\nChecking for required protocols")
-            print("protocols: ", protocols)
-            print("Protocols required: ", experiment["FI_protocols_required"].keys())
+            print("   Protocols in dataset: ", protocols)
+            print("   Protocols required: ", experiment["FI_protocols_required"].keys())
             for ip, protocol in enumerate(protocols):
                 short_proto_name = Path(protocol).name[:-4]
-                # print("    short_proto_name: ", short_proto_name)
+                print("    short_proto_name: ", short_proto_name)
                 if short_proto_name in experiment["FI_protocols_required"].keys():
-                    all_required_protocols = True
-            CP("g", f"Have required protocols: {all_required_protocols}")
-            if not all_required_protocols:
-                CP("y", f"    >>>> Not all required FI protocols found for cell: {cell:s}")
+                    any_required_protocols = True
+            CP("g", f"  Have required protocols: {any_required_protocols}")
+            if not any_required_protocols:
+                CP("y", f"    >>>> No required FI protocols found for cell: {cell:s}")
                 if self.status_bar is not None:
-                    self.status_bar.showMessage(f"Not all required FI protocols found for cell: {cell:s}")
+                    self.status_bar.showMessage(
+                        f"No required FI protocols found for cell: {cell:s}"
+                    )
                 return None
             print("\n")
-
 
         # check the protocols
         for ip, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
+            full_protocol = Path(protocol).name
             short_proto_name = Path(protocol).name[:-4]
             # check if duration is acceptable: protodurs is a dictionary from the configuration file.
             # Keys are acceptable protocols
@@ -2322,16 +2371,16 @@ class Functions:
                     short_proto_name
                 ]:  # check if the duration is within the acceptable limits
                     # print("    >>>> Protocol: ", protocol, "duration of proto: ", dur[protocol],  "dur to test: ", duration)
-                    if not np.isclose(dur[ip], duration):
+                    if not np.isclose(durations[ip], duration):
                         durflag = True
                 if durflag:
-                    CP("y", f"    >>>> Protocol {protocol:s} has duration of {dur[ip]:e}")
+                    CP("y", f"    >>>> Protocol {protocol:s} has duration of {durations[ip]:e}")
                     CP("y", f"               This is not in accepted limits of: {protodurs!s}")
                     continue
                 else:
                     CP(
                         "g",
-                        f"    >>>> Protocol {protocol:s} has acceptable duration of {dur[ip]:e}",
+                        f"    >>>> Protocol {protocol:s} has acceptable duration of {durations[ip]:e}",
                     )
             # print("protocol: ", protocol, "spikes: ", df_cell.Spikes[protocol]['spikes'])
             if len(df_cell.Spikes[protocol]["spikes"]) == 0:
@@ -2344,7 +2393,9 @@ class Functions:
             except KeyError:
                 print("FI curve not found for protocol: ", protocol, "for cell: ", cell)
                 if self.status_bar is not None:
-                    self.status_bar.showMessage(f"FI curve not found for protocol: {protocol:s} for cell: {cell:s}")
+                    self.status_bar.showMessage(
+                        f"FI curve not found for protocol: {protocol:s} for cell: {cell:s}"
+                    )
                 # print(df_cell.Spikes[protocol])
                 protofails += 1
                 if protofails > 4:
@@ -2356,10 +2407,25 @@ class Functions:
                     )
                 else:
                     continue
-            # get mean rate from second spike to the last spike in the train
+            # get mean rate spike rate in the train
             current = []
             rate = []
+
             last_spike = []
+             # only do adaptation calculation for the protocols in the list
+            if short_proto_name in experiment ["Adaptation_index_protocols"].keys():
+                adaptation_index, adaptation_rate = self.compute_adaptation_index(
+                    df_cell.Spikes[protocol]["spikes"],
+                    trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
+                    trace_delay=experiment["Protocol_start_times"][short_proto_name],
+                    rate_bounds=experiment["Adaptation_rate_bounds"]["bounds"],
+                )
+            else:
+                adaptation_index = []
+                adaptation_rate = []
+            # print("adaptation_indices: ", adaptation_indices)
+            # print("adaptation_rates: ", adaptation_rates)
+            # exit()
 
             for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
                 if len(spikes) == 0:
@@ -2379,6 +2445,7 @@ class Functions:
                 )  # current is the same for all spikes in this trace
                 if len(latencies) >= 3:
                     rate.append(1.0 / np.mean(np.diff(latencies)))
+
                 else:  # keep arrays the same length
                     rate.append(np.nan)
                 if len(latencies) > 0:
@@ -2387,15 +2454,19 @@ class Functions:
                     last_spike.append(np.nan)
             if np.max(fidata[0]) > 1.01e-9:  # accumulate high-current protocols
                 FI_Data_I4_.extend(fidata[0])
-                FI_Data_FR4_.extend(fidata[1] / dur[ip])
+                FI_Data_FR4_.extend(fidata[1] / durations[ip])
             else:  # accumulate other protocols <= 1 nA
                 FI_Data_I1_.extend(fidata[0])
-                FI_Data_FR1_.extend(fidata[1] / dur[ip])
+                FI_Data_FR1_.extend(fidata[1] / durations[ip])
                 # accumulate this other information as well.
                 firing_currents.extend(current)
                 firing_rates.extend(rate)
                 firing_last_spikes.extend(last_spike)
-
+                adaptation_indices.extend(adaptation_index)
+                adaptation_rates.extend(adaptation_rate)
+        adaptation_indices = np.array(adaptation_indices)
+        adaptation_rates = np.array(adaptation_rates)
+        
         FI_Data_I1 = []
         FI_Data_FR1 = []
         FI_Data_I4 = []
@@ -2423,7 +2494,7 @@ class Functions:
             FI_Data_I4, FI_Data_FR4, FI_Data_FR4_Std, FI_Data_N1 = self.average_FI(
                 FI_Data_I4_, FI_Data_FR4_, 4e-9
             )
-        
+
         # save the results
         datadict["FI_Curve1"] = [FI_Data_I1, FI_Data_FR1]
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
@@ -2446,6 +2517,8 @@ class Functions:
         datadict["I_maxHillSlope_SD"] = np.nan
         datadict["firing_currents"] = None
         datadict["firing_rates"] = None
+        datadict["AdaptIndex"] = adaptation_indices[~np.isnan(adaptation_indices)]  # remove nans... 
+        datadict["AdaptRates"] = adaptation_rates[~np.isnan(adaptation_rates)]  # remove nans...
         datadict["last_spikes"] = None
         if len(linfits) > 0:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
@@ -2486,8 +2559,11 @@ class Functions:
             datadict["last_spikes"] = scipy.stats.binned_statistic(
                 fc, fs, bins=bins, statistic=np.nanmean
             ).statistic
-        if self.status_bar is not None:    
-           self.status_bar.showMessage(f"Finished computing FI fits for cell: {cell:s}")
+        if self.status_bar is not None:
+            self.status_bar.showMessage(f"Finished computing FI fits for cell: {cell:s}")
+        # print(datadict)
+        # exit()
+
         return datadict
 
     def compare_cell_id(self, cell_id: str, cell_ids: list):
@@ -2589,6 +2665,100 @@ class Functions:
         # print("current: ", current, "traces: ", trace)
         # print(current[min_current_index], trace[min_current_index])
         return min_current_index, current[min_current_index], trace[min_current_index]
+
+    def adaptation_index(self, spk_lat, trace_duration: float = 1.0):
+        """adaptation_index Compute an adaptation index based on Manis et al., 2019
+        The adaptation index goes from:
+        1 (only a spike in the frst half of the stimulus;
+        no spikes in second half)
+        to 0 (rate in the first and second half are identical)
+        to -1 (all the spikes are in the second half)
+
+        Parameters
+        ----------
+        spk_lat : _type_
+            _description_
+        trace_duration : float, optional
+            _description_, by default 1.0
+
+        Returns
+        -------
+        float
+            adaptation index as described above
+        """
+        ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / trace_duration) - 0.5)
+        return ai
+
+    def compute_adaptation_index(
+        self,
+        spikes,
+        trace_delay: float = 0.15,
+        trace_duration: float = 1.0,
+        rate_bounds: list = [20.0, 40.0],
+    ):
+        """compute_adapt_index
+        Compute the adaptation index for a set of spikes
+        The adaptation index is the ratio of the last interspike interval
+        to the first interspike interval.
+        Assumes the spikes are times corrected for the delay to the start of the stimulus.
+
+        Parameters
+        ----------
+        spikes : list
+            list of spikes, with 0 time at the start of the stimulus
+        trace_duration: float
+            duration of the current step, in seconds
+
+        Returns
+        -------
+        lists
+            adaptation indices, rates at which index was computed
+        """
+
+        recnums = list(spikes.keys())
+        adapt_rates = []
+        adapt_indices = []
+        print("Rate bounds: ", rate_bounds)
+
+        for rec in recnums:
+            spikelist = list(spikes[rec].keys())
+            if len(spikelist) < 3:
+                continue
+            # if len(spikelist) < 5 or len(spikelist) > 10:
+            #     continue
+            spk_lat = np.array(
+                [spikes[rec][spk].AP_latency for spk in spikelist if spk is not None]
+            )
+            spk_lat = np.array([spk for spk in spk_lat if spk is not None])
+            # print("spk_lat: ", spk_lat)
+            if spk_lat is None:
+                continue
+            else:
+                spk_lat -= trace_delay
+            # print(spk_lat)
+            n_spikes = len(spk_lat)
+            rate = n_spikes / (spk_lat[-1] - spk_lat[0])
+            if rate < rate_bounds[0] or rate > rate_bounds[1]:
+                # CP("y", f"Adaption calculation: rec: {rec:d} failed rate limit: {rate:.1f}, {rate_bounds!s}, spk_lat: {spk_lat!s}")
+                continue
+            # else: 
+            #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
+            adapt_rates.append(rate)
+            adapt_indices.append(self.adaptation_index(spk_lat, trace_duration))
+    #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
+
+        return adapt_indices, adapt_rates
+
+    def compute_adaptation_index_one_trace(
+        self, latencies, trace_duration: float = 1.0, rate_bounds: list = [0.1, 100.0]
+    ):
+        n_spikes = len(latencies)
+        rate = n_spikes / (latencies[-1] - latencies[0])
+        if rate < rate_bounds[0] or rate > rate_bounds[1]:
+            return np.nan, rate
+        adapt_index = self.adaptation_index(latencies, trace_duration)
+        CP("y", f"Adaptation index: {adapt_index:6.3f}, rate: {rate:6.1f}")
+        return adapt_index, rate
 
     def convert_FI_array(self, FI_values):
         """convert_FI_array Take a potential string representing the FI_data,
@@ -2850,7 +3020,6 @@ class Functions:
         if textbox is not None:
             self.textbox = textbox
             self.textclear()
-
 
     def textclear(self):
         if self.textbox is None:
