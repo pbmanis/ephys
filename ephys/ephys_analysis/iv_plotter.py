@@ -196,7 +196,7 @@ class IVPlotter(object):
             transform=P.figure_handle.transFigure,
         )
 
-        self.AR = acq4_reader.acq4_reader(Path(self.plot_df["data_directory"], protocol))
+        self.AR = acq4_reader.acq4_reader(Path(self.plot_df["data_directory"], self.plot_df["cell_id"], protocol))
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
 
         P.figure_handle.suptitle(f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}", fontsize=8)
@@ -208,10 +208,11 @@ class IVPlotter(object):
         validivs, additional_ivs, additional_iv_records = res[0][0], res[0][1], res[0][2]
         self.allow_partial = False
         self.record_list = None
-        print("getting data for protocol: ", protocol)
+        # print("getting data for protocol: ", protocol)
         if additional_iv_records is not None and len(additional_iv_records) > 0 and protocol in additional_iv_records.keys():
             self.allow_partial = True
             self.record_list = additional_iv_records[protocol][1]
+
         # print(" allow partial,  record_list: ", self.allow_partial, self.record_list)
         if not self.AR.getData(allow_partial=self.allow_partial, record_list=self.record_list):
             return None, None
@@ -230,15 +231,18 @@ class IVPlotter(object):
         if not cc_taum_protocol:  # plot all traces (if doing taum, then only plot the mean)
             # print("\n\nSpike current array: ", spike_dict["FI_Curve"][0]*1e9, "\n\n")
             traces = np.argsort(spike_dict["FI_Curve"][0])  # sort by current level
+            # print("spike array: \n", np.array(spike_dict["FI_Curve"]).shape)
             if self.allow_partial:
                 traces = np.argsort(spike_dict["FI_Curve"][0][self.record_list])
             valid_traces = traces
-            print("protocol: ", protocol, "traces: ", traces)
+            # print("protocol: ", protocol, "traces: ", traces, 'valid_traces: ', valid_traces)
+            # print("AR protocol: ", self.AR.protocol)
             # list(range(self.AR.traces.shape[0]))
             # if spike_dict["FI_Curve"][0][0] > spike_dict["FI_Curve"][0][-1]:
             #     traces = traces.reverse()  # check for reverse acquisition order
             dv = 100.0
-            for trace_number in traces:
+            for trn, trace_number in enumerate(traces):
+                # print("trace number: ", trace_number, "trn: ", trn, self.AR.traces.shape[0])
                 if self.plotting_alternation > 1:
                     if i % self.plotting_alternation != 0:
                         continue
@@ -250,9 +254,9 @@ class IVPlotter(object):
                     idv = 0.0
                 P.axdict["A"].plot(
                     self.AR.time_base * 1e3,
-                    idv + self.AR.traces[trace_number, :].view(np.ndarray) * 1e3,
+                    idv + self.AR.traces[trn, :].view(np.ndarray) * 1e3,
                     "-",
-                    color=trace_colors[trace_number],
+                    color=trace_colors[trn],
                     linewidth=0.35,
                 )
                 
@@ -400,7 +404,7 @@ class IVPlotter(object):
             P.axdict["B"].scatter(
                 spike_dict["FI_Curve"][0][valid_traces] * 1e9,
                 spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
-                color=trace_colors,
+                color=trace_colors[:len(valid_traces)],
                 s=16,
                 linewidth=0.5,
             )

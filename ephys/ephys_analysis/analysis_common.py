@@ -185,7 +185,10 @@ class Analysis:
 
     def __init__(self, args: argparse.Namespace):
         # args = vars(in_args)  # convert to dict
-
+        self.cmdargs = cmdargs()
+        self.reset(args)
+    
+    def reset(self, args):
         self._testing_counter = 0  # useful to run small tests
         self._testing_count = 400  # should be 0 in production
 

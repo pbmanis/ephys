@@ -10,7 +10,6 @@ import gc
 import logging
 from pathlib import Path
 from typing import List, Literal, Union
-
 import numpy as np
 import pandas as pd
 from pyqtgraph import multiprocess as MP
@@ -97,18 +96,14 @@ class IVAnalysis(Analysis):
 
     Logger = logging.getLogger("AnalysisLogger")
 
-    def __init__(self, args):
-        super().__init__(args)
-        self.IVFigure = None
-        self.mode = "acq4"
-        self.AR: object = acq4_reader()
-        self.RM: rm_tau_analysis = RmTauAnalysis()
-        self.SP: spike_analysis = SpikeAnalysis()
-        self.allow_partial = False
-        self.record_list = []
+    def __init__(self, args: Union[None, object] = None):
+        if args is not None:
+            super().__init__(args)
+        self.reset_analysis()
         Logger.info("Instantiating IVAnalysis class")
 
     def __enter__(self):
+        self.reset_analysis()
         return self
 
     def __exit__(self, type, value, traceback):
@@ -118,7 +113,13 @@ class IVAnalysis(Analysis):
         gc.collect()
 
     def reset_analysis(self):
-        pass
+        self.IVFigure = None
+        self.mode = "acq4"
+        self.AR: object = acq4_reader()
+        self.RM: object = RmTauAnalysis()
+        self.SP: objects = SpikeAnalysis()
+        self.allow_partial = False
+        self.record_list = []
 
     def configure(
         self,
@@ -197,14 +198,12 @@ class IVAnalysis(Analysis):
         else:
             return True
 
- 
-
     def analyze_ivs(
         self,
         icell,
         allprots: dict,
         celltype: str,
-        pdf:Union[Path, str, None]=None,
+        pdf: Union[Path, str, None] = None,
     ):
         """
         Overall analysis of IV protocols for one cell in the day
@@ -226,6 +225,7 @@ class IVAnalysis(Analysis):
         """
         if self.parallel_mode in ["day"]:
             raise ValueError("Parallel mode for 'DAY' is not supported in iv_analysis")
+
         Logger.info("Starting iv_analysis")
         msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
         msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
@@ -358,14 +358,13 @@ class IVAnalysis(Analysis):
         # next remove specific protocols that are targeted to be excluded
         print("iv_analysis:analyze_ivs: allivs: ", allivs)
         # validivs = CIE.check_exclusions(cell_id, self.exclusions, allivs)
-        validivs, additional_ivs, additional_iv_records = CIE.include_exclude(cell_id, 
-                                                                              inclusions = self.inclusions,
-                                                                               exclusions= self.exclusions,
-                                                                                 allivs=allivs)
+        validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
+            cell_id, inclusions=self.inclusions, exclusions=self.exclusions, allivs=allivs
+        )
 
-        print("validivs: ", validivs)
-        print("additional ivs: ", additional_ivs)
-        print("additional iv records: ", additional_iv_records)
+        # print("validivs: ", validivs)
+        # print("additional ivs: ", additional_ivs)
+        # print("additional iv records: ", additional_iv_records)
 
         CP.cprint("m", f"Valid IVs: {validivs!s}")
 
@@ -426,44 +425,53 @@ class IVAnalysis(Analysis):
             try:
                 print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
                 results: dict = {}
+                tasks = dict(zip(range(len(validivs)), validivs))
                 result = [None] * len(tasks)
                 riv = {}  # iv result, keys are protocols (validiv names)
                 rsp = {}  # ditto for spikes.
-                with MP.Parallelize(
-                    enumerate(tasks), results=results, workers=self.nworkers
-                ) as tasker:
-                    for i, x in tasker:
-                        # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
-                        # tasker.results[validivs[i]] = result
+                # this was the old multiprocessing using pyqtgraph - superseeded by concurrent futures
+                # which seems more robust on mac
+                # with MP.Parallelize(
+                #     enumerate(tasks), results=results, workers=self.nworkers
+                # ) as tasker:
+                #     for i, x in tasker:
+                # result, nfiles = self.analyze_iv(icell, i, x, cell_directory, validivs, nfiles)
+                # tasker.results[validivs[i]] = result
 
-                        with concurrent.futures.ProcessPoolExecutor() as executor:
-                            print("   submitting execution to concurrent futures")
-                            f = executor.submit(
-                                concurrent_iv_analysis,
-                                self,
-                                icell,
-                                i,
-                                x,
-                                cell_directory,
-                                validivs,
-                                additional_iv_records,
-                                nfiles,
-                            )
-                        result, nfiles = f.result()
-                        tasker.results[validivs[i]] = result
+                with concurrent.futures.ProcessPoolExecutor(max_workers=self.nworkers) as executor:
+                    print("   submitting execution to concurrent futures")
+                    futures = [
+                        executor.submit(
+                            concurrent_iv_analysis,
+                            self,
+                            icell,
+                            i,  # index into the task/validivs list
+                            x,  # the actual valid iv (protocol) run
+                            cell_directory,
+                            validivs,   # I expect that this doesn't need to be passed... 
+                            additional_iv_records,
+                            nfiles,
+                        )
+                        for i, x in enumerate(tasks)
+                    ]
+                    for i, future in enumerate(concurrent.futures.as_completed(futures)):
+                        result, nfiles = future.result()
+                        print(result.keys())
+                        print(result['protocol'])
+                        results[result['protocol']] = result
                     if len(results) == 0 or self.dry_run:
                         return
 
                     # reform the results for our database
-                    for f in results.keys():
-                        if "IV" in results[f].keys():
-                            riv[f] = _cleanup_ivdata(results[f]["IV"])
-                        if "Spikes" in results[f].keys():
-                            rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
+                for f in results.keys():
+                    if "IV" in results[f].keys():
+                        riv[f] = _cleanup_ivdata(results[f]["IV"])
+                    if "Spikes" in results[f].keys():
+                        rsp[f] = _cleanup_ivdata(results[f]["Spikes"])
 
-                            # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
-                            # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
-                            # print('analyze_ivs: riv: ', riv)
+                        # print('analyze_ivs: parallel IV results: \n', [(f, results[f]['IV']) for f in results.keys() if 'IV' in results[f].keys()])
+                        # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
+                        # print('analyze_ivs: riv: ', riv)
                 if len(riv) == 0:
                     print("Empty IV?")
                     return
@@ -612,10 +620,7 @@ class IVAnalysis(Analysis):
         average_flag = False
         if str(protocol).find("_taum") > 0:
             average_flag = True  # average ALL traces in the protocol to compute the tau_m
-        # print(protocol, average_flag)
-        # if average_flag is False:
-        #     print('temporary skip')
-        #     return(None, 0)
+
         print("Average flag in analyze_iv is True")
         if not protocol_directory.is_dir():
             msg = f"analyze_iv: Protocol directory not found (A): {str(protocol_directory):s}"
@@ -721,7 +726,6 @@ class IVAnalysis(Analysis):
                 ]
 
         self.plot_mode(mode=self.IV_pubmode)
-        print("analyze iv: calling compute_iv")
         self.compute_iv(
             threshold=self.spike_threshold,
             refractory=self.refractory,
@@ -742,11 +746,11 @@ class IVAnalysis(Analysis):
         sp_result = self.SP.analysis_summary
         result["IV"] = iv_result
         result["Spikes"] = sp_result
+        result['protocol'] = protocol  # this is essential to tag the result for getting the correct protocol in concurrent.futures.
+        result['directory'] = str(protocol_directory)
         ctype = self.df.at[icell, "cell_type"]
-        # print("result IV: ", result["IV"])
-        # annot = self.df.at[icell, "annotated"]
+
         nfiles += 1
-        # print("Checking for figure, plothandle is: ", plot_handle)
 
         del iv_result
         del sp_result
@@ -789,10 +793,15 @@ class IVAnalysis(Analysis):
                 if str(self.datapath).endswith(str(prot)):
                     self.allow_partial = True
                     self.record_list = additional_iv_records[prot][1]
-                    CP.cprint("m", f"Found additional (abbreviated) IV protocol: {prot:s} {len(self.record_list):d} records")
+                    CP.cprint(
+                        "m",
+                        f"Found additional (abbreviated) IV protocol: {prot:s} {len(self.record_list):d} records",
+                    )
 
         print("allow partial: ", self.allow_partial, "record_list: ", self.record_list)
-        if not self.AR.getData(silent=True, allow_partial=self.allow_partial, record_list=self.record_list):  # get that data.
+        if not self.AR.getData(
+            silent=True, allow_partial=self.allow_partial, record_list=self.record_list
+        ):  # get that data.
             msg = (
                 f"IVAnalysis::compute_iv: acq4_reader.getData found no data to return from: \n  > {str(self.datapath):s} ",
             )
@@ -800,7 +809,10 @@ class IVAnalysis(Analysis):
             # if self.parallel_mode not in ["day", "cell"]:
             #     Logger.error(msg)
             return None
-        CP.cprint("g", f"AR.getData found data with shape:  {self.AR.traces.shape}  prot = {self.datapath:s}")
+        CP.cprint(
+            "g",
+            f"AR.getData found data with shape:  {self.AR.traces.shape}  prot = {self.datapath:s}",
+        )
 
         if self.important_flag_check:
             if not self.AR.protocol_important:
@@ -875,17 +887,23 @@ class IVAnalysis(Analysis):
         if str(self.datapath).find("_taum"):
             tau_end = self.AR.tstart + self.AR.tend
         # check if we define specific regions in the configuration file for this analysis
-        if "Rin_window" in self.experiment.keys():
-            rin_region = self.AR.tstart + np.array(self.experiment["Rin_window"])
-            print("rin_region from window in config file: ", rin_region)
+        if "Rin_windows" in self.experiment.keys():
+            protocol = Path(self.datapath).name[:-4]
+            if protocol in list(self.experiment["Rin_windows"].keys()):
+                rin_region = np.array(self.experiment["Rin_windows"][protocol]) + self.AR.tstart
+                print("rin_region from window in config file: ", rin_region)
+            else:
+                rin_region = [self.AR.tstart + 0.8 * (self.AR.tend - self.AR.tstart), self.AR.tend]
+                print("rin_region from standard window 80-100 percent of pulse: ", rin_region)
+
         else:
             print("rin_region from default: ", [self.AR.tstart, tau_end])
             rin_region = [self.AR.tstart, tau_end]
         print("Starting RM analyze")
         # check whether we need to limit the protocols that are used
         rin_protocols = None
-        if "Rin_protocols" in self.experiment.keys():
-            rin_protocols = list(self.experiment["Rin_protocols"].keys())
+        if "Rin_windows" in self.experiment.keys():
+            rin_protocols = list(self.experiment["Rin_windows"].keys())
         self.RM.analyze(
             rmp_region=[0.0, self.AR.tstart - 0.001],
             tau_region=[self.AR.tstart, tau_end],
@@ -894,6 +912,6 @@ class IVAnalysis(Analysis):
             to_peak=to_peak,
             tgap=fit_gap,
             average_flag=average_flag,
-         )
+        )
         print("     RM analyze finished")
         return True
