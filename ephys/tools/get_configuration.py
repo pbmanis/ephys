@@ -135,19 +135,25 @@ def validate_configuration(experiments, datasets):
         "coding_level",
         "NWORKERS",
         "excludeIVs",
+        "includeIVs",
 
         "stats_filename",
         "statistical_comparisons",
+        "remove_groups",
         
         "plot_order",
         "plot_colors",
         "ylims",
         
         "junction_potential",
+        "AP_threshold_dvdt",
+        "AP_threshold_V",
+        "firing_failure_analysis",
         "spike_measures",
         "rmtau_measures",
         "FI_measures",
         "spike_detector",
+        "detector_pars",
         "fit_gap",
         "taum_current_range",
         "taum_bounds",
@@ -159,10 +165,14 @@ def validate_configuration(experiments, datasets):
         "secondary_group_by",
         
         "data_inclusion_criteria",
-        "protocol_durations", # this might be optional
-        "protocols",
+        "protocol_durations",  # this might be optional
+        "Protocol_start_times",
+        "Adaptation_index_protocols",
+        "Rin_windows",
+        "protocols"
 
     ]
+    print("Validating configuration file")
     for dataset in datasets:
         if dataset not in experiments:
             raise ValueError(
@@ -170,11 +180,9 @@ def validate_configuration(experiments, datasets):
             )
         missing_keys = []
         for keyvalue in required_keys:
-            if keyvalue not in experiments[dataset]:
+            if keyvalue not in experiments[dataset].keys():
                 missing_keys.append(keyvalue)
-        
-
-
+   
         if len(missing_keys) > 0:
             PP.pprint(experiments[dataset])
             print(f"\n{'='*80:s}\nConfiguration file for dataset '{dataset}' is missing the following entries ")
