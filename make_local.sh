@@ -10,7 +10,7 @@ then
 else
     echo "No previous environment - ok to proceed"
 fi
-PYTHONVER="python3.11"
+PYTHONVER="python3.13"
 $PYTHONVER -m venv $ENVNAME
 source $ENVNAME/bin/activate
 pip3 install --upgrade pip  # be sure pip is up to date in the new env.
