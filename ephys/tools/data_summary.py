@@ -1507,7 +1507,7 @@ def main():
                     + p
                 )
                 ps = c.rstrip("_0123456789")  # remove sequence numbers
-                print("protocols: ", c)
+                # print("protocols: ", c)
                 if "Map".casefold() in c.casefold():
                     maps.append(c)
                     if ps not in map_types:
