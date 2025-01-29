@@ -89,6 +89,7 @@ from pathlib import Path
 import multiprocessing
 import textwrap
 import concurrent.futures
+import time
 
 import pandas as pd
 import pyqtgraph as pg
@@ -110,7 +111,7 @@ from ephys.gui import table_tools
 from ephys.gui import command_params
 from ephys.plotters import plot_spike_info as plot_spike_info
 from ephys.tools.get_computer import get_computer
-from ephys.tools.get_configuration import get_configuration
+import ephys.tools.get_configuration as GETCONFIG
 
 from ephys.ephys_analysis import (
     analysis_common,
@@ -136,9 +137,7 @@ import sys
 
 config_file_path = "./config/experiments.cfg"
 
-PSI_2 = plot_spike_info  # reference to non-class routines in the module.
-PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
-PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
+
 
 FUNCS = functions.Functions()  # get the functions class
 cprint = CP.cprint
@@ -194,7 +193,7 @@ class TableModel(QtGui.QStandardItemModel):
 tdir = Path.cwd()
 sys.path.append(str(Path(tdir, "src")))  # add to sys path in order to fix imports.
 sys.path.append(str(Path(tdir, "src/util")))  # add to sys path in order to fix imports.
-
+# multiprocessing.set_start_method('fork')
 
 class DataTables:
     """
@@ -219,6 +218,10 @@ class DataTables:
         self.exclude_unimportant = False
         self.computer_name = get_computer()
 
+        self.PSI_2 = plot_spike_info  # reference to non-class routines in the module.
+        # PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
+        self.PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
+        self.IVAnalysis = iv_analysis.IVAnalysis()
         self.PSI = plot_spike_info.PlotSpikeInfo(
             dataset=None,
             experiment=None,
@@ -351,7 +354,6 @@ class DataTables:
         self.dataset = self.datasets[0]
 
         self.set_experiment(self.dataset)
-        print("Experiment: ", self.experiment)
         # We use pyqtgraph's ParameterTree to set up the menus/buttons. This
         # defines the layout.
         self.CD = command_params.CommandParams()
@@ -612,7 +614,7 @@ class DataTables:
             group2 = self.ptreedata.child("Plotting").child("2nd Group By")
             group2.setLimits(self.experiment["secondary_group_by"])  # update the 2nd group_by list
         self.PSI.set_experiment(self.dataset, self.experiment)  # pass around to other functions
-        PSA.set_experiment(self.dataset, self.experiment)  # pass around to other functions
+        self.PSA.set_experiment(self.dataset, self.experiment)  # pass around to other functions
         FUNCS.textappend(f"Contents of Experiment Named: {self.experimentname:s}")
         pp = pprint.PrettyPrinter(indent=4)
         FUNCS.textappend(pp.pformat(self.experiment))
@@ -668,20 +670,26 @@ class DataTables:
                     self.current_cell_ids = FUNCS.get_current_table_selection(
                         table_manager=self.DS_table_manager
                     )
+                    self.status_bar_message(
+                            f"Reloading configuration file from: {config_file_path:s}",
+                            color="white",
+                        )
+                    self.datasets, self.experiments = GETCONFIG.get_configuration(config_file_path)
 
-                    self.datasets, self.experiments = get_configuration(config_file_path)
                     if self.datasets is None:
                         print("Unable to get configuration file from: ", config_file_path)
                         self.status_bar_message(
                             f"Unable to get configuration file from: {config_file_path:s}",
                             color="red",
                         )
+                        return
+                    # GETCONFIG.validate_configuration(self.datasets, self.experiments)
                     if self.experimentname not in self.datasets:
                         self.experimentname = self.datasets[0]
                     self.experiment = self.experiments[self.experimentname]
                     self.PSI.set_experiment(self.dataset, self.experiment)
-                    # print("New configuration: ", self.experimentname)
-                    # print(" With: \n", self.experiment)
+                    print("New configuration: ", self.experimentname)
+
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
                     FUNCS.set_current_table_selection(
@@ -890,6 +898,7 @@ class DataTables:
                                 coding_level=self.experiment["coding_level"],
                                 exclude_unimportant=self.exclude_unimportant,
                                 fn=fn,
+                                status_bar=self.status_bar_message, # pass the function handle
                             )
 
                         # case "Process Spike Data":
@@ -1192,7 +1201,7 @@ class DataTables:
                                         excelsheet,
                                         analysis_cell_types,
                                         adddata,
-                                    ) = PSI_2.setup(self.experiment)
+                                    ) = self.PSI_2.setup(self.experiment)
                                     fn = self.PSI.get_assembled_filename(self.experiment)
                                     print("Loading fn: ", fn)
                                     df = self.PSI.preload(fn)
@@ -1329,6 +1338,7 @@ class DataTables:
                             # set reload button to red.
 
                             self.status_bar_message("Reloading...", color="red")
+                            time.sleep(0.15)
                             # get the current list selection - first put tabke in the
                             # same order we will see later
                             self.doing_reload = True
@@ -1461,23 +1471,24 @@ class DataTables:
         )
         print("\n" * 2)
         CP.cprint("g", "=" * 80)
-        IV = iv_analysis.IVAnalysis(args)  # all args are passed
-        IV.set_experiment(self.experiment)
+        # IV = iv_analysis.IVAnalysis(args)  # all args are passed
+        self.IVAnalysis.reset(args)
+        self.IVAnalysis.set_experiment(self.experiment)
         CP.cprint("c", " datatables: experiment set")
         if "excludeIVs" in self.experiment.keys():
-            IV.set_exclusions(self.experiment["excludeIVs"])
+            self.IVAnalysis.set_exclusions(self.experiment["excludeIVs"])
             # CP.cprint("y", self.experiment['excludeIVs'])
         else:
             CP.cprint("y", "No IV exclusions set")
             return
         if "includeIVs" in self.experiment.keys():
-            IV.set_inclusions(self.experiment["includeIVs"])
+            self.IVAnalysis.set_inclusions(self.experiment["includeIVs"])
             # CP.cprint("y", self.experiment['includeIVs'])
         else:
             CP.cprint("y", "No IV inclusions set")
-        IV.setup()
+        self.IVAnalysis.setup()
         CP.cprint("c", "analyze_ivs datatables: setup completed")
-        IV.run(mode="IV")
+        self.IVAnalysis.run(mode="IV")
         CP.cprint("c", "analyze_ivs datatables: run completed")
         if self.dry_run:
             CP.cprint(
@@ -1798,6 +1809,7 @@ class DataTables:
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         FUNCS.textappend(f"DataSummary file loaded with {len(self.datasummary.index):d} entries.")
+        self.status_bar_message(f"DataSummary {self.datasummaryfile.name} loaded with {len(self.datasummary.index):d} entries", color="green")
         # FUNCS.textappend(f"DataSummary columns: \n, {self.datasummary.columns:s}")
         self.find_unique_protocols()
 
@@ -1812,11 +1824,14 @@ class DataTables:
             )
             return
 
-        self.assembleddata = pd.read_pickle(self.assembledfile)
-        FUNCS.textappend(f"Assembled data loaded, entries: {len(self.assembleddata.index):d}")
-        FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
+        try:
+            self.assembleddata = pd.read_pickle(self.assembledfile)
+            FUNCS.textappend(f"Assembled data loaded, entries: {len(self.assembleddata.index):d}")
+            FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
+            self.update_assembled_data()
+        except:
+            FUNCS.textappend(f"Error loading assembled data file: {self.assembledfile!s}, but continuing")    
 
-        self.update_assembled_data()
 
     def update_assembled_data(self):
         if self.table_manager is not None and self.assembleddata is not None:
@@ -1971,7 +1986,7 @@ def main():
     (
         datasets,
         experiments,
-    ) = get_configuration(
+    ) = GETCONFIG.get_configuration(
         config_file_path
     )  # retrieves the configuration file from the running directory
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
@@ -1980,6 +1995,6 @@ def main():
 
 
 if __name__ == "__main__":
-    if plotform.system() == "Darwin":
-        multiprocessing.set_start_method("spawn")
+    # if plotform.system() == "Darwin":
+    multiprocessing.set_start_method("forkserver") # ("spawn")
     main()
