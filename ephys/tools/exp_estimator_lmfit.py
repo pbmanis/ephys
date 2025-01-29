@@ -1,5 +1,5 @@
 """ do fits to single or double exponentials
-# using lmfit. 
+# using lmfit and some other approaches
 # fits are done in in 3 steps:
 # 1. Parameter estimation: 
 #       DC (offset) and A1 are estimated from the data.
@@ -17,11 +17,242 @@
 
 pbm 8/24/2024. How many times have I done this?
 """
-from typing import Union
+
+import datetime
+import warnings
+from dataclasses import dataclass
+from typing import Callable, Union
+
+import lmfit
 import numpy as np
 import pyqtgraph as pg
 from scipy.signal import savgol_filter
-import lmfit
+from scipy.optimize import minimize
+from .fitmodel import FitModel
+
+
+@dataclass
+class TSeries:
+    """Recapitulate TSeries in neuroanalysis from Chase/Campagnola"""
+
+    data: np.ndarray
+    time_values: np.ndarray
+    t0: float = 0.0
+
+    def copy(self):
+        return TSeries(self.data.copy(), self.time_values.copy(), self.t0)
+
+
+def fit_scale_offset(data, template):
+    """Return the scale and offset needed to minimize the sum of squared errors between
+    *data* and *template*::
+
+        data ≈ scale * template + offset
+
+    Credit: Clements & Bekkers 1997
+    """
+    assert data.shape == template.shape
+    N = len(data)
+    dsum = data.sum()
+    tsum = template.sum()
+    scale = ((template * data).sum() - tsum * dsum / N) / ((template**2).sum() - tsum**2 / N)
+    offset = (dsum - scale * tsum) / N
+
+    return scale, offset
+
+
+def exp_decay(t, yoffset, yscale, tau, xoffset=0):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return yoffset + yscale * np.exp(-(t - xoffset) / tau)
+
+
+def estimate_exp_params_CC(data: TSeries):
+    """Estimate parameters for an exponential fit to data.
+
+    Parameters
+    ----------
+    data : TSeries
+        Data to fit.
+
+    Returns
+    -------
+    params : tuple
+        (yoffset, yscale, tau, toffset)
+    """
+    start_y = data.data[: len(data.data) // 100].mean()
+    end_y = data.data[-len(data.data) // 10 :].mean()
+    yscale = start_y - end_y
+    yoffset = end_y
+    cs = np.cumsum(data.data - yoffset)
+    if yscale > 0:
+        tau_i = np.searchsorted(cs, cs[-1] * 0.63)
+    else:
+        tau_i = len(cs) - np.searchsorted(cs[::-1], cs[-1] * 0.63)
+    tau = data.time_values[min(tau_i, len(data) - 1)] - data.time_values[0]
+    return yoffset, yscale, tau, data.t0
+
+
+def normalized_rmse(data: TSeries, params: dict, fn: Callable = exp_decay):
+    y = fn(data.time_values, *params)
+    return np.mean((y - data.data) ** 2) ** 0.5 / data.data.std()
+
+
+def best_exp_fit_for_tau(tau: float, x: np.ndarray, y: np.ndarray, std: float = None):
+    """Given a curve defined by x and y, find the yoffset and yscale that best fit
+    an exponential decay with a fixed tau.
+
+    Parameters
+    ----------
+    tau : float
+        Decay time constant.
+    x : array
+        Time values.
+    y : array
+        Data values to fit.
+    std : float
+        Standard deviation of the data. If None, it is calculated from *y*.
+
+    Returns
+    -------
+    yscale : float
+        Y scaling factor for the exponential decay.
+    yoffset : float
+        Y offset for the exponential decay.
+    err : float
+        Normalized root mean squared error of the fit.
+    exp_y : array
+        The exponential decay curve that best fits the data.
+
+    """
+    if std is None:
+        std = y.std()
+    exp_y = exp_decay(x, tau=tau, yscale=1, yoffset=0)
+    yscale, yoffset = fit_scale_offset(y, exp_y)
+    exp_y = exp_y * yscale + yoffset
+    err = ((exp_y - y) ** 2).mean() ** 0.5 / std
+    return yscale, yoffset, err, exp_y
+
+
+def quantify_confidence(tau: float, memory: dict, data: TSeries) -> float:
+    """
+    Given a run of best_exp_fit_for_tau, quantify the confidence in the fit.
+    """
+    # errs = np.array([v[2] for v in memory.values()])
+    # std = errs.std()
+    # n = len(errs)
+    # data_range = errs.max() - errs.min()
+    # max_std = (data_range / 2) * np.sqrt((n - 1) / n)
+    # poor_variation = 1 - std / max_std
+
+    y = data.data
+    x = data.time_values
+    err = memory[tau][2]
+    scale, offset = np.polyfit(x, y, 1)
+    linear_y = scale * x + offset
+    linear_err = ((linear_y - y) ** 2).mean() ** 0.5 / y.std()
+    exp_like = 1 / (1 + err / linear_err)
+    exp_like = max(0, exp_like - 0.5) * 2
+
+    # pv_factor = 1
+    # el_factor = 4
+    # return ((poor_variation ** pv_factor) * (exp_like ** el_factor)) ** (1 / (pv_factor + el_factor))
+    return exp_like
+
+
+def exp_fit(data: TSeries):
+    """Fit *data* to an exponential decay.
+
+    This is a minimization of the normalized RMS error of the fit over the decay time constant.
+    Other parameters are determined exactly for each value of the decay time constant.
+    """
+    xoffset = data.t0
+    data = data.copy()
+    data.t0 = 0
+    tau_init = 0.5 * (data.time_values[-1])
+    memory = {}
+    std = data.data.std()
+
+    def err_fn(params):
+        τ = params[0]
+        # keep a record of all tau values visited and their corresponding fits
+        if τ not in memory:
+            memory[τ] = best_exp_fit_for_tau(τ, data.time_values, data.data, std)
+        return memory[τ][2]
+
+    result = minimize(
+        err_fn,
+        tau_init,
+        bounds=[(1e-9, None)],
+    )
+
+    tau = float(result.x[0])
+    yscale, yoffset, err, exp_y = memory[tau]
+    return {
+        "fit": (yoffset, yscale, tau),
+        "result": result,
+        "memory": memory,
+        "nrmse": err,
+        "confidence": quantify_confidence(tau, memory, data),
+        "model": lambda t: exp_decay(t, yoffset, yscale, tau, xoffset),
+    }
+
+
+class Exp(FitModel):
+    """Single exponential decay fitting model.
+
+    Parameters are xoffset, yoffset, amp, and tau.
+    """
+
+    def __init__(self):
+        FitModel.__init__(
+            self, self.exp, independent_vars=["x"], nan_policy="omit", method="least-squares"
+        )
+
+    @staticmethod
+    def exp(x, xoffset, yoffset, amp, tau):
+        return exp_decay(x - xoffset, yoffset, amp, tau)
+
+    def fit(self, *args, **kwds):
+        kwds.setdefault("method", "nelder")
+        return FitModel.fit(self, *args, **kwds)
+
+
+class ParallelCapAndResist(FitModel):
+    @staticmethod
+    def current_at_t(t, v_over_parallel_r, v_over_total_r, tau, xoffset=0):
+        exp = np.exp(-(t - xoffset) / tau)
+        return v_over_total_r * (1 - exp) + v_over_parallel_r * exp
+
+    def __init__(self):
+        super().__init__(
+            self.current_at_t, independent_vars=["t"], nan_policy="omit", method="least-squares"
+        )
+
+
+class Exp2(FitModel):
+    """Double exponential fitting model.
+
+    Parameters are xoffset, yoffset, amp, tau1, and tau2.
+
+        exp2 = yoffset + amp * (exp(-(x-xoffset) / tau1) - exp(-(x-xoffset) / tau2))
+
+    """
+
+    def __init__(self):
+        FitModel.__init__(self, self.exp2, independent_vars=["x"])
+
+    @staticmethod
+    def exp2(x, xoffset, yoffset, amp, tau1, tau2):
+        xoff = x - xoffset
+        out = yoffset + amp * (np.exp(-xoff / tau1) - np.exp(-xoff / tau2))
+        out[xoff < 0] = yoffset
+        return out
+
+
+# ===========================================================================
+# Estimator for exponential fit.
+# ===========================================================================
 
 
 class LMexpFit:
@@ -102,7 +333,7 @@ class LMexpFit:
         i3 = int(npts * 0.9)
         # print(i1, i2, i3)
         d = x_data[i3] - x_data[i2]
-        y32 = y_data[i3] - y_data[i2] 
+        y32 = y_data[i3] - y_data[i2]
         # self.local_filter(y_data, ipos=i3) - self.local_filter(y_data, ipos=i2)
         y21 = y_data[i2] - y_data[i1]
         # self.local_filter(y_data, ipos=i2) - self.local_filter(y_data, ipos=i1)
@@ -199,7 +430,14 @@ class LMexpFit:
         return y - self.exp_decay2(x, dc, a1, t1, a2, t2)
 
     # single exponential fit
-    def fit1(self, x_data: np.ndarray, y_data: np.ndarray, taum_bounds:Union[list, None] = None, plot=False, verbose=False):
+    def fit1(
+        self,
+        x_data: np.ndarray,
+        y_data: np.ndarray,
+        taum_bounds: Union[list, None] = None,
+        plot=False,
+        verbose=False,
+    ):
         assert x_data.ndim == 1
         self.initial_estimator(x_data, y_data, verbose=verbose)  # results stored in class variables
         assert y_data.ndim == 1
@@ -212,11 +450,12 @@ class LMexpFit:
             R1=self.R1,
         )
         if taum_bounds is None:
-            params["R1"].min = 0.  # require positive time constant at least
+            params["R1"].min = 0.0  # require positive time constant at least
         else:
-            print("taum_bounds: ", taum_bounds)
-            params["R1"].min = 1./taum_bounds[1]
-            params["R1"].max = 1./taum_bounds[0]
+            if verbose:
+                print("taum_bounds: ", taum_bounds)
+            params["R1"].min = 1.0 / taum_bounds[1]
+            params["R1"].max = 1.0 / taum_bounds[0]
 
         # set up lmfit
         mini = lmfit.Minimizer(self.residual1, params, fcn_args=(x_data, y_data))
@@ -236,10 +475,10 @@ class LMexpFit:
 
             if verbose:
                 lmfit.report_fit(result_lm.params, min_correl=0.5)
-        except: # just use the nelder solution
+        except:  # just use the nelder solution
             result_lm = result_simplex
             print("Using simplex Fit : ")
-            lmfit.report_fit(result_lm.params, min_correl = 0.5)
+            lmfit.report_fit(result_lm.params, min_correl=0.5)
         # if verbose:
         #     ci, trace = lmfit.conf_interval(mini, result_lm, sigmas=[1, 2], trace=True)
         # if verbose:
@@ -455,8 +694,20 @@ class LMexpFit:
     def fit_report(self, params):
         lmfit.fit_report(params)
 
+def draw_arrow(ax, realdata, fitdata, limit:float=1.0):
+    arrow_pos = []
+    maxy = limit*np.max(realdata)
+    for i, e in enumerate(fitdata): 
+        if e > maxy:
+            arrow_pos.append(i)
+    if len(arrow_pos) > 0:
+        for i in arrow_pos:
+            ax.arrow(realdata[i], 0.95*maxy, 0.0, 0.05, head_width=0.03*maxy, head_length=0.03*maxy, fc='r', ec='k')
 
-if __name__ == "__main__":
+def test_fitting(app):
+
+
+    import matplotlib.pyplot as mpl
     # test
     app = pg.mkQApp()
     sr = 1e-5
@@ -465,29 +716,164 @@ if __name__ == "__main__":
     n = int(dur / sr)
     x_data = np.linspace(0, 0.05, n)  # times in seconds
     dc = -0.065
-    for a in np.linspace(0.5, 3.5, 3):
-        for r in np.linspace(10, 100, 3):
-            y_data = dc - a * (1.0 - np.exp(-x_data * r)) + a / 100 * np.random.randn(n)
+    timing = {"LME": 0.0, "CCexp": 0.0}
+    res = {"LME": [], "CCexp": []}
+    yd = []
+    lme_y = []
+    lme_cc = []
+    nx = 8
+    amps = np.linspace(2, 10, nx)
+    rates = np.linspace(1, 1000, nx)
+    amparr = []
+    ratearr = []
+    for a in amps:
+        for r in rates:
+            amp = a
+            rate = r
+            # print("amp: ", amp, "rate: ", rate)
+            amparr.append(amp)
+            ratearr.append(rate)
+            y_data = dc - amp * (1.0 - np.exp(-x_data * rate)) + 0.02 * amp * np.random.randn(n)
+            yd.append(y_data)
+            tstart = datetime.datetime.now()
             LME = LMexpFit()
             LME.initial_estimator(x_data, y_data, verbose=False)
-            print(f"\nseed: DC: {dc:8.4f}, A1: {-a:8.4f}, R1: {r:8.4f}")
-            print(f"estm: DC: {LME.DC:8.4f}, A1: {LME.A1:8.4f}, R1: {LME.R1:8.4f}")
             result = LME.fit1(x_data, y_data, plot=False, verbose=False)
-            print(
-                f"Fit:  DC: {result.params['DC'].value:8.4f}, A1: {result.params['A1'].value:8.4f}, R1: {result.params['R1'].value:8.4f}"
+            tend = datetime.datetime.now()
+            timing["LME"] += (tend - tstart).total_seconds()
+            res["LME"].append(
+                [result.params["DC"].value, result.params["A1"].value, result.params["R1"].value]
             )
-            print(LME.fit_report(result.params))
-            # # x_data = x_data.reshape(-1, 1)
-    # y_data = -0.065 - 0.0025 * (1.0 - np.exp(-x_data * 30.0)) + 0.0001 * np.random.randn(n)
-    # y_data2 = y_data + 0.0002 * (1.0 - np.exp(-x_data * (1.0 / 2e-4)))
+            # print(res["LME"][-1])
+            lme_y.append(
+                exp_decay(
+                    x_data,
+                    res["LME"][-1][0] + res["LME"][-1][1],
+                    -res["LME"][-1][1],
+                    1.0 / res["LME"][-1][2],
+                )
+            )
+            # print(result.params)
+            tstart = datetime.datetime.now()
+            # DC, A1, R1 = estimate_exp_params_CC(TSeries(y_data, x_data))
+            rescc = exp_fit(TSeries(y_data, x_data))
+            res["CCexp"].append(rescc["fit"])
+            tend = datetime.datetime.now()
+            timing["CCexp"] += (tend - tstart).total_seconds()
+            lme_cc.append(exp_decay(x_data, rescc["fit"][0], rescc["fit"][1], rescc["fit"][2]))
+        # 'fit': (yoffset, yscale, tau),
+        # 'result': result,
+        # 'memory': memory,
+        # 'nrmse': err,
+        # 'confidence': quantify_confidence(tau, memory, data),
+        # 'model': lambda t: exp_decay(t, yoffset, yscale, tau, xoffset),
+    fits_lme = np.array(res["LME"])
+    fits_cc = np.array(res["CCexp"])
+    f, ax = mpl.subplots(4, 2, figsize=(8, 10))
+    # top row: traces and fits
+    for i, y in enumerate(yd):
+        ax[0, 0].plot(x_data, y, linewidth=0.5, color="k", linestyle="-")
+        ax[0, 0].plot(x_data, lme_y[i], linestyle="--")
+    ax[0, 0].set_xlabel("Time (s)")
+    ax[0, 0].set_ylabel("Current (pA)")
+    ax[0, 0].set_title("LME")
+    
+    for i, y in enumerate(yd):
+        ax[0, 1].plot(x_data, y, linewidth=0.5, color="k", linestyle="-")
+        ax[0, 1].plot(x_data, lme_cc[i], linestyle="--")
+    ax[0, 1].set_xlabel("Time (s)")
+    ax[0, 1].set_ylabel("Current (pA)")
+    ax[0, 1].set_title("CCexp")
 
-    # LME = LMexpFit()
-    # result = LME.fit1(x_data, y_data, plot=True)
-    # print("LMfit values: ")
-    # # print(result.best_values)
-    # print(LME.fit_report(result.params))
+    for i, y in enumerate(yd):
+        if -fits_lme[i, 1]/amparr[i] > 1.01 or -fits_lme[i, 1]/amparr[i] < 0.99:
+            ax[1, 0].plot(x_data, y, linewidth=0.5, color="k", linestyle="-")
+            ax[1, 0].plot(x_data, lme_y[i], linestyle="--")
+    ax[1, 0].set_xlabel("Time (s)")
+    ax[1, 0].set_ylabel("Current (pA)")
+    ax[1, 0].set_title("LME")
+    
+    for i, y in enumerate(yd):
+        if fits_cc[i, 1]/amparr[i] > 1.01 or fits_cc[i, 1]/amparr[i] < 0.99:
+            # print("Amplitude error: ", fits_lme[i, 1], amparr[i])
+            ax[1, 1].plot(x_data, y, linewidth=0.5, color="k", linestyle="-")
+            ax[1, 1].plot(x_data, lme_cc[i], linestyle="--")
+    ax[1, 1].set_xlabel("Time (s)")
+    ax[1, 1].set_ylabel("Current (pA)")
+    ax[1, 1].set_title("CCexp")
 
-    # result2 = LME.fit2(x_data, y_data2, plot=True)
-    # print("LMfit values: ")
-    # # print(result.best_values)
-    # print(LME.fit_report(result2.params))
+
+    # middle row: time constants vs fit time constants
+    
+    ax[2, 0].plot(  # line of equality
+        [np.min(rates), np.max(rates)],
+        [np.min(rates), np.max(rates)],
+        color="r",
+        linestyle="--",
+        linewidth=0.5,
+    )
+    draw_arrow(ax[2, 0], ratearr, fits_lme[:, 2])
+    ax[2, 0].scatter(ratearr, fits_lme[:, 2], color='b', marker='x', s=3)
+    ax[2, 0].set_xlim(0, np.max(ratearr))
+    ax[2, 0].set_ylim(0, np.max(ratearr))
+    ax[2, 0].set_xlabel("Actual Time Constant")
+    ax[1, 0].set_ylabel("LME Time Constant")
+
+    ax[2, 1].plot(  # line of equality
+        [np.min(rates), np.max(rates)],
+        [np.min(rates), np.max(rates)],
+        color="r",
+        linestyle="--",
+        linewidth=0.5,
+    )
+
+    ax[2, 1].scatter(ratearr, 1./fits_cc[:, 2], color='b', marker='x', s=3)    
+    draw_arrow(ax[2, 1], ratearr, 1./fits_cc[:, 2])
+    ax[2, 1].set_xlim(0, np.max(ratearr))
+    ax[2, 1].set_xlabel("Actual Time Constant")
+    ax[2, 1].set_ylabel("CC Time Constant")
+    
+
+    # bottom row: 
+    # amplitud vs fit amplitude
+
+    ax[3, 0].scatter(amparr, -fits_lme[:, 1], color="y", marker="o", s=5)
+    ax[3, 0].plot(
+    [np.min(amparr), np.max(amparr)],
+    [np.min(amparr), np.max(amparr)],
+    color="r",
+    linestyle="--",
+    linewidth=0.5,
+    )
+    draw_arrow(ax[3, 0], amparr, -fits_lme[:, 1])
+    ax[3, 0].set_ylim(0, np.max(amparr))
+    ax[3, 0].set_xlim(0, np.max(amparr))
+    ax[3, 0].set_xlabel("Actual Amplitude")
+    ax[3, 0].set_ylabel("LME Amplitude")
+    
+    ax[3, 1].plot(
+        [np.min(amparr), np.max(amparr)],
+        [np.min(amparr), np.max(amparr)],
+        color="r",
+        linestyle="--",
+        linewidth=0.5,
+    )
+    ax[3, 1].scatter(np.array(amparr), fits_cc[:, 1], color="m", marker="o", s=3)
+    ax[3, 1].set_ylim(0, np.max(amparr))
+    ax[3, 1].set_xlim(0, np.max(amparr))
+    ax[3, 1].set_xlabel("Actual Amplitude")
+    ax[3, 1].set_ylabel("CCexp Amplitude")
+    draw_arrow(ax[3, 1], amparr, fits_cc[:, 1])
+    # 
+    
+    f.tight_layout()
+    mpl.show()
+    print("elapsed fitting: ", timing["LME"], timing["CCexp"])
+
+    # print("LME results: ", np.mean(fits[:, 2], axis=0), np.std(fits[:, 2], axis=0))
+    # print("CCexp results: ", np.mean(fits[:, 2], axis=0), np.std(fits[:, 2], axis=0))
+
+
+if __name__ == "__main__":
+    test_fitting(app)
+    
