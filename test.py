@@ -15,11 +15,15 @@ def main():
 
     # Allow user to audit tests with --audit flag
     import ephys.ephys_analysis
+    import ephys.tools
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
         ephys.mini_analyses.AUDIT_TESTS = True
-
+    if '--tensor_flow_test' in sys.argv:
+        sys.argv.remove('--tensor_flow_test')
+        sys.argc.append('-s')
+        flags.append('ephys/tools/tests/test_tensorflow.py')
     # generate test flags
     flags = sys.argv[1:]
     flags.append('-v')
@@ -39,6 +43,7 @@ def main():
         flags.append('ephys/mini_analyses')
         flags.append('ephys/ephys_analysis')
         flags.append('ephys/psc_analysis')
+
     print("flags: ", flags)
     # ignore the an cache
     # flags.append('--ignore=minis/somedir')

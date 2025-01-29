@@ -2,7 +2,11 @@
 ephys/ephysanalysis/c_deriv.c
 ephys/mini_analyses/clembek.c
 archived/
+# file history:
+data/files.toml
+mini_viewer_recent_files.toml
 
+# excel files
 testbridge.xlsx
 untitled*.*
 
