@@ -498,8 +498,8 @@ class Bridge():
             #            self.SP.analyzeSpikes_brief(mode='baseline')
             #            self.SP.analyzeSpikes_brief(mode='poststimulus')
             self.RM.analyze(
-                rmpregion=[0.0, self.AR.tstart - 0.001],
-                tauregion=[
+                rmp_region=[0.0, self.AR.tstart - 0.001],
+                tau_region=[
                     self.AR.tstart,
                     self.AR.tstart + (self.AR.tend - self.AR.tstart) / 5.0,
                 ],
