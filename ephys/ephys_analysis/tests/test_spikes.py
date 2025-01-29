@@ -88,7 +88,7 @@ def run_spike_tester(method="Kalluri", plot:bool=False):
     testdata  = get_testdata()
     spike_analyzer = SA.SpikeAnalysis()
     spike_analyzer.setup(clamps = testdata, threshold=-0.020, verbose=True)
-    spike_analyzer.set_detector(method) # Kalluri is probably the best detector
+    spike_analyzer.set_detector(method, pars=None) # Kalluri is probably the best detector
     spike_analyzer.analyzeSpikes()
     testresult = spike_analyzer.analysis_summary
     spike_analyzer.analyzeSpikeShape(max_spikeshape=3, printSpikeInfo=False)
