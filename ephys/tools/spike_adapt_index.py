@@ -1,6 +1,12 @@
-""" spike viewer
+""" spike adaptation index analysis
+
+This is a one-off tool to test the spike analysis index analysis
+across a population of cells (Reggie Edwards CBA-Age project). 
+
+
 
 """
+
 import datetime
 
 import pandas as pd
@@ -13,7 +19,12 @@ import seaborn as sns
 from ephys.tools.get_configuration import get_configuration
 from ephys.tools.check_inclusions_exclusions import include_exclude
 import ephys.tools.parse_ages as parse_ages
+import ephys.gui.data_table_functions as functions
+import pylibrary.plotting.plothelpers as PH
 
+git_hash = (
+    functions.get_git_hashes()
+)  # get the hash for the current versions of ephys and our project
 runpath = "/Users/pbmanis/Desktop/Python/RE_CBA"
 os.chdir(runpath)
 
@@ -51,6 +62,11 @@ def categorize_ages(age: int, experiment: dict):
         if age >= experiment["age_categories"][k][0] and age <= experiment["age_categories"][k][1]:
             age_category = k
     return age_category
+
+
+def adaptation_index(spk_lat, tr_dur):
+    ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / tr_dur) - 0.5)
+    return ai
 
 
 def get_adapt_index_to_hist(
@@ -100,7 +116,6 @@ def get_adapt_index_to_hist(
                 spikes = df["Spikes"][cellprotocol]
                 recnums = list(spikes["spikes"].keys())
 
-
                 for rec in recnums:
                     spikelist = list(spikes["spikes"][rec].keys())
                     if len(spikelist) < 3:
@@ -126,10 +141,8 @@ def get_adapt_index_to_hist(
                     if rate < rate_bounds[0] or rate > rate_bounds[1]:
                         continue
                     rates.append(rate)
-                    adapt_indices.append(
-                        (-2.0/n_spikes)*np.sum((spk_lat / tr_dur) - 0.5)
-                        )
-                    
+                    adapt_indices.append(self.adaptation_index(spk_lat, tr_dur))
+
                     # print("adaptation index: ", adapt_indices[-1])
         if len(adapt_indices) > 0:
             d_dict = {"age": age_cat, "adapt_index": np.mean(adapt_indices), "rate": np.mean(rates)}
@@ -145,7 +158,7 @@ def get_adapt_index_to_hist(
     print(df_plot.age.unique())
     df_plot.dropna(subset=["age"], inplace=True)
     print(df_plot.age.unique())
-    msize =  2.5
+    msize = 2.5
     sns.boxplot(
         x="age",
         y="adapt_index",
@@ -197,9 +210,13 @@ def get_adapt_index_to_hist(
         alpha=0.9,
     )
     # if rate_bounds[1] >= 100:
-        # ax[1].set_ylim(0, 150)
+    # ax[1].set_ylim(0, 150)
     ax[1].set_ylim(0, 160)
     ax[0].set_ylim(-1.0, 1.0)
+    ax[0].tick_params(axis="x", labelsize=6, rotation=45),
+    ax[0].tick_params(axis="y", labelsize=6),
+    ax[1].tick_params(axis="x", labelsize=6, rotation=45),
+    ax[1].tick_params(axis="y", labelsize=6),
 
     if not wait_to_show:
         f.tight_layout()
@@ -263,9 +280,7 @@ def get_all_protocols(datapath):
                     if rate < 10.0:
                         continue
                     rates.append(rate)
-                    adapt_indices.append(
-                        np.sum(-2.0 * (np.array(spk_lat) / tr_dur - 1)) / len(spk_lat)
-                    )
+                    adapt_indices.append(adaptation_index(spk_lat, tr_dur))
                     # print("adaptation index: ", adapt_indices[-1])
 
                 ax[na].plot(
@@ -302,6 +317,119 @@ def get_all_protocols(datapath):
                     break
         if na >= len(ax):
             break
+    f.tight_layout()
+    mpl.show()
+
+
+def superimpose_all_cells(datapath, protocol):
+
+    p = Path(datapath)
+    pcolors = sns.color_palette("tab20")
+    all_files = p.glob("*.pkl")
+    P = PH.regular_grid(
+        rows=1,
+        cols=1,
+        order="rowsfirst",
+        verticalspacing=0.05,
+        horizontalspacing=0.05,
+        margins={"leftmargin": 0.1, "rightmargin": 0.1, "topmargin": 0.1, "bottommargin": 0.1},
+        figsize=(5, 5),
+    )
+    P.figure_handle.facecolor = "lightgrey"
+
+    ax = P.axarr[0, 0]
+    ax.set_facecolor("lightgrey")
+    f = P.figure_handle
+    na = 0
+    for nfile, filename in enumerate(all_files):
+
+        # print(filename)
+        df = pd.read_pickle(filename, compression="gzip")
+        if df["Spikes"] is None:
+            # print(filename)
+            # print("    ", "No Spikes")
+            continue
+        age = df.age
+        # print(age, parse_ages.age_as_int(parse_ages.ISO8601_age(age)))
+        age_cat = categorize_ages(parse_ages.age_as_int(parse_ages.ISO8601_age(age)), experiment)
+        if age_cat == "NA" or pd.isnull(age_cat):
+            continue
+        # print(df['Spikes'].keys())
+        cellprotocols = list(df["Spikes"].keys())
+        # print("    ", cellprotocols)
+
+        for iprot, cellprotocol in enumerate(cellprotocols):
+            if Path(cellprotocol).name == protocol:
+                print(filename)
+                print("    ", cellprotocol)
+                spikes = df["Spikes"][cellprotocol]
+                recnums = list(spikes["spikes"].keys())
+                adapt_indices = []
+                rates = []
+                tr_dur = 1.0
+                for rec in recnums:
+                    spikelist = list(spikes["spikes"][rec].keys())
+                    if len(spikelist) < 3:
+                        continue
+                    # if len(spikelist) < 5 or len(spikelist) > 10:
+                    #     continue
+                    spk_lat = np.array(
+                        [
+                            spikes["spikes"][rec][spk].AP_latency
+                            for spk in spikelist
+                            if spk is not None
+                        ]
+                    )
+                    spk_lat = np.array([spk for spk in spk_lat if spk is not None])
+                    # print("spk_lat: ", spk_lat)
+                    if spk_lat is None:
+                        continue
+                    else:
+                        spk_lat -= 0.10
+                    # print(spk_lat)
+
+                    rate = len(spk_lat) / (spk_lat[-1] - spk_lat[0])
+                    if rate < 10.0:
+                        continue
+                    rates.append(rate)
+                    adapt_indices.append(adaptation_index(spk_lat, tr_dur))
+                    # print("adaptation index: ", adapt_indices[-1])
+
+                ax.plot(
+                    rates,
+                    adapt_indices,
+                    color=experiment["plot_colors"][age_cat],
+                    marker="o",
+                    linestyle="-",
+                    markersize=2,
+                    linewidth=0.5,
+                    clip_on=False,
+                )
+        # if nfile > 20:
+        #     break
+
+    ax.set_xlim(0, 500)
+    ax.set_ylim(-1, 1)
+    ax.plot([0, 500], [0, 0], color="gray", linestyle="--", linewidth=0.33)
+    ax.spines.top.set_visible(False)
+    ax.spines.right.set_visible(False)
+    ax.tick_params(
+        axis="both",
+        which="both",
+        direction="in",
+        length=2,
+        right=False,
+        top=False,
+        labelsize=8,
+    )
+    ax.set_xlabel("Firing Rate (Hz)", fontsize=8)
+    ax.set_ylabel("Adaptation Index", fontsize=8)
+
+    # ax.set_title(
+    #     f"{filename.name!s}\n{Path(cellprotocol).name:s}", fontsize=4, ha="center"
+    # )
+
+    time_stamp_figure(f, git_hash)
     f.tight_layout()
     mpl.show()
 
@@ -351,15 +479,51 @@ def plot_spikes(cellprotocols, filename):
     mpl.show()
 
 
-if __name__ == "__main__":
-    # fn = Path(datapath, cellid_pkl)
-    # get_all_protocols(datapath)
-    fig, ax = mpl.subplots(5, 2, figsize=(7, 12))
+def time_stamp_figure(fig, git_hash):
+    fig.text(
+        0.98,
+        0.01,
+        f"spike_adapt_index.py {datetime.datetime.now()}",
+        ha="right",
+        va="top",
+        fontsize=6,
+    )
+    fig.text(
+        0.01,
+        0.98,
+        f"Project git hash: {git_hash['project']!s}\nephys git hash: {git_hash['ephys']!s}\n",
+        ha="left",
+        va="top",
+        fontsize=6,
+    )
+
+
+def summary_hists():
+    P = PH.regular_grid(
+        rows=5,
+        cols=2,
+        order="rowsfirst",
+        verticalspacing=0.05,
+        horizontalspacing=0.05,
+        margins={"leftmargin": 0.07, "rightmargin": 0.07, "topmargin": 0.05, "bottommargin": 0.05},
+        figsize=(7, 12),
+    )
+    ax = P.axarr
     for i, rb in enumerate([[20, 40], [40, 60], [60, 80], [80, 100], [100, 150]]):
         get_adapt_index_to_hist(
             datapath, protocol, experiment, rate_bounds=rb, ax_index=ax[i, 0], ax_rate=ax[i, 1]
         )
-    fig.text(0.98, 0.01, f"spike_adapt_index.py {datetime.datetime.now()}", ha="right", fontsize=6)
+    fig = P.figure_handle
+    time_stamp_figure(fig, git_hash)
     fig.tight_layout()
     mpl.show()
+
+
+if __name__ == "__main__":
+    # fn = Path(datapath, cellid_pkl)
+    # get_all_protocols(datapath)
+    # fig, ax = mpl.subplots(5, 2, figsize=(7, 12))
+
+    superimpose_all_cells(datapath, protocol)
+
     # get_adapt_index_to_hist(datapath, protocol, experiment, rate_bounds=[20, 40])
