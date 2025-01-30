@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as mpl
 import seaborn as sns
 import ephys.tools.categorize_ages as CatAge
+import ephys.tools.filename_tools as FT
 import pylibrary.tools.cprint as CP
 
 
@@ -601,79 +602,128 @@ def show_best_rs_data(data, select_limits):
     # print("Rin mean: ", data["Rin_mean"].values)
     # print("Rin raw: ", data["Rin"].values)
 
+def categorize_ages(row, experiment: dict):
+    age_category = "NA"
+    if row.age == "P0D ?":
+        return np.nan
+    intage = parse_ages.age_as_int(parse_ages.ISO8601_age(row.age))
+    for k in experiment["age_categories"].keys():
+        if intage >= experiment["age_categories"][k][0] and intage <= experiment["age_categories"][k][1]:
+            age_category = k
+    return age_category
+
+def mean_adaptation(row):
+    if row.AdaptIndex is not None:
+        row.ADI = np.nanmean(row.AdaptIndex)
+    if row.AdaptRatio is not None:
+        row.ADR = np.nanmean(row.AdaptRates)
+    return row
 
 if __name__ == "__main__":
     # print(data.head(10))
     import matplotlib.pyplot as mpl
     import ephys.tools.parse_ages as parse_ages
-    fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA//config/experiments.cfg")
+    fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
     # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
-    print(fn.is_file())
+
     select_by = "Rs"
     cfg, d = get_configuration(str(fn))
-
-    experiment = d[cfg[0]]
+    exptname = "NF107Ai32_NIHL"
+    experiment = d[exptname]
     expts = experiment
 
     assembled_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["assembled_filename"])
     print(assembled_filename)
     data = read_pickle(assembled_filename)
-    # print(data.keys())
-    # print(data.AdaptIndex)
 
-    def mean_adaptation(row):
-        if row.AdaptIndex is not None:
-            row.ADI = np.nanmean(row.AdaptIndex)
-        if row.AdaptRatio is not None:
-            row.ADR = np.nanmean(row.AdaptRates)
-        return row
+    df_summary_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["datasummaryFilename"])
+    df_summary = read_pickle(df_summary_filename)
+
+
+
     data["ADI"] = {}
     data["ADR"] = {}
     data['age_category'] = None
-
-    def categorize_ages(row, experiment: dict):
-        age_category = "NA"
-        if row.age == "P0D ?":
-            return np.nan
-        intage = parse_ages.age_as_int(parse_ages.ISO8601_age(row.age))
-        for k in experiment["age_categories"].keys():
-            if intage >= experiment["age_categories"][k][0] and intage <= experiment["age_categories"][k][1]:
-                age_category = k
-        return age_category
-    
     data['age_category'] = data.apply(categorize_ages, experiment=experiment, axis=1)
+
     data = data.apply(mean_adaptation, axis=1)
     data.dropna(subset=["age"], inplace=True)
-    print(experiment["plot_order"]["age_category"])
-    f, ax = mpl.subplots(1,1)
-    sns.boxplot(
-        x="age_category",
-        y="ADI",
-        data=data,
-        hue="age_category",
-        palette=experiment["plot_colors"],
-        order=experiment["plot_order"]["age_category"],
-        # edgecolor="black",
-        # size=2.5,
-        linewidth=0.5,
-        zorder=50,
-        ax=ax,
-        saturation=0.5,
-    )
-    sns.swarmplot(
-            x="age_category",
-            y="ADI",
-            data=data,
-            hue="age_category",
-            palette=experiment["plot_colors"],
-            hue_order=experiment["plot_order"]["age_category"],
-            edgecolor="black",
-            size=2.5,
-            linewidth=0.5,
-            zorder=100,
-            ax=ax,
-            alpha=0.9,
-        )
+    # print(experiment["plot_order"]["age_category"])
+    # f, ax = mpl.subplots(1,1)
+    # sns.boxplot(
+    #     x="age_category",
+    #     y="ADI",
+    #     data=data,
+    #     hue="age_category",
+    #     palette=experiment["plot_colors"],
+    #     order=experiment["plot_order"]["age_category"],
+    #     # edgecolor="black",
+    #     # size=2.5,
+    #     linewidth=0.5,
+    #     zorder=50,
+    #     ax=ax,
+    #     saturation=0.5,
+    # )
+    # sns.swarmplot(
+    #         x="age_category",
+    #         y="ADI",
+    #         data=data,
+    #         hue="age_category",
+    #         palette=experiment["plot_colors"],
+    #         hue_order=experiment["plot_order"]["age_category"],
+    #         edgecolor="black",
+    #         size=2.5,
+    #         linewidth=0.5,
+    #         zorder=100,
+    #         ax=ax,
+    #         alpha=0.9,
+    #     )
 
-    ax.set_ylim(-1, 1)
+    # ax.set_ylim(-1, 1)
+
+    f, ax = mpl.subplots(2, 2)
+    ax = ax.ravel()
+    cells = ['pyramidal', 'tuberculoventral', 'cartwheel']
+    groups = ['B', 'A', 'AA', "AAA"]
+    for i, cell in enumerate(cells):
+        dfn = data[data.cell_type == cell]
+        # for ix in dfn.index:
+        #         print(dfn.loc[ix].cell_type, dfn.loc[ix].cell_id, FT.make_cellid_from_slicecell(dfn.loc[ix].cell_id))
+        #         # continue
+        # continue
+        ax[i].set_title(f"{cell:s}") 
+        for j, group in enumerate(groups):
+            dfg = dfn[dfn.Group == group]
+            # print("ct: ", cell, "group: ", group, "len: ", len(dfg))
+            if i == 0 and j == 0:
+                print("dataframe grouping columns: \n", dfg.columns)
+            # just to keep it simple, sort so we can compare
+            dfg.sort_values(by=["cell_id"], ignore_index=False, inplace=True)  # sort by date within the group
+            for cellidx in dfg.index:
+                dc = dfg.loc[cellidx]  
+                # print(cellidx, cell, dc.cell_id)
+                # print(dir(dc))
+                if cell == 'tuberculoventral':
+                    proper_cellid = FT.make_cellid_from_slicecell(dc.cell_id)
+                    print(f"\n{group:3s}: Cell index: : {cellidx:4d}, {dc.cell_id:32s} ProperID: {proper_cellid:s}")
+                    print(f"      analyzed Protocols: {dc.protocols}")
+                    print("       complete Protocols: ", df_summary[df_summary.cell_id == proper_cellid]["data_complete"].values)
+                    print("       len fi curve: ", len(dc.FI_Curve1), len(dc.FI_Curve1[0]))
+                    if len(dc.FI_Curve1) == 0:
+                        print("Nothing in FI_Curve1 for: ", dc.cell_id)
+                        continue
+                color = experiment["plot_colors"][group]
+                lw = 0.5
+
+                if cell == 'tberculoventral' and proper_cellid in ['2018.07.27_000/slice_001/cell_000']:
+                    color = 'k'
+                    lw = 1.5
+                    print("*****")
+                    print(dc.FI_Curve1)
+                fi = dc.FI_Curve1
+                # print("FI is: ", fi)
+                ax[i].plot(fi[0], fi[1], label=f"{cell:s}, {group:s}", 
+                        color=color, lw=lw)
+            ax[i].legend()
+
     mpl.show()
