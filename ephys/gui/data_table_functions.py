@@ -1563,7 +1563,7 @@ class Functions:
                         print("skipping: ", protname)
                         continue
                     pused.append(prot)
-                    pulse_start = experiment["protocol_start_times"][protname[:-4]]
+                    pulse_start = experiment["Protocol_start_times"][protname[:-4]]
 
                     for tr in cell_df["Spikes"][prot]["spikes"].keys():
                         for nsp in cell_df["Spikes"][prot]["spikes"][tr].keys():
@@ -2236,9 +2236,9 @@ class Functions:
             # continue
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
-                fullpath = Path(experiment["rawdatapath"], experiment["directory"], protocol)
+                fullpath = Path(experiment["rawdatapath"], experiment["directory"],  day_slice_cell, protocol)
             else:
-                fullpath = Path(experiment["rawdatapath"], protocol)
+                fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                 try:
                     if not AR.getData(
