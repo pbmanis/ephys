@@ -17,9 +17,10 @@ import colorcet
 
 FUNCS = data_table_functions.Functions()
 
+
 def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, decorate):
-   print("pkl_file: ", pkl_file)
-   with open(pkl_file, "rb") as fh:
+    print("pkl_file: ", pkl_file)
+    with open(pkl_file, "rb") as fh:
         df_selected = pd.read_pickle(fh, compression="gzip")
         plotter = IVPlotter(
             experiment=experiment,
@@ -34,12 +35,12 @@ def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, deco
 class IVPlotter(object):
     def __init__(
         self,
-        experiment:dict,
-        df_summary:pd.DataFrame,
+        experiment: dict,
+        df_summary: pd.DataFrame,
         file_out_path: Union[Path, str],
         decorate=True,
-        allow_partial:bool=False,
-        record_list:Union[list, None]=None,
+        allow_partial: bool = False,
+        record_list: Union[list, None] = None,
     ):
         self.df_summary = df_summary
         self.experiment = experiment
@@ -62,7 +63,7 @@ class IVPlotter(object):
         """
         if plot_handle is not None:
             shortpath = Path(protocol_directory).parts
-            shortpath2 = str(Path(*shortpath[4:]))
+            shortpath2 = str(Path(*shortpath[5:]))
             plot_handle.suptitle(
                 f"{str(shortpath2):s}\n{BIS.build_info_string(acq4reader, protocol_directory):s}",
                 fontsize=8,
@@ -83,15 +84,17 @@ class IVPlotter(object):
         # check to see if this one is in the exclusion list:
         # print(df_selected.cell_id, self.experiment["excludeIVs"])
         protocols = df_selected[types].keys()
-        print("Plot IVs...", df_selected.cell_id)
-        print(type(df_selected.cell_id))
+        # print("Plot IVs...", df_selected.cell_id)
+        # print(type(df_selected.cell_id))
         if isinstance(df_selected.cell_id, pd.Series):
             cell_id = df_selected.cell_id.values[0]  # convert series to str
         elif not isinstance(df_selected.cell_id, str):
             cell_id = df_selected.cell_id.item()  # convert series to str
         else:
             cell_id = df_selected.cell_id
-        protocols = FUNCS.remove_excluded_protocols(self.experiment, cell_id=cell_id, protocols=protocols)
+        protocols = FUNCS.remove_excluded_protocols(
+            self.experiment, cell_id=cell_id, protocols=protocols
+        )
         if len(protocols) == 0:
             CP("y", f"Excluding {cell_id} from the plotting; no valid protocols")
             return
@@ -103,7 +106,7 @@ class IVPlotter(object):
         except IndexError:
             CP("r", f"Could not find cell: {cell_id} in the summary table")
             raise IndexError(f"Could not find cell: {cell_id} in the summary table")
-        print("INDEX: ", index)
+        # print("INDEX: ", index)
         datestr, slicestr, cellstr = filename_tools.make_cell(icell=index, df=self.df_summary)
         if datestr is None:
             CP("r", f"Could not make filename partition for cell: {self.df_summary.cell_id!s}")
@@ -119,7 +122,7 @@ class IVPlotter(object):
         self.plot_df, _tmp = filename_tools.get_cell(
             experiment=self.experiment, df=self.df_summary, cell_id=cell_id
         )
-        if self.plot_df is None: # likely no spike or IV protocols for this cell
+        if self.plot_df is None:  # likely no spike or IV protocols for this cell
             CP("r", f"Cell had no spike or IV protocol cell: {cell_id!s}")
             return
         if isinstance(df_selected["cell_type"], str):
@@ -138,14 +141,19 @@ class IVPlotter(object):
 
         with PdfPages(Path(pdffile)) as pdf:
             for iv in self.plot_df["IV"].keys():
-                protodir = Path(self.file_out_path, iv)
+                protodir = Path(self.file_out_path, self.plot_df["cell_id"], iv)
                 plot_handle, acq4 = self.plot_one_iv(iv, allprots=allprots)
                 self.finalize_plot(
                     plot_handle, protocol_directory=protodir, pdf=pdf, acq4reader=acq4
                 )
 
-    def plot_one_iv(self, protocol, pubmode=False, allprots: list=None) -> Union[None, object]:
-        print("Plotting IV: ", protocol)
+    def plot_one_iv(self, protocol, pubmode=False, allprots: list = None) -> Union[None, object]:
+
+        git_hash = (
+            data_table_functions.get_git_hashes()
+        )  # get the hash for the current versions of ephys and our project
+
+        # print("Plotting IV: ", protocol)
         if isinstance(self.plot_df["Spikes"][protocol], str):
             CP("r", f"Spikes for {protocol} is a string: {self.plot_df['Spikes'][protocol]!s}")
             return None, None
@@ -187,6 +195,15 @@ class IVPlotter(object):
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
         now = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S %z")
+        P.figure_handle.text(
+            0.01,
+            0.98,
+            f"Project git hash: {git_hash['project'][-9:]!s}\nephys git hash: {git_hash['ephys'][-9:]!s}\n",
+            ha="left",
+            va="top",
+            fontsize=6,
+        )
+
         P.axdict["A"].text(
             0.96,
             0.01,
@@ -195,21 +212,44 @@ class IVPlotter(object):
             ha="right",
             transform=P.figure_handle.transFigure,
         )
+        P.axdict["A"].text(
+            0.01,
+            0.01,
+            s=f"{self.plot_df['cell_id']:s}",
+            fontsize=6,
+            ha="left",
+            transform=P.figure_handle.transFigure,
+        )
 
-        self.AR = acq4_reader.acq4_reader(Path(self.plot_df["data_directory"], self.plot_df["cell_id"], protocol))
+        self.AR = acq4_reader.acq4_reader(
+            Path(self.plot_df["data_directory"], self.plot_df["cell_id"], protocol)
+        )
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
 
-        P.figure_handle.suptitle(f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}", fontsize=8)
+        P.figure_handle.suptitle(
+            f"{str(Path(self.plot_df['data_directory'], self.plot_df["cell_id"], protocol)):s}\n{infostr:s}",
+            fontsize=8,
+        )
         dv = 50.0
         jsp = 0
         # print("cell id: ", self.plot_df["cell_id"])
-        res = CIE.include_exclude(cell_id=self.plot_df["cell_id"], 
-                                       inclusions=self.experiment["includeIVs"], exclusions=self.experiment["excludeIVs"], allivs=allprots["CCIV"]),
+        res = (
+            CIE.include_exclude(
+                cell_id=self.plot_df["cell_id"],
+                inclusions=self.experiment["includeIVs"],
+                exclusions=self.experiment["excludeIVs"],
+                allivs=allprots["CCIV"],
+            ),
+        )
         validivs, additional_ivs, additional_iv_records = res[0][0], res[0][1], res[0][2]
         self.allow_partial = False
         self.record_list = None
         # print("getting data for protocol: ", protocol)
-        if additional_iv_records is not None and len(additional_iv_records) > 0 and protocol in additional_iv_records.keys():
+        if (
+            additional_iv_records is not None
+            and len(additional_iv_records) > 0
+            and protocol in additional_iv_records.keys()
+        ):
             self.allow_partial = True
             self.record_list = additional_iv_records[protocol][1]
 
@@ -259,7 +299,7 @@ class IVPlotter(object):
                     color=trace_colors[trn],
                     linewidth=0.35,
                 )
-                
+
                 P.axdict["A1"].plot(
                     self.AR.time_base * 1e3,
                     self.AR.cmd_wave[trace_number, :].view(np.ndarray) * 1e9,
@@ -282,16 +322,22 @@ class IVPlotter(object):
                 if self.decorate:
 
                     clist = ["g", "b"]
-                    windows = ["baseline_spikes", "poststimulus_spikes"] 
+                    windows = ["baseline_spikes", "poststimulus_spikes"]
                     for window_number, window in enumerate(windows):
                         ptps = spike_dict[window]
                         if len(ptps[trace_number]) == 0:
                             continue
-                        uindx = [int(u / (self.AR.sample_interval)) + 1 for u in ptps[trace_number] if (int(u / (self.AR.sample_interval)) + 1) < self.AR.traces.shape[1]]
-                        spike_times =  np.array(self.AR.time_base[uindx]) #  ptps[trace_number] # np.array(self.AR.time_base[uindx])
+                        uindx = [
+                            int(u / (self.AR.sample_interval)) + 1
+                            for u in ptps[trace_number]
+                            if (int(u / (self.AR.sample_interval)) + 1) < self.AR.traces.shape[1]
+                        ]
+                        spike_times = np.array(
+                            self.AR.time_base[uindx]
+                        )  #  ptps[trace_number] # np.array(self.AR.time_base[uindx])
                         peak_aps = np.array(self.AR.traces[trace_number, uindx])
                         if len(peak_aps) < len(spike_times):
-                            spike_times = spike_times[:len(peak_aps)]
+                            spike_times = spike_times[: len(peak_aps)]
                         P.axdict["A"].plot(
                             spike_times * 1e3,
                             idv + peak_aps * 1e3,
@@ -301,18 +347,18 @@ class IVPlotter(object):
                         )
         else:  # taum measure: plot the mean trace from CC_taum protocol
             # print("taum traces for taum measure: ", ivs["taum_traces"])
-            print("protocol: ", protocol)
-            print("TAUM TRACES: ", ivs["taum_traces"])
+            # print("protocol: ", protocol)
+            # print("TAUM TRACES: ", ivs["taum_traces"])
 
-            print(self.AR.traces.view(np.ndarray).shape)
+            # print(self.AR.traces.view(np.ndarray).shape)
             # print(self.AR.traces.view(np.ndarray).shape)
             P.axdict["A"].plot(
-                    self.AR.time_base * 1e3,
-                    np.mean(self.AR.traces.view(np.ndarray), axis=0) * 1e3,
-                    "-",
-                    color=trace_colors[0],
-                    linewidth=0.35,
-                )
+                self.AR.time_base * 1e3,
+                np.mean(self.AR.traces.view(np.ndarray), axis=0) * 1e3,
+                "-",
+                color=trace_colors[0],
+                linewidth=0.35,
+            )
             if "ivss_cmd" in ivs.keys():
                 # plot the fit
                 fitn = list(ivs["taum_fitted"].keys())
@@ -326,7 +372,7 @@ class IVPlotter(object):
                             ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
                             ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
                             "--k",
-                            linewidth=1.,
+                            linewidth=1.0,
                         )
             P.axdict["A1"].plot(
                 self.AR.time_base * 1e3,
@@ -337,7 +383,7 @@ class IVPlotter(object):
             )
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
-                CP('y', f"iv_plotter: taum fitted is not in the ivs: {ivs.keys()!s}")
+                CP("y", f"iv_plotter: taum fitted is not in the ivs: {ivs.keys()!s}")
             if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
                 # plot the taum trace fit magnified and on the relevant traces
                 # print(ivs.keys())
@@ -355,7 +401,7 @@ class IVPlotter(object):
                                 ivs["taum_fitted"][fit_number][0] * 1e3,  # ms
                                 ivs["taum_fitted"][fit_number][1] * 1e3,  # mV
                                 "--k",
-                                linewidth=1.,
+                                linewidth=1.0,
                             )
                         # plot the traces that were in the fit
                         for itr in ivs["taum_fitted"].keys():
@@ -370,7 +416,11 @@ class IVPlotter(object):
                                 linewidth=0.35,
                             )
 
-            if ("tauh_tau" in ivs.keys()) and (ivs["tauh_tau"] != np.nan) and ("tauh_fitted" in ivs.keys()):
+            if (
+                ("tauh_tau" in ivs.keys())
+                and (ivs["tauh_tau"] != np.nan)
+                and ("tauh_fitted" in ivs.keys())
+            ):
                 for fit_number in ivs["tauh_fitted"].keys():
                     # CP('r', f"tau fitted keys: {str(k):s}")
                     P.axdict["A"].plot(
@@ -391,7 +441,7 @@ class IVPlotter(object):
                 font="Arial",
             )
         if not cc_taum_protocol:
- 
+
             P.axdict["B"].plot(
                 spike_dict["FI_Curve"][0][valid_traces] * 1e9,
                 spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
@@ -404,7 +454,7 @@ class IVPlotter(object):
             P.axdict["B"].scatter(
                 spike_dict["FI_Curve"][0][valid_traces] * 1e9,
                 spike_dict["FI_Curve"][1][valid_traces] / (self.AR.tend - self.AR.tstart),
-                color=trace_colors[:len(valid_traces)],
+                color=trace_colors[: len(valid_traces)],
                 s=16,
                 linewidth=0.5,
             )
@@ -460,7 +510,7 @@ class IVPlotter(object):
                 ifit = np.linspace(np.min(ivs["ivss_cmd"]), np.max(ivs["ivss_cmd"]), 50)
                 # print("ivs: ", ivs)
                 print(ifit)
-                fit = np.polyval(ivs["ivss_fit"]['pars'], ifit)
+                fit = np.polyval(ivs["ivss_fit"]["pars"], ifit)
                 P.axdict["C"].plot(
                     ifit * 1e9,
                     fit * 1e3,
@@ -487,10 +537,10 @@ class IVPlotter(object):
             tstr = "Recording:"
             tstr += f"  SR: {self.AR.sample_rate[0] / 1e3:.1f} kHz\n"
             tstr += f"  Downsample: {self.downsample:d}\n"
-            tstr += f"  ${{Pip Cap}}$: {ivs['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n"            
+            tstr += f"  ${{Pip Cap}}$: {ivs['CCComp']['CCNeutralizationCap']*1e12:.2f} pF\n"
             tstr += f"  Bridge [{enable:3s}]: {ccbridge:.1f} M{omega:s}\n"
             tstr += f"  Bridge Adjust: {ivs['BridgeAdjust']:.1f} m{omega:s}\n"
-            tstr += f"  Pipette Offset: {cccomp:.1f} mV\n"          
+            tstr += f"  Pipette Offset: {cccomp:.1f} mV\n"
             tstr += "Measures:"
             tstr += f"  RMP: {ivs['RMP']:.1f} mV\n"
             if "Rin" in ivs.keys():
@@ -501,12 +551,12 @@ class IVPlotter(object):
             # determine the structure of taupars:
             # len = 3 means taupars is a list of 3 values, assuming taupars[0] is a float and not a list
             # if taupars[0] is a list, then use the 0th element from the list.
-            
-            if len(ivs['taupars']) > 0:
-                if isinstance(ivs['taupars'][0], list) and len(ivs['taupars'][0]) == 3:
-                    tau_value = ivs['taupars'][0][2]
-                elif len(ivs['taupars']) == 3:
-                    tau_value = ivs['taupars'][2]
+
+            if len(ivs["taupars"]) > 0:
+                if isinstance(ivs["taupars"][0], list) and len(ivs["taupars"][0]) == 3:
+                    tau_value = ivs["taupars"][0][2]
+                elif len(ivs["taupars"]) == 3:
+                    tau_value = ivs["taupars"][2]
                 tstr += f"  {taum:s}: {tau_value*1e3:.2f} ms\n"
             else:
                 tstr += f"  {taum:s}: <no measure>\n"
@@ -525,7 +575,7 @@ class IVPlotter(object):
                 horizontalalignment="left",
                 verticalalignment="top",
                 fontsize=7,
-                bbox=dict(facecolor='blue', alpha=0.15)
+                bbox=dict(facecolor="blue", alpha=0.15),
             )
         #   P.axdict['C'].xyzero=([0., -0.060])
         PH.talbotTicks(P.axdict["A"], tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0})
@@ -553,9 +603,11 @@ class IVPlotter(object):
         spk_isi = None
         for i, spike_tr in enumerate(spikes):  # this is the trace number
             if self.allow_partial and spike_tr not in valid_traces:
-                continue 
+                continue
             # print("Spike tr: ", i, spike_tr)
-            spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
+            spike_train = spikes[
+                spike_tr
+            ]  # get the spike train for this trace, then get just the latency
             spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
             if (len(spk_tr) == 0) or (spk_tr[0] is None):
                 continue
@@ -568,12 +620,14 @@ class IVPlotter(object):
             spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
             # print("    spkl: ", spkl)
             if len(spkl) == 1:
-                P.axdict["D1"].plot(spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4)
+                P.axdict["D1"].plot(
+                    spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4
+                )
                 spk_isi = None
             else:
                 # print("spkl shape: " , spkl.shape)
                 spk_isi = np.diff(spkl)
-                spk_isit = spkl[:len(spk_isi)]
+                spk_isit = spkl[: len(spk_isi)]
                 P.axdict["D1"].plot(
                     spk_isit,
                     spk_isi,
@@ -597,7 +651,7 @@ class IVPlotter(object):
             horizontalalignment="right",
             verticalalignment="bottom",
         )
-        
+
         if (spk_isi is not None) and len(spk_isi > 7):
             mode_thr = 1.5
             fi_currents = spike_dict["FI_Curve"][0] * 1e9
@@ -619,34 +673,45 @@ class IVPlotter(object):
             for i, spike_tr in enumerate(spikes):  # this is the trace number
                 if spike_tr not in valid_traces:
                     continue
-                spike_train = spikes[spike_tr]  # get the spike train for this trace, then get just the latency
+                spike_train = spikes[
+                    spike_tr
+                ]  # get the spike train for this trace, then get just the latency
                 spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
                 if (None in spk_tr) or (len(spk_tr) <= 7):
                     continue
                 spk_isi = np.diff(spk_tr)
                 # plot joint isi
-                P.axdict["D2"].scatter(spk_isi[2:-1], spk_isi[3:],  s=6, color=trace_colors[spike_tr], marker='o', alpha=0.5)
-                P.axdict["D2"].scatter(spk_isi[0], spk_isi[1],  s=16, color=trace_colors[spike_tr], marker='+', alpha=1)  # mark first spike
-                P.axdict["D2"].scatter(spk_isi[1], spk_isi[2],  s=6, color=trace_colors[spike_tr], marker='^', alpha=1)  # mark first spike
+                P.axdict["D2"].scatter(
+                    spk_isi[2:-1],
+                    spk_isi[3:],
+                    s=6,
+                    color=trace_colors[spike_tr],
+                    marker="o",
+                    alpha=0.5,
+                )
+                P.axdict["D2"].scatter(
+                    spk_isi[0], spk_isi[1], s=16, color=trace_colors[spike_tr], marker="+", alpha=1
+                )  # mark first spike
+                P.axdict["D2"].scatter(
+                    spk_isi[1], spk_isi[2], s=6, color=trace_colors[spike_tr], marker="^", alpha=1
+                )  # mark first spike
             # plot lines with slope of 1, 2 and 3
             axmax = np.max([P.axdict["D2"].get_xlim()[1], P.axdict["D2"].get_ylim()[1]])
             xb = np.linspace(0, axmax, 100)
             y1 = xb
-            y2 = 2*xb
-            y3 = 3*xb
-            y4 = 4*xb
-            P.axdict["D2"].plot(xb, y1, 'k--', linewidth=0.5)
-            P.axdict["D2"].plot(xb, y2, 'b--', linewidth=0.5)
-            P.axdict["D2"].plot(xb, y3, 'r--', linewidth=0.5)
-            P.axdict["D2"].plot(xb, y4, 'c--', linewidth=0.5)
+            y2 = 2 * xb
+            y3 = 3 * xb
+            y4 = 4 * xb
+            P.axdict["D2"].plot(xb, y1, "k--", linewidth=0.5)
+            P.axdict["D2"].plot(xb, y2, "b--", linewidth=0.5)
+            P.axdict["D2"].plot(xb, y3, "r--", linewidth=0.5)
+            P.axdict["D2"].plot(xb, y4, "c--", linewidth=0.5)
 
             # P.axdict["D2"].plot(isi_curr, isi_mode, "o", markersize=4)
             P.axdict["D2"].set_xlim((0, axmax))
             P.axdict["D2"].set_ylim((0, axmax))
             P.axdict["D2"].set_xlabel("ISI(n)")
             P.axdict["D2"].set_ylabel("ISI(n+1)")
-
-        
 
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
@@ -687,8 +752,9 @@ class IVPlotter(object):
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
         infostr = BIS.build_info_string(self.AR, self.AR.protocol)
+        protocol = self.AR.protocol.name
         P.figure_handle.suptitle(
-            f"{str(Path(self.plot_df['data_directory'], protocol)):s}\n{infostr:s}",
+            f"{str(Path(self.plot_df['data_directory'], self.plot_df["cell_id"], protocol)):s}\n{infostr:s}",
             fontsize=8,
         )
         dv = 0.0
