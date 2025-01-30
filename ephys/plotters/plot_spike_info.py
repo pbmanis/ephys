@@ -6,6 +6,7 @@ import datetime
 import pprint
 from pathlib import Path
 import re
+from string import ascii_letters
 from typing import Optional
 import textwrap
 import dateutil.parser as DUP
@@ -906,7 +907,8 @@ class PlotSpikeInfo(QObject):
                     self.experiment["analyzeddatapath"],
                     self.experiment["directory"],
                     self.experiment["assembled_filename"],
-                )
+                ),
+                compression="gzip"
             )
             already_done = already_done.cell_id.unique()
         else:
@@ -1573,7 +1575,7 @@ class PlotSpikeInfo(QObject):
         )
 
         ncols = len(measures)
-        letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
+        letters = ascii_letters # ["A", "B", "C", "D", "E", "F", "G", "H"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
         figure_width = ncols * 2.5
         P = PH.regular_grid(
@@ -2020,7 +2022,7 @@ class PlotSpikeInfo(QObject):
         ]
 
         ncols = len(measures)
-        letters = letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+        letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
         df = df.copy()
         # df["FIMax_1"] = df.apply(getFIMax_1, axis=1)
@@ -2364,6 +2366,10 @@ class PlotSpikeInfo(QObject):
         # print("unique protocols: ", df["protocol"].unique())
         # print("protocols: ", df["protocols"])
         plabels = ["A1", "A2", "A3", "B1", "B2", "B3", "G", "H", "I", "J"]
+        plabels = []
+        for i in range(len(self.experiment["celltypes"])):
+            for j in range(3):
+                plabels.append(f"{ascii_letters[i].upper():s}{j+1:d}")
         P = PH.regular_grid(
             rows=len(self.experiment["celltypes"]),
             cols=3,
@@ -2434,7 +2440,7 @@ class PlotSpikeInfo(QObject):
                 for index in cdd.index:
                     group = cdd[group_by][index]
                     sex = cdd["sex"][index]
-
+                    # print("Group: ", group, "sex: ", sex)
                     if (celltype, group) not in NCells.keys():
                         NCells[(celltype, group)] = 0
                     # print("group: ", group)
@@ -2453,6 +2459,9 @@ class PlotSpikeInfo(QObject):
                     if pd.isnull(cdd["cell_id"][index]):
                         print("No cell ids")
                         continue
+                    # print(index, cdd["cell_id"][index], cdd["FI_Curve1"][index])
+                    # print(cdd)
+                    
                     try:
                         FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
                     except:
@@ -2630,6 +2639,7 @@ class PlotSpikeInfo(QObject):
                         )
         i = 0
         icol = 0
+        print("P.axdict: ", P.axdict)
         axp = P.axdict["A1"]
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
