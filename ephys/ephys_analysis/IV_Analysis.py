@@ -123,7 +123,7 @@ class IVAnalysis(Analysis):
 
     def configure(
         self,
-        datapath,
+        datapath=None,
         altstruct=None,
         file: Union[str, Path, None] = None,
         spikeanalyzer: Union[object, None] = None,
@@ -361,7 +361,8 @@ class IVAnalysis(Analysis):
         validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
             cell_id, inclusions=self.inclusions, exclusions=self.exclusions, allivs=allivs
         )
-
+        if len(additional_ivs) > 0:
+            validivs.extend(additional_ivs)
         # print("validivs: ", validivs)
         # print("additional ivs: ", additional_ivs)
         # print("additional iv records: ", additional_iv_records)
@@ -394,6 +395,7 @@ class IVAnalysis(Analysis):
                 [("IV", {}), ("Spikes", {})]
             )  # storage for results; predefine the dicts.
             print("iv analysis: parallel mode in 'off' or 'day'")
+            print("Tasks: ", tasks)
             for i, x in enumerate(tasks):
                 r, nfiles = self.analyze_iv(
                     icell=icell,
@@ -439,7 +441,7 @@ class IVAnalysis(Analysis):
                 # tasker.results[validivs[i]] = result
 
                 with concurrent.futures.ProcessPoolExecutor(max_workers=self.nworkers) as executor:
-                    print("   submitting execution to concurrent futures")
+                    print("   Submitting execution to concurrent futures")
                     futures = [
                         executor.submit(
                             concurrent_iv_analysis,
@@ -617,6 +619,7 @@ class IVAnalysis(Analysis):
         print("analyze_iv: cell directory: ", cell_directory)
         print("analyze_iv: protocol: ", protocol)
         protocol_directory = Path(cell_directory, protocol)
+        print("with protocol direcotry: ", Path(cell_directory, protocol))
         average_flag = False
         if str(protocol).find("_taum") > 0:
             average_flag = True  # average ALL traces in the protocol to compute the tau_m
@@ -642,7 +645,7 @@ class IVAnalysis(Analysis):
                 return (None, 0)
 
         self.configure(
-            protocol_directory,
+            datapath = protocol_directory,
             plot=not self.plotsoff,
             reader=self.AR,
             spikeanalyzer=self.SP,
@@ -875,11 +878,12 @@ class IVAnalysis(Analysis):
             print("setup complete, now analyze spikes", full_spike_analysis)
         self.SP.analyzeSpikes(track=track)
         if full_spike_analysis:
-            print("    Analyzing spike shapes")
+            print("    Analyzing spike shapes", end=" ")
             self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
             # self.SP.analyzeSpikes_brief(mode="evoked")
             self.SP.analyzeSpikes_brief(mode="baseline")
             self.SP.analyzeSpikes_brief(mode="poststimulus")
+            print("   ... Done")
         # self.SP.fitOne(function='fitOneOriginal')
         if track:
             print("    Brief spike analysis completed", full_spike_analysis)
