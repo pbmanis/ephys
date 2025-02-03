@@ -458,8 +458,8 @@ class IVAnalysis(Analysis):
                     ]
                     for i, future in enumerate(concurrent.futures.as_completed(futures)):
                         result, nfiles = future.result()
-                        print(result.keys())
-                        print(result['protocol'])
+                        # print(result.keys())
+                        # print(result['protocol'])
                         results[result['protocol']] = result
                     if len(results) == 0 or self.dry_run:
                         return
@@ -475,7 +475,7 @@ class IVAnalysis(Analysis):
                         # print('analyze_ivs: parallel Spikes results: \n', [(f, results[f]['Spikes']) for f in results.keys() if 'Spikes' in results[f].keys()])
                         # print('analyze_ivs: riv: ', riv)
                 if len(riv) == 0:
-                    print("Empty IV?")
+                    print("    .... Empty IV?")
                     return
                 self.df.at[icell, "IV"] = riv  # everything in the RM analysis_summary structure
                 self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
@@ -801,7 +801,8 @@ class IVAnalysis(Analysis):
                         f"Found additional (abbreviated) IV protocol: {prot:s} {len(self.record_list):d} records",
                     )
 
-        print("allow partial: ", self.allow_partial, "record_list: ", self.record_list)
+        if self.allow_partial:
+            print("Allow partial protocol: ", self.allow_partial, "record_list: ", self.record_list)
         if not self.AR.getData(
             silent=True, allow_partial=self.allow_partial, record_list=self.record_list
         ):  # get that data.
