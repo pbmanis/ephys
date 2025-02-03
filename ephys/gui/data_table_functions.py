@@ -2875,6 +2875,9 @@ class Functions:
             for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 if "spikes" not in df_cell.Spikes[protocol].keys():
                     self.add_measure(protocol, measure, value=np.nan)
+                    print("NO SPIKES IN PROTOCOL: ", protocol, df_cell.Spikes[protocol].keys())
+                    self.add_measure(protocol, measure, value=np.nan)
+                    continue
                 # we need to get the first spike evoked by the lowest current level ...
                 min_current_index, current, trace = self.find_lowest_current_trace(
                     df_cell.Spikes[protocol]
@@ -2889,7 +2892,9 @@ class Functions:
                 # we need to get the first spike evoked by the lowest current level ...
                 prot_spike_count = 0
                 if "spikes" not in df_cell.Spikes[protocol].keys():
+                    print("NO SPIKES IN PROTOCOL: ", protocol, df_cell.Spikes[protocol].keys())
                     self.add_measure(protocol, measure, value=np.nan)
+                    continue
                 spike_data = df_cell.Spikes[protocol]["spikes"]
                 if measure in [
                     "dvdt_rising",
