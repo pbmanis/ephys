@@ -19,7 +19,7 @@ FUNCS = data_table_functions.Functions()
 
 
 def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, decorate):
-    print("pkl_file: ", pkl_file)
+    # print("pkl_file: ", pkl_file)
     with open(pkl_file, "rb") as fh:
         df_selected = pd.read_pickle(fh, compression="gzip")
         plotter = IVPlotter(
@@ -509,7 +509,7 @@ class IVPlotter(object):
             if "ivss_fit" in ivs.keys() and len(ivs["ivss_cmd"]) > 0:
                 ifit = np.linspace(np.min(ivs["ivss_cmd"]), np.max(ivs["ivss_cmd"]), 50)
                 # print("ivs: ", ivs)
-                print(ifit)
+                # print(ifit)
                 fit = np.polyval(ivs["ivss_fit"]["pars"], ifit)
                 P.axdict["C"].plot(
                     ifit * 1e9,
@@ -601,41 +601,42 @@ class IVPlotter(object):
 
         # Plot the spike intervals as a function of time into the stimulus
         spk_isi = None
-        for i, spike_tr in enumerate(spikes):  # this is the trace number
-            if self.allow_partial and spike_tr not in valid_traces:
-                continue
-            # print("Spike tr: ", i, spike_tr)
-            spike_train = spikes[
-                spike_tr
-            ]  # get the spike train for this trace, then get just the latency
-            spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
-            if (len(spk_tr) == 0) or (spk_tr[0] is None):
-                continue
-            spk_tr = np.array([spk for spk in spk_tr if spk is not None])
-            # print("spk_tr: ", i, spike_tr, spk_tr)
-            # print("    tstart, end: ", self.AR.tstart, self.AR.tend)
-            spx = np.nonzero(  # get the spikes that are in the stimulus window
-                (spk_tr > self.AR.tstart) & (spk_tr <= self.AR.tend)
-            )
-            spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
-            # print("    spkl: ", spkl)
-            if len(spkl) == 1:
-                P.axdict["D1"].plot(
-                    spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4
+        if spikes is not None:
+            for i, spike_tr in enumerate(spikes):  # this is the trace number
+                if self.allow_partial and spike_tr not in valid_traces:
+                    continue
+                # print("Spike tr: ", i, spike_tr)
+                spike_train = spikes[
+                    spike_tr
+                ]  # get the spike train for this trace, then get just the latency
+                spk_tr = np.array([spike_train[sp].AP_latency for sp in spike_train.keys()])
+                if (len(spk_tr) == 0) or (spk_tr[0] is None):
+                    continue
+                spk_tr = np.array([spk for spk in spk_tr if spk is not None])
+                # print("spk_tr: ", i, spike_tr, spk_tr)
+                # print("    tstart, end: ", self.AR.tstart, self.AR.tend)
+                spx = np.nonzero(  # get the spikes that are in the stimulus window
+                    (spk_tr > self.AR.tstart) & (spk_tr <= self.AR.tend)
                 )
-                spk_isi = None
-            else:
-                # print("spkl shape: " , spkl.shape)
-                spk_isi = np.diff(spkl)
-                spk_isit = spkl[: len(spk_isi)]
-                P.axdict["D1"].plot(
-                    spk_isit,
-                    spk_isi,
-                    "o-",
-                    color=trace_colors[spike_tr],
-                    markersize=3,
-                    linewidth=0.5,
-                )
+                spkl = (np.array(spk_tr[spx]) - self.AR.tstart) * 1e3  # relative to stimulus start
+                # print("    spkl: ", spkl)
+                if len(spkl) == 1:
+                    P.axdict["D1"].plot(
+                        spkl[0], spkl[0], "o", color=trace_colors[spike_tr], markersize=4
+                    )
+                    spk_isi = None
+                else:
+                    # print("spkl shape: " , spkl.shape)
+                    spk_isi = np.diff(spkl)
+                    spk_isit = spkl[: len(spk_isi)]
+                    P.axdict["D1"].plot(
+                        spk_isit,
+                        spk_isi,
+                        "o-",
+                        color=trace_colors[spike_tr],
+                        markersize=3,
+                        linewidth=0.5,
+                    )
 
         PH.talbotTicks(P.axdict["C"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 1, "y": 0})
         P.axdict["D1"].set_yscale("log")
@@ -652,7 +653,7 @@ class IVPlotter(object):
             verticalalignment="bottom",
         )
 
-        if (spk_isi is not None) and len(spk_isi > 7):
+        if (spk_isi is not None) and len(spk_isi > 7) and spikes is not None:
             mode_thr = 1.5
             fi_currents = spike_dict["FI_Curve"][0] * 1e9
             # print("fi_currents: ", fi_currents)
@@ -715,7 +716,7 @@ class IVPlotter(object):
 
         # phase plot
         # P.axdict["E"].set_prop_cycle('color',[mpl.cm.jet(i) for i in np.linspace(0, 1, len(self.SP.spikeShapes.keys()))])
-        if not cc_taum_protocol:
+        if not cc_taum_protocol and spikes is not None:
             for k, i in enumerate(spikes.keys()):
                 if i not in valid_traces:
                     continue
