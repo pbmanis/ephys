@@ -730,8 +730,8 @@ class PlotSpikeInfo(QObject):
         self.pick_display_function = function
 
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
-        df3 = pd.read_excel(coding_file, sheet_name=coding_sheet)
-        print(df3.head())
+        df_coding = pd.read_excel(coding_file, sheet_name=coding_sheet)
+        print("Coding file head: \n", df_coding.head())
         for index in df.index:
             row = df.loc[index]
             if pd.isnull(row.date):
@@ -740,39 +740,47 @@ class PlotSpikeInfo(QObject):
                 coding_name = self.experiment["coding_name"]
             else:
                 coding_name = "Group"
-            # print(row.date, df3.date.values)
-            print("date in the date values: ", row.date, row.date in df3.date.values)
-            if row.date in df3.date.values:
-                if "sex" in df3.columns:  # update sex? Should be in main table.
-                    df.loc[index, "sex"] = df3[df3.date == row.date].sex.astype(str).values[0]
-                if "cell_expression" in df3.columns:
-                    df.loc[index, "cell_expressoin"] = (
-                        df3[df3.date == row.date].cell_expression.astype(str).values[0]
+            # print(row.date, df_coding.date.values)
+            print("date in the date values: ", row.date, row.date in df_coding.date.values)
+            # Here we apply what is in the CODING file to the combined file.
+            if row.date in df_coding.date.values:
+                if "sex" in df_coding.columns:  # update sex? Should be in main table.
+                    df.loc[index, "sex"] = df_coding[df_coding.date == row.date].sex.astype(str).values[0]
+                if "cell_expression" in df_coding.columns:
+                    df.loc[index, "cell_expression"] = (
+                        df_coding[df_coding.date == row.date].cell_expression.astype(str).values[0]
                     )
+                
+                # how to assignb groups: by date or subject?
                 print("Level: ", level.lower())
                 if level.lower() == "date":
                     print("row.date: ", row.date)
                     df.loc[index, "Group"] = (
-                        df3[df3.date == row.date][coding_name].astype(str).values[0]
+                        df_coding[df_coding.date == row.date][coding_name].astype(str).values[0]
                     )
                     if df.loc[index, "Group"] == np.nan:
-                        print("     df.loc[index, 'Group']: ", df.loc[index, "Group"])
+                        print("     df.loc[index, 'Group']: ", df.loc[index, "Group"], 
+                              "is Nan, but wanted: ", row[coding_name], 
+                              "from coding file column: ", coding_name)
+                elif level.lower() == "subject":
+                    mask = df_coding.subject == row.subject
+                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.lower() == "slice":
-                    mask = (df3.date == row.date) & (df3.slice_slice == row.slice_slice)
-                    df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
+                    mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
+                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.lower() == "cell":
                     mask = (
-                        (df3.date == row.date)
-                        & (df3.slice_slice == row.slice_slice)
-                        & (df3.cell_cell == row.cell_cell)
+                        (df_coding.date == row.date)
+                        & (df_coding.slice_slice == row.slice_slice)
+                        & (df_coding.cell_cell == row.cell_cell)
                     )
                     print("mask: ", mask)
-                    print("df3.date: ", row.date)
-                    print("df3.slice_slice: ", row.slice_slice)
-                    print("df3.cell_cell: ", row.cell_cell)
+                    print("df_coding.date: ", row.date)
+                    print("df_coding.slice_slice: ", row.slice_slice)
+                    print("df_coding.cell_cell: ", row.cell_cell)
                     print("coding name: ", coding_name)
-                    print("Mask: ", df3[mask][coding_name].astype(str))
-                    df.loc[index, "Group"] = df3[mask][coding_name].astype(str).values[0]
+                    print("Mask: ", df_coding[mask][coding_name].astype(str))
+                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
             else:
                 # print("Assigning nan to : ", df.loc[index].cell_id)
                 df.loc[index, "Group"] = np.nan
@@ -793,6 +801,7 @@ class PlotSpikeInfo(QObject):
         coding_file: Optional[str] = None,
         coding_sheet: Optional[str] = "Sheet1",
         coding_level: Optional[str] = "date",
+        coding_name: Optional[str] = "Group",
         exclude_unimportant=False,
         status_bar: Optional[object] = None,
     ):
@@ -822,7 +831,7 @@ class PlotSpikeInfo(QObject):
         # if Path(excelsheet).suffix == ".pkl":  # need to respecify as excel sheet
         #     excelsheet = Path(excelsheet).with_suffix(".xlsx")
         # print(f"    Excelsheet (from process_spike_info): {excelsheet!s}")
-        print("     coding_level: ", coding_level)
+        # print("     coding_level: ", coding_level)
         # df = pd.read_excel(excelsheet)
         print("    # entries in summary sheet: ", len(df_summary))
         if "cell_id" not in list(df_summary.columns):
@@ -831,16 +840,17 @@ class PlotSpikeInfo(QObject):
         # print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
         if coding_file is not None:  # add coding from the coding file
             df = self.read_coding_file(df_summary, coding_file, coding_sheet, coding_level)
-            print("coding file: ", coding_file, " sheet: ", coding_sheet, " level: ", coding_level)
-            print("Groups from coding file: ", df["Group"].unique())
-            print(df.columns)
+            print("coding file: ", coding_file, " sheet: ", coding_sheet, " level: ", coding_level, "coding_name: ", coding_name, "Group: ", df.Group.unique())
+            print("Groups from coding file: ", df[coding_name].unique())
+            print("coding data: ", df.columns)
         else:
             df = df_summary
             df["Group"] = "Control"
+
         # raise ValueError("Need to fix the coding file reading")
         FD = filter_data.FilterDataset(df, self.experiment["junction_potential"])
         if "remove_expression" not in self.experiment.keys():
-            self.experiment["remove_expression"] = None
+            self.experiment["remove_expression"] = []
         df = FD.filter_data_entries(
             df,
             remove_groups=self.experiment["remove_groups"],
@@ -854,6 +864,7 @@ class PlotSpikeInfo(QObject):
 
         CP("m", "Finished reading files\n")
         status_bar("Finished reading files")
+        print("df.Groups: ", df.Group)
         return df
 
     def combine_by_cell(self, df, valid_protocols=None, status_bar:object=None):
@@ -902,14 +913,24 @@ class PlotSpikeInfo(QObject):
         )
         # first be sure that we even have a combined file!
         if combined_file.is_file():
-            already_done = pd.read_pickle(
+            print("Combined File exists: ", combined_file)
+            try:
+                already_done = pd.read_pickle(
                 Path(
                     self.experiment["analyzeddatapath"],
                     self.experiment["directory"],
                     self.experiment["assembled_filename"],
                 ),
                 compression="gzip"
-            )
+                )
+            except:
+                already_done = pd.read_pickle(
+                Path(
+                    self.experiment["analyzeddatapath"],
+                    self.experiment["directory"],
+                    self.experiment["assembled_filename"],
+                )
+                )   # try without compression
             already_done = already_done.cell_id.unique()
         else:
             already_done = []
@@ -2979,6 +3000,7 @@ class PlotSpikeInfo(QObject):
         coding_file: Optional[str] = None,
         coding_sheet: Optional[str] = None,
         coding_level: Optional[str] = None,
+        coding_name: Optional[str] = "Group",
         exclude_unimportant: bool = False,
         status_bar: object = None
     ):
@@ -2997,6 +3019,8 @@ class PlotSpikeInfo(QObject):
             _description_, by default None
         coding_level : Optional[str], optional
             _description_, by default None
+        coding_name : Optional[str], optional
+            _description_, by default "Group
         exclude_unimportant : bool, optional
             _description_, by default False
         fn : str, optional
@@ -3013,6 +3037,7 @@ class PlotSpikeInfo(QObject):
             coding_file=coding_file,
             coding_sheet=coding_sheet,
             coding_level=coding_level,
+            coding_name=coding_name,
             exclude_unimportant=exclude_unimportant,
             status_bar=status_bar
         )
@@ -3034,12 +3059,13 @@ class PlotSpikeInfo(QObject):
         protostrings = "|".join(list(self.experiment["protocols"]["CCIV"].keys()))
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
-
+        print(df.head())
+        # return
         df = self.combine_by_cell(df, status_bar=status_bar)
         print("\nWriting assembled data to : ", fn)
         print(df.head())
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
-        df.to_pickle(fn)
+        df.to_pickle(fn, compression= "gzip")
 
     def categorize_ages(self, row):
         row.age = numeric_age(row)
@@ -3186,7 +3212,7 @@ class PlotSpikeInfo(QObject):
 
             if row.cell_expression in [" ", "nan", "NaN", np.nan] or pd.isnull(row.cell_expression):
                 row.cell_expression = "ND"
-            if "remove_expression" in self.experiment.keys():
+            if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
                 if row.cell_expression in self.experiment["remove_expression"]:
                     for re in self.experiment["remove_expression"]:
                         if row.cell_expression == re:
@@ -3213,7 +3239,7 @@ class PlotSpikeInfo(QObject):
             _description_
         """
         CP("g", f"    PRELOAD, {fn!s}")
-        df = pd.read_pickle(fn)
+        df = pd.read_pickle(fn, compression="gzip")
         df_summary = get_datasummary(self.experiment)
         df = self.preprocess_data(df, self.experiment)
         return df
