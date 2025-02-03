@@ -858,7 +858,7 @@ class RmTauAnalysis:
 
         self.ivss_v_all = data1.mean(axis=1)  # all traces
         self.analysis_summary["Rin"] = np.nan
-        print("len self.Spikes.nospk: ", len(self.Spikes.nospk))
+        # print("len self.Spikes.nospk: ", len(self.Spikes.nospk))
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
             # however, handle case where there are spikes at currents LESS
@@ -870,8 +870,8 @@ class RmTauAnalysis:
             ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
             if not any(ivss_valid):
                 print("No valid traces for IVSS analysis")
-                print(ivss_valid)
-                print(self.Spikes.spikecount)  
+                # print(ivss_valid)
+                # print(self.Spikes.spikecount)  
                 return
             self.ivss_v = self.ivss_v_all[ivss_valid]
             self.ivss_cmd_all = self.Clamps.commandLevels[ivss_valid]
