@@ -1800,6 +1800,7 @@ class DataTables:
             FUNCS.textappend(
                 f"DataSummary file: {self.datasummaryfile!s} does not yet exist - please generate it first"
             )
+            self.status_bar_message(f"DataSummary {self.datasummaryfile!s} does not exist", color="red")
             return
         msg = f"DataSummary file: {self.datasummaryfile!s}  exists"
         msg += f"    Last updated: {datetime.datetime.fromtimestamp(self.datasummaryfile.stat().st_mtime)!s}"
