@@ -6,7 +6,7 @@ import inspect # to get path to standard_configurations files
 import ephys
 from pylibrary.tools import cprint
 CP = cprint.cprint
-
+import ephys.tools.configfile as CF
 PP = pprint.PrettyPrinter(indent=4)
 
 
@@ -56,7 +56,7 @@ def get_configuration(configfile: Union[str, None] = None):
         #     ) from exc
     else:
         print("configfile: ", configfile)
-        config = pg.configfile.readConfigFile(configfile)
+        config = CF.readConfigFile(configfile)
         experiments = config["experiments"]
     
     datasets = list(experiments.keys())
@@ -90,7 +90,7 @@ def retrieve_standard_values(experiments, datasets):
         ephys_path = Path(str(inspect.getfile(ephys)))
         ephys_posix = ephys_path.parent.as_posix()
         cfg_path = Path(str(ephys_posix), "config", "standard_configurations.cfg")
-        standard = pg.configfile.readConfigFile(cfg_path)
+        standard = CF.readConfigFile(cfg_path)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
             f"No config file found, expected in the top-level config directory, named '{cfg_path!s}'"
@@ -103,6 +103,7 @@ def retrieve_standard_values(experiments, datasets):
         if "data_inclusion_criteria" not in experiments[dataset]:
             CP("c", f"Reading 'data_inclusion_criteria' from standard configuration for dataset: {dataset:s}")
             experiments[dataset]["data_inclusion_criteria"] = standard["data_inclusion_criteria"]
+
     return experiments
 
 def validate_configuration(experiments, datasets):
