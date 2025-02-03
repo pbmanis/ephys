@@ -24,13 +24,14 @@ for Acq4 (and beyond)
 """
 
 import pprint
+from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass
 import datetime
 from typing import Union
 import multiprocessing as MP
 from pyqtgraph import multiprocess as mproc
-
+import concurrent.futures
 import numpy as np
 import scipy.stats
 from numba import jit
@@ -112,6 +113,22 @@ def interpolate_halfwidth(tr, xr, kup, halfv, kdown):
         return None, None
     t_hwdown = (halfv - b2) / m2
     return t_hwdown, t_hwup
+
+def concurrent_spike_analysis(
+    spikeanalysis: object,
+    i: int,
+    x: int,
+    spike_begin_dV:float,
+    max_spikeshape:int, 
+    printSpikeInfo:bool
+):
+    result = spikeanalysis.analyze_one_trace(
+        trace_number=i,
+        begin_dV=spike_begin_dV,
+        max_spikeshape = max_spikeshape,
+        printSpikeInfo=printSpikeInfo,
+    )
+    return result
 
 
 class SpikeAnalysis:
@@ -425,7 +442,7 @@ class SpikeAnalysis:
         printSpikeInfo: bool = False,
     ):
         if len(self.spikes[trace_number]) == 0:
-            return
+            return None
         if printSpikeInfo:
             print(f"{this_source_file:s}:: spikes: ", self.spikes[trace_number])
             print((np.array(self.Clamps.values)))
@@ -461,6 +478,7 @@ class SpikeAnalysis:
             if thisspike is not None:
                 trspikes[spike_number] = thisspike
         self.spikeShapes[trace_number] = trspikes
+        return self.spikeShapes[trace_number]
 
     def analyzeSpikeShape(
         self,
@@ -512,24 +530,50 @@ class SpikeAnalysis:
         self.rmps = np.zeros(ntr)
         self.iHold_i = np.zeros(ntr)
 
-        # for i in range(ntr):
-        #     self.analyze_one_trace(i, begin_dV, max_spikeshape, printSpikeInfo)
-
         # parallelize the analysis of the traces
 
-        nWorkers = MP.cpu_count()  # get this automatically
+        self.nWorkers = MP.cpu_count()-2  # get this automatically
+        if self.nWorkers < 1:
+            self.nWorkers = 1
         traces = [tr for tr in range(ntr) if len(self.spikes[tr]) > 0]  # only traces with spikes
         ntraces = len(traces)
-        # tasks = [s for s in range(ntr)]
-        # tresults = [None]*len(tasks)
-        # NOTE: not parallelizing spike processing.
-        # with mproc.Parallelize(
-        #     enumerate(tasks), results=tresults, workers=nWorkers
-        # ) as tasker:
-        #     for i, x in tasker:
-        #         tr = self.analyze_one_trace(traces[i], begin_dV, max_spikeshape, printSpikeInfo)
-        #         tasker.results[i] = tr
 
+        # print("ANALYZE SPIKE SHAPE: # traces with spikes: ", ntraces)
+        # results: dict = {}
+        # tasks = dict(zip(range(len(traces)), traces))
+        # result = [None] * len(tasks)
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=self.nWorkers) as executor:
+        #     print("   ***** Submitting spike shape analysis to concurrent futures")
+        #     futures = [
+        #         executor.submit(
+        #             concurrent_spike_analysis, # which calls analyze_one_trace.
+        #             self,
+        #             i=i,
+        #             x=x,  # trace
+        #             spike_begin_dV=spike_begin_dV,
+        #             max_spikeshape=max_spikeshape, 
+        #             printSpikeInfo=printSpikeInfo
+        #         )
+        #         for i, x in enumerate(tasks)
+        #     ]
+        #     print("All Submitted")
+        #     for i, future in enumerate(concurrent.futures.as_completed(futures)):
+        #         print("Completed: ", i)
+        #         res = future.result()
+        #         print("Futures result: ", res)
+        #         if res is None:
+        #             continue
+        #         else:
+        #             result, nfiles = res
+        #             print(result.keys())
+        #             print(result['protocol'])
+        #             results[result['protocol']] = result
+        #     if len(results) == 0 or self.dry_run:
+        #         return
+
+
+
+        # not parallelized code:
         for i in range(ntraces):
             self.analyze_one_trace(traces[i], spike_begin_dV, max_spikeshape, printSpikeInfo)
 
