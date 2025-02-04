@@ -772,7 +772,12 @@ class PlotSpikeInfo(QObject):
                 df.loc[len(df)] = pd.Series(dtype="float64")
                 df.loc[len(df) - 1, "Group"] = group
         return df
-
+    
+    def fix_cell_expression(self, row):
+        if row.cell_expression == "" or len(row.cell_expression) == 0 or row.cell_expression == "ND":
+            row.cell_expression = "-"
+        return row
+    
     def clear_missing_groups(self, row, data, replacement=None):
         """clear_missing_groups Remove groups that are nan or empty
         by replacing them with "Group = np.nan", unless
@@ -872,6 +877,9 @@ class PlotSpikeInfo(QObject):
         #     "y",
         #     f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
         # )
+        # fix cell expression when it is empty (no string). This means "negative". 
+        if "cell_expression" in df_x.columns:
+            df_x = df_x.apply(self.fix_cell_expression, axis=1)
 
         dodge = True
         if (
@@ -1249,7 +1257,6 @@ class PlotSpikeInfo(QObject):
             df_R = df_R.apply(self.average_Rs, axis=1)
         if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_CNeut, axis=1)
-
         # for meas in measures:
         #     if meas in df_R.columns:
         #         print("meas: ", meas)
@@ -1608,7 +1615,8 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
-        # print("-"*80, "\nBar pts:hue: ", hue_category, "plot_order: ", plot_order, "\n", "-"*80)
+        print("-"*80, "\nBar pts: hue: ", hue_category, "plot_order: ", plot_order, "\n", "-"*80)
+        print("colors: ", colors)
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
