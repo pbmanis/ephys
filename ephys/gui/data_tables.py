@@ -109,7 +109,8 @@ from ephys.gui import data_table_functions as functions
 from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
 from ephys.gui import command_params
-from ephys.plotters import plot_spike_info as plot_spike_info
+import ephys.plotters.plot_spike_info as plot_spike_info
+from ephys.tools import assemble_datasets
 from ephys.tools.get_computer import get_computer
 import ephys.tools.get_configuration as GETCONFIG
 
@@ -216,6 +217,7 @@ class DataTables:
         self.dry_run = False
         self.parallel_mode = "cell"
         self.exclude_unimportant = False
+
         self.computer_name = get_computer()
 
         self.PSI_2 = plot_spike_info  # reference to non-class routines in the module.
@@ -228,6 +230,7 @@ class DataTables:
             pick_display=self.show_pdf_on_pick,
             pick_display_function=self.display_from_table_by_cell_id,
         )
+        self.assemble_dataset = assemble_datasets.AssembleDatasets(status_bar=self.status_bar_message)
         self.spike_plot = None
         self.rmtau_plot = None
         self.fidata_plot = None
@@ -890,15 +893,14 @@ class DataTables:
                                 )
                             else:
                                 coding_file = None
-                            fn = self.PSI.get_assembled_filename(self.experiment)
-                            self.PSI.assemble_datasets(
+                            fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+
+                            self.assemble_dataset.assemble_datasets(
                                 df_summary=self.datasummary,
-                                coding_file=coding_file,
-                                coding_sheet=self.experiment["coding_sheet"],
-                                coding_level=self.experiment["coding_level"],
+                                experiment = self.experiment,
                                 exclude_unimportant=self.exclude_unimportant,
                                 fn=fn,
-                                status_bar=self.status_bar_message, # pass the function handle
+
                             )
 
                         # case "Process Spike Data":
@@ -1076,7 +1078,7 @@ class DataTables:
                                     )
 
                                 case "Plot FICurves":
-                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
                                     print("Loading fn: ", fn)
                                     df = self.PSI.preload(fn)
                                     P4, picker_funcs4 = self.PSI.summary_plot_fi(
@@ -1134,7 +1136,7 @@ class DataTables:
                                     if self.assembleddata is None:
                                         raise ValueError("Must load assembled data file first")
 
-                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
                                     print("Loading fn: ", fn)
                                     group_by = (
                                         self.ptreedata.child("Plotting").child("Group By").value()
@@ -1202,7 +1204,7 @@ class DataTables:
                                         analysis_cell_types,
                                         adddata,
                                     ) = self.PSI_2.setup(self.experiment)
-                                    fn = self.PSI.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
                                     print("Loading fn: ", fn)
                                     df = self.PSI.preload(fn)
                                     divider = "=" * 80
@@ -1529,7 +1531,7 @@ class DataTables:
         # FI_measures: ["AdaptRatio",  "maxHillSlope", "I_maxHillSlope", "FIMax_1", "FIMax_4"]
 
         assert data_class in self.experiment.keys()
-        fn = self.PSI.get_assembled_filename(self.experiment)
+        fn = self.assemble_dataset.get_assembled_filename(self.experiment)
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
         plot_order = self.experiment["plot_order"][group_by]
         hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
@@ -1818,7 +1820,7 @@ class DataTables:
         """get the current assembled data file, if it exists
         if not, just pass on it.
         """
-        self.assembledfile = self.PSI.get_assembled_filename(self.experiment)
+        self.assembledfile = self.assemble_dataset.get_assembled_filename(self.experiment)
         if not self.assembledfile.is_file():
             FUNCS.textappend(
                 f"Assembled data file: {self.assembledfile!s} does not yet exist - please generate it first"
