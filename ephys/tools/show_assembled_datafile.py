@@ -168,7 +168,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         if isinstance(row[select_by], float):
             select_value = row[select_by]
         else:
-            print("I, selectby: ", i, row[select_by])
+            # print("I, selectby: ", i, row[select_by])
             if i < len(row[select_by]):
                 select_value = row[select_by][i]
         
@@ -219,8 +219,8 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
 
     # global means (indpendent of select_by)
     if not parameter.startswith("CC_taum"):  # standard IV protocols
-        print("Params: ", params)
-        print("prots: ", prots)
+        # print("Params: ", params)
+        # print("prots: ", prots)
         row[parameter + f"_mean"] = np.nanmean(
             [v for i, v in enumerate(params) if i < len(prots) and not Path(prots[i]).name.startswith("CC_taum")]
         )
