@@ -2186,8 +2186,8 @@ class Functions:
         """
         if self.status_bar is not None:
             self.status_bar.showMessage(f"Computing FI fits for cell: {cell:s}")
-        CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id==cell].cell_type.values[0]:s}")
-        CP("g", f"     Group {df[df.cell_id==cell].Group.values[0]!s}")
+        CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}")
+        CP("g", f"     Group {df[df.cell_id == cell].Group.values[0]!s}")
         cell_group = df[df.cell_id == cell].Group.values[0]
         if (
             pd.isnull(cell_group) and len(df[df.cell_id == cell].Group.values) > 1
@@ -2195,7 +2195,7 @@ class Functions:
             cell_group = df[df.cell_id == cell].Group.values[1]
         try:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
-        except:
+        except ValueError:
             print("datatable functions:ComputeFIFits:get_cell failed to find:\n    ", df.cell_id)
             print("Here are the cell_ids in the dataframe: ", [x for x in df.cell_id.values])
             if self.status_bar is not None:
@@ -2236,7 +2236,9 @@ class Functions:
             # continue
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
-                fullpath = Path(experiment["rawdatapath"], experiment["directory"],  day_slice_cell, protocol)
+                fullpath = Path(
+                    experiment["rawdatapath"], experiment["directory"], day_slice_cell, Path(protocol).name
+                )
             else:
                 fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
@@ -2412,8 +2414,8 @@ class Functions:
             rate = []
 
             last_spike = []
-             # only do adaptation calculation for the protocols in the list
-            if short_proto_name in experiment ["Adaptation_index_protocols"].keys():
+            # only do adaptation calculation for the protocols in the list
+            if short_proto_name in experiment["Adaptation_index_protocols"].keys():
                 adaptation_index, adaptation_rate = self.compute_adaptation_index(
                     df_cell.Spikes[protocol]["spikes"],
                     trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
@@ -2466,7 +2468,7 @@ class Functions:
                 adaptation_rates.extend(adaptation_rate)
         adaptation_indices = np.array(adaptation_indices)
         adaptation_rates = np.array(adaptation_rates)
-        
+
         FI_Data_I1 = []
         FI_Data_FR1 = []
         FI_Data_I4 = []
@@ -2517,7 +2519,7 @@ class Functions:
         datadict["I_maxHillSlope_SD"] = np.nan
         datadict["firing_currents"] = None
         datadict["firing_rates"] = None
-        datadict["AdaptIndex"] = adaptation_indices[~np.isnan(adaptation_indices)]  # remove nans... 
+        datadict["AdaptIndex"] = adaptation_indices[~np.isnan(adaptation_indices)]  # remove nans...
         datadict["AdaptRates"] = adaptation_rates[~np.isnan(adaptation_rates)]  # remove nans...
         datadict["last_spikes"] = None
         if len(linfits) > 0:
@@ -2741,11 +2743,11 @@ class Functions:
             if rate < rate_bounds[0] or rate > rate_bounds[1]:
                 # CP("y", f"Adaption calculation: rec: {rec:d} failed rate limit: {rate:.1f}, {rate_bounds!s}, spk_lat: {spk_lat!s}")
                 continue
-            # else: 
+            # else:
             #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
             adapt_rates.append(rate)
             adapt_indices.append(self.adaptation_index(spk_lat, trace_duration))
-    #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
+        #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
 
         return adapt_indices, adapt_rates
 
