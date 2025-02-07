@@ -104,6 +104,8 @@ class FixObjective(pg.QtWidgets.QWidget):
         if not reload_last:
             sel = FS.FileSelector(dialogtype="dir", startingdir=self.datadir)
             current_filename = sel.fileName
+            if Path(current_filename).is_file():
+                self.datadir = Path(current_filename)
         else:
             current_filename = self.objective_data["LastFile"]
             # if self.filelistpath.is_file():
@@ -233,40 +235,37 @@ class FixObjective(pg.QtWidgets.QWidget):
         print("objective img: ", objective.images)
         if objective.images is not None and len(objective.images) > 0:
             imagefiles.append(objective.images)
-        if objective.images[0] is not None:
-            images = SQP(objective.images)[0]
+            images, target = SQP(objective.images)
             print("images: ", images)
-            for img in images:
+            for img in images[0]:
                 print("img: ", img)
                 imagefiles.append(f"image_{int(img[0]):03d}.tif")
-        elif objective.images[1] is not None:
-            videos = SQP(objective.images)[1]
-            for vid in videos:
-                imagefiles.append(f"img_{int(vid):03d}.tif")
+        print("objective.videos: ", objective.videos)
+        if objective.videos is not None:
+            videos, target = SQP(objective.videos)
+            print('Videls: ', videos)
+            for vid in videos[0]:
+                imagefiles.append(f"video_{int(vid):03d}.ma")
         else:
             pass
         return imagefiles
 
     def change_scale(self, objective: object = None, write: bool = False):
+        print("change scale objective: ", objective)
         imagefiles = self.get_imagefilenames(objective)
         if len(imagefiles) == 0:
             return
+        text = []
+        text.append(f"Changescale: imagefiles: {imagefiles}")
 
-        print("\n----------------------------")
-        print("imagefile: ", imagefile)
-        print("Changescale: imagefiles: ", imagefiles)
-        print("index keys: ", self.index.keys())
+        text.append(f"\nindex keys:  {self.index.keys()}")
         for imagefile in imagefiles:
             if imagefile not in self.index.keys():
-                CP.cprint(
-                    "m",
-                    f"File {imagefile:s} not found in {str(list(self.index.keys())):s}",
-                )
+                text.append(f"File {imagefile:s} not found in {str(list(self.index.keys())):s}")
                 continue
-            print("Index imagefile: ", imagefile)
-            print(
-                "Old objective: ", self.objdata.from_objective  # self.index[imagefile]["objective"]
-            )  # pp.pprint(index[imagefile] )
+            text.append(f"Index imagefile:  {imagefile}")
+            text.append(f"Old objective: {self.objdata.from_objective}")  # self.index[imagefile]["objective"]
+            # pp.pprint(index[imagefile] )
             old_objective = self.index[imagefile]["objective"]
             pp.pprint("   Old transform: ")
             pp.pprint(self.index[imagefile]["transform"])
@@ -312,6 +311,9 @@ class FixObjective(pg.QtWidgets.QWidget):
                 print("Dry Run: .index file was NOT modified")
                 print(f" file to modify is: {str(index_filename):s}")
         # then update index file display
+        text.append(f"\n\nChanges made to {str(imagefiles):s}")
+        self.change_text.setHtml("\n".join([t for t in text]))
+
         self.show_index()
 
     def build_ptree(self):
@@ -355,6 +357,7 @@ class FixObjective(pg.QtWidgets.QWidget):
             {"name": "View .index", "type": "action"},
             {"name": "View proposed changes", "type": "action"},
             {"name": "Apply changes", "type": "action"},
+            {'name': "Reload", 'type': 'action'},
             {"name": "Quit", "type": "action"},
         ]
         self.ptree = ParameterTree()
@@ -429,26 +432,60 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.Dock_Params = PGD.Dock("Params", size=(self.ptreewid, win_ht))
         self.Dock_Params.addWidget(self.ptree)
         self.Dock_Report = PGD.Dock("Reporting", size=(win_wid - self.ptreewid, win_ht))
+        self.Dock_Help = PGD.Dock("Help", size=(win_wid - self.ptreewid, win_ht))
+        self.Dock_Changes = PGD.Dock("Changes", size=(win_wid - self.ptreewid, win_ht))
 
         self.textbox = QtWidgets.QTextEdit()
         self.textbox.setReadOnly(True)
         self.textbox.setText("(.index file)")
         self.Dock_Report.addWidget(self.textbox)
+        
+        self.help_text = QtWidgets.QTextEdit()
+        self.help_text.setReadOnly(True)
+        self.help_text.setText("Help")
+        
+        self.change_text = QtWidgets.QTextEdit()
+        self.change_text.setReadOnly(True)
+        self.change_text.setText("Changes")
+        self.Dock_Changes.addWidget(self.change_text)
 
+        self.Dock_Help.addWidget(self.help_text)
         self.DockArea.addDock(self.Dock_Params, "left")
         self.DockArea.addDock(self.Dock_Report, "right", self.Dock_Params)
+        self.DockArea.addDock(self.Dock_Help, "bottom", self.Dock_Report)
+        self.DockArea.addDock(self.Dock_Changes, "bottom", self.Dock_Help)
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
-        #
+        self.put_help()
         self.win.show()
 
     def quit(self):
         exit(0)
 
+    def put_help(self):
+        help_text = """
+        <h1>Fix Objective</h1>
+        <p>This tool is used to correct the objective scale factor in the .index file for a set of images or videos.</p>
+        <p>First select the directory that holds the image data you wish to correct by selecting the 'Set Directory/Protocol' button.</p>
+        <p>When you have selected this directory, the 'Reporting' window should show the .index file data entries for the images and videos in the directory.</p>
+        <p>Identify the images and videos you want to change by using the 'seqparse' format of the corresponding numbers in the 'Images' and 'Videos' fields.</p>
+        <p> For example, if you want to change images 1, 2, and 3, you would enter '1;3' in the 'Images' field.
+        if you wnat to change images 1, 3, and 5, enter '1,3,5' in the image field. Note that the image and video numbers start at 0.
+        </p>
+        <p> YOu can then view the proposed changes by selecting the 'View proposed changes' button.</p>
+        <p>It is also important to select the correct objective for the data you are working with.</p>
+        <p>Once you have selected the camera, cine scale, and the images or videos you wish to correct, you can select the new objective and apply the changes.</p>
+        <p> If you are satisfied with the changes, you can apply them by selecting the 'Apply changes' button.</p>
+        <p>It is important to select the correct camera and cine scale for the data you are working with.</p>
+        <p>It is important to note that the changes are not reversible, so be sure you have selected the correct data and the correct objective before applying the changes.</p>
+        <p>Once you have applied the changes, you can view the changes in the .index file by selecting the 'View .index' button.</p>
+        <p>Once you have applied the changes, you can quit the program by selecting the 'Quit' button.</p>
+        """
+        self.help_text.setHtml(help_text)
 
-def main():
-    app = pg.QtWidgets.QApplication([])
+def main(objective_data):
+    app = pg.mkQApp()
     app.setStyle("fusion")
-    FO = FixObjective(app)
+    FO = FixObjective(app=app, objective_data=objective_data)
     app.aboutToQuit.connect(
         FO.quit
     )  # prevent python exception when closing window with system control
@@ -476,4 +513,5 @@ def main():
 
 if __name__ == "__main__":
     objective_data = get_configuration("ephys/config/fix_objective_data.cfg")
-    main(objective_data=objective_data)
+    main(objective_data)
+    # FixObjective(objective_data=objective_data)
