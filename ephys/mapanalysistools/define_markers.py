@@ -98,6 +98,9 @@ def define_markers():
         if k.startswith(("surface")):
             mark_colors[k] = "c"
             mark_symbols[k] = "o"
+        elif k.startswith(("rostralborder", "caudalborder")):
+            mark_colors[k] = "b"
+            mark_symbols[k] = "+"
         elif k.startswith(("medial", "lateral", "dorsal", "ventral", "rostral", "caudal")):
             mark_colors[k] = "g"
             mark_symbols[k] = "o"
@@ -108,6 +111,7 @@ def define_markers():
             mark_colors[k] = "y"
             mark_symbols[k] = "*"
             mark_alpha[k]=0.33
+
         else:
             mark_colors[k] = "m"
             mark_symbols[k] = "o"

@@ -17,7 +17,7 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
     # this may be too restrictive....
     marker_dict = {}
     # :dict = {
-    #     "soma": [],
+    #     "somas": [],  list of soma positions, as dict of cellname: [x, y, z]
     #     "surface": [],
     #     "medialborder": [],
     #     "lateralborder": [],
@@ -31,75 +31,124 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
     #     "dist": dist,
     # }
 
-    mosaic_file = list(fullfile.glob("*.mosaic"))
+    if fullfile.is_dir():
+        mosaic_file = list(fullfile.glob("*.mosaic"))
+    elif fullfile.is_file():
+        mosaic_file = [fullfile]
     if len(mosaic_file) > 0:
         if verbose:
             CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
         state = json.load(open(mosaic_file[0], "r"))
-        cellmark = None
+        cellmarks = {}
+        # pick up the individual items and parse the data from them
         for item in state["items"]:
-            if item["type"] == "MarkersCanvasItem":
-                markers = item["markers"]
-                for markitem in markers:
+            match item["type"]:
+                case "MarkersCanvasItem":
+                    markers = item["markers"]
+                    for markitem in markers:
+                        if verbose:
+                            CP.cprint(
+                                "c",
+                                f"    {markitem[0]:>20s} x={markitem[1][0]*1e3:8.3f} y={markitem[1][1]*1e3:8.3f} z={markitem[1][2]*1e3:8.3f} mm ",
+                            )
+                        marker_dict[markitem[0]] = [
+                            markitem[1][0],
+                            markitem[1][1],
+                            markitem[1][2],
+                        ]
+                        for j in range(len(markers)):
+                            markname = markers[j][0]
+                            if markname in marker_dict:
+                                marker_dict[markname] = [
+                                    markers[j][1][0],
+                                    markers[j][1][1],
+                                ]
+                case "CellCanvasItem":  # get Cell marker position also
+                    xyz = [
+                        item["userTransform"]["pos"][0],
+                        item["userTransform"]["pos"][1],
+                        item["z"],
+                    ]
+                    cellmarks[item["name"]] = xyz
                     if verbose:
+                        # print(item)
                         CP.cprint(
                             "c",
-                            f"    {markitem[0]:>20s} x={markitem[1][0]*1e3:8.3f} y={markitem[1][1]*1e3:8.3f} z={markitem[1][2]*1e3:8.3f} mm ",
+                            f"    {item['type']:>20s} x={item['userTransform']['pos'][0]*1e3:8.3f} y={item['userTransform']['pos'][1]*1e3:8.3f} z={item['z']*1e-3:8.3f} mm ",
                         )
-                    marker_dict[markitem[0]] = [
-                        markitem[1][0],
-                        markitem[1][1],
-                        markitem[1][2],
-                    ]
-                    for j in range(len(markers)):
-                        markname = markers[j][0]
-                        if markname in marker_dict:
-                            marker_dict[markname] = [
-                                markers[j][1][0],
-                                markers[j][1][1],
-                            ]
-            elif item["type"] == "CellCanvasItem":  # get Cell marker position also
-                cellmark = item["userTransform"]
-            else:
-                pass
+                case _:
+                    pass
             # print("didnt parse item type: ", item["type"])
+
         soma_xy: list = []
         somapos = []
-        if cellmark is None:
-            if "soma" in marker_dict.keys():
-                somapos = marker_dict["soma"]
-        else:  # override soma position with cell marker position
-            somapos = cellmark["pos"]
-            marker_dict["soma"] = somapos
-
+        # print("marker_dict.keys(): ", marker_dict.keys())
+        # print("cellmark: ", cellmark)
+        if len(cellmarks) > 0:
+            for cellname, somapos in cellmarks.items():
+                # print("cellname: ", cellname)
+                if "somas" not in marker_dict.keys():
+                    marker_dict["somas"] = {cellname: somapos}
+                else:
+                    marker_dict["somas"][cellname] = somapos # .append({cellname: somapos})
+        # print(marker_dict.keys())
+        # exit()
+        soma_xy = []
         surface_xy: list = []
-
         if "surface" in marker_dict.keys():
-            if len(somapos) >= 2 and len(marker_dict["surface"]) >= 2:
-                soma_xy = somapos
+            if len(marker_dict["surface"]) >= 2:
+                surface_xy = marker_dict["surface"]
+
+            # now compute distance from soma to surface marker for each soma
+            # this may not be appropriate for all datasets.
+            for i_soma, cellname in enumerate(marker_dict["somas"]):
+                soma_xy = marker_dict["somas"][cellname]
+                print("soma_xy: ", soma_xy)
+
                 surface_xy = marker_dict["surface"]
                 dist = np.sqrt(
-                    (soma_xy[0] - surface_xy[0]) ** 2 + (soma_xy[1] - surface_xy[1]) ** 2
+                    (soma_xy[0] - surface_xy[0]) ** 2
+                    + (soma_xy[1] - surface_xy[1]) ** 2
                 )
                 if verbose:
-                    CP.cprint("c", f"    soma-surface distance: {dist*1e6:7.1f} um")
-            else:
-                if verbose:
-                    CP.cprint("r", "    Not enough markers to calculate soma-surface distance")
-        if soma_xy == [] or surface_xy == []:
-            if verbose:
-                CP.cprint("r", "    No soma or surface markers found")
+                    CP.cprint(
+                        "c", f"   {cellname:s} soma-'surface marker' distance: {dist*1e6:7.1f} um"
+                    )
+
+        # if soma_xy == [] or surface_xy == []:
+        #     if verbose:
+        #         CP.cprint("r", "    No soma or surface markers found")
     else:
         if verbose:
             pass
             # CP.cprint("r", "No mosaic file found")
-
     return marker_dict
 
 
+def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
+    coordinates_x = np.array([x[0] for x in coord_pairs])
+    coordinates_y = np.array([x[1] for x in coord_pairs])
+
+    dist = np.sqrt(
+        (coordinates_x[:-1] - coordinates_x[1:]) ** 2
+        + (coordinates_y[:-1] - coordinates_y[1:]) ** 2
+    )
+    cumul_dist = np.concatenate(([0], dist.cumsum()))
+    b_spline, u = scipy.interpolate.splprep([coordinates_x, coordinates_y], u=cumul_dist, s=0)
+    if remove_ends:
+        cumul_dist = cumul_dist[1:-1]
+
+    xx = np.linspace(cumul_dist[0], cumul_dist[-1], npoints)
+    xx, yy = scipy.interpolate.splev(xx, b_spline)
+    return xx, yy
+
 
 def plot_mosaic_markers(
-    markers: dict, axp, mark_colors: dict, mark_symbols: dict, mark_alpha: dict,
+    markers: dict,
+    axp,
+    mark_colors: dict,
+    mark_symbols: dict,
+    mark_alpha: dict,
 ) -> tuple():
     measures = {}
     smoothed_poly = None
@@ -119,7 +168,12 @@ def plot_mosaic_markers(
                 markersize = 3
             else:
                 markersize = 4
-            if axp is not None and position is not None and len(position) >= 2 and marktype in mark_alpha.keys():
+            if (
+                axp is not None
+                and position is not None
+                and len(position) >= 2
+                and marktype in mark_alpha.keys()
+            ):
                 axp.plot(
                     [position[0], position[0]],
                     [position[1], position[1]],
@@ -128,58 +182,120 @@ def plot_mosaic_markers(
                     markersize=markersize,
                     alpha=mark_alpha[marktype],
                 )
-        pcoors: list = []
+        surface_coordinates: list = []
         for marker in [
             "rostralborder",
-            "medialborder",
-            "caudalborder",
-            "caudalsurface",
-            "surface",
             "rostralsurface",
+            "surface",
+            "caudalsurface",
+            "caudalborder",
         ]:
-            if marker in markers.keys():
-                pcoors.append(tuple(markers[marker]))
-            else:
-                if marker == "soma":
-                    continue
-                # print("marker : ", marker, " not found in markers\n", "markers: ", markers)
-                markers_complete = False
-                continue
-        # print("got markers...", pcoors, markers_complete)
-        if len(pcoors) > 0 and markers_complete:
+
+            surface_coordinates.append(tuple(markers[marker]))
             # marker_poly = sympy.geometry.polygon.Polygon(*pcoors)
             # patch = descartes.PolygonPatch(self.marker_poly, fc=None, ec='red', alpha=0.5, zorder=2)
-            pcoors.append(pcoors[0])
-            pcoors_x = [x[0] for x in pcoors]
-            pcoors_y = [x[1] for x in pcoors]
 
-            tck, _ = scipy.interpolate.splprep([pcoors_x, pcoors_y], s=0, per=True)
-            xx, yy = scipy.interpolate.splev(np.linspace(0, 1, 100), tck, der=0)
-            if axp is not None:
-                axp.plot(xx, yy, "g-", lw=0.75, zorder=2)
-            smoothed_poly = [(xx[i], yy[i]) for i in range(len(xx))]
-            smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly)
-            medialpt = sympy.geometry.point.Point(markers["medialborder"])
-            lateralpt = sympy.geometry.point.Point(markers["surface"])
-            measures["medial_lateral_distance"] = medialpt.distance(lateralpt) * UR.m
-            measures["area"] = smoothed_poly.area * UR.m * UR.m
-            rostralpt = sympy.geometry.point.Point(markers["rostralborder"])
-            caudalpt = sympy.geometry.point.Point(markers["caudalborder"])
-            measures["rostral_caudal_distance"] = rostralpt.distance(caudalpt) * UR.m
-            UR.define("mm = 1e-3 * m")
-            UR.define("um = 1e-6 * m")
-            print(f"Smoothed Polygon Slice area: {measures['area'].to(UR.mm*UR.mm):L.4f}")
-            area_txt = f"Area={measures['area'].to(UR.mm*UR.mm):P5.3f} D={measures['medial_lateral_distance'].to(UR.um):P5.1f}"
-            area_txt += f"RC={measures['rostral_caudal_distance'].to(UR.um):P5.1f}"
-            if axp is not None:
-                axp.text(
+        xx, yy = compute_splines(surface_coordinates, npoints=20)
+
+        if axp is not None:
+            axp.plot(xx, yy, "g-", lw=0.75, zorder=2)
+            axp.plot(xx[0], yy[0], "ro", markersize=6, alpha=0.5)
+            axp.plot(xx[-2], yy[-2], "rX", markersize=6, alpha=0.5)
+        deep_boundary_coordinates: list = []
+        # we use a wrap-around here, but then will limit the data
+        # to the end points for the caudal border and rostral border.
+        for marker in [
+            "caudalsurface",
+            "caudalborder",
+            "medialborder",
+            "rostralborder",
+            "rostralsurface",
+        ]:
+            deep_boundary_coordinates.append(tuple(markers[marker]))
+        # print("deep_boundary_coordinates: ", deep_boundary_coordinates)
+        # b_spline, u_par = scipy.interpolate.make_splprep([deep_boundary_coordinates_x, deep_boundary_coordinates_y], s=0)
+        deep_xx, deep_yy = compute_splines(deep_boundary_coordinates, npoints=20, remove_ends=True)
+
+        if axp is not None:
+            axp.plot(deep_xx, deep_yy, "b-", lw=0.75, zorder=2)
+            axp.plot(deep_xx[0], deep_yy[0], "bo", markersize=4, alpha=0.5)
+            axp.plot(deep_xx[-1], deep_yy[-1], "bX", markersize=4, alpha=0.5)
+
+        smoothed_poly = [(xx[i], yy[i]) for i in range(len(xx) - 1)]
+        surface_poly = smoothed_poly.copy()
+        smoothed_poly.extend([(deep_xx[i], deep_yy[i]) for i in range(len(deep_xx) - 1)])
+        # smoothed_poly.append(smoothed_poly[0])  # close the loop
+        # print("smoothed_poly: ", smoothed_poly)
+        smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly)
+
+        medialpt = sympy.geometry.point.Point(markers["medialborder"], dim=2)
+        lateralpt = sympy.geometry.point.Point(markers["surface"], dim=2)
+        measures["medial_lateral_distance"] = medialpt.distance(lateralpt)
+        measures["area"] = smoothed_poly.area
+        rostralpt = sympy.geometry.point.Point(markers["rostralborder"], dim=2)
+        caudalpt = sympy.geometry.point.Point(markers["caudalborder"], dim=2)
+        measures["rostral_caudal_distance"] = rostralpt.distance(caudalpt)
+        # print(markers.keys())
+        somas = markers['somas']
+        soma_depth = {}
+        soma_radius = {}
+        # print("somas: ", somas)
+        for i_soma, cellname in enumerate(somas):
+            print("cellname: ", cellname)
+
+            cellpos = somas[cellname]  # z coordinate seems to be in microns...
+            axp.plot(cellpos[0], cellpos[1], "y*", markersize=4, alpha=0.33)
+            axp.text(cellpos[0], cellpos[1], cellname, fontsize=6)
+            cell_pt = sympy.geometry.point.Point(cellpos[:2], dim=2)  # keep 2d anyway
+            cell_from_medial = medialpt.distance(cell_pt)
+            cell_line = sympy.geometry.Line(medialpt, cell_pt)
+            # print("cell line: ", cell_line)
+            # print("surface_poly: ", surface_poly)
+            # intersect = cell_line.intersection(surface_poly)
+            intersect = smoothed_poly.intersection(cell_line)
+            soma_depth[cellname] = []
+            if len(intersect) > 0:
+                for n in range(len(intersect)):
+                    soma_depth[cellname].append(intersect[n].distance(cell_pt))
+                    # print("intersect: ", n, intersect[n].evalf())
+            else:
+                soma_depth[cellname] = []
+            soma_radius[cellname] = medialpt.distance(intersect[1]) # cell_from_medial
+            for n in range(len(soma_depth[cellname])):
+                if n == 0:
+                    st = "from medial:"
+                else:
+                    st = "depth:"
+                frac_depth = soma_depth[cellname][n].evalf() / soma_radius[cellname]
+
+                print(f"      {st:>12s} {1e6*soma_depth[cellname][n].evalf()!s} radius: {soma_radius[cellname]*1e6:.4f},  frac_depth: {frac_depth:5.2f}")
+            axp.plot([medialpt.x, intersect[1].x], [medialpt.y, intersect[1].y], "y-", lw=0.5, alpha=0.7)
+            # print('medialpt: ', medialpt.evalf())
+            # print('intersect with surface: ', intersect[0].evalf())
+
+            axp.plot([cell_pt.x, intersect[0].x], [cell_pt.y, intersect[0].y], "c-", lw=1.0, alpha=0.5)
+
+        # if cell_pt is not None:
+        #     cell_pt = sympy.geometry.point.Point(cell_pt)
+        #     cell_line = sympy.geometry.Line(
+        #         medialpt, cell_pt
+        #     )  # line along layer 6 between md and ml points
+        #     measures["cell_distance"] = lateralpt.distance(cell_pt)
+        UR.define("mm = 1e-3 * m")
+        UR.define("um = 1e-6 * m")
+        print(f"Smoothed Polygon Slice area: {measures['area']*1e6:.4f}")
+        area_txt = f"Area={measures['area']*1e6:5.3f} D={measures['medial_lateral_distance']*1e6:5.1f}"
+        area_txt += f"RC={measures['rostral_caudal_distance']*1e6:5.1f}"
+        if axp is not None:
+            axp.text(
                 s=area_txt,
                 x=1.0,
-                y=-0.05,
+                y=0.95,
                 transform=axp.transAxes,
                 ha="right",
                 va="bottom",
                 fontsize=8,
                 color="k",
             )
+            axp.set_aspect("equal")
     return measures, smoothed_poly
