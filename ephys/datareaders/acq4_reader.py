@@ -239,7 +239,7 @@ class acq4_reader:
             print(
                 f"acq4_reader.checkProtocol: Completed dirs and expected dirs are different: Completed {ncomplete: d}, expected: {nexpected:d}"
             )
-            if not allow_partial:  # block partials
+            if not allow_partial:  # block incomplete protocols, unless explicitely allowed
                 return False
         return True
 
@@ -719,13 +719,28 @@ class acq4_reader:
         True if it does and false if it does not
         if allow_partial is true, we get as much data as we can even if the protocol
         did not complete.
+        if record_list is an empty list, and allow_partial is FALSE, we try to get ALL the records.
+        if record_list is an empty list and allow_partial is TRUE, get as much as we can.
+        if record_list is a list of integers and allow_partial is TRUE, we only get the records in that list (e.g., predetermined)
+        if record_list is a list of integers and allow_partial is FALSE, we raise an error, because we did not intend to allow partial dataset reads.
 
         Returns False if it fails.
+        Returns True if everything succeeds.
+
+        Raises value errors :
+        1. if record_list is not empty and allow_partial is False
+        2. The protocol selected is not a directory
+        3. The protocol directory is empty
+        4. The selected device (e.g., Multiclamp1) is not found in the protocol
+        5. The protocol is not managed (no .index file found)
+        6. 
 
         """
         # non threaded
         # CP.cprint('c', 'GETDATA ****')
-
+        if len(record_list) > 0 and not allow_partial:
+            raise ValueError("acq4_reader.getData: The record_list is not empty and allow_partial is False. This is NOT an accepted combination")
+        
         self.error_info = None  # clear any previous error info
         dirs = self.subDirs(self.protocol)
         if len(dirs) == 0:
@@ -879,30 +894,45 @@ class acq4_reader:
                 continue
             self.rec_info = self.getDataInfo(fn)
             self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
-            if allow_partial and record_list is not None:  # only get the records in the list - allows us to capture incomplete protocols
-                if i not in record_list:
+            if allow_partial and len(record_list) > 0:  # only get the records in the list - allows us to capture incomplete protocols
+                # CP.cprint("y", "Partial with record lislt > 0")
+                if i not in record_list:  # that was easy...
                     continue
                 else:
                     try:
                         tr = EM.MetaArray(file=fn)
+                        if tr is None:
+                            CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, when allowing partial read")
+                            CP.cprint("y", f"    Record {i:d} will be skipped; record list is: {record_list}")
+                            raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
+                        if not silent:
+                            CP.cprint("y", f"acq4_reader: Successfully read traces in file: {str(fn):s}, when allowing partial read")
+                            CP.cprint("y", f"    Record {i:d} will be included; record list is: {record_list}")
                     except FileExistsError:
                         CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, when allowing partial read")
                         CP.cprint("y", f"    Record {i:d} will be skipped; record list is: {record_list}")
-                        continue
+                        raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
+                    except not FileExistsError:
+                        CP.cprint("y", f"acq4_reader: Failed to read traces in MISSING file: {str(fn):s}, when allowing partial read")
+                        raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
+
+
             else:  # this is the canonical case: get all records.
+                # CP.cprint("g", "NO Partial")
                 try:
                     tr = EM.MetaArray(file=fn)
+                    if tr is None:
+                        CP.cprint("r", f"acq4_reader: Failed to read traces in file: {str(fn):s}")
+                        raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
                 except ValueError:
-                    if allow_partial:  # just get what we can
-                        CP.cprint("y", f"acq4_reader: Failed to read traces in file: {str(fn):s}, but allowing partial read")
-                        continue
                     if not silent:
                         msg = f"acq4_reader: Failed to read traces in file, could not read metaarray: \n    {str(fn):s}"
                         CP.cprint("r", msg)
                         CP.cprint("r", f"{str(fn):s} \n    may not be a valid clamp file or may be corrupted")
-                        raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
-                    return False
+                    raise ValueError(f"acq4_reader:getData: File read with MetaArray failed: {str(fn):s}")
 
+
+            # now we should have data and record info to decode
             self.trace_StartTimes[i] = self.rec_info[1]['startTime']
             tr_info = tr[0].infoCopy()
             self.parseClampInfo(tr_info)
@@ -935,7 +965,7 @@ class acq4_reader:
             sr = tr_info[1]["DAQ"]["primary"]["rate"]
             self.sample_rate.append(self.samp_rate)
 
-        if tr is None and allow_partial is False and not silent:
+        if tr is None and not allow_partial and not silent:
             CP.cprint("r", "acq4_reader.getData - Failed to read trace data: No traces found?")
             return False
         if self.mode is None:
@@ -979,22 +1009,22 @@ class acq4_reader:
             uni = "None"
         else:
             uni = cmd.axisUnits(-1)
-        try:
-            self.traces = EM.MetaArray(
-                self.data_array,
-                info=[
-                    {
-                        "name": "Command",
-                        "units": uni,
-                        "values": np.array(self.values),
-                    },
-                    tr.infoCopy("Time"),
-                    tr.infoCopy(-1),
-                ],
-            )
-        except:
-            CP.cprint("r", "No valid traces found")
-            return False
+        # try:
+        self.traces = EM.MetaArray(
+            self.data_array,
+            info=[
+                {
+                    "name": "Command",
+                    "units": uni,
+                    "values": np.array(self.values),
+                },
+                tr.infoCopy("Time"),
+                tr.infoCopy(-1),
+            ],
+        )
+    # except:
+    #     CP.cprint("r", "No valid traces found")
+    #     return False
         self.cmd_wave = EM.MetaArray(
             self.cmd_wave,
             info=[
@@ -1062,7 +1092,7 @@ class acq4_reader:
             else:
                 print("sequence parameter keys: ", seqkeys)
                 raise ValueError(" cannot determine the protocol repetitions with available scanner keys")
-            if allow_partial and record_list is not None:
+            if allow_partial and len(record_list) > 0:
                 self.commandLevels = self.commandLevels[record_list]
         return True
 
