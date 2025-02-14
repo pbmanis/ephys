@@ -21,6 +21,8 @@ import scipy.ndimage
 import scipy.signal
 import seaborn
 
+
+
 UR = pint.UnitRegistry()
 
 # import montager as MT
@@ -265,7 +267,7 @@ class PlotMapData:
             "avgax": [0, None, None],
         }
 
-    def set_Pars_and_Data(self, pars, data, minianalyzer):
+    def set_Pars_and_Data(self, pars, data:object=None, minianalyzer=None, dt:float=None):
         """
         save parameters passed from analyze Map Data
         Analysis parameters and data are in separate data classes.
@@ -273,8 +275,16 @@ class PlotMapData:
         self.Pars = pars
         self.Data = data
         self.MA = minianalyzer
-        self.Data.timebase = self.MA.timebase
-    
+        self.Data.timebase = None
+        self.dt = None
+        if self.MA is not None and hasattr(self.MA, 'timebase'):  # try to get the time base
+            self.Data.timebase = self.MA.timebase
+            self.dt = np.mean(np.diff(self.Data.timebase))
+        else:  # defer, but try to get a dt value if passed.
+            if dt is not None:
+                self.dt = dt
+
+
     def set_experiment(self, experiment: dict):
         self.experiment = experiment
 
@@ -2018,7 +2028,10 @@ class PlotMapData:
         idm = self.mapfromid[ident]
 
         spotsize = self.Pars.spotsize
-        dt = np.mean(np.diff(self.Data.timebase))
+        if self.dt is not None:
+            dt = self.dt
+        elif self.Data is not None and self.Data.timebase is not None:
+            dt = np.mean(np.diff(self.Data.timebase))
         itmax = int(self.Pars.ar_tstart / dt) - 1
         self.newvmax = np.max(results[measuretype])
         if self.Pars.overlay_scale > 0.0:
@@ -2065,7 +2078,7 @@ class PlotMapData:
                     nstim = len(results["stimtimes"]["starts"]) - 1
                 else:
                     nstim = 0
-                dt = np.mean(np.diff(self.Data.timebase))
+                dt = self.dt # np.mean(np.diff(self.Data.timebase))
                 ibl_max = int((results["stimtimes"]["starts"][nstim] - self.Pars.time_zero) / dt)
                 first_stim_time = results["stimtimes"]["starts"][nstim] - self.Pars.time_zero
                 bl_dur = 0.010

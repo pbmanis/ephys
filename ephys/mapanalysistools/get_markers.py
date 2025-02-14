@@ -7,8 +7,72 @@ import sympy.geometry
 import scipy.interpolate
 import numpy as np
 import pint
+import re
+re_slice = re.compile(r"slice_(\d+)")
+re_cell = re.compile(r"cell_(\d+)")
+re_day = re.compile(r"^(\d{4})\.(\d{2})\.(\d{2})_00") 
+re_mosaic_day = re.compile(r"^(\d{4})\.(\d{2})\.(\d{2})\.")
 
 UR = pint.UnitRegistry()
+
+def look_for_mosaic_file(protodir: Path) -> Tuple[Path, bool]:
+    """look_for_mosaic_file find the mosaic file associated with this cell.
+    Working up from the CELL directory, we look for a suitable .mosaic file
+    in either the slice or day directory.
+    This will be a .mosaic file that matches .SN.mosaic for the slice,
+    or .SN.CM.mosiaic for the cell.
+    The presumed file name is one of:
+    year.mo.day.SN.mosaic or year.mo.day.SN.CM.mosaic
+
+    Parameters
+    ----------
+    fullfile : Path
+        Path to the Cell directory
+
+    Returns
+    -------
+    Tuple[Path, bool]
+        _description_
+    """
+    # print(protodir)
+    if not protodir.name.startswith("cell_"):
+        raise ValueError(f"Looking for mosaic file: need to start with cell. Got invalid cell path name: {protodir.name}")
+    celldir = Path(protodir)  # generally, mosaics should NOT be in cell directory, which is above the prrotocol dir.
+    slicedir = Path(celldir).parent  # may be in slice directory however
+    daydir = Path(slicedir).parent
+    daystr  = str(daydir.name)[:-4]
+    # print("slicedir: ", slicedir)
+    # print("daydir: ", daydir)
+    slicen = int(slicedir.name.split("_")[-1])  # get the slice number
+    # print("slicen: ", slicen, "daystr: ", daystr)
+    day_mosaic = list(daydir.glob("*.mosaic"))
+
+    # print("day_mosaic: ", day_mosaic)   
+    if len(day_mosaic) > 0:
+        mosaic_filename = str(daydir) + f"/{daystr:s}.S{slicen:d}.mosaic"
+        # print("expected filename: ", mosaic_filename)
+        for dm in day_mosaic:
+            # print("day mosaics: ", dm)
+            if str(dm).casefold() == mosaic_filename.casefold():
+                print("get_markers: Found day mosaic: ", dm)
+                return dm
+    # check for slice directory next
+    slice_mosaic = list(slicedir.glob("*.mosaic"))
+    if len(slice_mosaic) > 0:
+        mosaic_filename = str(slicedir) + f"/{daystr:s}.S{slicen:d}.mosaic"
+        # print("expected filename: ", mosaic_filename)
+        for sm in slice_mosaic:
+            # print("slice mosaics: ", sm)
+            if str(sm).casefold() == mosaic_filename.casefold():
+                # print("Found slice mosaic: ", sm)
+                return sm
+    else:
+        print("didn't find markers for: ", protodir )
+        print("looked for day mosaic: ", day_mosaic)
+        return None
+
+
+
 
 
 def get_markers(fullfile: Path, verbose: bool = True) -> dict:
