@@ -244,7 +244,7 @@ class AnalyzeMap(object):
         self.protocol = protocolFilename
         CP.cprint("g", f"Reading Protocol:: {str(protocolFilename):s}")
         self.AR.setProtocol(protocolFilename)
-        if not protocolFilename.is_dir() or not self.AR.getData(allow_partial=True):
+        if not protocolFilename.is_dir() or not self.AR.getData(allow_partial=True, silent=False):
             CP.cprint("r", f"**** No data found in protocol: {str(protocolFilename):s}")
             return None
         # print('Protocol: ', protocolFilename)
