@@ -40,7 +40,7 @@ class IVPlotter(object):
         file_out_path: Union[Path, str],
         decorate=True,
         allow_partial: bool = False,
-        record_list: Union[list, None] = None,
+        record_list: list = [],
     ):
         self.df_summary = df_summary
         self.experiment = experiment
@@ -243,7 +243,7 @@ class IVPlotter(object):
         )
         validivs, additional_ivs, additional_iv_records = res[0][0], res[0][1], res[0][2]
         self.allow_partial = False
-        self.record_list = None
+        self.record_list = []
         # print("getting data for protocol: ", protocol)
         if (
             additional_iv_records is not None
@@ -272,7 +272,7 @@ class IVPlotter(object):
             # print("\n\nSpike current array: ", spike_dict["FI_Curve"][0]*1e9, "\n\n")
             traces = np.argsort(spike_dict["FI_Curve"][0])  # sort by current level
             # print("spike array: \n", np.array(spike_dict["FI_Curve"]).shape)
-            if self.allow_partial:
+            if self.allow_partial and len(self.record_list) > 0:
                 traces = np.argsort(spike_dict["FI_Curve"][0][self.record_list])
             valid_traces = traces
             # print("protocol: ", protocol, "traces: ", traces, 'valid_traces: ', valid_traces)
