@@ -102,6 +102,7 @@ def concurrent_categorical_data_plotting(
             measures=experiment[data_class],
             representation=representation,
         )
+    plot_title += f"  ({representation:s})"
     cc_plot.figure_handle.suptitle(plot_title, fontweight="bold", fontsize=18)
     picked_cellid = cc_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
         "pick_event",
@@ -727,9 +728,6 @@ class PlotSpikeInfo(QObject):
     def set_pick_display_function(self, function):
         self.pick_display_function = function
 
-    
-
-
     def print_for_prism(self, row, celltype="tuberculoventral"):
         if row.cell_type != celltype:
             return
@@ -772,12 +770,16 @@ class PlotSpikeInfo(QObject):
                 df.loc[len(df)] = pd.Series(dtype="float64")
                 df.loc[len(df) - 1, "Group"] = group
         return df
-    
+
     def fix_cell_expression(self, row):
-        if row.cell_expression == "" or len(row.cell_expression) == 0 or row.cell_expression == "ND":
+        if (
+            row.cell_expression == ""
+            or len(row.cell_expression) == 0
+            or row.cell_expression == "ND"
+        ):
             row.cell_expression = "-"
         return row
-    
+
     def clear_missing_groups(self, row, data, replacement=None):
         """clear_missing_groups Remove groups that are nan or empty
         by replacing them with "Group = np.nan", unless
@@ -877,7 +879,7 @@ class PlotSpikeInfo(QObject):
         #     "y",
         #     f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
         # )
-        # fix cell expression when it is empty (no string). This means "negative". 
+        # fix cell expression when it is empty (no string). This means "negative".
         if "cell_expression" in df_x.columns:
             df_x = df_x.apply(self.fix_cell_expression, axis=1)
 
@@ -908,8 +910,8 @@ class PlotSpikeInfo(QObject):
 
         if hue_category == "sex":
             #######
-            ### Technically, this should ONLY be set from the configuration file. 
-            ####### 
+            ### Technically, this should ONLY be set from the configuration file.
+            #######
             # print("setting hue_palette via sex")
             hue_palette = {
                 "F": "#FF000088",
@@ -1318,7 +1320,7 @@ class PlotSpikeInfo(QObject):
         )
 
         ncols = len(measures)
-        letters = ascii_letters # ["A", "B", "C", "D", "E", "F", "G", "H"]
+        letters = ascii_letters  # ["A", "B", "C", "D", "E", "F", "G", "H"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
         figure_width = ncols * 2.5
         P = PH.regular_grid(
@@ -1410,6 +1412,18 @@ class PlotSpikeInfo(QObject):
                 else:
                     self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=x_measure)
+
+                print("checking measure for rmp: ", measure)
+                if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
+                    axp.text(
+                        x=0.01,
+                        y=0.01,
+                        s=f"JP: {self.experiment['junction_potential']:.1f}mV",
+                        fontsize="x-small",
+                        transform=axp.transAxes,
+                        ha="left",
+                        va="bottom",
+                    )
 
                 # if icol > 0:
                 #     axp.set_ylabel("")
@@ -1615,7 +1629,9 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
-        print("-"*80, "\nBar pts: hue: ", hue_category, "plot_order: ", plot_order, "\n", "-"*80)
+        print(
+            "-" * 80, "\nBar pts: hue: ", hue_category, "plot_order: ", plot_order, "\n", "-" * 80
+        )
         print("colors: ", colors)
         picker_func = self.bar_pts(
             dfp,
@@ -1639,7 +1655,7 @@ class PlotSpikeInfo(QObject):
         if row.sex not in ["F", "M"]:
             row.sex = "U"
         return row.sex
-    
+
     def categorize_ages(self, row):
         row.age = numeric_age(row)
         for k in self.experiment["age_categories"].keys():
@@ -1649,7 +1665,7 @@ class PlotSpikeInfo(QObject):
             ):
                 row.age_category = k
         return row.age_category
-    
+
     def clean_rin(self, row):
         min_Rin = 6.0
         if "data_inclusion_criteria" in self.experiment.keys():
@@ -2017,6 +2033,17 @@ class PlotSpikeInfo(QObject):
                 if celltype != self.experiment["celltypes"][-1]:
                     axp.set_xticklabels("")
                 axp.set_xlabel("")
+                print("checking measure for rmp: ", measure)
+                if measure in ["RMP", "RMP_Zero"]:  # put the assumed JP on the plot.
+                    axp.text(
+                        x=0.02,
+                        y=0.02,
+                        s=f"JP: {self.experiment['junction_potential']:.1f} mV",
+                        transform=axp.transAxes,
+                        ha="left",
+                        va="bottom",
+                    )
+
                 # if j > 0:
                 #     axp.set_ylabel("")
         if any(picker_funcs) is not None and enable_picking:
@@ -2101,7 +2128,7 @@ class PlotSpikeInfo(QObject):
         plot_order: Optional[list] = None,
         enable_picking: bool = False,
     ):
-        """summary_plot_fi Plots all of the FI curves for the selected cell types,
+        """summary_plot_fi plots all of the individual FI curves for the selected cell types,
         including the mean and SEM for each cell type.
 
         Parameters
@@ -2124,11 +2151,11 @@ class PlotSpikeInfo(QObject):
         #     df = df.rename({"iv_name": "protocol"}, axis="columns")
         # print("unique protocols: ", df["protocol"].unique())
         # print("protocols: ", df["protocols"])
-        plabels = ["A1", "A2", "A3", "B1", "B2", "B3", "G", "H", "I", "J"]
         plabels = []
         for i in range(len(self.experiment["celltypes"])):
             for j in range(3):
                 plabels.append(f"{ascii_letters[i].upper():s}{j+1:d}")
+        # set up the plot area
         P = PH.regular_grid(
             rows=len(self.experiment["celltypes"]),
             cols=3,
@@ -2149,6 +2176,8 @@ class PlotSpikeInfo(QObject):
         # print(P.axdict)
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
+        
+        # positional information for the plots. 
         pos = {
             "pyramidal": [0.0, 1.0],
             "tuberculoventral": [0.0, 1.0],
@@ -2169,13 +2198,16 @@ class PlotSpikeInfo(QObject):
         elif mode == "individual":
             P.figure_handle.suptitle("FI Individual", fontweight="normal", fontsize=18)
         fi_stats = []
-        NCells: Dict[tuple] = {}
+
         picker_funcs: Dict = {}
         found_groups = []
 
         fi_dat = {}  # save raw fi
         for ic, ptype in enumerate(["mean", "individual", "sum"]):
+            NCells: Dict[tuple] = {}
             for ir, celltype in enumerate(self.experiment["celltypes"]):
+
+                # create a dataframe for the plot.
                 fi_group_sum = pd.DataFrame(
                     columns=["Group", "sum", "sex", "cell_type", "cell_expression"]
                 )
@@ -2196,31 +2228,17 @@ class PlotSpikeInfo(QObject):
                 if ptype == "mean":  # set up arrays to compute mean
                     FIy_all: dict = {k: [] for k in N.keys()}
                     FIx_all: dict = {k: [] for k in N.keys()}
-                for index in cdd.index:
+                for index in cdd.index:  # go through the individual cells
                     group = cdd[group_by][index]
                     sex = cdd["sex"][index]
-                    # print("Group: ", group, "sex: ", sex)
                     if (celltype, group) not in NCells.keys():
                         NCells[(celltype, group)] = 0
-                    # print("group: ", group)
                     if pd.isnull(group):
                         continue
-                    # if cdd["protocol"][index].startswith("CCIV_"):
-                    #     this_protocol = "CCIV_"
-                    # else:
-                    # this_protocol = cdd["protocol"][index]  # # not meaningful if protocols are combined[
-                    #                    :-4
-                    #               ]  # get protocol, strip number
-                    # print("This protocol: ", this_protocol, "sel: ", protosel, cdd["protocol"][index])
-                    #
-                    # if this_protocol not in protosel:
-                    #     continue
                     if pd.isnull(cdd["cell_id"][index]):
                         print("No cell ids")
                         continue
-                    # print(index, cdd["cell_id"][index], cdd["FI_Curve1"][index])
-                    # print(cdd)
-                    
+
                     try:
                         FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
                     except:
@@ -2232,9 +2250,9 @@ class PlotSpikeInfo(QObject):
 
                     if len(FI_data[0]) == 0:
                         print("FI data is empty", cdd.cell_id[index])
-
                         continue
-                    # print("FIdata: ", len(FI_data[0]))
+
+                    # convert the current to nA
                     FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
                     if FI_data.shape == (2, 0):  # no fi data from the excel table....
                         print("No FI data from excel table?")
@@ -2249,16 +2267,16 @@ class PlotSpikeInfo(QObject):
                     FI_data = self.limit_to_max_rate_and_current(
                         FI_data, imax=max_fi, id=cdd["cell_id"][index]
                     )
-                    NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                    if group not in found_groups:
-                        found_groups.append(group)
+
                     maxi = 1000e-12
                     ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
-                    if ptype in ["individual", "mean"]:
+                    if ptype in ["individual"]:
                         fix, fiy, fiystd, yn = FUNCS.avg_group(
                             np.array(FI_data[0]), FI_data[1], ndim=1
                         )
-
+                        NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                        if group not in found_groups:
+                            found_groups.append(group)
                         ax.plot(
                             fix[:ilim] * 1e9,
                             fiy[:ilim],
@@ -2269,11 +2287,14 @@ class PlotSpikeInfo(QObject):
                             clip_on=False,
                             alpha=0.35,
                         )
-                    if ptype == "mean":
+                    elif ptype == "mean":
+                        # while in this loop, build up the arrays for the mean
                         if group in FIy_all.keys():
                             FIy_all[group].append(np.array(FI_data[1][:ilim]))
                             FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
-
+                            NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                            if group not in found_groups:
+                                found_groups.append(group)
                     elif ptype == "sum":
                         fi_group_sum.loc[len(fi_group_sum)] = [
                             group,
@@ -2282,9 +2303,13 @@ class PlotSpikeInfo(QObject):
                             celltype,
                             "None",
                         ]
-                        # fi_group_sum[group].append(np.sum(np.array(FI_dat_saved[1])))
+                        NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                        if group not in found_groups:
+                            found_groups.append(group)
+
 
                 if ptype == "mean":
+                    # compute the avearge and plot the data with errorbars
                     max_FI = 1.0
                     for i, group in enumerate(FIy_all.keys()):
                         fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
@@ -2308,79 +2333,83 @@ class PlotSpikeInfo(QObject):
                         )
 
                         ax.set_xlim(0, max_FI)
-                if ptype == "sum" and ir == 0:
+
+                if ptype == "sum":
+                    # Spike sum plot - 
                     ax = P.axarr[ir, ic]
                     ax.set_title("Summed FI", y=1.05)
                     ax.set_xlabel("Group")
                     print("SUM: ", fi_group_sum)
+
                     if not all(np.isnan(fi_group_sum["sum"])):
-                        print("fi_group_sum: ", fi_group_sum.head())
                         self.bar_pts(
                             fi_group_sum,
                             xname="Group",
                             yname="sum",
-                            celltype="pyramidal",
+                            celltype=celltype,
                             # hue_category = "sex",
                             ax=ax,
                             plot_order=self.experiment["plot_order"][group_by],  # ["age_category"],
                             colors=self.experiment["plot_colors"],
                             enable_picking=False,
                         )
-                        # ax.set_xlim(-0.5, 5.5)
-                        ax.set_ylim(self.experiment["ylims"]["limits1"]["summed_FI_limits"])
+                        all_limits = self.experiment["ylims"]
+                        # check if our cell type is in one of the subkeys of the limits:
+                        ax.set_ylim(all_limits["default"]["summed_FI_limits"])
+                        for limit in all_limits.keys():
+                            print("testing limit: ", limit, "with celltypes: ", all_limits[limit]["celltypes"])
+                            if celltype in all_limits[limit]["celltypes"]:
+                                print("found limit: ", limit)
+                                ax.set_ylim(all_limits[limit]["summed_FI_limits"])
+                                break
+
                         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
                         PH.talbotTicks(ax, axes="y", density=(1, 1))
-                        # p, t = scipy.stats.ttest_ind(fi_list[0], fi_list[1])
-                        # print(p, t)
-                        # print(fi_group_sum.keys(), len(fi_list[0]), len(fi_list[1]))
-                print("group: ", group, "ptype: ", ptype)
 
-            yoffset = 0.025
-            xoffset = 0.0
-            xo2 = 0.0
-            # if "individual" in mode:
-            #     yoffset = 0.7
-            #     xoffset = -0.35
-            #     if celltype == "pyramidal":
-            #         xo2 = 0.0
-            #     else:
-            #         xo2 = -0.45
-            for i, group in enumerate(self.experiment["group_legend_map"].keys()):
-                if group not in found_groups:
-                    continue
-                if celltype == "pyramidal":  # more legend - name of group
-                    ax.text(
-                        x=pos[celltype][0] + xoffset + xo2,
-                        y=pos[celltype][1] + 0.095 * (i - 0.5) + yoffset,
-                        s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
-                        ha="left",
-                        va="top",
-                        fontsize=8,
-                        color=colors[group],
-                        transform=ax.transAxes,
-                    )
-                    print(
-                        "Pyramidal legend: ",
-                        f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
-                    )
-                else:
-                    if (celltype, group) in NCells.keys():
-                        textline = f"{group:s} N={NCells[(celltype, group)]:>3d}"
-                    else:
-                        textline = f"N={0:>3d}"
-                    fcelltype = celltype
-                    if celltype not in pos.keys():
-                        fcelltype = "default"
-                    ax.text(
-                        x=pos[fcelltype][0] + xoffset + xo2,
-                        y=pos[fcelltype][1] - 0.095 * (i - 0.5) + yoffset,
-                        s=textline,
-                        ha="left",
-                        va="top",
-                        fontsize=8,
-                        color=colors[group],
-                        transform=ax.transAxes,
-                    )
+
+                    yoffset = -0.5
+                    xoffset = 1.05
+                    xo2 = 0.0
+
+                    i_glp = 0
+                    for i, group in enumerate(self.experiment["group_legend_map"].keys()):
+                        if group not in found_groups:
+                            continue
+                        if celltype == "pyramidal":  # more legend - include the name of group
+                            ax.text(
+                                x=pos[celltype][0] + xoffset + xo2,
+                                y=pos[celltype][1] + 0.095 * (i_glp - 0.5) + yoffset,
+                                s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
+                                ha="left",
+                                va="top",
+                                fontsize=8,
+                                color=colors[group],
+                                transform=ax.transAxes,
+                            )
+                            print(
+                                "Pyramidal legend: ",
+                                f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
+                            )
+                            i_glp += 1
+                        else:
+                            if (celltype, group) in NCells.keys():
+                                textline = f"{group:s}, {celltype:s} N={NCells[(celltype, group)]:>3d}"
+                            else:
+                                textline = f"N={0:>3d}"
+                            fcelltype = celltype
+                            if celltype not in pos.keys():
+                                fcelltype = "default"
+                            ax.text(
+                                x=pos[fcelltype][0] + xoffset + xo2,
+                                y=pos[fcelltype][1] - 0.095 * (i_glp - 0.5) + yoffset,
+                                s=textline,
+                                ha="left",
+                                va="top",
+                                fontsize=8,
+                                color=colors[group],
+                                transform=ax.transAxes,
+                            )
+                            i_glp += 1
 
             print("-" * 80)
 
@@ -2398,7 +2427,7 @@ class PlotSpikeInfo(QObject):
                         )
         i = 0
         icol = 0
-        print("P.axdict: ", P.axdict)
+
         axp = P.axdict["A1"]
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
@@ -2702,8 +2731,6 @@ class PlotSpikeInfo(QObject):
     #             row.Group = "Mature Adult"
     #     return row
 
-    
-
     def compute_AHP_depth(self, row):
         # Calculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
@@ -2834,7 +2861,10 @@ class PlotSpikeInfo(QObject):
 
             if row.cell_expression in [" ", "nan", "NaN", np.nan] or pd.isnull(row.cell_expression):
                 row.cell_expression = "ND"
-            if "remove_expression" in self.experiment.keys() and self.experiment["remove_expression"] is not None:
+            if (
+                "remove_expression" in self.experiment.keys()
+                and self.experiment["remove_expression"] is not None
+            ):
                 if row.cell_expression in self.experiment["remove_expression"]:
                     for re in self.experiment["remove_expression"]:
                         if row.cell_expression == re:
@@ -2893,15 +2923,14 @@ class PlotSpikeInfo(QObject):
         # print("-2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
         # print("-1 ", df_summary['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
 
-    def check_list_contained(self, A:list, B: list):
-        # check if any of values in A are in B. 
-        A_str = ' '.join(map(str, A))
-        B_str = ' '.join(map(str, B))
+    def check_list_contained(self, A: list, B: list):
+        # check if any of values in A are in B.
+        A_str = " ".join(map(str, A))
+        B_str = " ".join(map(str, B))
         # find all instances of A within B, case insensitive
         instances = re.findall(A_str, B_str, re.IGNORECASE)
         # return True if any instances were found, False otherwise
         return len(instances) > 0
-
 
     def check_include_exclude(self, df):
         # Note that prior to this step, excluded IVs may have been analyzed
@@ -2913,7 +2942,7 @@ class PlotSpikeInfo(QObject):
         # as they will have partial data that is being "rescued" and should NOT be excluded.
         # for the same cell and protocol!
 
-        if len(self.experiment["excludeIVs"]) ==  0:
+        if len(self.experiment["excludeIVs"]) == 0:
             return df
         re_check_all = re.compile(r"All", re.IGNORECASE)
         re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
@@ -2929,7 +2958,7 @@ class PlotSpikeInfo(QObject):
             includes = list(self.experiment["includeIVs"].keys())
         else:
             includes = []
-            
+
         CP("c", "Parsing/checking excluded and included IV datasets (noise, etc)")
 
         for filename, key in self.experiment["excludeIVs"].items():
@@ -2937,21 +2966,24 @@ class PlotSpikeInfo(QObject):
             # includes are always fully specified day/slice/cell names, with protocols.
             # includes always take precedence. Note that the analysis will have already excluded the
             # protocols in the exclude list, so we can skip those here.
-            if filename in includes: 
-                CP("c", f"   Preprocess_data: {filename:s} is in inclusion list (which takes precedence), so it will not be excluded.")
+            if filename in includes:
+                CP(
+                    "c",
+                    f"   Preprocess_data: {filename:s} is in inclusion list (which takes precedence), so it will not be excluded.",
+                )
                 continue
-            # everything after this relates only to exclusion by day, slice, or cell. 
+            # everything after this relates only to exclusion by day, slice, or cell.
             fparts = Path(filename).parts
             fn = str(Path(*fparts[-3:]))
             # print(fn)
             # raise ValueError("Stop here")
-        
+
             if len(fparts) > 3:
                 fnpath = str(Path(*fparts[:-3]))  # just day/slice/cell
             else:
                 fnpath = None  # no leading path
             reason = key["reason"]
-            protocols = key['protocols']
+            protocols = key["protocols"]
             # includes will ALWAYS be fully specified day/slice/cell names, with protocols.
 
             # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
@@ -3018,7 +3050,6 @@ class PlotSpikeInfo(QObject):
             #     raise ValueError("Dropped: ", dropped)
 
         return df
-    
 
     def preprocess_data(self, df, experiment):
         pd.options.mode.copy_on_write = True
@@ -3117,7 +3148,7 @@ class PlotSpikeInfo(QObject):
         df["shortdate"] = df.apply(make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
 
-        # Now make sure the excluded IV data is removed from the dataset and that included 
+        # Now make sure the excluded IV data is removed from the dataset and that included
         # datasets are properly included.
         df = self.check_include_exclude(df)
         # raise ValueError("Stop here 2")
