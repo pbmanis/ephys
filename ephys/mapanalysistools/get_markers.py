@@ -165,19 +165,20 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
 
             # now compute distance from soma to surface marker for each soma
             # this may not be appropriate for all datasets.
-            for i_soma, cellname in enumerate(marker_dict["somas"]):
-                soma_xy = marker_dict["somas"][cellname]
-                print("soma_xy: ", soma_xy)
+            if 'somas' in list(marker_dict.keys()):
+                for i_soma, cellname in enumerate(marker_dict["somas"]):
+                    soma_xy = marker_dict["somas"][cellname]
+                    print("soma_xy: ", soma_xy)
 
-                surface_xy = marker_dict["surface"]
-                dist = np.sqrt(
-                    (soma_xy[0] - surface_xy[0]) ** 2
-                    + (soma_xy[1] - surface_xy[1]) ** 2
-                )
-                if verbose:
-                    CP.cprint(
-                        "c", f"   {cellname:s} soma-'surface marker' distance: {dist*1e6:7.1f} um"
+                    surface_xy = marker_dict["surface"]
+                    dist = np.sqrt(
+                        (soma_xy[0] - surface_xy[0]) ** 2
+                        + (soma_xy[1] - surface_xy[1]) ** 2
                     )
+                    if verbose:
+                        CP.cprint(
+                            "c", f"   {cellname:s} soma-'surface marker' distance: {dist*1e6:7.1f} um"
+                        )
 
         # if soma_xy == [] or surface_xy == []:
         #     if verbose:
