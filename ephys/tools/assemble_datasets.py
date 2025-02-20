@@ -145,6 +145,7 @@ class AssembleDatasets:
             coding_level=coding_level,
             coding_name=coding_name,
             exclude_unimportant=exclude_unimportant,
+            status_bar=self.status_bar,
         )
         if "protocol" not in df.columns:
             df["protocol"] = ""
@@ -197,6 +198,7 @@ class AssembleDatasets:
         coding_level: Optional[str] = "date",
         coding_name: Optional[str] = "Group",
         exclude_unimportant=False,
+        status_bar=None,
     ):
         """combine_summary_and_coding: combine the summary data with the coding file
 
@@ -274,8 +276,8 @@ class AssembleDatasets:
         )
 
         CP("m", "Finished reading files\n")
-        if self.status_bar is not None:
-            self.status_bar("Assembling Datasets: Finished reading files")
+        if status_bar is not None:
+            status_bar("Assembling Datasets: Finished reading files")
         print("df.Groups: ", df.Group)
         return df
 
