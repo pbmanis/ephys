@@ -740,13 +740,15 @@ class PlotSpikeInfo(QObject):
 
     def get_stats_dir(self):
         """get_stats_dir set the directory for the statistics files (CSV etc)
-
+        directory is pulled from the experiment configuration file (dict)
         Returns
         -------
         str with the directory name or '.' of not specified
         """
         if "stats_dir" in self.experiment.keys():
             stats_dir = self.experiment["stats_dir"]
+        elif "R_statistics_directory" in self.experiment.keys():
+            stats_dir = self.experiment["R_statistics_directory"]
         else:
             stats_dir = "."
         return stats_dir
@@ -828,6 +830,7 @@ class PlotSpikeInfo(QObject):
         ax: mpl.axes = None,
         plot_order: Optional[list] = None,
         colors: Optional[dict] = None,
+        edgecolor: str = "k",
         enable_picking=True,
     ):
         """Graph a bar plot and a strip plot on top of each other
@@ -942,7 +945,7 @@ class PlotSpikeInfo(QObject):
                 alpha=1.0,
                 ax=ax,
                 palette=hue_palette,
-                edgecolor="k",
+                edgecolor=edgecolor,
                 linewidth=0.5,
                 order=plot_order,
                 hue_order=plot_order,
@@ -967,7 +970,7 @@ class PlotSpikeInfo(QObject):
                 alpha=1.0,
                 ax=ax,
                 palette=hue_palette,
-                edgecolor="k",
+                edgecolor=edgecolor,
                 linewidth=0.5,
                 picker=enable_picking,
                 zorder=100,
@@ -995,7 +998,7 @@ class PlotSpikeInfo(QObject):
                 alpha=1.0,
                 ax=ax,
                 palette=hue_palette,
-                edgecolor="k",
+                edgecolor=edgecolor,
                 linewidth=0.5,
                 picker=enable_picking,
                 zorder=100,
@@ -1269,7 +1272,8 @@ class PlotSpikeInfo(QObject):
             parameters=measures,
             configuration=self.experiment,
         )
-
+        fn = self.get_stats_dir()
+        filename = Path(fn, filename)
         CP("g", f"Exporting analyzed data to {filename!s}")
         df_R.to_csv(filename, index=False)
         # now remove brackets from the csv data, then rewrite
@@ -1318,28 +1322,40 @@ class PlotSpikeInfo(QObject):
         print(
             "summary_plot_spike_parameters_categorical: incoming x categories: ", df[xname].unique()
         )
-
+        nrows = len(self.experiment["celltypes"])
+        bottom_margin = 0.1
+        top_margin = 0.15
+        height = 2.5
+        edgecolor = 'k'
+        if self.experiment["celltypes"][0] in df[xname].unique():
+            nrows = 1  # doing by cell type, not some other category.
+        if nrows == 1:
+            bottom_margin = 0.25  # add a little more when just one row
+            top_margin = 0.2
+            height = 3.0
+            edgecolor = "w"
         ncols = len(measures)
         letters = ascii_letters  # ["A", "B", "C", "D", "E", "F", "G", "H"]
         plabels = [f"{let:s}{num+1:d}" for let in letters for num in range(ncols)]
         figure_width = ncols * 2.5
         P = PH.regular_grid(
-            len(self.experiment["celltypes"]),
+            nrows,
             ncols,
             order="rowsfirst",
-            figsize=(figure_width, 2.5 * len(self.experiment["celltypes"]) + 1.0),
+            figsize=(figure_width, height * nrows + 1.0),
             panel_labels=plabels,
             labelposition=(-0.15, 1.05),
             margins={
-                "topmargin": 0.12,
-                "bottommargin": 0.12,
+                "topmargin": top_margin,
+                "bottommargin": bottom_margin,
                 "leftmargin": 0.1,
                 "rightmargin": 0.15,
             },
             verticalspacing=0.1,
             horizontalspacing=0.07,
         )
-        self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
+        if nrows > 1:
+            self.label_celltypes(P, analysis_cell_types=self.experiment["celltypes"])
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         picker_funcs = {}
@@ -1367,52 +1383,87 @@ class PlotSpikeInfo(QObject):
             else:
                 tf = None
             # print(":: cell types ::", self.experiment["celltypes"])
-            for i, celltype in enumerate(self.experiment["celltypes"]):
+            if nrows > 1:
+                for i, celltype in enumerate(self.experiment["celltypes"]):
                 # print("measure y: ", measure, "celltype: ", celltype)
-                axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-                if celltype not in self.ylims.keys():
-                    ycell = "default"
-                else:
-                    ycell = celltype
+                    axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    if celltype not in self.ylims.keys():
+                        ycell = "default"
+                    else:
+                        ycell = celltype
+                    x_measure = "_".join((measure.split("_"))[:-1])
+                    if x_measure not in self.ylims[ycell]:
+                        continue
+                    if measure not in df.columns:
+                        continue
+
+                    picker_func = self.create_one_plot_categorical(
+                        data=df,
+                        xname=xname,
+                        y=measure,
+                        ax=axp,
+                        celltype=celltype,
+                        hue_category=hue_category,
+                        plot_order=plot_order,
+                        colors=colors,
+                        edgecolor=edgecolor,
+                        logx=False,
+                        ylims=self.ylims[ycell][x_measure],
+                        transform=tf,
+                        xlims=None,
+                        enable_picking=enable_picking,
+                    )
+                    # except Exception as e:
+                    #     print("Categorical plot error in ylims: ", self.ylims.keys(), ycell)
+                    #     raise KeyError(f"\n{e!s}")
+                    picker_funcs[axp] = picker_func  # each axis has different data...
+                    if celltype != self.experiment["celltypes"][-1]:
+                        axp.set_xticklabels("")
+                        axp.set_xlabel("")
+                    else:
+                        self.relabel_xaxes(axp)
+                    self.relabel_yaxes(axp, measure=x_measure)
+                # print("checking measure for rmp: ", measure)
+                if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
+                    axp.text(
+                        x=0.01,
+                        y=0.01,
+                        s=f"JP: {self.experiment['junction_potential']:.1f}mV",
+                        fontsize="x-small",
+                        transform=axp.transAxes,
+                        ha="left",
+                        va="bottom",
+                    )
+
+            else:
+                # here we probably have the cell type as the x category,
+                # so we will simplify some things
+                axp = P.axdict[f"{plabels[icol]:s}"]
                 x_measure = "_".join((measure.split("_"))[:-1])
-                if x_measure not in self.ylims[ycell]:
+                if x_measure not in self.ylims['default']:
                     continue
                 if measure not in df.columns:
                     continue
-                # print("%"*80)
-                # print("df columns: ", df.columns)
-                # print("measure: ", measure)
-                # print("plot_order: ", plot_order)
-                # print("hue_category: ", hue_category)
-                # print("xname: ", xname)
-                # print("%"*80)
-                # try:
+                plot_order = [p for p in plot_order if p in df[xname].unique()]
+                print(hue_category, plot_order, colors)
                 picker_func = self.create_one_plot_categorical(
                     data=df,
                     xname=xname,
                     y=measure,
                     ax=axp,
-                    celltype=celltype,
+                    celltype="all",
                     hue_category=hue_category,
                     plot_order=plot_order,
                     colors=colors,
                     logx=False,
-                    ylims=self.ylims[ycell][x_measure],
+                    ylims=self.ylims["default"][x_measure],
                     transform=tf,
                     xlims=None,
                     enable_picking=enable_picking,
                 )
-                # except Exception as e:
-                #     print("Categorical plot error in ylims: ", self.ylims.keys(), ycell)
-                #     raise KeyError(f"\n{e!s}")
-                picker_funcs[axp] = picker_func  # each axis has different data...
-                if celltype != self.experiment["celltypes"][-1]:
-                    axp.set_xticklabels("")
-                    axp.set_xlabel("")
-                else:
-                    self.relabel_xaxes(axp)
+                picker_funcs[axp] = picker_func
+                self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=x_measure)
-
                 print("checking measure for rmp: ", measure)
                 if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
                     axp.text(
@@ -1450,13 +1501,12 @@ class PlotSpikeInfo(QObject):
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
         datestring = datetime.datetime.now().strftime("%d-%b-%Y")
-        stats_dir = self.get_stats_dir()
         if any(c.startswith("dvdt_rising") for c in measures):
-            fn = Path(stats_dir, f"spike_shapes_{datestring}.csv")  # "spike_shapes.csv"
+            fn = Path(f"spike_shapes_{self.experiment['directory']:s}_{datestring}.csv")  # "spike_shapes.csv"
         elif any(c.startswith("AdaptRatio") for c in measures):
-            fn = Path(stats_dir, f"firing_parameters_{datestring}.csv")  # "firing_parameters.csv"
+            fn = Path(f"firing_parameters_{self.experiment['directory']:s}_{datestring}.csv")  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
-            fn = Path(stats_dir, f"rmtau_{datestring}.csv")
+            fn = Path(f"rmtau_{self.experiment['directory']:s}_{datestring}.csv")
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
@@ -1583,6 +1633,7 @@ class PlotSpikeInfo(QObject):
         hue_category: str = None,
         plot_order=None,
         colors=None,
+        edgecolor="k",
         logx=False,
         ylims=None,
         xlims=None,
@@ -1629,10 +1680,10 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
-        print(
-            "-" * 80, "\nBar pts: hue: ", hue_category, "plot_order: ", plot_order, "\n", "-" * 80
-        )
-        print("colors: ", colors)
+        # print(
+        #     "-" * 80, "\nBar pts: hue: ", hue_category, "plot_order: ", plot_order, "\n", "-" * 80
+        # )
+        # print("colors: ", colors)
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
@@ -1642,6 +1693,7 @@ class PlotSpikeInfo(QObject):
             celltype=celltype,
             plot_order=plot_order,
             colors=colors,
+            edgecolor=edgecolor,
             enable_picking=enable_picking,
         )
 
@@ -2065,8 +2117,8 @@ class PlotSpikeInfo(QObject):
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
         datestring = datetime.datetime.now().strftime("%d-%b-%Y")
-
-        fn = Path(self.get_stats_dir(), f"rmtau_{datestring}.csv")
+        print("0: ", self.get_stats_dir())
+        fn = Path(self.get_stats_dir(), f"rmtau_{self.experiment['directory']:s}_{datestring}.csv")
         self.export_r(df, xname, measures, hue_category, filename=fn)
         return P, picker_funcs
 
@@ -2156,11 +2208,14 @@ class PlotSpikeInfo(QObject):
             for j in range(3):
                 plabels.append(f"{ascii_letters[i].upper():s}{j+1:d}")
         # set up the plot area
+        n_celltypes = len(self.experiment["celltypes"])
+        if group_by == "cell_type":
+            n_celltypes = 1
         P = PH.regular_grid(
-            rows=len(self.experiment["celltypes"]),
+            rows=n_celltypes,
             cols=3,
             order="rowsfirst",
-            figsize=(8 + 1.0, 3 * len(self.experiment["celltypes"])),
+            figsize=(8 + 1.0, 3 * n_celltypes),
             panel_labels=plabels,
             labelposition=(-0.05, 1.02),
             margins={
@@ -2190,7 +2245,8 @@ class PlotSpikeInfo(QObject):
             "giant_maybe": [0.6, 0.4],
             "default": [0.4, 0.15],
         }
-
+        longform = "cell, group, Iinj, rate\n" # build a csv file the hard way
+        prism_form = ''
         mode = "mean"  # "individual"
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
         if mode == "mean":
@@ -2200,34 +2256,41 @@ class PlotSpikeInfo(QObject):
         fi_stats = []
 
         picker_funcs: Dict = {}
+        N = self.experiment["group_map"]
+        print("N.keys: ", N.keys())
         found_groups = []
-
+        FIy_all: dict = {k: [] for k in N.keys()}
+        FIx_all: dict = {k: [] for k in N.keys()}
         fi_dat = {}  # save raw fi
         for ic, ptype in enumerate(["mean", "individual", "sum"]):
-            NCells: Dict[tuple] = {}
+            NCells: dict[tuple] = {}
             for ir, celltype in enumerate(self.experiment["celltypes"]):
-
+                if n_celltypes == 1:  # combine all onto one set of plots
+                    ixr = 0
+                else:
+                    ixr = ir
                 # create a dataframe for the plot.
                 fi_group_sum = pd.DataFrame(
                     columns=["Group", "sum", "sex", "cell_type", "cell_expression"]
                 )
-                ax = P.axarr[ir, ic]
-                ax.set_title(celltype.title(), y=1.05)
-                ax.set_xlabel("I$_{inj}$ (nA)")
+                if n_celltypes == 1:
+                    ax = P.axarr[0]
+                else:
+                    ax = P.axarr[ixr]
+                ax[ic].set_title(celltype.title(), y=1.05)
+                ax[ic].set_xlabel("I$_{inj}$ (nA)")
                 if ic in [0, 1]:
-                    ax.set_ylabel("Rate (sp/s)")
+                    ax[ic].set_ylabel("Rate (sp/s)")
                 elif ic == 2 and ptype == "sum":
-                    ax.set_ylabel(self.experiment["new_ylabels"]["summed_FI"])
+                    ax[ic].set_ylabel(self.experiment["new_ylabels"]["summed_FI"])
                 if celltype != "all":
                     cdd = df[df["cell_type"] == celltype]
                 else:
                     cdd = df.copy()
 
-                N = self.experiment["group_map"]
 
-                if ptype == "mean":  # set up arrays to compute mean
-                    FIy_all: dict = {k: [] for k in N.keys()}
-                    FIx_all: dict = {k: [] for k in N.keys()}
+                # if ptype == "mean":  # set up arrays to compute mean
+
                 for index in cdd.index:  # go through the individual cells
                     group = cdd[group_by][index]
                     sex = cdd["sex"][index]
@@ -2276,8 +2339,11 @@ class PlotSpikeInfo(QObject):
                         )
                         NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
                         if group not in found_groups:
+                            if pd.isnull(group) or group=='nan':
+                                group = "Unidentified"
                             found_groups.append(group)
-                        ax.plot(
+            
+                        ax[ic].plot(
                             fix[:ilim] * 1e9,
                             fiy[:ilim],
                             color=colors[group],
@@ -2292,9 +2358,12 @@ class PlotSpikeInfo(QObject):
                         if group in FIy_all.keys():
                             FIy_all[group].append(np.array(FI_data[1][:ilim]))
                             FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
+                            for iv in range(len(FI_data[1][:ilim])):
+                                longform += f"{cdd['cell_id'][index]:s}, {group:s}, {1e12*FI_data[0][iv]:f}, {FI_data[1][iv]:f}\n"
                             NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                            if group not in found_groups:
-                                found_groups.append(group)
+                            if pd.isnull(group) or group=='nan':
+                                group = "Unidentified"
+                            found_groups.append(group)
                     elif ptype == "sum":
                         fi_group_sum.loc[len(fi_group_sum)] = [
                             group,
@@ -2304,8 +2373,9 @@ class PlotSpikeInfo(QObject):
                             "None",
                         ]
                         NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                        if group not in found_groups:
-                            found_groups.append(group)
+                        if pd.isnull(group) or group=='nan':
+                            group = "Unidentified"
+                        found_groups.append(group)
 
 
                 if ptype == "mean":
@@ -2320,7 +2390,7 @@ class PlotSpikeInfo(QObject):
                             print("getting average: ", cdd["cell_id"][index])
                         if "max_FI" in self.experiment.keys():
                             max_FI = self.experiment["max_FI"] * 1e-3
-                        ax.errorbar(
+                        ax[ic].errorbar(
                             fx[fx <= max_FI],
                             fy[fx <= max_FI],
                             yerr=fystd[fx <= max_FI] / np.sqrt(yn[fx <= max_FI]),
@@ -2332,15 +2402,15 @@ class PlotSpikeInfo(QObject):
                             label=self.experiment["group_legend_map"][group],
                         )
 
-                        ax.set_xlim(0, max_FI)
+                        ax[ic].set_xlim(0, max_FI)
 
                 if ptype == "sum":
                     # Spike sum plot - 
-                    ax = P.axarr[ir, ic]
-                    ax.set_title("Summed FI", y=1.05)
-                    ax.set_xlabel("Group")
+                    # ax[ic] = P.axarr[ir, ic]
+                    ax[ic].set_title("Summed FI", y=1.05)
+                    ax[ic].set_xlabel("Group")
                     print("SUM: ", fi_group_sum)
-
+                    # fi_group_sum = fi_group_sum[celltype].isin(self.experiment["celltypes"])
                     if not all(np.isnan(fi_group_sum["sum"])):
                         self.bar_pts(
                             fi_group_sum,
@@ -2348,26 +2418,26 @@ class PlotSpikeInfo(QObject):
                             yname="sum",
                             celltype=celltype,
                             # hue_category = "sex",
-                            ax=ax,
+                            ax=ax[ic],
                             plot_order=self.experiment["plot_order"][group_by],  # ["age_category"],
                             colors=self.experiment["plot_colors"],
                             enable_picking=False,
                         )
                         all_limits = self.experiment["ylims"]
                         # check if our cell type is in one of the subkeys of the limits:
-                        ax.set_ylim(all_limits["default"]["summed_FI_limits"])
+                        ax[ic].set_ylim(all_limits["default"]["summed_FI_limits"])
                         for limit in all_limits.keys():
                             print("testing limit: ", limit, "with celltypes: ", all_limits[limit]["celltypes"])
                             if celltype in all_limits[limit]["celltypes"]:
                                 print("found limit: ", limit)
-                                ax.set_ylim(all_limits[limit]["summed_FI_limits"])
+                                ax[ic].set_ylim(all_limits[limit]["summed_FI_limits"])
                                 break
 
-                        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
-                        PH.talbotTicks(ax, axes="y", density=(1, 1))
+                        ax[ic].legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
+                        PH.talbotTicks(ax[ic], axes="y", density=(1, 1))
 
 
-                    yoffset = -0.5
+                    yoffset = 0
                     xoffset = 1.05
                     xo2 = 0.0
 
@@ -2375,23 +2445,24 @@ class PlotSpikeInfo(QObject):
                     for i, group in enumerate(self.experiment["group_legend_map"].keys()):
                         if group not in found_groups:
                             continue
-                        if celltype == "pyramidal":  # more legend - include the name of group
-                            ax.text(
-                                x=pos[celltype][0] + xoffset + xo2,
-                                y=pos[celltype][1] + 0.095 * (i_glp - 0.5) + yoffset,
-                                s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
-                                ha="left",
-                                va="top",
-                                fontsize=8,
-                                color=colors[group],
-                                transform=ax.transAxes,
-                            )
-                            print(
-                                "Pyramidal legend: ",
-                                f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
-                            )
-                            i_glp += 1
-                        else:
+                        # if celltype == "pyramidal":  # more legend - include the name of group
+                        #     ax.text(
+                        #         x=pos[celltype][0] + xoffset + xo2,
+                        #         y=pos[celltype][1] + 0.095 * (i_glp - 0.5) + yoffset,
+                        #         s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
+                        #         ha="left",
+                        #         va="top",
+                        #         fontsize=8,
+                        #         color=colors[group],
+                        #         transform=ax.transAxes,
+                        #     )
+                        #     print(
+                        #         "Pyramidal legend: ",
+                        #         f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
+                        #     )
+                        #     i_glp += 1
+                        # else:
+                        if True:
                             if (celltype, group) in NCells.keys():
                                 textline = f"{group:s}, {celltype:s} N={NCells[(celltype, group)]:>3d}"
                             else:
@@ -2399,32 +2470,48 @@ class PlotSpikeInfo(QObject):
                             fcelltype = celltype
                             if celltype not in pos.keys():
                                 fcelltype = "default"
-                            ax.text(
-                                x=pos[fcelltype][0] + xoffset + xo2,
-                                y=pos[fcelltype][1] - 0.095 * (i_glp - 0.5) + yoffset,
-                                s=textline,
-                                ha="left",
-                                va="top",
-                                fontsize=8,
-                                color=colors[group],
-                                transform=ax.transAxes,
-                            )
+                            if (group_by != "cell_type") or (n_celltypes == 1 and ir == 0):
+                                ax[ic].text(
+                                    x=xoffset, # pos[fcelltype][0] + xoffset + xo2,
+                                    y= yoffset + i_glp*0.05, # pos[fcelltype][1] - 0.095 * (i_glp - 0.5) + yoffset,
+                                    s=textline,
+                                    ha="left",
+                                    va="bottom",
+                                    fontsize=8,
+                                    color=colors[group],
+                                    transform=ax[ic].transAxes,
+                                )
                             i_glp += 1
 
-            print("-" * 80)
+            # print("-" * 80)
+            # print("FI keys: ", FIx_all.keys())
+            # for k in FIx_all.keys():
+            #     print("Cell type: ", k)
+            #     if len(FIx_all[k]) > 0:
+            #         print("   FIx all: ", FIx_all[k])
+            #         print("   FIy all: ", FIy_all[k])
+            # df1 = pd.DataFrame({'current': FIx_all['giant'], 'rate': FIy_all['giant'], 'group': 'giant'})
+            # df2 = pd.DataFrame({'current': FIx_all['pyramidal'], 'rate': FIy_all['pyramidal'], 'group': 'pyramidal'})
+            # df = pd.concat([df1, df2])
+            # print(df.head())
+            # import statsmodels.api as SM
+            # from statsmodels.formula.api import ols
+            # model = ols('rate ~ C(group) + C(current) + C(group):C(current)', data=df).fit()
+            # SM.stats.anova_lm(model, typ=2)
 
-            if "mean" in mode:
-                for i, group in enumerate(self.experiment["group_legend_map"].keys()):
-                    if (celltype, group) in NCells.keys():
-                        fi_stats.append(
-                            {
-                                "celltype": celltype,
-                                "Group": group,
-                                "I_nA": fx,
-                                "sp_s": fy,
-                                "N": NCells[(celltype, group)],
-                            }
-                        )
+            # if ptype == "mean":
+            #     for i, group in enumerate(self.experiment["group_legend_map"].keys()):
+            #         if (celltype, group) in NCells.keys():
+            #             fi_stats.append(
+            #                 {
+            #                     "celltype": celltype,
+            #                     "Group": group,
+            #                     "I_nA": fx,
+            #                     "sp_s": fy,
+            #                     "N": NCells[(celltype, group)],
+            #                 }
+            #             )
+            #     print("fi_stats: ", fi_stats)
         i = 0
         icol = 0
 
@@ -2432,6 +2519,11 @@ class PlotSpikeInfo(QObject):
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
+        with(open("FI_Data.csv", "w") )as f:
+            f.write(longform)
+
+    
+
         return P, picker_funcs
 
     def rename_group(self, row, group_by: str):
@@ -3152,7 +3244,7 @@ class PlotSpikeInfo(QObject):
         # datasets are properly included.
         df = self.check_include_exclude(df)
         # raise ValueError("Stop here 2")
-        gu = df.Group.unique()
+        # gu = df.Group.unique()
         # print("   Preprocess_data: Groups and cells after exclusions: ")
         # for g in sorted(gu):
         #     print(f"    {g:s}  (N={len(df.loc[df.Group == g]):d})")
