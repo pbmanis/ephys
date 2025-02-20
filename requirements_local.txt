@@ -47,8 +47,10 @@ pyparsing==2.4.0
 tables==3.10.2
 pypdf2
 pingouin==0.5.4
+python-statemachine
 resampy==0.4.2
 scipy>=1.14.0
+seaborn
 statsmodels==0.14.4
 scikit_posthocs==0.9.0
 sympy
