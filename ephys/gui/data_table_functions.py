@@ -2185,7 +2185,7 @@ class Functions:
             _description_
         """
         if self.status_bar is not None:
-            self.status_bar.showMessage(f"Computing FI fits for cell: {cell:s}")
+            self.status_bar.showMessage(f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}  Group {df[df.cell_id == cell].Group.values[0]!s}")
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id == cell].Group.values[0]!s}")
         cell_group = df[df.cell_id == cell].Group.values[0]
