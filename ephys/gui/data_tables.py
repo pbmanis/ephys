@@ -1352,8 +1352,9 @@ class DataTables:
                             reload.reloadAll(
                                 debug=True
                             )  # reload raises an error if it fails, so we don't need to check.
-                            self.status_bar_message("Reloaded ok", color="green")
-                            print("   reload ok")
+                            now = datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+                            self.status_bar_message(f"Reloaded ok at {now:s}", color="green")
+                            print(f"   reload ok at {now:s}")
                             print("-" * 80)
 
                             mode = (
@@ -1818,22 +1819,40 @@ class DataTables:
 
     def load_assembled_data(self):
         """get the current assembled data file, if it exists
-        if not, just pass on it.
+        if not, let us know.
         """
         self.assembledfile = self.assemble_dataset.get_assembled_filename(self.experiment)
-        if not self.assembledfile.is_file():
+        if not self.assembledfile.is_file():  # make sure file exists first
             FUNCS.textappend(
                 f"Assembled data file: {self.assembledfile!s} does not yet exist - please generate it first"
             )
+            self.status_bar_message(f"Assembled data {self.assembledfile!s} does not exist - please generate", color="red")
             return
 
         try:
-            self.assembleddata = pd.read_pickle(self.assembledfile)
+            self.status_bar_message(f"Loading assembled data{self.assembledfile!s}", color="cyan")
+            FUNCS.textappend(f"Assembled data file: {self.assembledfile!s}  exists")
+            try:  # first try with compressed format
+                self.assembleddata = pd.read_pickle(self.assembledfile, compression="gzip")
+            except:
+                try: 
+                    self.assembleddata = pd.read_pickle(self.assembledfile)  # not compressed
+                except:
+                    self.status_bar_message(f"Unable to load assembled data file: {self.assembledfile!s}", color="red")
+                    raise ValueError(f"Error loading assembled data file: {self.assembledfile!s}")
             FUNCS.textappend(f"Assembled data loaded, entries: {len(self.assembleddata.index):d}")
             FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
-            self.update_assembled_data()
+            self.status_bar_message(f"Assembled data loaded with {len(self.assembleddata.index):d} entries", color="cyan")
+            try:
+                self.update_assembled_data()
+            except:
+                FUNCS.textappend(f"Error updating assembled data file ")
+                self.status_bar_message(f"Error updating assembled data table", color="red")
+                raise ValueError(f"Error updating assembled data table")
+            self.status_bar_message(f"Loaded assembled data file OK: {self.assembledfile!s}", color="green")
         except:
             FUNCS.textappend(f"Error loading assembled data file: {self.assembledfile!s}, but continuing")    
+            self.status_bar_message(f"Error loading assembled data file: {self.assembledfile!s}", color="red")
 
 
     def update_assembled_data(self):
@@ -1841,7 +1860,9 @@ class DataTables:
             self.table_manager.build_table(
                 self.assembleddata, mode="scan", QtCore=QtCore, QtGui=QtGui
             )
-
+            self.status_bar_message(f"Updated assembled data table with {len(self.assembleddata.index):d} entries", color="green")
+        else:
+            self.status_bar_message(f"No assembled data to update?", color="red")
     # Next we provide dispatches for a few specific actions. These are mostly
     # to routines in plot_sims.py
 
