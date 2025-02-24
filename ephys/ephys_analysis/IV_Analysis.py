@@ -890,7 +890,10 @@ class IVAnalysis(Analysis):
             print("    Brief spike analysis completed", full_spike_analysis)
         tau_end = self.AR.tstart + (self.AR.tend - self.AR.tstart) / 2.0
         if str(self.datapath).find("_taum"):
-            tau_end = self.AR.tstart + self.AR.tend
+            te = self.AR.tend
+            if te > taum_bounds[1]:
+                te = taum_bounds[1]
+            tau_end = self.AR.tstart + te
         # check if we define specific regions in the configuration file for this analysis
         if "Rin_windows" in self.experiment.keys():
             protocol = Path(self.datapath).name[:-4]
