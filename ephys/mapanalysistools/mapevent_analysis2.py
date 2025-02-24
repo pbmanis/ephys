@@ -96,8 +96,12 @@ class MapEventAnalyzer:
         # now do the merge
         self.db = db
         self.tau_db = None
+        print("tau db file exists: ", self.tau_db_name,  self.tau_db_name.is_file())
+        tdb = pd.read_pickle(self.tau_db_name, compression=None)
         if not self.tau_db_name.is_file() or self.force_map_update:
-            self.tau_db = self.get_events()  # create the file and get the data
+            print("... getting tau events")
+            self.tau_db = self.get_events()  # create             the file and get the data
+            print("tau db head: ", self.tau_db.head())
         self.merged_db = self.merge_db(tau_db=self.tau_db, verbose=False)
         # print("Merged database: \n", self.merged_db.cell_type)
 
@@ -164,19 +168,24 @@ class MapEventAnalyzer:
                 return
         with open(event_summary_filename, "rb") as fh:
             evdb = pd.read_pickle(fh, compression=None)
-        # evm = {}
+        # seems evdb can be adic tionary or a pd dataframe - so convert
+        # to dataframe if it is a dict
+        if isinstance(evdb, dict):
+            evm = {}
+            print("evdb keys: ", evdb.keys())
+            for i, c in enumerate(evdb.keys()):  # reformat dict so cells are in dict
+                evm[i] = {"cell": c}
+                for d in evdb[c].keys():
+                    evm[i][d] = evdb[c][d]
 
-        # for i, c in enumerate(evdict.keys()):  # reformat dict so cells are in dict
-        #     evm[i] = {"cell": c}
-        #     for d in evdict[c].keys():
-        #         evm[i][d] = evdict[c][d]
-
-        # evdb = pd.DataFrame(evm)
-        # evdb.rename(columns={"cell": "cell_id"}, inplace=True)
-        # print("evdb columns: ", evdb.columns)
-        # for ci in evdb.cell_id:
-        #     print(ci)
-        tau_db.drop("celltype", axis=1, inplace=True)
+            evdb = pd.DataFrame(evm).transpose()
+            evdb.rename(columns={"cell": "cell_id"}, inplace=True)
+            print("evdb columns: ", evdb.columns)
+            for ci in evdb.cell_id:
+                print(ci)
+        print(tau_db.columns)
+        tau_db.drop("cell_type", axis=1, inplace=True)
+        print(evdb.columns)
         evdb.drop("celltype", axis=1, inplace=True)
         midb2a = pd.merge(left=evdb, right=tau_db, left_on="cell_id", right_on="cell_id")
         midb2 = pd.merge(left=midb2a, right=self.db, left_on="cell_id", right_on="cell_id")
@@ -204,8 +213,14 @@ class MapEventAnalyzer:
             self.expts["assembled_filename"],
         )
         with open(df_iv_name, "rb") as fh:
-            df_iv = pd.read_pickle(fh, compression=None)
-        df_iv.drop("celltype", axis=1, inplace=True)
+            try:
+                df_iv = pd.read_pickle(fh, compression=None)
+            except:
+                try:
+                    df_iv = pd.read_pickle(fh, compression="gzip")
+                except Exception as exc:
+                    print(f"Error reading file: {df_iv_name}, likely format (copression) issue")
+        df_iv.drop("cell_type", axis=1, inplace=True)
 
         def _make_cellid(row):
             return FT.make_cellid_from_slicecell(row["cell_id"])
@@ -426,7 +441,7 @@ class MapEventAnalyzer:
         data_out = np.nan
         sa =np.array(data)
         if sa.ndim == 0 or len(sa) == 0:
-            print("no data in sa: ", sa.ndim)
+            # print("no data in sa: ", sa.ndim)
             return np.nan
         elif np.array(sa).ndim == 2:
             return func(sa) * scf
@@ -463,7 +478,8 @@ class MapEventAnalyzer:
         outmeasure: str,
         scf: float = 1.0,
     ):
-        stopper = "2017.12.04_000/slice_001/cell_001"
+        stopper = None  # which cell to stop the run on when testing or debugging
+        # stopper = "2017.12.04_000/slice_001/cell_001"
         sa = []  # array to hold the accepted data for the average
         if isinstance(dx[measure], float):
             dx[measure] = [dx[measure]]  # convert to element of the list
@@ -596,6 +612,7 @@ class MapEventAnalyzer:
         # print(db["cell_type"].values)
         # print(db["cell_type"].isin(order))
         midbs = db.loc[db["cell_type"].isin(order)]
+        midbs = midbs.loc[db["cell_type"].isin(['pyramidal', 'tuberculoventral', 'cartwheel'])]
 
         f, ax = mpl.subplots(1, 1)
         PH.nice_plot(ax)
@@ -690,6 +707,7 @@ class MapEventAnalyzer:
             print(f"cell_id: {dx['cell_id']}, {dx['cell_type']}: {dx['latency']:.2f}, {dx['temperature']}")
         plot_ok = True
         scored_df = df.loc[df["maxscore"] > maxscore]  # reduce data set by maxscore
+        scored_df = scored_df.loc[scored_df["cell_type"].isin(['pyramidal', 'tuberculoventral', 'cartwheel'])]
         match plotwhat:
             case "temperature":
                 self.compare_plot(
@@ -1127,6 +1145,9 @@ class MapEventAnalyzer:
             index=[0],
         )
         maps = list(d.keys())
+        print("maps: ", maps)
+
+
         if len(maps) == 0:
             return None
 
@@ -1150,12 +1171,13 @@ class MapEventAnalyzer:
             panel_labels=None,
         )
         ax = P.axarr.ravel()
-        cn = self.get_cell(str(Path(maps[0]).parent).replace("/", "~"), db=self.db)
+        cell_types = self.get_cell(str(Path(maps[0]).parent).replace("/", "~"), db=self.db)
 
-        if isinstance(cn, list) or isinstance(cn, np.ndarray):
-            if len(cn) > 0:
-                cn = cn[0]
 
+        if isinstance(cell_types, list) or isinstance(cell_types, np.ndarray):
+            if len(cell_types) > 0:
+                cell_types = cell_types[0]
+        cn = cell_types
         if cn is None or cn == "" or cn == [] or len(cn) == 0:
             cn = "Unknown"
 
@@ -1173,6 +1195,7 @@ class MapEventAnalyzer:
         results = []  # hold results to build dataframe at the end
         for mapno, map in enumerate(maps):
             p = Path(maps[mapno])
+            print("MAPS MAPNO: maps[mapno]: ", map, p)
             ax[mapno].set_title(str(p.name), fontsize=10)
             if (
                 p is None
@@ -1262,7 +1285,7 @@ class MapEventAnalyzer:
             print("MAPS MAPNO: maps[mapno]: ", map)
             results.append(
                 {
-                    "cell_id": str(Path(maps).parent),  # .replace("/", "~"),
+                    "cell_id": str(Path(map).parent),  # .replace("/", "~"),
                     # + f"~map_{mapno:03d}",
                     "cell_type": cn,
                     "map": str(Path(map).name),
@@ -1623,7 +1646,7 @@ class MapEventAnalyzer:
 
 if __name__ == "__main__":
 
-    MEA = MapEventAnalyzer("NF107Ai32_Het")
+    MEA = MapEventAnalyzer("NF107Ai32_NIHL", force_update=False)
     # print([c for c in sorted(MEA.merged_db.columns)])
     # print("Merged as reported: \n", MEA.merged_db.cell_type)
     # print("and celltypex: \n", MEA.merged_db["celltype_x"])
@@ -1657,6 +1680,7 @@ if __name__ == "__main__":
         for p in all_plots:
             MEA.plot_data(MEA.merged_db, p)
     else:
-        MEA.plot_data(MEA.merged_db, "avg_largest_event_qcontent")
+        MEA.plot_data(MEA.merged_db, "avg_event_qcontent")
     # # MEA.depression_ratios(MEA.merged_db)
+
     mpl.show()
