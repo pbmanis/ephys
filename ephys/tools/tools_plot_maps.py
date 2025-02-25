@@ -33,10 +33,11 @@ from matplotlib.widgets import RectangleSelector
 from pylibrary.plotting import picker
 from pylibrary.plotting import plothelpers as PH
 
-from ..datareaders import acq4_reader as ARC
-from . import boundrect as BR
-from . import digital_filters as FILT
-
+from ephys.datareaders import acq4_reader as ARC
+from ephys.tools import boundrect as BR
+from ephys.tools import digital_filters as FILT
+import shapely as SH
+import shapely.geometry as SG
 # import descartes
 
 # import montage
@@ -54,24 +55,24 @@ class ScannerInfo(object):
         self.offset = offset
         self.AR = AR  # save the acq4_reader instance for access to the data
         self.AR.getScannerPositions()
-        self.scannerpositions = np.array(AR.scannerpositions)
-        for i, s in enumerate(self.scannerpositions):
-            self.scannerpositions[i,0] += float(self.offset[0])
-            self.scannerpositions[i,1] += float(self.offset[1])
-        print(self.scannerpositions[:10])
+        self.scanner_positions = np.array(AR.scanner_positions)
+        for i, s in enumerate(self.scanner_positions):
+            self.scanner_positions[i,0] += float(self.offset[0])
+            self.scanner_positions[i,1] += float(self.offset[1])
+        print(self.scanner_positions[:10])
         
-        pos = self.AR.scannerCamera['frames.ma']['transform']['pos']
-        scale = self.AR.scannerCamera['frames.ma']['transform']['scale']
-        region = self.AR.scannerCamera['frames.ma']['region']
-        self.binning = self.AR.scannerCamera['frames.ma']['binning']
+        pos = self.AR.scanner_camera['frames.ma']['transform']['pos']
+        scale = self.AR.scanner_camera['frames.ma']['transform']['scale']
+        region = self.AR.scanner_camera['frames.ma']['region']
+        self.binning = self.AR.scanner_camera['frames.ma']['binning']
         # print('Scanner pos, scale, region: ', pos, scale, region)
         # print('Scanner binning: ', self.binning)
         binning = self.binning
         scale = list(scale)
         self.scale = scale
-        if self.AR.spotsize is None:
-            self.AR.spotsize=50.
-            print ('Spot Size reset to: {0:0.3f} microns'.format(self.AR.spotsize*1e6))
+        if self.AR.scanner_spotsize is None:
+            self.AR.scanner_spotsize=50.
+            print ('Spot Size reset to: {0:0.3f} microns'.format(self.AR.scanner_spotsize*1e6))
         x0 = pos[0] + scale[0]*region[0]/binning[0]
         x1 = pos[0] + scale[0]*(region[0]+region[2])/binning[0]
         y0 = pos[1] + scale[1]*region[1]/binning[1]
@@ -83,12 +84,12 @@ class ScannerInfo(object):
         #        [pos[0] + scale[0]*region[2]/binning[0], pos[1] + scale[1]*region[1]/binning[1]],
         #        [pos[0] + scale[0]*region[0]/binning[0], pos[1] + scale[1]*region[1]/binning[1]]
         #    ]
-        scannerbox = BRI.getRectangle(self.AR.scannerpositions)
-        self.scanner_sh = SH.geometry.MultiPoint(self.AR.scannerpositions)
+        scannerbox = BRI.getRectangle(self.AR.scanner_positions)
+        self.scanner_sh = SH.geometry.MultiPoint(self.AR.scanner_positions)
         self.envelope_sh = self.scanner_sh.envelope
         self.centroid_sh = self.scanner_sh.centroid
         if scannerbox is None:  # likely just one point
-            pt = self.AR.scannerpositions
+            pt = self.AR.scanner_positions
             fp = np.array([[pt[0][0]], [pt[0][1]]])
             scannerbox = fp
         else:
@@ -136,9 +137,13 @@ class EventReader(object):
         fe = Path(basepath, 'events', fne)
         with open(fe, 'rb') as fh:
             d = pd.read_pickle(fh, compression=None)
-        # print(d.keys())
-        dx = d[Path(str(fe.stem).replace('~', '/').replace('../', ''), mapname)]
-        self.data = dx
+        print(d.keys())
+        proto_path = str(Path(str(fe.stem).replace('~', '/').replace('../', ''), mapname))
+        if proto_path not in d:
+            self.data = None
+        else:
+            dx = d[proto_path]
+            self.data = dx
         
 
 class MosaicReader(object):
@@ -611,7 +616,7 @@ class MapTraces(object):
                 ax.set_ylim(self.ylim)
                 # print('self set: ', self.xlim, self.ylim)
             
-        self.scp = self.SI.scannerpositions
+        self.scp = self.SI.scanner_positions
         scp = self.scp
         xmin = np.min(scp[:,0])
         xmax = np.max(scp[:,0])
@@ -738,7 +743,7 @@ class MapTraces(object):
 
     def handle_event(self, index):
         # print('handle event index: ', index)
-        # print(self.SI.scannerpositions[index,:])
+        # print(self.SI.scanner_positions[index,:])
         if self.ax2 is None:
             return
         if index in self.indicesplotted:
@@ -755,7 +760,7 @@ class MapTraces(object):
             #         ystep=ystep, ythick=0.5, tscale=False)
         # self.xscale*3.5e-5*self.tb+xoff, (y_scale*(vdat[self.im0:self.im1]-zero))+yoff, color=pcolor, linewidth=0.3)
         trn = self.traces.index(index)+1
-        self.ax.text(self.SI.scannerpositions[index][0], self.SI.scannerpositions[index][1],
+        self.ax.text(self.SI.scanner_positions[index][0], self.SI.scanner_positions[index][1],
                 f"{trn:d}", fontsize=9, horizontalalignment='center')
         self.ax2.text(0., ystep,
                 f"{trn:d}", fontsize=9, horizontalalignment='right')
@@ -780,7 +785,8 @@ class MapTraces(object):
         return np.arctan2(y_diff, x_diff)
     
     def update_tbar(self, event):
-        raise ValueError('Updating the tbar is Not implemented')
+        return
+    #raise ValueError('Updating the tbar is Not implemented')
         # center = sympy.geometry.point.Point(self.cellpos[0], self.cellpos[1])  # center (flip y axis)
         # # first time through, just draw the bar
         # if self.tbar_coords is None:
@@ -847,7 +853,7 @@ class MapTraces(object):
                 self.C_rings[i] = SG.Polygon([(rad*np.sin(theta) + t[0], rad*np.cos(theta) + t[1]) for theta in np.linspace(0., 2*np.pi, 100)])
 
         # get the angles for each point in the map
-        x = self.SI.scannerpositions.T # self.eventdata['positions'].T  # just for the way we handle the values here.
+        x = self.SI.scanner_positions.T # self.eventdata['positions'].T  # just for the way we handle the values here.
         nsectors = 4
         rot_angle = np.pi/nsectors
         point_angles = np.arctan2(x[1,:]-t[1], x[0,:]-t[0])-self.tbar_angle  # get angles relative to cell position, then rotate by tbar angle
@@ -879,7 +885,8 @@ class MapTraces(object):
         # assign points by rings as well
         Px2 = SG.MultiPoint([SG.Point(x[0,i], x[1,i]) for i in range(x.shape[1])])
         ptlocs = np.zeros((x.shape[1], len(r)+1))  # for each point, all rings that it is in
-        for i, p in enumerate(Px2):
+        # print(Px2)
+        for i, p in enumerate(Px2.geoms):
             for j in range(len(self.C_rings)):
                 ptlocs[i,j] = self.C_rings[j].contains(p)
 
@@ -991,7 +998,7 @@ class MapTraces(object):
                 self.ref_angles[i][0].set_ydata(self.radlines[i][1])
         self._plot_coords(ax=self.ax, ob=self.polydata.exterior, c='#000000', linewidth=2, alpha=1.0)
 
-        x = self.SI.scannerpositions.T # just for the way we handle the values here.
+        x = self.SI.scanner_positions.T # just for the way we handle the values here.
         for i in range(len(self.ring_index)):
             if self.ring_index[i] is None: # outside outermost ring; ignore
                 self.ax.plot(x[0,i], x[1,i], 'ro', markersize=4)
@@ -1038,12 +1045,10 @@ class MapTraces(object):
         
         
 def main():
-
-    import nf107.set_expt_paths as set_expt_paths
-    datapaths = toml.load("wheres_my_data.toml")
-    set_expt_paths.get_computer(datapaths)
-    experiments = set_expt_paths.get_experiments()
-    exclusions = set_expt_paths.get_exclusions()
+    # must run from experiment directory, not ephys directory
+    from pathlib import Path
+    import ephys.tools.get_configuration as get_config
+    datasets, experiments = get_config.get_configuration("config/experiments.cfg")
 
     cellchoices = [     'bushy',
                         'tstellate', 
@@ -1056,7 +1061,7 @@ def main():
                         'unknown', 'all']
     parser = argparse.ArgumentParser(description='Plot maps with traces on top')
     parser.add_argument('-E', '--experiment', type=str, dest='experiment',
-                        choices = list(set_expt_paths.experiments.keys()), default='None', nargs='?', const='None',
+                        choices = datasets, default='None', nargs='?', const='None',
                         help='Select Experiment to analyze')
     parser.add_argument('-c', '--celltype', type=str, default=None, dest='celltype',
                         choices=cellchoices,
@@ -1072,15 +1077,15 @@ def main():
                         
     args = parser.parse_args()
     experimentname = args.experiment 
-    print(experiments)
-    print(experimentname)
-    basepath = Path(experiments[experimentname]['disk'])
+    if experimentname not in datasets:
+        raise ValueError(f"Experiment {experimentname:s} not found in datasets ({datasets!s})")
+    experiment = experiments[experimentname]
     # basepath = '/Volumes/Pegasus/ManisLab_Data3/Kasten_Michael/NF107ai32Het/'
 
     MT = MapTraces()
     MT.setScannerImages(args.scannerimages)
     
-    if args.celltype == 'lsps':
+    if args.celltype == 'lsps':  # special
         cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
         image = '../image_001.tif'
         MT.setPars({'invert': True, 'vmax': 30000, 'xscale': 1.5, 'yscale': 1.5, 'calbar': [0.5, 200.e-12]})  # calbar in ms, pA
@@ -1119,8 +1124,11 @@ def main():
     if sequence is None:  # invoked help
         return
     shiftkey = False
-    
-    table = pd.read_excel('../mrk-data-nf107/datasetsNF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
+    maptable = Path(experiment["databasepath"], experiment['directory'], experiment['selectedMapsTable'])
+    if not maptable.is_file():
+        raise ValueError(f"Map table {maptable!s} not found")
+    table = pd.read_excel(maptable)
+                        #   '../mrk-data-nf107/datasets/NF107Ai32_Het/Example Maps/SelectedMapsTable.xlsx')
 
     def makepars(dc):
         parnames = ['offset', 'cellpos', 'angle', 'experiment', 'invert', 'vmin', 'vmax', 'xscale', 'yscale', 'calbar', 'twin', 'ioff', 'ticks', 'notch_freqs', 'notch_q', 'cellID', 'map']
@@ -1296,15 +1304,17 @@ def main():
     
 
     def plot_a_cell(cellname, cellno, ax=None, axb=None, tbar=False):
-        dc = table.loc[table['cellname'] == cellname]
-        dc = dc.loc[table['cellno'].isin([cellno])]
+        print(table['cellname'].unique())
+        print(table['cellno'].unique())
+        dc = table.loc[table['cellname'].str.lower() == cellname.lower()]
+        dc = dc.loc[table['cellno'].isin([float(cellno)])]
         if len(dc) == 0:
             print(f"Did not find cellname: {cellname:s}  with no: {cellno:s}")
             return False
         # print('cellname: ', cellname)
-        cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
-        imagename = dc['image'].values[0]
-        print('image: ', imagename)
+        cell = Path(experiment['rawdatapath'], experiment['directory'], str(dc['cellID'].values[0]), str(dc['map'].values[0]))
+        imagename = dc['cellimage'].values[0]
+        print('cell image: ', imagename)
         if not pd.isnull(imagename) and imagename.startswith('image_') or imagename.startswith('../image_'):
             image = Path('..', imagename).with_suffix('.tif')
         elif not pd.isnull(imagename) and imagename.startswith('video_'):
@@ -1318,10 +1328,14 @@ def main():
         
         pars = makepars(dc)
         MT.setPars(pars)
-        ER = EventReader(experiments[experimentname]['directory'], dc['cellID'].values[0], dc['map'].values[0])
+        ER = EventReader(Path(experiment['analyzeddatapath'], experiment['directory']), 
+                               dc['cellID'].values[0], dc['map'].values[0])
+        if ER.data is None:
+            return False
+        
         MT.setEventData(ER.data)
         MT.setWindow(dc['x0'].values[0], dc['x1'].values[0], dc['y0'].values[0], dc['y1'].values[0])
-        MT.setOutputFile(Path(experiments[experimentname]['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
+        MT.setOutputFile(Path(experiment['analyzeddatapath'], experiment['directory'], f"{cellname:s}{int(cellno):d}_map.pdf"))
         prots = {'ctl': cell}
         MT.setProtocol(cell, image=image, mosaic=mosaic)
         MT.plot_maps(prots, ax=ax, linethickness=0.5, tbar=tbar, axb=axb)
@@ -1334,11 +1348,14 @@ def main():
             npages += 1
         return int(npages)
 
-    def plot_cells(cellname, sequence, tbar=False):
-        
+    def plot_cells(cellname, sequence, table, tbar=False):
+        print("sequence: ", sequence)
+        print("cellname: ", cellname)
         if len(sequence) > 1:  # all of a type
             sequence = [int(x) for x in sequence]
-            cs = table.loc[table['cellname'] == cellname[0]]
+            print(table.cellname.unique())
+            table = table.dropna(subset=['cellname'])
+            cs = table.loc[table['cellname'].str.match(cellname[0], case=False)]
             cs = cs.loc[table['cellno'].isin(sequence)]
             print('len cs: ', len(cs))
             nperpage = len(sequence)
@@ -1366,14 +1383,15 @@ def main():
                         break
                     print('page, axn, i: ', npage, axn, icell)
                     print('cell, cell number: ', cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'])
-                    plot_a_cell(cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'], ax=axarr[axn],
+                    plot_ok = plot_a_cell(cs.iloc[icell]['cellname'], cs.iloc[icell]['cellno'], ax=axarr[axn],
                         tbar=tbar, axb=axarr2[axn])
-                    
+                    if not plot_ok:
+                        continue
                     # reduce cell name:
                     cname = cs.iloc[icell]['cellID'].replace('slice_00', 'S').replace('cell_00', 'C')
-                    axarr[axn].set_title(f"{cname:s} #={cs.iloc[icell]['cellno']:d}\n{cs.iloc[icell]['map']:s}",
+                    axarr[axn].set_title(f"{cname:s} {int(cs.iloc[icell]['cellno']):d}\n{cs.iloc[icell]['map']:s}",
                         fontsize=9, horizontalalignment='center')
-                    axarr2[axn].set_title(f"{cname:s} #={cs.iloc[icell]['cellno']:d}\n{cs.iloc[icell]['map']:s}",
+                    axarr2[axn].set_title(f"{cname:s} {int(cs.iloc[icell]['cellno']):d}\n{cs.iloc[icell]['map']:s}",
                         fontsize=9, horizontalalignment='center')
                     sn = sequence[icell]
                     icell += 1
@@ -1394,38 +1412,41 @@ def main():
                 else:
                     t = ''
                     seq = args.sequence.replace(';' '-')
+                print("tools_plot_maps:plot_cells:: plotted...")
+                mpl.show()
                 P1.figure_handle.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_{seq:s}_Page{npage:d}.pdf"))
                 P2.figure_handle.savefig(Path('NF107Ai32_Het/Example Maps/', f"{cellname[0]:s}{t:s}_{seq:s}_Page{npage:d}_distmap.pdf"))
-                # mpl.close()
+                # mpl.show()# mpl.close()
 
         else: # specific cell
+            print("specific cell", cellname)
             c, r = PH.getLayoutDimensions(1, pref='height')
             P = PH.regular_grid(r, c, order='columnsfirst', figsize=(8., 10), showgrid=False,
                 verticalspacing=0.08, horizontalspacing=0.08,
                 margins={'leftmargin': 0.07, 'rightmargin': 0.05, 'topmargin': 0.03, 'bottommargin': 0.1},
                 labelposition=(0., 0.), parent_figure=None, panel_labels=None)
             success = plot_a_cell(cellname[0], cellno=str(int(sequence[0])), ax=P.axarr[0,0])
-            if not success:
-                return
-            # drawtype is 'box' or 'line' or 'none'
+            if success:
+                drawtype = 'box'  #drawtype  must be in ['box', 'line', 'none']
             # print(dir(MT))
-            rectprops = dict(facecolor='yellow', edgecolor = 'black',
-                             alpha=0.2, fill=True)
-            toggle_selector.RS = RectangleSelector(MT.ax, line_select_callback,
-                                                   drawtype='box', useblit=True,
-                                                   button=[1, 3],  # don't use middle button
-                                                   minspanx=1e-5, minspany=1e-5,
-                                                   spancoords='data',
-                                                   interactive=True, 
-                                                   rectprops=rectprops)
+                # rectprops = dict(facecolor='yellow', edgecolor = 'black',
+                #                 alpha=0.2, fill=True)
+                # toggle_selector.RS = RectangleSelector(MT.ax, line_select_callback,
+                #                                     drawtype='box', useblit=True,
+                #                                     button=[1, 3],  # don't use middle button
+                #                                     minspanx=1e-5, minspany=1e-5,
+                #                                     spancoords='data',
+                #                                     interactive=True, 
+                #                                     rectprops=rectprops)
 
-            mpl.connect('key_press_event', toggle_selector)
-            mpl.connect('key_release_event', release_selector)
-            mpl.show()
+                # mpl.connect('key_press_event', toggle_selector)
+                # mpl.connect('key_release_event', release_selector)
+                pass
     
     
-    print(docell, sequence)
-    plot_cells(docell, sequence, tbar=args.plotwithtbar)
+    print("doocell, sequence: ", docell, sequence)
+    plot_cells(docell, sequence, table, tbar=args.plotwithtbar)
+    mpl.show()
     
 if __name__ == '__main__':
     main()
