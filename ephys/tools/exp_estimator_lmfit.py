@@ -348,8 +348,20 @@ class LMexpFit:
         if y32 <= 0 and y21 > 0:
             y32 = 0.15 * y21
         # if verbose:
-        #     print(f"y32: {y32}, y21: {y21}, d: {d}")
-        R1 = -np.log(y32 / y21) / d
+            print(f"y32: {y32}, y21: {y21}, d: {d}")
+        if np.abs(y21) < 1e-6:
+            if y21 < 0: 
+                sign = -1
+            else:
+                sign = 1
+            y21 = sign * 1e-6
+        # print(f"Revisited: y32: {y32}, y21: {y21}, d: {d}")
+        # print("y32/21: ", y32 / y21)
+        if y21 == 0.0:
+            R1 = 5.
+        else:
+            R1 = -np.log(y32 / y21) / d
+
         A1a = y32 / (np.exp(x_data[i3] * R1) - np.exp(x_data[i2] * R1))
         A1b = y21 / (np.exp(x_data[i2] * R1) - np.exp(x_data[i1] * R1))
         A1 = y32 / (np.exp(x_data[i3] * R1) * (np.exp(d * R1) - 1.0))
