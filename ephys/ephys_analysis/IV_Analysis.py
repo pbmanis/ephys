@@ -481,8 +481,8 @@ class IVAnalysis(Analysis):
                 self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
 
             except Exception as e:
-                CP("r", f"Error in parallel processing: {e!s}")
-                CP("r", "Trying serial processing")
+                CP.cprint("r", f"Error in parallel processing: {e!s}")
+                CP.cprint("r", "Trying serial processing")
                 # do with non-parallel processing. Slower, but gets the job done.
                 results: dict = dict(
                     [("IV", {}), ("Spikes", {})]
