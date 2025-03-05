@@ -667,9 +667,14 @@ def numeric_age(row):
     """
     if isinstance(row.age, float):
         return row.age
-    row.age = int("".join(filter(str.isdigit, row.age)))
-    return float(row.age)
-
+    if isinstance(row.age, str):
+        if len(row.age) == 0:
+            row.age = np.nan
+        else:    
+            row.age = int("".join(filter(str.isdigit, row.age)))
+        return float(row.age)
+    else:
+        raise ValueError(f"age is not a float or string: {row.age!s}")
 
 def make_datetime_date(row, colname="date"):
     if colname == "date" and "Date" in row.keys():
@@ -1716,6 +1721,8 @@ class PlotSpikeInfo(QObject):
                 and row.age <= self.experiment["age_categories"][k][1]
             ):
                 row.age_category = k
+            else:
+                row.age_category = "ND"
         return row.age_category
 
     def clean_rin(self, row):
@@ -2381,10 +2388,10 @@ class PlotSpikeInfo(QObject):
                 if ptype == "mean":
                     # compute the avearge and plot the data with errorbars
                     max_FI = 1.0
-                    for i, group in enumerate(FIy_all.keys()):
+                    for index, group in enumerate(FIy_all.keys()):
                         fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
                         if len(fx) == 0:
-                            print("unable to get average", cdd["cell_id"][index])
+                            # print("unable to get average", cdd["cell_id"][index])
                             continue
                         else:
                             print("getting average: ", cdd["cell_id"][index])
