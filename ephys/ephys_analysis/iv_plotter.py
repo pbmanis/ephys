@@ -294,9 +294,9 @@ class IVPlotter(object):
                     idv = 0.0
                 P.axdict["A"].plot(
                     self.AR.time_base * 1e3,
-                    idv + self.AR.traces[trn, :].view(np.ndarray) * 1e3,
+                    idv + self.AR.traces[trace_number, :].view(np.ndarray) * 1e3,
                     "-",
-                    color=trace_colors[trn],
+                    color=trace_colors[trace_number],
                     linewidth=0.35,
                 )
 
@@ -384,7 +384,7 @@ class IVPlotter(object):
         if not pubmode:
             if "taum_fitted" not in ivs.keys():
                 CP("y", f"iv_plotter: taum fitted is not in the ivs: {ivs.keys()!s}")
-            if ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
+            if "taum" in ivs.keys() and ivs["taum"] != np.nan and "taum_fitted" in ivs.keys():
                 # plot the taum trace fit magnified and on the relevant traces
                 # print(ivs.keys())
                 # print(ivs["taum_fitted"].keys())
@@ -500,6 +500,7 @@ class IVPlotter(object):
             #     # markersize=4,
             #     linewidth=1.0,
             # )
+            print("ivss, iss_cmd: ", len(ivs["ivss_cmd"]), len(ivs["ivss_v"]))
             P.axdict["C"].scatter(
                 np.array(ivs["ivss_cmd"]) * 1e9,
                 np.array(ivs["ivss_v"]) * 1e3,
@@ -552,7 +553,7 @@ class IVPlotter(object):
             # len = 3 means taupars is a list of 3 values, assuming taupars[0] is a float and not a list
             # if taupars[0] is a list, then use the 0th element from the list.
 
-            if len(ivs["taupars"]) > 0:
+            if "taumpars" in ivs.keys() and len(ivs["taupars"]) > 0:
                 if isinstance(ivs["taupars"][0], list) and len(ivs["taupars"][0]) == 3:
                     tau_value = ivs["taupars"][0][2]
                 elif len(ivs["taupars"]) == 3:
