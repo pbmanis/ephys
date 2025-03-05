@@ -254,8 +254,9 @@ class AssembleDatasets:
                 "Group: ",
                 df.Group.unique(),
             )
-            print("Groups from coding file: ", df[coding_name].unique())
             print("coding data: ", df.columns)
+            print("Groups from coding file: ", df[coding_name].unique())
+
         else:
             df = df_summary
             df["Group"] = "Control"
@@ -463,7 +464,7 @@ class AssembleDatasets:
 
                 # how to assign groups: by date or subject?
                 print("Level: ", level.lower())
-                if level.lower() == "date":
+                if level.casefold() == "date".casefold():
                     print("row.date: ", row.date)
                     df.loc[index, "Group"] = (
                         df_coding[df_coding.date == row.date][coding_name].astype(str).values[0]
@@ -477,13 +478,13 @@ class AssembleDatasets:
                             "from coding file column: ",
                             coding_name,
                         )
-                elif level.lower() == "subject":
+                elif level.casefold() == "subject".casefold():
                     mask = df_coding.subject == row.subject
                     df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.lower() == "slice":
+                elif level.casefold() == "slice".casefold:
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
                     df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.lower() == "cell":
+                elif level.casefold() == "cell".casefold:
                     mask = (
                         (df_coding.date == row.date)
                         & (df_coding.slice_slice == row.slice_slice)
