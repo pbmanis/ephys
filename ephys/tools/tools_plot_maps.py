@@ -245,6 +245,7 @@ class MapTraces(object):
         self.tbar_coords = None  # line for the tbar
         self.tbar = None # matplotlib line object for tbar
         self.tbar_visible = False
+        self.plot_scholl_flag = False
         self.tbar_angle = 0.
         self.scholl_plot = False
         self.ref_angles = None
@@ -265,7 +266,9 @@ class MapTraces(object):
         self.notch_flag = False
         self.notch_Q = 12.
         
-    
+    def setSchollFlag(self, flag):
+        self.plot_scholl_flag = flag
+
     def setScannerImages(self, flag):
         self.averageScannerImages = flag
     
@@ -477,7 +480,8 @@ class MapTraces(object):
         cellname = '/'.join(cp[-4:])
         self.update_tbar(None)
         self.compute_sector_distance_map()
-        # self.plot_scholl()
+        if self.plot_scholl_flag:
+            self.plot_scholl()
         if axb is not None:
             self.plot_sector_distance_map(axb)
         if self.ax is None:
@@ -814,7 +818,7 @@ class MapTraces(object):
         # self.compute_sector_distance_map()
         # self.plot_scholl()
 
-    def _plot_coords(self, ax, ob, c='#999999', **kwds):
+    def _plot_coords(self, ax, linear_ring, c='#999999', **kwds):
         """
         Plot a line from the data in list of
         sympy points
@@ -833,8 +837,10 @@ class MapTraces(object):
         -------
         Nothing
         """
-        xl = [x for x in ob.x]
-        yl = [y for y in ob.y]
+        ob = linear_ring.xy
+        # print(ob[0])
+        xl = [x for x in ob[0]]
+        yl = [y for y in ob[1]]
         ax.plot(xl, yl, '-', color=c, **kwds)
         
     def compute_sector_distance_map(self):
@@ -842,8 +848,10 @@ class MapTraces(object):
         Compute the responses divided by distance (scholl rings) and sector angle
         """
         measure = 'ZScore'
+        ringspacing = 0.05
         thresh = 1.96
-        r = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45])*1e-3 # convert to display units of meters from mm
+        # r = np.array([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45])*1e-3 # convert to display units of meters from mm
+        r = 1e-3*np.arange(ringspacing, 0.5, ringspacing)
         nrings = r.shape[0]
         t = self.cellpos
         # first generate the rings and plot them
@@ -989,14 +997,14 @@ class MapTraces(object):
 
     def plot_scholl(self):
         for i in range(len(self.C_rings)):
-                self._plot_coords(self.ax, self.C_rings[i].exterior, c="#888888")
+            self._plot_coords(self.ax, linear_ring=self.C_rings[i].exterior, c="#888888", linewidth=0.66)
         for i in range(len(self.radlines)):
             if self.ref_angles[i] is None:
-                self.ref_angles[i] = self.ax.plot(self.radlines[i][0], self.radlines[i][1], c='gray')
+                self.ref_angles[i] = self.ax.plot(self.radlines[i][0], self.radlines[i][1], c='gray', linewidth=0.5)
             else:
                 self.ref_angles[i][0].set_xdata(self.radlines[i][0])
                 self.ref_angles[i][0].set_ydata(self.radlines[i][1])
-        self._plot_coords(ax=self.ax, ob=self.polydata.exterior, c='#000000', linewidth=2, alpha=1.0)
+        self._plot_coords(ax=self.ax, linear_ring=self.polydata.exterior, c='#000000', linewidth=2, alpha=1.0)
 
         x = self.SI.scanner_positions.T # just for the way we handle the values here.
         for i in range(len(self.ring_index)):
@@ -1007,6 +1015,7 @@ class MapTraces(object):
                     if i in self.angle_group[j]:
                         # self.ax.plot(x[0,i], x[1,i], c=edgecolor[ring_index[i]], marker=sectorsymbol[j], markersize=4)
                         self.ax.plot(x[0,i], x[1,i], c=self.edgecolor[j], marker=self.sectorsymbol[j], markersize=1)  # color by sector
+        # plot the point of maximal response
         maxmass = np.max(self.mass)
         for i in range(self.nsectors):
             if pd.isnull(self.sector_center_of_mass[i,1]):
@@ -1020,6 +1029,7 @@ class MapTraces(object):
     def plot_sector_distance_map(self, axin=None):
         """
         Plot a map of the measure, by distances and sorted by sector
+        sectors are : basal, apical, rostral, caudal
         """
         if axin is None:
             fig, ax = mpl.subplots(self.nsectors)
@@ -1028,15 +1038,17 @@ class MapTraces(object):
             ax = [axin]*self.nsectors
         nmax = int(np.max(self.secdistmap))
         PH.nice_plot(ax, position={'left': -0.02, 'bottom': -0.1})
+        dmap_max = np.max(self.secdistmap)
         for s in range(self.nsectors):
             ax[s].plot(self.radii*1e6, self.secdistmap[:,s], self.edgecolor[s])
-            ax[s].set_ylim(0, int(nmax))
-            ax[s].set_xlim(0, 1e6*np.max(self.radii))
-            if s != self.nsectors-1:
-                PH.noaxes(ax[s], whichaxes='x')
-            PH.talbotTicks(ax[s], axes='xy', density=(1.0, 1.0), pointSize=10,
-                tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
+            ax[s].set_xlim(0, np.max(self.radii*1e6))
+            ax[s].set_ylim(0, dmap_max)
+            # if s != self.nsectors-1:
             ax[s].set_ylabel(r'Responsive sites', fontsize=8)
+
+            #     PH.noaxes(ax[s], whichaxes='x')
+        # PH.talbotTicks(ax[s], axes='xy', density=(1.0, 1.0), pointSize=10,
+        #     tickPlacesAdd={'x': 0, 'y': 0}, floatAdd={'x': 0, 'y': 0})
         ax[self.nsectors-1].set_xlabel(r'Distance ($\mu$m)')
         if axin is None:
             mpl.show()
@@ -1074,6 +1086,7 @@ def main():
 
     parser.add_argument('-t', '--tbar', action='store_true', dest='plotwithtbar',
                         help='Plot the traces and scanner spots with the tbar')
+    parser.add_argument('--scholl', action='store_true', dest='Scholl_flag')
                         
     args = parser.parse_args()
     experimentname = args.experiment 
@@ -1084,6 +1097,8 @@ def main():
 
     MT = MapTraces()
     MT.setScannerImages(args.scannerimages)
+    if args.Scholl_flag:
+        MT.setSchollFlag(True)
     
     if args.celltype == 'lsps':  # special
         cell = Path('/Users/pbmanis/Desktop/Data/Glutamate_LSPS_DCN/2019.08.05_000/slice_002/cell_000/LSPS_dendrite_VC_testmap_MAX_001')  # pyr
@@ -1353,15 +1368,15 @@ def main():
         print("cellname: ", cellname)
         if len(sequence) > 1:  # all of a type
             sequence = [int(x) for x in sequence]
-            print(table.cellname.unique())
+            # print(table.cellname.unique())
             table = table.dropna(subset=['cellname'])
             cs = table.loc[table['cellname'].str.match(cellname[0], case=False)]
             cs = cs.loc[table['cellno'].isin(sequence)]
-            print('len cs: ', len(cs))
+            # print('len cs: ', len(cs))
             nperpage = len(sequence)
             npages = count_pages(cs, nperpage=nperpage)
             lcs = list(cs.index)
-            print('npages: ', npages)
+            # print('npages: ', npages)
             icell = 0
             for npage in range(npages):
                 c, r = PH.getLayoutDimensions(nperpage, pref='height')
@@ -1388,15 +1403,15 @@ def main():
                     if not plot_ok:
                         continue
                     # reduce cell name:
-                    cname = cs.iloc[icell]['cellID'].replace('slice_00', 'S').replace('cell_00', 'C')
+                    cname = cs.iloc[icell]['cellID']
                     axarr[axn].set_title(f"{cname:s} {int(cs.iloc[icell]['cellno']):d}\n{cs.iloc[icell]['map']:s}",
                         fontsize=9, horizontalalignment='center')
                     axarr2[axn].set_title(f"{cname:s} {int(cs.iloc[icell]['cellno']):d}\n{cs.iloc[icell]['map']:s}",
                         fontsize=9, horizontalalignment='center')
                     sn = sequence[icell]
                     icell += 1
-                P1.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d}", fontsize=14)
-                P2.figure_handle.suptitle(f"Celltype: {cellname[0]:s} Page: {npage:d} distancemaps", fontsize=14)
+                P1.figure_handle.suptitle(f"{cname:s} Celltype: {cellname[0]:s} Page: {npage:d}", fontsize=14)
+                P2.figure_handle.suptitle(f"{cname:s} Celltype: {cellname[0]:s} Page: {npage:d} distancemaps", fontsize=14)
                 ymax = 0
                 for ax2 in axarr2:
                     yl = ax2.get_ylim()
