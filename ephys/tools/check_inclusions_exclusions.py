@@ -202,11 +202,11 @@ if __name__ == "__main__":
     import datetime
     import pandas as pd
 
-    configfile = "/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg"
+    configfile = "/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg"
     datasets, experiments = get_configuration(configfile)
-    experiment = experiments["CBA_Age"]
+    experiment = experiments["NF107Ai32_NIHL"]
     inclusion_dict = experiment["includeIVs"]
     exclusion_dict = experiment["excludeIVs"]
     datasummary = get_datasummary(experiment)
     all_ivs = []
-    list_inclusions_exclusions(datasummary, exclusion_dict, inclusion_dict, all_ivs, verbose=False)
+    list_inclusions_exclusions(datasummary, exclusion_dict, inclusion_dict, all_ivs, verbose=True)
