@@ -1,31 +1,30 @@
-""" General functions for data_tables and data_table_manager
-    We are using a class here just to make it easier to pass around
+"""General functions for data_tables and data_table_manager
+We are using a class here just to make it easier to pass around
 """
 
 import logging
 import pprint
 import re
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Union
 
 import colormaps
-
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-import seaborn as sns
 import scipy
+import seaborn as sns
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtCore, QtGui
 from scipy.interpolate import spalde, splev, splrep
 
 import ephys
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
-from ephys.tools import annotated_cursor, filename_tools, utilities
-from ephys.tools import annotated_cursor_pg
+from ephys.tools import annotated_cursor, annotated_cursor_pg, filename_tools, utilities
 
 UTIL = utilities.Utility()
 AnnotatedCursor = annotated_cursor.AnnotatedCursor
@@ -119,6 +118,7 @@ datacols = [
     "taum_averaged",
     "dvdt_rising",
     "dvdt_falling",
+    "dvdt_ratio",
     "current",
     "AP_thr_V",
     "AP_thr_T",
@@ -193,6 +193,7 @@ mapper: dict = {
     "AP_HW": "halfwidth",
     "dvdt_rising": "dvdt_rising",
     "dvdt_falling": "dvdt_falling",
+    "dvdt_ratio": "dvdt_ratio",
 }
 # map summary/not individual spike data to top level keys
 mapper1: dict = {
@@ -2185,7 +2186,9 @@ class Functions:
             _description_
         """
         if self.status_bar is not None:
-            self.status_bar.showMessage(f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}  Group {df[df.cell_id == cell].Group.values[0]!s}")
+            self.status_bar.showMessage(
+                f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}  Group {df[df.cell_id == cell].Group.values[0]!s}"
+            )
         CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}")
         CP("g", f"     Group {df[df.cell_id == cell].Group.values[0]!s}")
         cell_group = df[df.cell_id == cell].Group.values[0]
@@ -2237,7 +2240,10 @@ class Functions:
             # print(experiment["rawdatapath"], "\n  D: ", experiment["directory"], "\n  DSC: ", day_slice_cell, "\n  P: ", protocol)
             if str(experiment["rawdatapath"]).find(experiment["directory"]) == -1:
                 fullpath = Path(
-                    experiment["rawdatapath"], experiment["directory"], day_slice_cell, Path(protocol).name
+                    experiment["rawdatapath"],
+                    experiment["directory"],
+                    day_slice_cell,
+                    Path(protocol).name,
                 )
             else:
                 fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
@@ -2300,6 +2306,7 @@ class Functions:
             "firing_rates": None,
             "last_spikes": None,
         }
+        # add any missing columns for computations.
         for colname in datacols:
             if colname not in datadict.keys():
                 datadict[colname] = None
@@ -2314,6 +2321,7 @@ class Functions:
                 threshold_slope=experiment["AP_threshold_dvdt"],
             )
             # print("datadict: ", datadict)
+
         # now combine the FI data across protocols for this cell
         FI_Data_I1_: list = []
         FI_Data_FR1_: list = []  # firing rate
@@ -2331,6 +2339,8 @@ class Functions:
         latencies: list = []
         adaptation_indices: list = []
         adaptation_rates: list = []
+        adaptation_indices2: list = []
+        adaptation_rates2: list = []
         protofails = 0
         # check protocols for AT least the minimum required
 
@@ -2420,11 +2430,26 @@ class Functions:
                     df_cell.Spikes[protocol]["spikes"],
                     trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
                     trace_delay=experiment["Protocol_start_times"][short_proto_name],
-                    rate_bounds=experiment["Adaptation_rate_bounds"]["bounds"],
+                    rate_bounds=[
+                        experiment["Adaptation_measurement_parameters"]["min_rate"],
+                        experiment["Adaptation_measurement_parameters"]["max_rate"],
+                    ],
                 )
+                adaptation_index2, adaptation_rate2 = self.compute_adaptation_index2(
+                    df_cell.Spikes[protocol]["spikes"],
+                    trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
+                    trace_delay=experiment["Protocol_start_times"][short_proto_name],
+                    rate_bounds=[
+                        experiment["Adaptation_measurement_parameters"]["min_rate"],
+                        experiment["Adaptation_measurement_parameters"]["max_rate"],
+                    ],
+                )
+
             else:
                 adaptation_index = []
+                adaptation_index2 = []
                 adaptation_rate = []
+                adaptation_rate2 = []
             # print("adaptation_indices: ", adaptation_indices)
             # print("adaptation_rates: ", adaptation_rates)
             # exit()
@@ -2465,9 +2490,13 @@ class Functions:
                 firing_rates.extend(rate)
                 firing_last_spikes.extend(last_spike)
                 adaptation_indices.extend(adaptation_index)
+                adaptation_indices2.extend(adaptation_index2)
                 adaptation_rates.extend(adaptation_rate)
+                adaptation_rates2.extend(adaptation_rate2)
         adaptation_indices = np.array(adaptation_indices)
+        adaptation_indices2 = np.array(adaptation_indices2)
         adaptation_rates = np.array(adaptation_rates)
+        adaptation_rates2 = np.array(adaptation_rates2)
 
         FI_Data_I1 = []
         FI_Data_FR1 = []
@@ -2520,7 +2549,11 @@ class Functions:
         datadict["firing_currents"] = None
         datadict["firing_rates"] = None
         datadict["AdaptIndex"] = adaptation_indices[~np.isnan(adaptation_indices)]  # remove nans...
+        datadict["AdaptIndex2"] = adaptation_indices2[
+            ~np.isnan(adaptation_indices2)
+        ]  # remove nans...
         datadict["AdaptRates"] = adaptation_rates[~np.isnan(adaptation_rates)]  # remove nans...
+        datadict["AdaptRates2"] = adaptation_rates2[~np.isnan(adaptation_rates2)]  # remove nans...
         datadict["last_spikes"] = None
         if len(linfits) > 0:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
@@ -2640,6 +2673,10 @@ class Functions:
             min_current = np.argmin(currents)  # find spike elicited by the minimum current
             row.dvdt_rising = dvdts[min_current].dvdt_rising
             row.dvdt_falling = dvdts[min_current].dvdt_falling
+            if not np.isnan(row.dvdt_falling):
+                row.dvdt_ratio = dvdts[min_current].dvdt_rising / dvdts[min_current].dvdt_falling
+            else:
+                row.dvdt_ratio = np.nan
             row.dvdt_current = currents[min_current] * 1e12  # put in pA
             row.AP_thr_V = 1e3 * dvdts[min_current].AP_begin_V
             if dvdts[min_current].halfwidth_interpolated is not None:
@@ -2647,7 +2684,9 @@ class Functions:
             row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
             CP(
                 "y",
-                f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f}, dvdtFall={row.dvdt_falling:6.1f}, APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
+                f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f},"
+                + f" dvdtFall={row.dvdt_falling:6.1f}, dvdtRatio={row.dvdt_ratio:7.3f},"
+                + f" APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
             )
         return row
 
@@ -2690,6 +2729,45 @@ class Functions:
         """
         ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / trace_duration) - 0.5)
         return ai
+
+    def adaptation_index2(self, spk_lat: Union[list, np.ndarray]):
+        """adaptation_index Compute an adaptation index from eFEL (2025)
+        Modified to use Allen Institute ephys SDK version (norm_diff)
+        Parameters
+        ----------
+        spk_lat : array
+            spike latencies, already trimmed to current step window.
+        trace_duration : float, optional
+            _description_, by default 1.0
+
+        Returns
+        -------
+        float
+            adaptation index as described above
+        """
+
+        if len(spk_lat) < 4:
+            return np.nan
+        # eFEL version:
+
+        # clean up the spike latencies to be sure there are no duplicates ?
+        # spk_lat = np.unique(spk_lat)  # prevent isi_sub from being zero. how that might happen is a mystery
+        # isi_values = spk_lat[1:] - spk_lat[:-1]
+        # isi_sum = isi_values[1:] + isi_values[:-1]
+        # isi_sub = isi_values[1:] - isi_values[:-1]
+        # print("adaptation_index2: ISI SUB: ", isi_sub)
+        # nonzeros = np.argwhere(isi_sub != 0.0)
+        # adaptation_index = np.mean(isi_sum[nonzeros] / isi_sub[nonzeros])
+
+        # Allen Institute version:
+        if np.allclose((spk_lat[1:] + spk_lat[:-1]), 0.0):
+            return np.nan
+        norm_diffs = (spk_lat[1:] - spk_lat[:-1]) / (spk_lat[1:] + spk_lat[:-1])
+        norm_diffs[(spk_lat[1:] == 0) & (spk_lat[:-1] == 0)] = 0.0
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+            adaptation_index = np.nanmean(norm_diffs)
+        return adaptation_index
 
     def compute_adaptation_index(
         self,
@@ -2761,6 +2839,64 @@ class Functions:
         adapt_index = self.adaptation_index(latencies, trace_duration)
         CP("y", f"Adaptation index: {adapt_index:6.3f}, rate: {rate:6.1f}")
         return adapt_index, rate
+
+    def compute_adaptation_index2(
+        self,
+        spikes,
+        trace_delay: float = 0.15,
+        trace_duration: float = 1.0,
+        rate_bounds: list = [20.0, 40.0],
+    ):
+        """compute_adapt_index
+        Compute the adaptation index for a set of spikes
+        This uses the algorithm from eFEL to compute the adaptation index
+        Assumes the spikes are times corrected for the delay to the start of the stimulus.
+
+        Parameters
+        ----------
+        spikes : list
+            list of spikes, with 0 time at the start of the stimulus
+        trace_duration: float
+            duration of the current step, in seconds
+
+        Returns
+        -------
+        lists
+            adaptation indices, rates at which index was computed
+        """
+
+        recnums = list(spikes.keys())
+        adapt_rates2 = []
+        adapt_indices2 = []
+        print("Rate bounds: ", rate_bounds)
+
+        for rec in recnums:
+            spikelist = list(spikes[rec].keys())
+            if len(spikelist) < 4:
+                continue
+            spk_lat = np.array(
+                [spikes[rec][spk].AP_latency for spk in spikelist if spk is not None]
+            )
+            spk_lat = np.array([spk for spk in spk_lat if spk is not None])
+            # print("spk_lat: ", spk_lat)
+            if spk_lat is None:
+                continue
+            else:
+                spk_lat -= trace_delay
+                spk_lat = spk_lat[spk_lat < trace_duration]
+            # print(spk_lat)
+            n_spikes = len(spk_lat)
+            rate = n_spikes / (spk_lat[-1] - spk_lat[0])
+            if rate < rate_bounds[0] or rate > rate_bounds[1]:
+                # CP("y", f"Adaption calculation: rec: {rec:d} failed rate limit: {rate:.1f}, {rate_bounds!s}, spk_lat: {spk_lat!s}")
+                continue
+            # else:
+            #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
+            adapt_rates2.append(rate)
+            adapt_indices2.append(self.adaptation_index2(spk_lat))
+        #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
+
+        return adapt_indices2, adapt_rates2
 
     def convert_FI_array(self, FI_values):
         """convert_FI_array Take a potential string representing the FI_data,
@@ -2852,7 +2988,7 @@ class Functions:
                         protocol, measure, value=df_cell.IV[protocol][iv_mapper[measure]]
                     )
         elif measure in spike_keys:
-            maxadapt = 0
+
             for protocol in protocols:
                 # print("p: ", p)
                 # if measure == "AdaptRatio":
@@ -2861,7 +2997,6 @@ class Functions:
                 #     print("\nprot, measure: ", protocol, measure, df_cell.Spikes[protocol][mapper1[measure]])
                 #     print(df_cell.Spikes[protocol].keys())
                 #     maxadapt = np.max([maxadapt, df_cell.Spikes[protocol][mapper1['AdaptRatio']]])
-
                 if measure in df_cell.Spikes[protocol].keys():
                     self.add_measure(protocol, measure, value=df_cell.Spikes[protocol][measure])
             # if maxadapt > 8:
@@ -2877,7 +3012,7 @@ class Functions:
             for protocol in protocols:  # for all protocols with spike analysis data for this cell
                 if "spikes" not in df_cell.Spikes[protocol].keys():
                     self.add_measure(protocol, measure, value=np.nan)
-                    print("NO SPIKES IN PROTOCOL: ", protocol, df_cell.Spikes[protocol].keys())
+                    CP("y", f"No spikes in protocol (measure=current):  {protocol!s}, {df_cell.Spikes[protocol].keys():s}")
                     self.add_measure(protocol, measure, value=np.nan)
                     continue
                 # we need to get the first spike evoked by the lowest current level ...
@@ -2894,13 +3029,14 @@ class Functions:
                 # we need to get the first spike evoked by the lowest current level ...
                 prot_spike_count = 0
                 if "spikes" not in df_cell.Spikes[protocol].keys():
-                    print("NO SPIKES IN PROTOCOL: ", protocol, df_cell.Spikes[protocol].keys())
+                    CP("y", f"No spikes in protocol (measure={measure:s}: {protocol!s}, {df_cell.Spikes[protocol].keys():s}")
                     self.add_measure(protocol, measure, value=np.nan)
                     continue
                 spike_data = df_cell.Spikes[protocol]["spikes"]
                 if measure in [
                     "dvdt_rising",
                     "dvdt_falling",
+                    # "dvdt_ratio",
                     "AP_HW",
                     "AP_begin_V",
                     "AP_thr_V",
@@ -2916,7 +3052,6 @@ class Functions:
                     )
                     if not np.isnan(min_current_index):
                         spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                        # print("spike data ", spike_data['dvdt_rising'])
                         self.add_measure(protocol, measure, value=spike_data[mapper[measure]])
                     else:
                         self.add_measure(protocol, measure, value=np.nan)
@@ -2927,6 +3062,7 @@ class Functions:
                     or len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) == 0
                 ):
                     CP("r", "Lowest Current spike is None")
+
                 elif measure in ["AP_thr_V", "AP_begin_V"]:
                     value = np.nan
                     if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
@@ -2983,6 +3119,8 @@ class Functions:
                     measure in mapper.keys() and mapper[measure] in spike_data.keys()
                 ):  # if the measure exists for this sweep
                     self.add_measure(protocol, measure, value=spike_data[mapper[measure]][0])
+                elif measure in ["dvdt_ratio"]:
+                    pass
                 else:
                     # print(measure in mapper.keys())
                     # print(spike_data.keys())
@@ -3044,7 +3182,8 @@ class Functions:
 
     def textappend(self, text, color="white"):
         if self.textbox is None:
-            return  # raise ValueError("datatables - functions - textbox has not been set up")
+            print(text)
+            return
 
         colormap = {
             "[31m": "red",
