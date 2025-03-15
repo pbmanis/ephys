@@ -51,6 +51,7 @@ class FilterSettings:
     )
     min_sample_rate: float = 1e4  # minimum sampling rate, in Hz (points per second)
     junctionpotential: float = 0.  # junction potential, in mV
+    maximum_Rs: float = 25e6  # maximum series resistance, in Ohms
 
 
 class FilterDataset:
