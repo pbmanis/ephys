@@ -102,7 +102,6 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph import multiprocess as MP
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
-
 # get the rest of the ephys modules that we will need.
 from ephys.gui import data_summary_table
 from ephys.gui import data_table_functions as functions
@@ -214,6 +213,7 @@ class DataTables:
         self.doing_reload = False
         self.picker_active = False
         self.show_pdf_on_pick = False
+        self.publication_plot_mode = False  # set True to use publication mode when available.
         self.dry_run = False
         self.parallel_mode = "cell"
         self.exclude_unimportant = False
@@ -329,7 +329,7 @@ class DataTables:
         self.Dock_PDFView.addWidget(self.PDFView)
 
         self.textbox = QtWidgets.QTextEdit()
-
+        self.PSI.set_textbox(self.textbox)  # make sure the functions know about the textbox
         FUNCS.textbox_setup(self.textbox)  # make sure the functions know about the textbox
         self.textbox.setReadOnly(True)
         self.textbox.setTextColor(QtGui.QColor("white"))
@@ -920,16 +920,16 @@ class DataTables:
                             selections = {"selected": []}
                             for selected_row in index_rows:
                                 if selected_row is None:
-                                    print("No selected rows")
+                                    self.status_bar_message("No selected rows", color="red")
                                     break
-                                print("selected row: ", selected_row)
                                 cell_id = self.DS_table_manager.get_selected_cellid_from_table(
                                     selected_row
                                 )
                                 if cell_id is None:
                                     print("cell id is none?")
+                                    self.status_bar_message("Cell ID is None", color="red")
                                     continue
-                                print("selected cell: ", cell_id)
+                                # print("selected cell: ", cell_id)
                                 FUNCS.textappend(cell_id)
                                 pathparts = Path(cell_id).parts
                                 slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
@@ -942,10 +942,15 @@ class DataTables:
                                     )
                                 )
                                 if self.dry_run:
-                                    print(
-                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}"
+                                    self.status_bar_message(
+                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}",
+                                        color="yellow",
                                     )
                                 else:
+                                    self.status_bar_message(
+                                        f"Analyzing {cell_id!s} from row: {selected_row_number!s}",
+                                        color="green",
+                                    )
                                     self.analyze_maps(
                                         mode="selected",
                                         day=day,
@@ -1016,16 +1021,20 @@ class DataTables:
 
                         case "Use Picker":
                             self.picker_active = data
-                            print("Setting enable_picking to: ", self.picker_active)
+                            self.status_bar_message(f"Setting enable_picking to: {self.picker_active!s}", color="green")
 
                         case "Show PDF on Pick":
                             self.show_pdf_on_pick = data
+
+                        case "Use Publication Mode":
+                            self.publication_plot_mode = data
+                            self.status_bar_message(f"Setting publication_plot_mode to: {self.publication_plot_mode!s}", color="green")
 
                         case "Spike/IV plots":
                             match path[2]:
                                 case "Plot Spike Data categorical":
                                     self.spike_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="categorical",
                                         title="Spike Data",
                                         data_class="spike_measures",
@@ -1034,8 +1043,16 @@ class DataTables:
 
                                 case "Plot Spike Data continuous":
                                     self.spike_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="continuous",
+                                        title="Spike Data",
+                                        data_class="spike_measures",
+                                        colors=colors,
+                                    )
+                                case "Plot Spike Data combined":
+                                    self.spike_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
+                                        mode="combined",
                                         title="Spike Data",
                                         data_class="spike_measures",
                                         colors=colors,
@@ -1043,7 +1060,7 @@ class DataTables:
 
                                 case "Plot Rmtau Data categorical":
                                     self.rmtau_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="categorical",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
@@ -1052,8 +1069,16 @@ class DataTables:
 
                                 case "Plot Rmtau Data continuous":
                                     self.rmtau_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="continuous",
+                                        title="RmTau Data",
+                                        data_class="rmtau_measures",
+                                        colors=colors,
+                                    )
+                                case "Plot Rmtau Data combined":
+                                    self.rmtau_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
+                                        mode="combined",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
                                         colors=colors,
@@ -1061,7 +1086,7 @@ class DataTables:
 
                                 case "Plot FIData Data categorical":
                                     self.fidata_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="categorical",
                                         title="FI Data",
                                         data_class="FI_measures",
@@ -1070,8 +1095,16 @@ class DataTables:
 
                                 case "Plot FIData Data continuous":
                                     self.fidata_plot = self.generate_summary_plot(
-                                        plotting_function=plot_spike_info.concurrent_categorical_data_plotting,
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
                                         mode="continuous",
+                                        title="FI Data",
+                                        data_class="FI_measures",
+                                        colors=colors,
+                                    )
+                                case "Plot FIData Data combined":
+                                    self.fidata_plot = self.generate_summary_plot(
+                                        plotting_function=plot_spike_info.concurrent_data_plotting,
+                                        mode="combined",
                                         title="FI Data",
                                         data_class="FI_measures",
                                         colors=colors,
@@ -1524,6 +1557,7 @@ class DataTables:
         data_class: str = "spike_measures",
         title: str = "My Title",
         colors: dict = {},
+
     ):
         # data class must be in the experiment configuration file, top level keys.
         # e.g.:
@@ -1558,6 +1592,7 @@ class DataTables:
                 plot_title=title,
                 data_class=data_class,
                 picker_active=self.picker_active,
+                publication_plot_mode = self.publication_plot_mode,
                 infobox={
                     "x": self.infobox_x,
                     "y": self.infobox_y,
