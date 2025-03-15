@@ -295,6 +295,8 @@ class AssembleDatasets:
             b. Do not use traces that are above the spike firing rate turnover point (non-monotonic)
             c. compute the Adaptation Index (Manis et al., 2019, PLoS One) for a selected firing rate
                 range. (e.g., 20-40 Hz)
+            c. compute Adaptation Index by eFEL method (all across train; same limited firing range)
+               Try using Allen Institute version to catch values for adaptation_index instead of eFEL version.
 
 
         """
