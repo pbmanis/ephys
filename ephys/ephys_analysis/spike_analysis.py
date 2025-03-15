@@ -1,7 +1,7 @@
 """
 Analyze spike shapes - pulled out of IVCurve 2/6/2016 pbm.
 Allows routine to be used to analyze spike trains independent of acq4's data models.
-Create instance, then call setup to define the "Clamps" object and the spike threshold. 
+Create instance, then call setup to define the "Clamps" object and the spike threshold.
 The Clamps object must have the following variables defined::
 
     commandLevels (current injection levels, list)
@@ -13,9 +13,9 @@ The Clamps object must have the following variables defined::
     sample_interval (time between samples, sec)
     values (command waveforms; why it is called this in acq4 is a mystery)
 
-Note that most of the results from this module are accessed either 
+Note that most of the results from this module are accessed either
 as class variables, or through the class variable analysis_summary,
-a dictionary with key analysis results. 
+a dictionary with key analysis results.
 IVCurve uses the analysis_summary to post results to an sql database.
 
 Paul B. Manis, Ph.D. 2016-2019
@@ -114,18 +114,19 @@ def interpolate_halfwidth(tr, xr, kup, halfv, kdown):
     t_hwdown = (halfv - b2) / m2
     return t_hwdown, t_hwup
 
+
 def concurrent_spike_analysis(
     spikeanalysis: object,
     i: int,
     x: int,
-    spike_begin_dV:float,
-    max_spikeshape:int, 
-    printSpikeInfo:bool
+    spike_begin_dV: float,
+    max_spikeshape: int,
+    printSpikeInfo: bool,
 ):
     result = spikeanalysis.analyze_one_trace(
         trace_number=i,
         begin_dV=spike_begin_dV,
-        max_spikeshape = max_spikeshape,
+        max_spikeshape=max_spikeshape,
         printSpikeInfo=printSpikeInfo,
     )
     return result
@@ -153,6 +154,10 @@ class SpikeAnalysis:
         threshold=None,
         refractory: float = 0.0007,
         peakwidth: float = 0.001,
+        adaptation_min_rate: float = 20.0,
+        adaptation_max_rate: float = 40.0,
+        adaptation_last_spike_time: float = 0.5,  # seconds
+        adaptation_minimum_spike_count: int = 4,  # minimum number of spikes to compute adaptation ratio
         verify=False,
         interpolate=True,
         verbose=False,
@@ -211,8 +216,17 @@ class SpikeAnalysis:
         self.verify = verify
         self.verbose = verbose
         self.mode = mode
-        self.ar_window = 1.0
-        self.ar_lastspike = 0.75 * self.ar_window
+
+        # self.ar_window = self.ar_lastspike = 0.5  # default window for adaptation ratio
+        self.ar_minimum_spike_count = (
+            adaptation_minimum_spike_count  # minimum # of spikes when computing adaptation ratio
+        )
+        self.ar_last_spike_time = (
+            adaptation_last_spike_time  # the last spike must occur after this time
+        )
+        self.ar_min_rate = adaptation_min_rate
+        self.ar_max_rate = adaptation_max_rate
+
         self.min_peaktotrough = 0.010  # change in V on falling phase to be considered a spike
         self.max_spike_look = max_spike_look  # sec over which to measure spike widths
 
@@ -264,8 +278,7 @@ class SpikeAnalysis:
         )
         # CP.cprint("r", "AnalyzeSpikes: 1")
         self.U = utilities.Utility()
-        maxspkrate = 50  # max rate to count in adaptation is 50 spikes/second
-        minspk = 4  # minimum # of spikes when computing adaptation ratio
+
         ntraces = len(self.Clamps.traces)
         self.spikecount = np.zeros(ntraces)
         self.fsl = np.zeros(ntraces)
@@ -275,6 +288,8 @@ class SpikeAnalysis:
         self.spikeIndices = [[] for i in range(ntraces)]
 
         adapt_ratio = np.zeros(ntraces)
+        adapt_tau = np.zeros(ntraces)
+
         lastspikecount = 0
         twin = self.Clamps.tend - self.Clamps.tstart  # measurements window in seconds
         # maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
@@ -326,17 +341,41 @@ class SpikeAnalysis:
             #   Adaptation ratio needs to be tethered to time into stimulus
             #   Here we return a standardized ratio measured during the first 100 msec
             #   (standard ar)
-            sp_for_ar = spikes[np.where(spikes - self.Clamps.tstart < self.ar_window)]
-            if len(sp_for_ar) >= minspk and (self.spikecount[trace_number] > lastspikecount):
-                if sp_for_ar[-1] > self.ar_lastspike + self.Clamps.tstart:  # default 75 msec
-                    misi = np.mean(np.diff(sp_for_ar[-2:])) * 1e3  # last ISIs in the interval
-                    adapt_ratio[trace_number] = misi / self.fisi[trace_number]
-            lastspikecount = self.spikecount[trace_number]  # update rate (sets max rate)
-        print()
+            # sp_for_ar = spikes[np.where(spikes - self.Clamps.tstart < self.ar_window)]
+            # if len(sp_for_ar) >= minspk and (self.spikecount[trace_number] > lastspikecount):
+            #     if sp_for_ar[-1] > self.ar_lastspike + self.Clamps.tstart:  # default 75 msec
+            #         misi = np.mean(np.diff(sp_for_ar[-2:])) * 1e3  # last ISIs in the interval
+            #         adapt_ratio[trace_number] = misi / self.fisi[trace_number]
+
+            # New adaptation ratio: 3/11/2025. Use more parameters to control the analysis.
+            # first, get only spikes before the last time (narrow window)
+            # then check the rate and # of spikes to be sure it is ok
+            # PARAMETERS are taken fron the experiments.cfg file.
+            #
+            if self.Clamps.tend >= self.ar_last_spike_time:  # minimum trace length
+                sp_for_ar = spikes[np.where((spikes - self.Clamps.tstart) <= self.ar_last_spike_time)] - self.Clamps.tstart
+                ar_nspikes = len(sp_for_ar)
+                # print("\nTRACE NUMBER: ", trace_number)
+                # print("    sp for ar: ", sp_for_ar)
+                # print("    ar_nspikes: ", ar_nspikes)
+                if ar_nspikes > self.ar_minimum_spike_count:
+                    sprate = len(sp_for_ar) / (sp_for_ar[-1] - sp_for_ar[0])  # get rate in the window
+                    # print("    sprate: ", sprate, sp_for_ar[-1], 0.8*self.ar_last_spike_time, self.ar_min_rate, self.ar_max_rate)
+                    if (
+                        (ar_nspikes > self.ar_minimum_spike_count)  # at least this number of spikes
+                        and (sprate >= self.ar_min_rate)  # with rate in a range
+                        and (sprate <= self.ar_max_rate)
+                        and (sp_for_ar[-1] > 0.8*self.ar_last_spike_time)  # and the last spike is at least in the last 10% of the window
+                    ):  # at least this many spikes and rate is in range
+                        # print("sp in range: ", sp_for_ar)
+                        last_isi = np.mean(np.diff(sp_for_ar[-2:]))*1e3  # last 2 ISIs in the interval
+                        adapt_ratio[trace_number] = last_isi / self.fisi[trace_number]
+                        # print("adapt ratio: ", adapt_ratio[trace_number])
+                    # print()
         iAR = np.where(adapt_ratio > 0)  # valid AR and monotonically rising
         self.adapt_ratio = np.nan
         if len(adapt_ratio[iAR]) > 0:
-            self.adapt_ratio = np.mean(adapt_ratio[iAR])  # only where we made the measurement
+            self.adapt_ratio = np.max(adapt_ratio[iAR])  # only where we made the measurement, find the maximum ratio
         self.ar = adapt_ratio  # stores *all* the ar values
         self.analysis_summary["AdaptRatio"] = self.adapt_ratio  # only the valid values
         self.nospk = np.where(self.spikecount == 0)
@@ -532,7 +571,7 @@ class SpikeAnalysis:
 
         # parallelize the analysis of the traces
 
-        self.nWorkers = MP.cpu_count()-2  # get this automatically
+        self.nWorkers = MP.cpu_count() - 2  # get this automatically
         if self.nWorkers < 1:
             self.nWorkers = 1
         traces = [tr for tr in range(ntr) if len(self.spikes[tr]) > 0]  # only traces with spikes
@@ -551,7 +590,7 @@ class SpikeAnalysis:
         #             i=i,
         #             x=x,  # trace
         #             spike_begin_dV=spike_begin_dV,
-        #             max_spikeshape=max_spikeshape, 
+        #             max_spikeshape=max_spikeshape,
         #             printSpikeInfo=printSpikeInfo
         #         )
         #         for i, x in enumerate(tasks)
@@ -570,8 +609,6 @@ class SpikeAnalysis:
         #             results[result['protocol']] = result
         #     if len(results) == 0 or self.dry_run:
         #         return
-
-
 
         # not parallelized code:
         for i in range(ntraces):

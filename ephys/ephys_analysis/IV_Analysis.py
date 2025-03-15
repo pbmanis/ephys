@@ -862,11 +862,22 @@ class IVAnalysis(Analysis):
             taum_current_range=taum_current_range,
             tauh_voltage=tauh_voltage,
         )
+        if "Adaptation_measurement_parameters" in self.experiment.keys():
+            adapt_min_rate = self.experiment["Adaptation_measurement_parameters"]["min_rate"]
+            adapt_max_rate = self.experiment["Adaptation_measurement_parameters"]["max_rate"]
+            adapt_last_spike_time = self.experiment["Adaptation_measurement_parameters"]["last_spike_time"]
+        else:
+            adapt_min_rate = 20.0
+            adapt_max_rate = 40.0
+            adapt_last_spike_time = 0.5
         self.SP.setup(
             clamps=self.AR,
             threshold=threshold,
             refractory=refractory,
             peakwidth=0.001,
+            adaptation_min_rate = adapt_min_rate,
+            adaptation_max_rate = adapt_max_rate,
+            adaptation_last_spike_time = adapt_last_spike_time,  # seconds
             interpolate=True,
             verify=False,
             mode="schmitt",
