@@ -94,7 +94,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         print("row parameter: ", row[parameter])
     if not isinstance(row[parameter], str):
         if np.all(np.isnan(row[parameter])):
-            CP.cprint("r", f"Parameter {parameter:s} is all nan")
+            # CP.cprint("r", f"Parameter {parameter:s} is all nan")
             row[parameter] = np.nan
             return row
 
@@ -221,9 +221,9 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if not parameter.startswith("CC_taum"):  # standard IV protocols
         # print("Params: ", params)
         # print("prots: ", prots)
-        row[parameter + f"_mean"] = np.nanmean(
-            [v for i, v in enumerate(params) if i < len(prots) and not Path(prots[i]).name.startswith("CC_taum")]
-        )
+        p_mean = [v for i, v in enumerate(params) if i < len(prots) and not Path(prots[i]).name.startswith("CC_taum")]
+        if len(p_mean) > 0:
+            row[parameter + f"_mean"] = np.nanmean(p_mean)
     else:  # specific to CC_taum protocol
         row[parameter + f"_mean"] = np.nanmean(
             [v for i, v in enumerate(params) if i < len(prots) and Path(prots[i]).name.startswith("CC_taum")]
@@ -410,7 +410,7 @@ def perform_selection(
         select_limits=select_limits,
     )
     for parameter in parameters:
-        CP.cprint("r", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
+        CP.cprint("c", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
         try:
             data = data.apply(
                 apply_select_by,
