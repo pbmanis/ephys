@@ -34,6 +34,7 @@ obspy==1.4.0  # for resampling and filtering
 
 matplotlib>=3.9.0
 matplotlib-scalebar>=0.8.1
+MetaArray=2.1.1
 nose==1.3.7
 numba==0.61.0rc2 # ==0.50.1
 numpy>=1.26, <= 2.1.0
@@ -86,9 +87,8 @@ PyOpenGL>=3.1.5
 
 
 #-e git+https://github.com/pbmanis/pyqtgraph.git@e3ac16b3a220f76b69bf26c295edf140e2e928b4#egg=pyqtgraph
-#-e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
--e /Users/pbmanis/Desktop/Python/pylibrary
--e /Users/pbmanis/Desktop/Python/MetaArray
+pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
+# -e /Users/pbmanis/Desktop/Python/MetaArray
 -e /Users/pbmanis/Desktop/Python/nwbinspector
 
 imreg_dft>=2.0
