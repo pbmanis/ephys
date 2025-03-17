@@ -11,7 +11,7 @@ from typing import Optional
 import textwrap
 import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
-import concurrent.futures
+
 import numpy as np
 import pandas as pd
 import pylibrary.plotting.plothelpers as PH
