@@ -3114,10 +3114,14 @@ class Functions:
                     #     m.append(Vthr)
                     # else:
                     #     m.append(np.nan)
-
+                elif measure in ["AP_HW"]:
+                    if "LowestCurrentSpike" in df_cell.Spikes[protocol].keys():
+                        AP_HW = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_HW"]
+                        self.add_measure(protocol, measure, value=AP_HW)
                 elif (
                     measure in mapper.keys() and mapper[measure] in spike_data.keys()
                 ):  # if the measure exists for this sweep
+                    CP('r', f"Adding measure: {measure:s} from {mapper[measure]:s}")
                     self.add_measure(protocol, measure, value=spike_data[mapper[measure]][0])
                 elif measure in ["dvdt_ratio"]:
                     pass
