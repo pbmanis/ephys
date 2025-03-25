@@ -715,7 +715,7 @@ if __name__ == "__main__":
                 color = experiment["plot_colors"][group]
                 lw = 0.5
 
-                if cell == 'tberculoventral' and proper_cellid in ['2018.07.27_000/slice_001/cell_000']:
+                if cell == 'tuberculoventral' and proper_cellid in ['2018.07.27_000/slice_001/cell_000']:
                     color = 'k'
                     lw = 1.5
                     print("*****")
