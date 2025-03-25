@@ -354,7 +354,7 @@ class TableManager:
         # print(dir(self.table.viewport()))
         self.table.viewport().update()
 
-    def print_indexfile(self, indexrow):
+    def print_indexfile(self, index_row):
         """
         Print the values in the index file
         """
@@ -362,8 +362,8 @@ class TableManager:
     # this is broken.
         print("=" * 80)
         print("\nIndex file and data file params")
-        cprint("c", f"Index row: {str(indexrow.row):s}")
-        data = self.get_table_data(indexrow)
+        cprint("c", f"Index row: {str(index_row.row):s}")
+        data = self.get_table_data(index_row)
         print(data)
         print(self.parent.datasummary.cell_id)
         d = filename_tools.get_cell(self.experiment,  df=self.parent.datasummary,  cell_id = data.cell_id)
