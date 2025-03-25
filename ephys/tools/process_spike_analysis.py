@@ -8,6 +8,10 @@ This data is computed from raw data sets, rather than from the .pkl intermediate
 
 The output spreadsheet can be passed to plot_spike_info to generate plots for these parameters
 
+
+**** DEPRECATED ****
+Use the tools in datatables instead.
+
 """
 
 import logging
@@ -273,7 +277,8 @@ class ProcessSpikeAnalysis:
                 return row
 
             row = self.find_lowest_current_spike(row, IVA.SP)
-
+            print(IVA.SP.analysis_summary.keys())
+            
             row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
             row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
             row.RMP = IVA.RM.analysis_summary["RMP"]
