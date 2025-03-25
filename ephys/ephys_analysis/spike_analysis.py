@@ -628,6 +628,7 @@ class SpikeAnalysis:
             self.getClassifyingInfo()  # build analysis summary here as well.
         else:
             self.analysis_summary["LowestCurrentSpike"] = None
+        print("\n\nLowest current spike info: ", lcs)
 
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
@@ -640,6 +641,10 @@ class SpikeAnalysis:
     def get_lowest_current_spike(self):
         """get_lowest_current_spike : get the lowest current spike in the traces
         and save the various measurements in a dictionary
+        The critera are:
+        1. No spike prior to the current pulse start
+        2. No negative current (miniumu of 20 pA)
+        3. At least 25 msec until the next spike
 
         Returns
         -------
@@ -648,20 +653,41 @@ class SpikeAnalysis:
 
         """
         dvdts = {}
-        # print("LCS: len spike traces: ", len(self.spikeShapes))
-        for tr in self.spk:  # for each trace with spikes
-            # print("trace: ", tr, "# spikes: ", len(self.spikeShapes[tr]))
-            if len(self.spikeShapes[tr]) >= 1:  # only if there is at least one spike
-                dvdts[tr] = self.spikeShapes[tr][0]  # get the first spike in the trace
-                continue
-        # print("get_lowest_current_spike: # traces to investigate: ", len(dvdts))
         LCS = {}
+        
+        # screen for traces with spikes that meet criteria
+        found_spike = False
+        for tr in self.spk:  # for each trace with spikes
+            # proceed only if there is at least one spike and it starts after the stimulus onset
+            if self.spikeShapes[tr] is None or len(self.spikeShapes[tr]) < 1 or self.spikeShapes[tr][0].AP_latency is None:
+                continue  # no spikes in this trace
+            if self.spikeShapes[tr][0].AP_latency < self.Clamps.tstart: # first spike is in forbidden window
+                continue 
+            if self.spikeShapes[tr][0].current < 20e-12:  # current level is too small
+                continue
+            # now we can check for the first spike and check that it's interval is > the deadtime we want
+            spkshape0 = self.spikeShapes[tr][0]  # get the 1st spike in the trace
+                # check for following spike - if it is too close (< 25 msec), skip this one
+            if len(self.spikeShapes[tr]) > 1:
+                spkshape1 = self.spikeShapes[tr][1]
+                if (
+                    spkshape1.AP_beginIndex is not None and spkshape0.AP_latency is not None
+                    and (spkshape1.AP_latency - spkshape0.AP_latency) >= 0.025
+                ):
+                    dvdts[tr] = spkshape0  # meets criteria, so add to the list
+                    CP.cprint("g", f"   Adding trace {tr} spike to lowest current spike list")
+                    found_spike = True  # only need the first spike in the trace that meets the criteria                    
+            if found_spike:
+                break
+
         if len(dvdts) > 0:
             currents = []
             itr = []
-            for d in dvdts.keys():  # for each first spike, make a list of the currents
-                currents.append(dvdts[d].current)
-                itr.append(d)
+            for tr in dvdts.keys():  # for each first spike, make a list of the currents
+                if dvdts[tr].current >= 20.0e-12:  # require a positive current step - at least 20 pA
+                    # print("candidate spike info: ", dvdts[tr].trace, dvdts[tr].current, dvdts[tr].AP_latency, dvdts[tr].halfwidth_interpolated)
+                    currents.append(dvdts[tr].current)
+                    itr.append(tr)
             i_min_current = np.argmin(currents)  # find spike elicited by the minimum current
             min_current = currents[i_min_current]
             sp = self.spikeShapes[itr[i_min_current]][
@@ -677,11 +703,13 @@ class SpikeAnalysis:
             LCS["AP_thr_T"] = sp.AP_beginIndex * self.Clamps.sample_interval * 1e3
             LCS["AP_peak_V"] = 1e3 * sp.peak_V
             LCS["AP_peak_T"] = sp.peak_T
-            if sp.halfwidth_interpolated is not None:
-                LCS["AP_HW"] = sp.halfwidth_interpolated * 1e3
-            elif (
-                sp.halfwidth is not None
-            ):  # if interpolated halfwidth is not available, use the raw halfwidth
+            # if sp.halfwidth_interpolated is not None:
+            #     LCS["AP_HW"] = sp.halfwidth_interpolated * 1e3
+            # elif (
+            #     sp.halfwidth is not None
+            # ): 
+                 # if interpolated halfwidth is not available, use the raw halfwidth
+            if sp.halfwidth is not None:
                 LCS["AP_HW"] = sp.halfwidth * 1e3
             else:  # if that is not available, we do not have a measure to use...
                 LCS["AP_HW"] = np.nan
