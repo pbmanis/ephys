@@ -63,6 +63,7 @@ def concurrent_data_plotting(
     status_bar_message: object = None,
 ):
     assert mode in ["categorical", "continuous", "combined"]
+    assert data_class in ["spike_measures", "FI_measures", "rmtau_measures", None]
     # unpack parameters:
     header = parameters["header"]
     experiment = parameters["experiment"]
@@ -86,11 +87,13 @@ def concurrent_data_plotting(
     if mode == "categorical":
         df = PSI_.preload(filename)
         print("categorical")
-        if group_by == ['nan']:
+        if group_by == ["nan"]:
             if status_bar_message is None:
                 raise ValueError("group_by is null: please select group for categorical plot")
             else:
-                status_bar_message.showMessage("Please select a group for the categorical plot", color="red")
+                status_bar_message.showMessage(
+                    "Please select a group for the categorical plot", color="red"
+                )
         (
             cc_plot,
             picker_funcs1,
@@ -99,6 +102,7 @@ def concurrent_data_plotting(
             xname=group_by,
             hue_category=hue_category,
             plot_order=experiment["plot_order"][group_by],
+            data_class=data_class,
             measures=experiment[data_class],
             colors=colors,
             enable_picking=picker_active,
@@ -123,8 +127,8 @@ def concurrent_data_plotting(
         )
     elif mode == "combined":
 
-        style = ST.styler('JNeurophys', figuresize='full', height_factor=0.75)
-    #        AW.style_apply(style)
+        style = ST.styler("JNeurophys", figuresize="full", height_factor=0.75)
+        #        AW.style_apply(style)
         print("group by: ", group_by)
         row1_bottom = 0.7
         row2_bottom = 0.05
@@ -134,19 +138,46 @@ def concurrent_data_plotting(
         up_lets = ascii_letters.upper()
         cat_labels = [up_lets[i] for i in range(ncols)]
         print("cat_labels: ", cat_labels)
-        cat_figure = PH.regular_grid(cols=ncols, rows=1, order='rowsfirst', figsize=style.Figure['figsize'],
-                                horizontalspacing=hspc, verticalspacing=vspc,
-                                margins={'leftmargin': 0.07, 'rightmargin': 0.07, 'topmargin': 0.05, 'bottommargin': row1_bottom},
-                                labelposition=(-0.15, 1.05), panel_labels=cat_labels, font="Arial",
-                                fontweight=style.get_fontweights(), fontsize=style.get_fontsizes())
-        cont_labels = [up_lets[i] for i in range(ncols, 2*ncols)]
+        cat_figure = PH.regular_grid(
+            cols=ncols,
+            rows=1,
+            order="rowsfirst",
+            figsize=style.Figure["figsize"],
+            horizontalspacing=hspc,
+            verticalspacing=vspc,
+            margins={
+                "leftmargin": 0.07,
+                "rightmargin": 0.07,
+                "topmargin": 0.05,
+                "bottommargin": row1_bottom,
+            },
+            labelposition=(-0.15, 1.05),
+            panel_labels=cat_labels,
+            font="Arial",
+            fontweight=style.get_fontweights(),
+            fontsize=style.get_fontsizes(),
+        )
+        cont_labels = [up_lets[i] for i in range(ncols, 2 * ncols)]
         print("cont_labels: ", cont_labels)
-        cont_figure = PH.regular_grid(rows=1, cols=ncols, order='rowsfirst',
-                                horizontalspacing=hspc, verticalspacing=vspc,
-                                margins={'leftmargin': 0.07, 'rightmargin': 0.07, 'topmargin': 0.55, 'bottommargin': row2_bottom},
-                                labelposition=(-0.15, 1.05), panel_labels = cont_labels, font="Arial",
-                                fontweight=style.get_fontweights(), fontsize=style.get_fontsizes(),
-                                parent_figure=cat_figure)
+        cont_figure = PH.regular_grid(
+            rows=1,
+            cols=ncols,
+            order="rowsfirst",
+            horizontalspacing=hspc,
+            verticalspacing=vspc,
+            margins={
+                "leftmargin": 0.07,
+                "rightmargin": 0.07,
+                "topmargin": 0.55,
+                "bottommargin": row2_bottom,
+            },
+            labelposition=(-0.15, 1.05),
+            panel_labels=cont_labels,
+            font="Arial",
+            fontweight=style.get_fontweights(),
+            fontsize=style.get_fontsizes(),
+            parent_figure=cat_figure,
+        )
         df = PSI_.preload(filename)
         (
             cc_plot,
@@ -157,7 +188,7 @@ def concurrent_data_plotting(
             hue_category=hue_category,
             plot_order=experiment["plot_order"][group_by],
             measures=experiment[data_class],
-            plabels = cat_labels,
+            plabels=cat_labels,
             colors=colors,
             enable_picking=picker_active,
             representation=representation,
@@ -173,7 +204,7 @@ def concurrent_data_plotting(
             xname=group_by,
             hue_category=hue_category,
             plot_order=experiment["plot_order"][group_by],
-            plabels = cont_labels,
+            plabels=cont_labels,
             measures=experiment[data_class],
             colors=colors,
             representation=representation,
@@ -181,8 +212,6 @@ def concurrent_data_plotting(
             publication_plot_mode=publication_plot_mode,
             parent_figure=cont_figure,
         )
-
-
 
     picked_cellid = cc_plot.figure_handle.canvas.mpl_connect(  # override the one in plot_spike_info
         "pick_event",
@@ -1222,7 +1251,7 @@ class PlotSpikeInfo(QObject):
             axp.set_xticklabels(xlabels)  # we just replace them...
         else:
             pass
-        
+
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
             # print("measure: ", row[measure])
@@ -1403,9 +1432,40 @@ class PlotSpikeInfo(QObject):
 
         with open(filename, "w") as file:
             file.write(data)
-    
-    def create_plot_figure(self, df, xname, measures: Optional[list] = None,
-                           parent_figure: Optional[mpl.figure] = None):
+
+    def create_plot_figure(
+        self,
+        df: pd.DataFrame,
+        xname: str,
+        data_class: Optional[str] = None,
+        measures: Optional[list] = None,
+        parent_figure: Optional[mpl.figure] = None,
+    ):
+        """create_plot_figure : set up the figure for plotting
+
+        Parameters
+        ----------
+        df : pandas dataframe
+            dataframe holding the data to plot
+        xname : str
+            _description_
+        data_class : str, optional
+            The data that is being plotted (e.g., "spike_measures"), by default Nonemeasures:Optional[list]=None
+        parent_figure : Optional[mpl.figure], optional
+            A matplotlib figure that is the parent figure to this one, by default None
+
+        Returns
+        -------
+        type: tuple
+            P, letters, plabels, cols, nrows
+            where:
+                P is the pylibrary plothelpers object.
+                letters is the list of letters to use for the panels
+                plabels is the list of panel labels
+                cols is the number of columns
+                nrows is the number of rows
+        """
+        assert data_class in ["spike_measures", "rmtau_measures", "FI_measures", None]
         nrows = len(self.experiment["celltypes"])
         bottom_margin = 0.1
         top_margin = 0.15
@@ -1424,6 +1484,17 @@ class PlotSpikeInfo(QObject):
             plabels = [f"{let.upper():s}{num+1:d}" for let in letters for num in range(ncols)]
         else:  # just use A,
             plabels = [f"{let.upper():s}" for let in letters]
+        horizontal_spacing = 0.06
+        vertical_spacing = 0.09
+        if data_class == "spike_measures":
+            ncols = 3
+            nrows = 2
+            height = 3.25
+            horizontal_spacing = 0.1
+            vertical_spacing = 0.09
+            plabels = [f"{let.upper():s}" for let in letters]
+
+
         figure_width = ncols * 2.5
         P = PH.regular_grid(
             nrows,
@@ -1438,8 +1509,8 @@ class PlotSpikeInfo(QObject):
                 "leftmargin": 0.1,
                 "rightmargin": 0.15,
             },
-            verticalspacing=0.1,
-            horizontalspacing=0.06,
+            verticalspacing=vertical_spacing,
+            horizontalspacing=horizontal_spacing,
             parent_figure=parent_figure,
         )
         if nrows > 1:
@@ -1454,11 +1525,12 @@ class PlotSpikeInfo(QObject):
         xname: str,
         hue_category=None,
         plot_order: Optional[list] = None,
+        data_class: Optional[str] = None,
         plabels: Optional[list] = None,
         measures: Optional[list] = None,
         representation: str = "all",
         publication_plot_mode: bool = False,
-        axes:list = None, # if None, we make a new figure; otherwise we use these axes in order
+        axes: list = None,  # if None, we make a new figure; otherwise we use these axes in order
         colors=None,
         enable_picking=False,
         parent_figure=None,
@@ -1475,6 +1547,7 @@ class PlotSpikeInfo(QObject):
             colors: dict, optional: dictionary of colors to use for the categories
             enable_picking: bool, optional: enable picking of data points
         """
+        assert data_class in ["spike_measures", "rmtau_measures", "FI_measures", None]
         df["Subject"] = df.apply(set_subject, axis=1)
         df = df.copy()  # make sure we don't modifiy the incoming
         print("summary plot incoming x : ", df[xname].unique())
@@ -1482,11 +1555,15 @@ class PlotSpikeInfo(QObject):
         print(
             "summary_plot_ephys_parameters_categorical: incoming x categories: ", df[xname].unique()
         )
-
-
+        print("Parent figure: ", parent_figure)
         if parent_figure is None:
-            P, letters, plabels, cols, nrows = self.create_plot_figure(df=df, xname=xname, measures=measures,
-                                                                   parent_figure=parent_figure)
+            P, letters, plabels, cols, nrows = self.create_plot_figure(
+                df=df,
+                xname=xname,
+                data_class=data_class,
+                measures=measures,
+                parent_figure=parent_figure,
+            )
         else:
             P = parent_figure
             if plabels is None:
@@ -1529,7 +1606,10 @@ class PlotSpikeInfo(QObject):
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
                     # print("measure y: ", measure, "celltype: ", celltype)
-                    axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    if data_class not in ["spike_measures"]:
+                        axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    else:
+                        axp = P.axdict[f"{letters[icol]:s}"]
                     if celltype not in self.ylims.keys():
                         ycell = "default"
                     else:
@@ -1568,7 +1648,7 @@ class PlotSpikeInfo(QObject):
                     elif celltype != self.experiment["celltypes"][-1]:
                         axp.set_xticklabels("")
                         axp.set_xlabel("")
-                    
+
                     self.relabel_yaxes(axp, measure=x_measure)
 
             else:  # single row
@@ -1660,7 +1740,7 @@ class PlotSpikeInfo(QObject):
         xname: str = "",
         logx=False,
         xlims=None,
-        plabels = None,
+        plabels=None,
         representation: str = "bestRs",  # bestRs, mean, all
         enable_picking: bool = False,
         publication_plot_mode: bool = False,
@@ -1687,8 +1767,9 @@ class PlotSpikeInfo(QObject):
 
         picker_funcs = {}
         if parent_figure is None:
-            P, letters, plabels, cols, nrows = self.create_plot_figure(df=df, xname=xname, measures=measures,
-                                                                   parent_figure=parent_figure)
+            P, letters, plabels, cols, nrows = self.create_plot_figure(
+                df=df, xname=xname, measures=measures, parent_figure=parent_figure
+            )
         else:
             P = parent_figure
             if plabels is None:
@@ -1791,7 +1872,7 @@ class PlotSpikeInfo(QObject):
 
                 if measure.endswith("_bestRs_bestRs"):
                     measure = "_".join(measure.split("_")[:-1])
-                
+
                 if measure not in df.columns:
                     continue
                 # always indicate JP on RMP data
@@ -1805,10 +1886,9 @@ class PlotSpikeInfo(QObject):
                         ha="left",
                         va="bottom",
                     )
-         
 
                 plot_order = [p for p in plot_order if p in df[xname].unique()]
-        
+
                 picker_func = self.create_one_plot_continuous(
                     data=df,
                     x="age",
@@ -1824,9 +1904,8 @@ class PlotSpikeInfo(QObject):
                     xlims=xlims,
                     transform=tf,
                     # publication_plot_mode=publication_plot_mode,
-                    regplot=True
-
-                ) 
+                    regplot=True,
+                )
 
                 picker_funcs[axp] = picker_func
                 self.relabel_xaxes(axp)
@@ -1850,9 +1929,9 @@ class PlotSpikeInfo(QObject):
                 P.axdict[
                     ax
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
-     
+
         if len(self.experiment["celltypes"]) > 1:
-               for i, cell in enumerate(self.experiment["celltypes"]):
+            for i, cell in enumerate(self.experiment["celltypes"]):
                 mpl.text(
                     x=0.05,
                     y=0.8 - i * 0.3,
@@ -1865,7 +1944,7 @@ class PlotSpikeInfo(QObject):
                     fontweight="bold",
                     transform=P.figure_handle.transFigure,
                 )
-            
+
         return P, picker_funcs
 
     def pick_handler(self, event, picker_funcs):
@@ -1965,8 +2044,7 @@ class PlotSpikeInfo(QObject):
             )
             # print(dfp.columns)
             # print(y, x)
-            model = statsmodels.api.OLS.from_formula(f"{y:s} ~ {x:s}", data=dfp,
-                                                     cov_type='robust')
+            model = statsmodels.api.OLS.from_formula(f"{y:s} ~ {x:s}", data=dfp, cov_type="robust")
             results = model.fit()
             print(results.summary())
             # print(dir(results))
@@ -1980,12 +2058,20 @@ class PlotSpikeInfo(QObject):
             elif results.f_pvalue < 0.05:
                 fp = f"{results.f_pvalue:.3f}"
             else:
-                fp = f"{results.f_pvalue:.2f}" 
+                fp = f"{results.f_pvalue:.2f}"
             stat_text = f"{r2:s}={results.rsquared:.3f} F={results.fvalue:.2f} p={fp:s}"
             stat_text += f"\nd.f.={int(results.df_resid):d},{int(results.df_model):d}"
-            ax.text(0.02, 1.00, stat_text, transform=ax.transAxes, ha="left", va="top",
-                    fontsize="x-small", color="k")
-  
+            ax.text(
+                0.02,
+                1.00,
+                stat_text,
+                transform=ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize="x-small",
+                color="k",
+            )
+
         else:
             ax.scatter(x=dfp[x], y=dfp[y], c="b", s=4, picker=True)
 
@@ -1995,9 +2081,11 @@ class PlotSpikeInfo(QObject):
         self.relabel_xaxes(ax)
         if ylims is not None:  # make sure we have some limits
             for lim in ylims.keys():  # may be "limits1", etc.
-                if celltype in ylims[lim]["celltypes"]:  # check the list of cell types in the limit group
+                if (
+                    celltype in ylims[lim]["celltypes"]
+                ):  # check the list of cell types in the limit group
                     if y in ylims[lim].keys():  # check the list of measures in the limit group
-                        ax.set_ylim(ylims[lim][y])  # finally... 
+                        ax.set_ylim(ylims[lim][y])  # finally...
         print("XLIMS: ", xlims)
         if xlims is not None:
             ax.set_xlim(xlims)
@@ -2216,8 +2304,6 @@ class PlotSpikeInfo(QObject):
                 row.RMP_Zero[i] = np.nan
         return row.RMP_Zero
 
-    
-
     def label_celltypes(self, P, analysis_cell_types):
         """label_celltypes
         put vertical labels on the left side of the figure,
@@ -2246,8 +2332,6 @@ class PlotSpikeInfo(QObject):
                 transform=P.figure_handle.transFigure,
             )
         return
-
-   
 
     def limit_to_max_rate_and_current(self, fi_data, imax=None, id="", limit=0.9):
         """limit_to_max_rate_and_current:
@@ -3318,6 +3402,8 @@ class PlotSpikeInfo(QObject):
         df["Group"] = df["Group"].astype("str")
         if "FIMax_4" not in df.columns:
             df["FIMax_4"] = np.nan
+
+        # preprocess spike data
         if "AP_thr_V" not in df.columns:
             df["AP_thr_V"] = np.nan
         else:
@@ -3331,8 +3417,19 @@ class PlotSpikeInfo(QObject):
         else:
             df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
         df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
-
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
+        print("preprocessing : df cols: ", df.columns)
+        if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
+            CP(
+                "r",
+                "\nLowestCurrentSpike is valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
+            )
+        else:
+            CP(
+                "g",
+                "\nLowestCurrentSpike is NOT valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
+            )
+
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
                 df["Group"] = "Control"
