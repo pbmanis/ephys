@@ -628,7 +628,7 @@ class SpikeAnalysis:
             self.getClassifyingInfo()  # build analysis summary here as well.
         else:
             self.analysis_summary["LowestCurrentSpike"] = None
-        print("\n\nLowest current spike info: ", lcs)
+        print("\n\nLowest current spike info: ", self.analysis_summary["LowestCurrentSpike"])
 
         if printSpikeInfo:
             pp = pprint.PrettyPrinter(indent=4)
