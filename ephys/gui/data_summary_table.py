@@ -16,6 +16,7 @@ from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 
 import ephys
 from ephys.tools import map_cell_types as MCT
+import ephys.tools.filename_tools as filename_tools
 from ephys.gui import data_table_functions as functions
 
 FUNCS = functions.Functions()
@@ -538,15 +539,15 @@ class TableManager:
             FUNCS.textappend(msg)
         print("Table exported in Report")
     
-    def print_indexfile(self, dataframe:pd.DataFrame, indexrow:IndexData):
+    def print_indexfile(self, index_row:IndexData):
         """
         Print the values in the index file
         """
-        return  # this is broken.
+
         print("=" * 80)
         print("\nIndex file and data file params")
-        cprint("c", f"Index row: {str(indexrow.row):s}")
-        data = self.get_table_data(indexrow)
+        cprint("c", f"Index row: {str(index_row.row):s}")
+        data = self.get_table_data(index_row)
         print(data)
         print(self.parent.datasummary.cell_id)
         d = filename_tools.get_cell(self.experiment,  df=self.parent.datasummary,  cell_id = data.cell_id)
