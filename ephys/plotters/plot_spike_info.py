@@ -61,6 +61,7 @@ def concurrent_data_plotting(
     infobox: dict = None,
     textbox: object = None,
     status_bar_message: object = None,
+    existing_plot: Optional[object] = None,
 ):
     assert mode in ["categorical", "continuous", "combined"]
     assert data_class in ["spike_measures", "FI_measures", "rmtau_measures", None]
@@ -86,7 +87,7 @@ def concurrent_data_plotting(
 
     if mode == "categorical":
         df = PSI_.preload(filename)
-        print("categorical")
+        # print("categorical")
         if group_by == ["nan"]:
             if status_bar_message is None:
                 raise ValueError("group_by is null: please select group for categorical plot")
@@ -947,7 +948,9 @@ class PlotSpikeInfo(QObject):
                     print("row group: ", row.Group, " is in removables")
                     row[data] = np.nan
                     return row
-        if pd.isnull(row[data]) or len(row[data]) == 0 or row[data] == "nan":
+        # print("clear missing groups: ", row[data])
+        # print(row["AdaptIndex2_bestRs"])
+        if pd.isnull(row[data]) or row[data] == "nan" or (isinstance(row[data], list) and len(row[data]) == 0):
             # print("row[data] is" , row[data])
             if replacement is not None:
                 row[data] = replacement
@@ -1007,14 +1010,22 @@ class PlotSpikeInfo(QObject):
         # df_x = self.fill_missing_groups(df_x, xname, celltype)  # make sure emtpy groups have nan
         # print("dfx type 4: ", type(df_x))
         if "default_group" in self.experiment.keys():
+            # clear both x and y data if nan... 
             df_x = df_x.apply(
                 self.clear_missing_groups,
                 axis=1,
                 data=xname,
                 replacement=self.experiment["default_group"],
             )
+            df_x = df_x.apply(
+                self.clear_missing_groups,
+                axis=1,
+                data=yname,
+                replacement=self.experiment["default_group"],
+            )
         else:
             df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname)
+            df_x = df_x.apply(self.clear_missing_groups, axis=1, data=yname)
         # print("dfx type 5: ", type(df_x))
         # print("uniques: ", df_x[xname].unique())
         df_x.dropna(subset=[xname], inplace=True)
@@ -1041,6 +1052,8 @@ class PlotSpikeInfo(QObject):
         else:
             dodge = False
             hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
+        
+        
         if (
             "remove_expression" in self.experiment.keys()
             and self.experiment["remove_expression"] is not None
@@ -1146,6 +1159,9 @@ class PlotSpikeInfo(QObject):
             )
 
         if not all(np.isnan(df_x[yname])):
+
+            df_x = df_x.dropna(subset=[yname])
+            df_x = df_x.dropna(subset=[xname])
             sns.boxplot(
                 data=df_x,
                 x=xname,
@@ -1572,7 +1588,7 @@ class PlotSpikeInfo(QObject):
 
             nrows = len(self.experiment["celltypes"])
             cols = len(measures)
-
+        print("rows, cols: ", nrows, cols)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         # print(df.cell_type.unique())
@@ -1588,12 +1604,12 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-
+        print("local measures: ", local_measures)
         # print("plot order: ", plot_order)
         for icol, measure in enumerate(local_measures):
             # if measure in ["AP_thr_V", "AHP_depth_V"]:
             #     CP("y", f"{measure:s}: {df[measure]!s}")
-            if measure.startswith("dvdt_ratio_best"):
+            if measure.startswith("dvdt_ratio_bestRs"):
                 if measure not in df.columns:
                     df[measure] = {}
                 df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
@@ -1602,7 +1618,6 @@ class PlotSpikeInfo(QObject):
             else:
                 tf = None
 
-            # print(":: cell types ::", self.experiment["celltypes"])
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
                     # print("measure y: ", measure, "celltype: ", celltype)
@@ -1655,11 +1670,11 @@ class PlotSpikeInfo(QObject):
                 # here we probably have the cell type or group as the x category,
                 # so we will simplify some things
                 axp = P.axdict[f"{plabels[icol]:s}"]
-
                 x_measure = "_".join((measure.split("_"))[:-1])
                 if x_measure not in self.ylims["default"]:
                     continue
                 if measure not in df.columns:
+                    print("measure not in df_columns: ", measure, df.columns)
                     continue
                 if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
                     axp.text(
@@ -1672,6 +1687,7 @@ class PlotSpikeInfo(QObject):
                         va="bottom",
                     )
                 plot_order = [p for p in plot_order if p in df[xname].unique()]
+                # print(df[measure], df[xname])
                 picker_func = self.create_one_plot_categorical(
                     data=df,
                     xname=xname,
@@ -2150,6 +2166,8 @@ class PlotSpikeInfo(QObject):
             Use log scale on x axis, by default False
         """
         dfp = data.copy()
+        if plot_order == []:
+            raise ValueError("Empty plot order")
 
         if celltype != "all":
             dfp = dfp[dfp["cell_type"] == celltype]
@@ -2178,7 +2196,6 @@ class PlotSpikeInfo(QObject):
 
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
-        print("CHECKING X LABEL: ", ax.get_label())
         if publication_plot_mode and ax.get_label() == "age_category":
             ax.set_xlabel("Age Group")
         # print("Plotted measure: ", y, "for celltype: ", celltype)
