@@ -25,7 +25,7 @@ $PYTHONVER -m pip install Cython
 #
 # #Then:
 #
-pip3 install -r requirements_local.txt
+pip3 install -r requirements.txt
 source $ENVNAME/bin/activate
 python3 --version
-python setup.py develop
+# python setup.py develop
