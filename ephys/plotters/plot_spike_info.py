@@ -70,7 +70,7 @@ def concurrent_data_plotting(
     experiment = parameters["experiment"]
     datasummary = parameters["datasummary"]
     group_by = parameters["group_by"]
-    colors = parameters["colors"]
+    plot_colors = parameters["plot_colors"]
     hue_category = parameters["hue_category"]
     pick_display_function = parameters["pick_display_function"]
 
@@ -105,7 +105,7 @@ def concurrent_data_plotting(
             plot_order=experiment["plot_order"][group_by],
             data_class=data_class,
             measures=experiment[data_class],
-            colors=colors,
+            plot_colors=plot_colors,
             enable_picking=picker_active,
             representation=representation,
             publication_plot_mode=publication_plot_mode,
@@ -121,7 +121,7 @@ def concurrent_data_plotting(
             hue_category=hue_category,
             plot_order=experiment["plot_order"][group_by],
             measures=experiment[data_class],
-            colors=colors,
+            plot_colors=plot_colors,
             representation=representation,
             enable_picking=False,
             publication_plot_mode=publication_plot_mode,
@@ -961,7 +961,8 @@ class PlotSpikeInfo(QObject):
             else:
                 row[data] = np.nan
         return row
-
+   
+        
     def bar_pts(
         self,
         df,
@@ -973,9 +974,7 @@ class PlotSpikeInfo(QObject):
         scale: float = 1.0,
         ax: mpl.axes = None,
         plot_order: Optional[list] = None,
-        colors: Optional[dict] = None,
-        edgecolor: str = "k",
-        marker_size: float = 2.75,
+        plot_colors: Optional[dict] = None,
         enable_picking: bool = True,
         publication_plot_mode: bool = False,
     ):
@@ -1002,8 +1001,8 @@ class PlotSpikeInfo(QObject):
 
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
         # print("dfx type 2: ", type(df_x))
-        if colors is None:  # set all to blue
-            colors = {df_x[g]: "b" for g in plot_order}
+        if plot_colors is None:  # set to defaults
+            raise ValueError("Must set plot colors in the configuration file")
         # df_x.dropna(subset=[groups], inplace=True)  # drop anything unassigned
         df_x[yname] = df_x[yname].astype(float)  # make sure values to be plotted are proper floats
         # print("dfx type 3: ", type(df_x))
@@ -1029,32 +1028,17 @@ class PlotSpikeInfo(QObject):
         else:
             df_x = df_x.apply(self.clear_missing_groups, axis=1, data=xname)
             df_x = df_x.apply(self.clear_missing_groups, axis=1, data=yname)
-        # print("dfx type 5: ", type(df_x))
-        # print("uniques: ", df_x[xname].unique())
         df_x.dropna(subset=[xname], inplace=True)
-        # CP(
-        #     "y",
-        #     f"      b_rpts: Celltype: {celltype:s}, Groups: {df_x.Group.unique()!s} expression: {df_x.cell_expression.unique()!s}",
-        # )
-        # fix cell expression when it is empty (no string). This means "negative".
         if "cell_expression" in df_x.columns:
             df_x = df_x.apply(self.fix_cell_expression, axis=1)
 
         dodge = True
-        if (
-            "hue_palette" in self.experiment.keys()
-            and hue_category in self.experiment["hue_palette"].keys()
-        ):
-            hue_palette = self.experiment["hue_palette"][hue_category]
-        else:
-            hue_category = xname
-            hue_palette = colors
-        if hue_category != xname:
-            dodge = True
-            hue_order = self.experiment["plot_order"][hue_category]
-        else:
-            dodge = False
-            hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
+        print("xname: ", xname)
+        print("self.experiment hue: ", self.experiment["hue_palette"])
+        hue_palette = self.experiment["hue_palette"][xname]
+        hue_order = self.experiment["plot_order"][xname]
+        hue_category = xname
+        dodge = self.experiment["dodge"][xname]
 
         if (
             "remove_expression" in self.experiment.keys()
@@ -1066,25 +1050,25 @@ class PlotSpikeInfo(QObject):
                 if expression in hue_order:
                     hue_order.remove(expression)
 
-        if hue_category == "sex":
-            #######
-            ### Technically, this should ONLY be set from the configuration file.
-            #######
-            # print("setting hue_palette via sex")
-            hue_palette = {
-                "F": "#FF000088",
-                "M": "#0000ff88",
-                " ": "k",
-                "AIE": "#444488FF",
-                "CON": "#9999ddFF",
-            }
+        # if hue_category == "sex":
+        #     #######
+        #     ### Technically, this should ONLY be set from the configuration file.
+        #     #######
+        #     # print("setting hue_palette via sex")
+        #     hue_palette = {
+        #         "F": "#FF000088",
+        #         "M": "#0000ff88",
+        #         " ": "k",
+        #         "AIE": "#444488FF",
+        #         "CON": "#9999ddFF",
+        #     }
         # elif hue_category == "temperature":
         #     hue_palette = {"22": "#0000FF88", "34": "#FF000088", " ": "#888888FF"}
         out_of_bounds_markers = "^"  #  for h in hue_order]
         # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
-
+        print("hue category: ", hue_category, hue_palette, xname, yname)
         # must use scatterplot if you want to use picking.
         if enable_picking:
             # print("xname, uniqe xnames: ", xname, df_x[xname].unique())
@@ -1093,17 +1077,15 @@ class PlotSpikeInfo(QObject):
                 x=xname,
                 y=yname,
                 hue=hue_category,
-                # style=hue_category,
                 data=df_x,
-                size=marker_size,
-                # fliersize=None,
                 alpha=1.0,
                 ax=ax,
                 palette=hue_palette,
-                edgecolor=edgecolor,
-                linewidth=0.5,
+                size=plot_colors['symbol_size'],
+                edgecolor=plot_colors['symbol_edge_color'],
+                linewidth=plot_colors['symbol_edge_width'],
                 order=plot_order,
-                hue_order=plot_order,
+                hue_order=hue_order,
                 picker=enable_picking,
                 zorder=100,
                 clip_on=False,
@@ -1119,14 +1101,14 @@ class PlotSpikeInfo(QObject):
                 order=plot_order,
                 hue_order=hue_order,
                 dodge=dodge,
-                size=marker_size,
                 # fliersize=None,
                 jitter=0.25,
                 alpha=1.0,
                 ax=ax,
-                palette=hue_palette,
-                edgecolor=edgecolor,
-                linewidth=0.5,
+                palette=self.experiment['plot_colors']['symbol_colors'],
+                size=plot_colors['symbol_size'], # marker_size,
+                edgecolor=plot_colors['symbol_edge_color'],
+                linewidth=plot_colors['symbol_edge_width'],
                 picker=enable_picking,
                 zorder=100,
                 clip_on=True,
@@ -1138,7 +1120,7 @@ class PlotSpikeInfo(QObject):
             # print("out of bounds: ", df_outbounds)
             # print("ymax: ", ymax)
 
-            sns.stripplot(
+            sns.stripplot( 
                 x=xname,
                 y=yname,
                 hue=hue_category,
@@ -1147,21 +1129,19 @@ class PlotSpikeInfo(QObject):
                 hue_order=hue_order,
                 marker=out_of_bounds_markers,
                 dodge=dodge,
-                size=marker_size,
-                # fliersize=None,
+                size=plot_colors['symbol_size'], # marker_size,
+                edgecolor=plot_colors['symbol_edge_color'],
+                linewidth=plot_colors['symbol_edge_width'],
                 jitter=0.25,
                 alpha=1.0,
                 ax=ax,
-                palette=hue_palette,
-                edgecolor=edgecolor,
-                linewidth=0.5,
+                palette=self.experiment['plot_colors']['symbol_colors'],
                 picker=enable_picking,
                 zorder=100,
                 clip_on=False,
             )
 
         if not all(np.isnan(df_x[yname])):
-
             df_x = df_x.dropna(subset=[yname])
             df_x = df_x.dropna(subset=[xname])
             sns.boxplot(
@@ -1170,13 +1150,14 @@ class PlotSpikeInfo(QObject):
                 y=yname,
                 hue=hue_category,
                 hue_order=hue_order,
-                palette=hue_palette,
+                palette=self.experiment['plot_colors']['bar_background_colors'],
                 ax=ax,
                 order=plot_order,
-                saturation=0.25,
+                saturation=self.experiment['plot_colors']['bar_saturation'],
+                width = self.experiment['plot_colors']['bar_width'],
                 orient="v",
                 showfliers=False,
-                linewidth=0.5,
+                linewidth=self.experiment['plot_colors']['bar_edge_width'],
                 zorder=50,
                 # clip_on=False,
             )
@@ -1367,12 +1348,13 @@ class PlotSpikeInfo(QObject):
         """export_r _summary_
         Export  the relevant data to a csv file to read in R for further analysis.
         """
-        # print("Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
-        if hue_category is None:
+        print("Export_r: Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
+        if (hue_category is None or hue_category == "None"):
             columns = [xname]
         else:
             columns = [xname, hue_category]
         columns.extend(measures)
+        print("Columns: ", columns)
         parameters = [
             "Rs",
             "Rin",
@@ -1424,7 +1406,7 @@ class PlotSpikeInfo(QObject):
             if c not in columns:
                 columns.append(c)
         select_by = "Rs"
-        df_R = df[[c for c in columns if c != "peak_V"]]
+        df_R = df[[c for c in columns]]
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
         if "Rs" in df_R.columns:
@@ -1549,7 +1531,7 @@ class PlotSpikeInfo(QObject):
         representation: str = "all",
         publication_plot_mode: bool = False,
         axes: list = None,  # if None, we make a new figure; otherwise we use these axes in order
-        colors=None,
+        plot_colors:dict=None,
         enable_picking=False,
         parent_figure=None,
     ):
@@ -1706,8 +1688,7 @@ class PlotSpikeInfo(QObject):
                         celltype=celltype,
                         hue_category=hue_category,
                         plot_order=plot_order,
-                        colors=colors,
-                        # edgecolor=edgecolor,
+                        plot_colors=plot_colors,
                         logx=False,
                         ylims=ylims,
                         transform=tf,
@@ -1757,7 +1738,7 @@ class PlotSpikeInfo(QObject):
                     celltype="all",
                     hue_category=hue_category,
                     plot_order=plot_order,
-                    colors=colors,
+                    plot_colors=plot_colors,
                     logx=False,
                     ylims=self.ylims["default"][x_measure],
                     transform=tf,
@@ -2194,8 +2175,7 @@ class PlotSpikeInfo(QObject):
         celltype,
         hue_category: str = None,
         plot_order=None,
-        colors=None,
-        edgecolor="k",
+        plot_colors:dict=None,
         logx: bool = False,
         ylims=None,
         xlims=None,
@@ -2206,7 +2186,7 @@ class PlotSpikeInfo(QObject):
     ):
         """create_one_plot create one plot for a cell type, using categorical data in x.
 
-        Parameters
+        
         ----------
         data : Pandas dataframe
             Data to plot
@@ -2219,8 +2199,13 @@ class PlotSpikeInfo(QObject):
         celltype : str
             Cell type to plot
         colors: : dict or None
-            dict of colors by x categories
+            dict of colors by x categories  - color of the bars
             if None, all categories will be blue.
+        face_color: str
+            color of the face of the symbols
+        edgecolor: str
+            color of the edge of the symbols
+        
         picker_funcs : dict
             Dictionary of picker functions
         picker_func : Picker
@@ -2251,8 +2236,7 @@ class PlotSpikeInfo(QObject):
             hue_category=hue_category,
             celltype=celltype,
             plot_order=plot_order,
-            colors=colors,
-            edgecolor=edgecolor,
+            plot_colors=plot_colors,
             enable_picking=enable_picking,
             publication_plot_mode=publication_plot_mode,
         )
@@ -2632,7 +2616,7 @@ class PlotSpikeInfo(QObject):
         celltype: str,
         group_by: str,
         ptype: Literal["mean", "std", "sum", "individual"],
-        colors: list,
+        colors: dict,
         plot_order: list,
         NCells: dict,
         found_groups: list,
@@ -2757,20 +2741,23 @@ class PlotSpikeInfo(QObject):
                     if FIx_all[group][ix][0] != 0.0:
                         FIx_all[group][ix] = np.insert(FIx_all[group][ix], 0, 0)
                         FIy_all[group][ix] = np.insert(FIy_all[group][ix], 0, 0)
+                    ystd.append(0)
                 # print()
                 # for ix, f in enumerate(FIy_all[group]):
-                print(group, len(f), f, FIx_all[group][ix])
-                fiy = np.array(FIy_all[group])
-                # print(fiy.shape)
-                for i in range(fiy.shape[1]):
-                    # print("fyi[i]: ")
-                    # for j in range(fiy.shape[0]):
-                    #     print(fiy[j,i])
-                    # print(len(fiy[:,i]))
-                    res = scipy.stats.bootstrap((fiy[:,i].ravel(),),
-                                                statistic=np.std, n_resamples=10000, confidence_level=Q, rng=rng,
-                                                vectorized=True)
-                    ystd.append(res.confidence_interval)
+                # print(group, len(f), f, FIx_all[group][ix])
+                # print()
+                # fiy = FIy_all[group]
+                # print(fiy[0])
+                # print(fiy[1])
+                # for iy in range(len(fiy)):
+                #     print(iy, len(fiy[iy]), fiy[iy])
+
+                # for i in range(len(fiy)):  # for each current level
+                #     res = scipy.stats.bootstrap((np.array(fiy[:,i]).ravel(),),
+                #                                 statistic=np.std, n_resamples=10000, confidence_level=Q, rng=rng,
+                #                                 vectorized=True)
+                #     ystd.append(res.confidence_interval)
+
                 if len(fx) == 0:
                     continue
                 if "max_FI" in self.experiment.keys():
@@ -2779,7 +2766,7 @@ class PlotSpikeInfo(QObject):
                     fx[fx <= max_FI],
                     fy[fx <= max_FI],
                     yerr=fystd[fx <= max_FI], # / np.sqrt(yn[fx <= max_FI]),
-                    color=colors[group],
+                    color=colors['line_plot_colors'][group],
                     marker="o",
                     markersize=2.5,
                     linewidth=0.75,
