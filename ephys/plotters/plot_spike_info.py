@@ -1102,7 +1102,7 @@ class PlotSpikeInfo(QObject):
                 hue_order=hue_order,
                 dodge=dodge,
                 # fliersize=None,
-                jitter=0.25,
+                jitter=self.experiment['plot_colors']['jitter'],
                 alpha=1.0,
                 ax=ax,
                 palette=self.experiment['plot_colors']['symbol_colors'],
@@ -1132,7 +1132,7 @@ class PlotSpikeInfo(QObject):
                 size=plot_colors['symbol_size'], # marker_size,
                 edgecolor=plot_colors['symbol_edge_color'],
                 linewidth=plot_colors['symbol_edge_width'],
-                jitter=0.25,
+                jitter=self.experiment['plot_colors']['jitter'],
                 alpha=1.0,
                 ax=ax,
                 palette=self.experiment['plot_colors']['symbol_colors'],
@@ -1159,6 +1159,7 @@ class PlotSpikeInfo(QObject):
                 showfliers=False,
                 linewidth=self.experiment['plot_colors']['bar_edge_width'],
                 zorder=50,
+                dodge=False,
                 # clip_on=False,
             )
         # except Exception as e:
