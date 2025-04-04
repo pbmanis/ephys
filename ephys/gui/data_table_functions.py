@@ -126,13 +126,15 @@ datacols = [
     "AP_peak_V",
     "AP15Rate",
     "AdaptRatio",
+    "AdaptRatio2",
     "AdaptIndex",
+    "AdaptIndex2",
     "AHP_trough_V",
     "AHP_depth_V",
     "AHP_trough_T",
     "tauh",
     "Gh",
-    "FiringRate",
+    # "FiringRate",
 ]
 
 iv_keys: list = [
@@ -160,6 +162,7 @@ spike_keys: list = [
     "FI_Growth",
     "AdaptRatio",
     "AdaptIndex",
+    "AdaptIndex2",
     "FI_Curve",
     "FiringRate",
     "AP1_Latency",
@@ -169,10 +172,17 @@ spike_keys: list = [
     "AP2_HalfWidth",
     "AP2_HalfWidth_interpolated",
     "FiringRate_1p5T",
+    "AP_peak",
     "AP_peak_V",
-    "AHP_Depth",
-    "AHP_Trough",
-    "spikes",
+    "AP_thr_V",
+    "AP_thr_T",
+    "AP_HW",
+    "dvdt_rising",
+    "dvdt_falling",
+    "dvdt_ratio",
+    "AHP_depth_V",
+    "AHP_trough_V",
+    "AHP_trough_T" "spikes",
     "iHold",
     "pulseDuration",
     "baseline_spikes",
@@ -194,12 +204,16 @@ mapper: dict = {
     "dvdt_rising": "dvdt_rising",
     "dvdt_falling": "dvdt_falling",
     "dvdt_ratio": "dvdt_ratio",
+    "AdaptRatio": "AdaptRatio",
+    "AdaptIndex": "AdaptIndex",
+    "AdaptIndex2": "AdaptIndex2",
 }
 # map summary/not individual spike data to top level keys
 mapper1: dict = {
     "AP15Rate": "FiringRate_1p5T",
     "AdaptRatio": "AdaptRatio",
     "AdaptIndex": "AdaptIndex",
+    # "holding": "iHold",
 }
 
 iv_mapper: dict = {
@@ -1954,7 +1968,7 @@ class Functions:
                 )
         return FI_Data_I, FI_Data_FR, FI_Data_FR_Std, FI_Data_N
 
-    def avg_group(self, x, y, ndim=2):
+    def avg_group(self, x, y, errtype: str = "std", Q: float = 0.95, ndim=2):
         if ndim == 2:
             x = np.array([a for b in x for a in b])
             y = np.array([a for b in y for a in b])
@@ -1963,6 +1977,7 @@ class Functions:
             y = np.array(y)
         # x = np.ravel(x) # np.array(x)
         # y = np.array(y)
+        # print(x.shape, y.shape)
         xa, ind, counts = np.unique(
             x, return_index=True, return_counts=True
         )  # find unique values in x
@@ -1974,8 +1989,25 @@ class Functions:
             # print("dupe: ", dupe)
             # print(np.where(x==dupe), np.where(xa==dupe))
             ya[np.where(xa == dupe)] = np.nanmean(y[np.where(x == dupe)])
-            ystd[np.where(xa == dupe)] = np.nanstd(y[np.where(x == dupe)])
-            yn[np.where(xa == dupe)] = np.count_nonzero(~np.isnan(y[np.where(x == dupe)]))
+            if errtype == "std":
+                ystd[np.where(xa == dupe)] = np.nanstd(y[np.where(x == dupe)])
+            elif errtype == "sem":
+                ystd[np.where(xa == dupe)] = np.nanstd(y[np.where(x == dupe)]) / np.sqrt(
+                    np.count_nonzero(~np.isnan(y[np.where(x == dupe)]))
+                )
+            elif errtype == "CI":
+                # bootstrapped maybe?
+                rng = np.random.default_rng(seed=19)
+                res = scipy.stats.bootstrap(
+                    y[np.where(x == dupe)],
+                    axis=1,
+                    statistic=np.std,
+                    n_resamples=10000,
+                    confidence_level=Q,
+                    rng=rng,
+                )
+                ystd[np.where(xa == dupe)] = res.confidence_interval
+                # ystd[np.where(xa == dupe)] = np.nanpercentile(y[np.where(x == dupe)], q=Q/100, axis=0, method='weibull')
         return xa, ya, ystd, yn
 
     # get maximum slope from fit.
@@ -2150,17 +2182,17 @@ class Functions:
 
         return hill_max_derivs, hill_i_max_derivs, FI_fits, linfits
 
-    def compute_FI_Fits(
+    def combine_measures_and_FI_Fits(
         self,
         experiment,
         df: pd.DataFrame,
         cell: str,
         protodurs: dict = None,
     ):
-        """compute_FI_Fits
+        """combine_measures_and_FI_Fits
         Assemble data from multiple protocols to compute the FI curve for a cell.
         This allows us to splice together data from multiple protocols to get a complete FI curve.
-        We also assemble other data (input resistances, adaptation indices, etc).
+        We also assemble other measures into the assembled file (input resistances, adaptation indices, etc).
 
         Parameters
         ----------
@@ -2208,12 +2240,12 @@ class Functions:
             return None
         # print("    df_tmp group>>: ", df_tmp.Group.values)
         # print("    df_cell group>>: ", df_cell.keys())
-        # print("compute_FI_Fits: ", df_tmp.keys())
+        # print("combine_measures_and_FI_Fits: ", df_tmp.keys())
         protocol_list = list(df_cell.Spikes.keys())
         # build protocols excluding removed protocols
         protocols = []
         day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
-        for protocol in protocol_list:
+        for protocol in protocol_list:  # check for spike analysis exclusions later
             if not self.check_excluded_dataset(day_slice_cell, experiment, protocol):
                 protocols.append(protocol)
             # else:
@@ -2310,11 +2342,12 @@ class Functions:
         for colname in datacols:
             if colname not in datadict.keys():
                 datadict[colname] = None
-
+        self.experiment = experiment
         # get the measures for the fixed values from the measure list
         for measure in datacols:
             datadict = self.get_measure(
                 df_cell,
+                cell,
                 measure,
                 datadict,
                 protocols,
@@ -2659,7 +2692,24 @@ class Functions:
                 )
 
     def find_lowest_current_spike(self, row, SP):
-        measured_first_spike = False
+        """find_lowest_current_spike Find the first spike that is evoked at the lowest current
+        level from all the spike data for this protocol.
+        ***** NOT CALLED IN THIS CLASS ****
+        Parameters
+        ----------
+        row : Pandas series from the main dataframe
+            row of the dataframe to fill in with the results
+        SP : spike shape data structure
+
+
+        Returns
+        -------
+        row : Pandas series
+            from the main dataframe, updated with specific measures for
+            the lowest current spike
+
+        """
+
         dvdts = []
         for tr in SP.spikeShapes:  # for each trace
             if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
@@ -2682,6 +2732,7 @@ class Functions:
             if dvdts[min_current].halfwidth_interpolated is not None:
                 row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
             row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
+            row.AP_peak_V = 1e3 * dvdts[min_current].peak_V
             CP(
                 "y",
                 f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f},"
@@ -2691,6 +2742,22 @@ class Functions:
         return row
 
     def find_lowest_current_trace(self, spikes):
+        """find_lowest_current_trace : find the trace with the lowest current
+        that evokes at least one spike.
+
+        Parameters
+        ----------
+        spikes : dict spike data
+            spike data dict by trace and spike number
+            Each element is of the dataclass OneSpike (see spike_analysis.py for
+            definition)
+
+        Returns
+        -------
+        tuple
+            Index into the current array, the current avlue, and the trace number
+            corresponding to the trace with the lowest current that evoked a spike.
+        """
         current = []
         trace = []
         for sweep in spikes["spikes"]:
@@ -2928,13 +2995,15 @@ class Functions:
         self.measures["value"].append(value)
         self.measures["trace"].append(trace)
 
-    def get_measure(self, df_cell, measure, datadict, protocols, threshold_slope: float = 20.0):
+    def get_measure(self, df_cell:pd.DataFrame, cell_id: str, measure:str, datadict, protocols, threshold_slope: float = 20.0):
         """get_measure : for the given cell, get the measure from the protocols
 
         Parameters
         ----------
         df_cell : _type_
             _description_
+        cell_id: str
+            The Cell id in the form of yyyy.mm.dd_000/slice_nnn/cell_nnn
         measure : _type_
             _description_
         datadict : _type_
@@ -2947,225 +3016,286 @@ class Functions:
         _type_
             _description_
         """
+        spkkeys = df_cell.Spikes[protocols[0]]["spikes"].keys()
+        # print(spkkeys)
+        # print("Get Measure, protocol keys: ", df_cell.Spikes[protocols[0]]['spikes'][1])
+        # df_cell.Spikes[protocols[0]]['spikes'][1] is a dictionary of the spikes in the trace
+        # each dict entry is a OneSpike, and has AP_begin_V (threshold V), peak_V, peak_T, current, etc.
+        # raise ValueError("Check the keys")
+        # print("="*120)
+        # print("get measure starting")
         self.measures = {"protocol": [], "measure": [], "value": [], "trace": []}
-        if measure in iv_keys:
-            for protocol in protocols:
-                if measure in df_cell.IV[protocol].keys():
-                    value = np.nan
-                    if measure != "taum":
-                        value = df_cell.IV[protocol][measure]
-                    # self.add_measure(protocol, measure, value=df_cell.IV[protocol][measure])
-                    else:  # handle taum by building array from the tau in taupars array
-                        if len(df_cell.IV[protocol]["taupars"]) == 0:
-                            value = (
-                                np.nan
-                            )  # self.add_measure(protocol, measure, value=np.nan)  # no fit data
-                        elif len(df_cell.IV[protocol]["taupars"]) == 3 and isinstance(
-                            df_cell.IV[protocol]["taupars"][2], float
-                        ):  # get the value from the fit, single nested
-                            value = df_cell.IV[protocol]["taupars"][2]
-                            # self.add_measure(
-                            #     protocol, measure, value=df_cell.IV[protocol]["taupars"][2]
-                            # )
-                        elif (  # get value from fit, nested list
-                            len(df_cell.IV[protocol]["taupars"]) == 1
-                            and isinstance(df_cell.IV[protocol]["taupars"], list)
-                            and len(df_cell.IV[protocol]["taupars"][0]) == 3
-                        ):
-                            value = df_cell.IV[protocol]["taupars"][0][2]
-                            # self.add_measure(
-                            #     protocol, measure, value=df_cell.IV[protocol]["taupars"][0][2]
-                            # )
-                        else:  # def a coding error
-                            print("what is wrong with taupars: ", df_cell.IV[protocol]["taupars"])
-                            exit()
-                    # print("TAU: ", protocol, measure, value)
-                    self.add_measure(protocol, measure, value=value)
-        elif measure in iv_mapper.keys() and iv_mapper[measure] in iv_keys:
-            for protocol in protocols:
-                if iv_mapper[measure] in df_cell.IV[protocol].keys():
-                    self.add_measure(
-                        protocol, measure, value=df_cell.IV[protocol][iv_mapper[measure]]
-                    )
-        elif measure in spike_keys:
+        # First we do the parameters in the iv (rmp, tau, rin, etc)
+        # print("  >>>> Measure: ", measure)
+        # known_measure = (measure in iv_keys) or (measure in iv_mapper.keys()) or (
+        #     measure in spike_keys
+        # ) or (measure in ["current"])
+        # if not known_measure:
+        #     print("        >>>> Not a known measure: ", measure)
+        #     raise ValueError()
+        #     datadict[measure] = np.nan
+        #     return datadict
+        match measure:
+            case measure if measure in iv_keys:
+                # print("        >>>> in iv_keys")
+                for protocol in protocols:
+                    if measure in list(df_cell.IV[protocol].keys()):
+                        value = np.nan
+                        if measure != "taum":
+                            value = df_cell.IV[protocol][measure]
+                        # self.add_measure(protocol, measure, value=df_cell.IV[protocol][measure])
+                        else:  # handle taum by building array from the tau in taupars array
+                            if len(df_cell.IV[protocol]["taupars"]) == 0:
+                                value = (
+                                    np.nan
+                                )  # self.add_measure(protocol, measure, value=np.nan)  # no fit data
+                            elif len(df_cell.IV[protocol]["taupars"]) == 3 and isinstance(
+                                df_cell.IV[protocol]["taupars"][2], float
+                            ):  # get the value from the fit, single nested
+                                value = df_cell.IV[protocol]["taupars"][2]
+                                # self.add_measure(
+                                #     protocol, measure, value=df_cell.IV[protocol]["taupars"][2]
+                                # )
+                            elif (  # get value from fit, nested list
+                                len(df_cell.IV[protocol]["taupars"]) == 1
+                                and isinstance(df_cell.IV[protocol]["taupars"], list)
+                                and len(df_cell.IV[protocol]["taupars"][0]) == 3
+                            ):
+                                value = df_cell.IV[protocol]["taupars"][0][2]
+                                # self.add_measure(
+                                #     protocol, measure, value=df_cell.IV[protocol]["taupars"][0][2]
+                                # )
+                            else:  # def a coding error
+                                print(
+                                    "what is wrong with taupars: ", df_cell.IV[protocol]["taupars"]
+                                )
+                                exit()
+                        # print("TAU: ", protocol, measure, value)
+                        self.add_measure(protocol, measure, value=value)
+            #
+            # Next we check what is in iv_mapper - this remaps the "measure" to
+            # a value in the data table.
+            # iv_mapper: dict = {
+            #     "tauh": "tauh_tau",
+            #     "Gh": "tauh_Gh",
+            #     "taum": "taum",
+            #     "taum_averaged": "taum_averaged",
+            #     "Rin": "Rin",
+            #     "RMP": "RMP",
+            # }
 
-            for protocol in protocols:
-                # print("p: ", p)
-                # if measure == "AdaptRatio":
-                #     if df_cell.Spikes[protocol][mapper1[measure]] > 8.0:
-                #         continue
-                #     print("\nprot, measure: ", protocol, measure, df_cell.Spikes[protocol][mapper1[measure]])
-                #     print(df_cell.Spikes[protocol].keys())
-                #     maxadapt = np.max([maxadapt, df_cell.Spikes[protocol][mapper1['AdaptRatio']]])
-                if measure in df_cell.Spikes[protocol].keys():
-                    self.add_measure(protocol, measure, value=df_cell.Spikes[protocol][measure])
-            # if maxadapt > 8:
-            #     exit()
-
-        elif measure in mapper1.keys() and mapper1[measure] in spike_keys:
-            for protocol in protocols:
-                if mapper1[measure] in df_cell.Spikes[protocol].keys():
-                    self.add_measure(
-                        protocol, measure, value=df_cell.Spikes[protocol][mapper1[measure]]
-                    )
-        elif measure == "current":
-            for protocol in protocols:  # for all protocols with spike analysis data for this cell
-                if "spikes" not in df_cell.Spikes[protocol].keys():
-                    self.add_measure(protocol, measure, value=np.nan)
-                    CP(
-                        "y",
-                        f"No spikes in protocol (measure=current):  {protocol!s}, {df_cell.Spikes[protocol].keys():s}",
-                    )
-                    self.add_measure(protocol, measure, value=np.nan)
-                    continue
-                # we need to get the first spike evoked by the lowest current level ...
-                min_current_index, current, trace = self.find_lowest_current_trace(
-                    df_cell.Spikes[protocol]
-                )
-                if not np.isnan(min_current_index):
-                    self.add_measure(protocol, measure, value=current)
-                else:
-                    self.add_measure(protocol, measure, value=np.nan)
-
-        else:
-            for protocol in protocols:  # for all protocols with spike analysis data for this cell
-                # we need to get the first spike evoked by the lowest current level ...
-                prot_spike_count = 0
-                if "spikes" not in df_cell.Spikes[protocol].keys():
-                    CP(
-                        "y",
-                        f"No spikes in protocol (measure={measure:s}: {protocol!s}, {df_cell.Spikes[protocol].keys():s}",
-                    )
-                    self.add_measure(protocol, measure, value=np.nan)
-                    continue
-                have_LCS_data = (
-                    "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
-                    and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
-                    and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
-                )
-                spike_data = df_cell.Spikes[protocol]["spikes"]
-                if measure in [
-                    "dvdt_rising",
-                    "dvdt_falling",
-                    # "dvdt_ratio",
-                    "AP_HW",
-                    "AP_begin_V",
-                    "AP_thr_V",
-                    "AP_peak_V",
-                    "AP_peak_T",
-                    "AHP_trough_V",
-                    "AHP_trough_T",
-                    "AHP_depth_V",
-                    "AHP_depth_T",
-                ]:  # use lowest current spike
+            case measure if (measure in list(iv_mapper.keys())) and (iv_mapper[measure] in iv_keys):
+                # print("        >>>> in iv_mapper")
+                for protocol in protocols:
+                    if iv_mapper[measure] in df_cell.IV[protocol].keys():
+                        self.add_measure(
+                            protocol, measure, value=df_cell.IV[protocol][iv_mapper[measure]]
+                        )
+            # get the current...
+            case ["current"]:
+                # print("        >>>> in current")
+                for (
+                    protocol
+                ) in protocols:  # for all protocols with spike analysis data for this cell
+                    if "spikes" not in df_cell.Spikes[protocol].keys():
+                        self.add_measure(protocol, measure, value=np.nan)
+                        CP(
+                            "y",
+                            f"No spikes in protocol (measure=current):  {protocol!s}, {df_cell.Spikes[protocol].keys():s}",
+                        )
+                        self.add_measure(protocol, measure, value=np.nan)
+                        continue
+                    # we need to get the first spike evoked by the lowest current level ...
                     min_current_index, current, trace = self.find_lowest_current_trace(
                         df_cell.Spikes[protocol]
                     )
                     if not np.isnan(min_current_index):
-                        spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                        self.add_measure(protocol, measure, value=spike_data[mapper[measure]])
+                        self.add_measure(protocol, measure, value=current)
                     else:
                         self.add_measure(protocol, measure, value=np.nan)
-                    # print("spike data: ", spike_data.keys())
 
-                elif not have_LCS_data:
-                    CP("r", "Lowest Current spike data is empty")
+            #
+            # Next we check the spike keys.
+            # this actually wont ever pass:
+            # df_cell.Spikes[protocols[0]]['spikes'][1] is a dictionary of the spikes in the trace
+            # because the keys in spikes are the trace numbers, not the measures.
+            # elif measure in spike_keys:
+            #     for protocol in protocols:
+            #         if measure in df_cell.Spikes[protocol].keys():
+            #             print("adding measure from spike keys: ", measure)
+            #             self.add_measure(protocol, measure, value=df_cell.Spikes[protocol][measure])
+            # or if they are mapped....
+            # elif measure in mapper1.keys() and mapper1[measure] in spike_keys:
+            #     for protocol in protocols:
+            #         if mapper1[measure] in df_cell.Spikes[protocol].keys():
+            #             self.add_measure(
+            #                 protocol, measure, value=df_cell.Spikes[protocol][mapper1[measure]]
+            #             )
+            case measure if measure in spike_keys:  # here we actually check the spike data
+                print("       >>>> in spike_keys")
+                for (
+                    protocol
+                ) in protocols:  # for all protocols with spike analysis data for this cell
+                    # we need to get the first spike evoked by the lowest current level ...
+                    prot_spike_count = 0
+                    sp_exc_list = self.experiment["exclude_Spikes"]
 
-                elif measure in ["AP_thr_V", "AP_begin_V"]:
-                    value = np.nan
-                    if have_LCS_data:
-                        CP("c", f"Adding {measure:s} from LCS to data [{protocol:s}]")
-                        if "AP_thr_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
-                            Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
-                            value = Vthr
-                        elif "AP_begin_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
-                            Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_begin_V"]
-                            value = Vthr
-
-                        else:
-                            print(
-                                "Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike",
-                                protocol,
-                                measure,
+                    # check the spike exclusion list for this protocol.
+                    cell_id_full = filename_tools.make_cellid_from_slicecell(cell_id)
+                    # print(cell_id, cell_id_full, "\n   ", sp_exc_list.keys())
+                    if (cell_id_full in sp_exc_list.keys()):
+                        skip = False
+                        if (protocol in sp_exc_list[cell_id_full]['protocols']):
+                            skip = True
+                        if 'all' in sp_exc_list[cell_id_full]['protocols']:
+                            skip = True
+                        if skip:
+                            CP(
+                            "y",
+                            f"Skipping protocol {cell_id_full:s} {protocol:s} because it is in the spike exclusion list, reason: {sp_exc_list[cell_id_full]['reason']}",
                             )
-                            print("LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys())
+                            continue
+                    if "spikes" not in df_cell.Spikes[protocol].keys():
+                        CP(
+                            "y",
+                            f"No spikes in protocol (measure={measure:s}: {protocol!s}, {df_cell.Spikes[protocol].keys():s}",
+                        )
+                        self.add_measure(protocol, measure, value=np.nan)
+
+                    have_LCS_data = (
+                        "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
+                        and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
+                        and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
+                    )
+                    # CP("b", f"    LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
+                    spike_data = df_cell.Spikes[protocol]["spikes"]
+                    # print("    checking measure in protocol: ", measure)
+                    if (
+                        measure
+                        in [
+                            "dvdt_rising",
+                            "dvdt_falling",
+                            # "dvdt_ratio",
+                            "AP_HW",
+                            "AP_begin_V",
+                            "AP_thr_V",
+                            "peak_V",
+                            "AP_peak_T",
+                            "AP_max_V"
+                            "AHP_trough_V",
+                            "AHP_trough_T",
+                            "AHP_depth_V",
+                            "AHP_depth_T",
+
+                        ]
+                        and have_LCS_data
+                    ):  # use lowest current spike
+                        min_current_index, current, trace = self.find_lowest_current_trace(
+                            df_cell.Spikes[protocol]
+                        )
+                        # print(
+                        #     "    Got spike for min current: ",
+                        #     min_current_index,
+                        #     current,
+                        #     trace,
+                        #     measure,
+                        # )
+                        if not np.isnan(min_current_index):
+                            spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
+                            self.add_measure(protocol, measure, value=spike_data[mapper[measure]])
+                        else:
+                            self.add_measure(protocol, measure, value=np.nan)
+                        # print("spike data: ", spike_data.keys())
+
+                    elif not have_LCS_data:
+                        CP("r", "Lowest Current spike data is empty")
+
+                    elif measure in ["AP_thr_V", "AP_begin_V"]:
+                        CP("m", "APTHR or BEGIN")
+                        value = np.nan
+                        if have_LCS_data:
+                            CP("c", f"Adding {measure:s} from LCS to data [{protocol:s}]")
+                            if "AP_thr_V" in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys():
+                                Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_V"]
+                                value = Vthr
+                            elif (
+                                "AP_begin_V"
+                                in df_cell.Spikes[protocol]["LowestCurrentSpike"].keys()
+                            ):
+                                Vthr = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_begin_V"]
+                                value = Vthr
+
+                            else:
+                                print(
+                                    "Failed to find AP_begin_V/AP_thr_V in LowestCurrentSpike",
+                                    protocol,
+                                    measure,
+                                )
+                                print(
+                                    "LCS: ", df_cell.Spikes[protocol]["LowestCurrentSpike"].keys()
+                                )
+                                value = np.nan
+                        else:
+                            df_cell.Spikes[protocol][
+                                "LowestCurrentSpike"
+                            ] = None  # install value, but set to None
+
+                            CP(
+                                "r",
+                                f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
+                            )
                             value = np.nan
+                        self.add_measure(protocol, measure, value=np.nan)
+
+                    elif measure in ["AP_thr_T"]:
+                        if have_LCS_data:
+                            Vthr_time = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_T"]
+                            self.add_measure(protocol, measure, value=Vthr_time)
+                        else:
+                            self.add_measure(protocol, measure, value=np.nan)
+                    elif measure in ["AP_peak_V"]:
+                        if have_LCS_data:
+                            AP_peak_V = (
+                                df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_peak_V"] * 1e-3
+                            )  # convert back to V *like AP_thr_V*
+                            self.add_measure(protocol, measure, value=AP_peak_V)
+                        else:
+                            self.add_measure(protocol, measure, value=np.nan)
+                    elif measure in ["AP_HW"]:
+                        if have_LCS_data:
+                            AP_HW = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_HW"]
+                            self.add_measure(protocol, measure, value=AP_HW)
+                    elif (
+                        measure in mapper.keys() and mapper[measure] in spike_data.keys()
+                    ):  # if the measure exists for this sweep
+                        CP("r", f"Adding measure: {measure:s} from {mapper[measure]:s}")
+                        self.add_measure(protocol, measure, value=spike_data[mapper[measure]][0])
+                    elif measure in [
+                        "dvdt_ratio",
+                        "AP_height_V",
+                    ]:  # calculated values based on data (ratio, difference)
+                        pass
                     else:
-                        df_cell.Spikes[protocol][
-                            "LowestCurrentSpike"
-                        ] = None  # install value, but set to None
                         CP(
                             "r",
-                            f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
+                            f"Measure <{measure:s}> not found in spike_data keys:, {mapper.keys()!s}",
                         )
-                        value = np.nan
-                    self.add_measure(protocol, measure, value=np.nan)
+                        # CP(
+                        #     "r",
+                        #     f"\n   or mapped in {mapper[measure]!s} to {spike_data.keys()!s}",
+                        # )
+                        # raise ValueError()
 
-                elif measure in ["AP_thr_T"]:
-                    if have_LCS_data:
-                        Vthr_time = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_thr_T"]
-                        self.add_measure(protocol, measure, value=Vthr_time)
-                    # else:
-                    #     print(df_cell.Spikes[protocol].keys())
-                    # min_current_index, current, trace = self.find_lowest_current_trace(
-                    #     df_cell.Spikes[protocol]
-                    # )
+                    prot_spike_count += 1
 
-                    # if not np.isnan(min_current_index):
-                    #     spike_data = df_cell.Spikes[protocol]["spikes"][trace][0].__dict__
-                    #     # CP("c", "Check AP_thr_V")
-
-                    #     Vthr, Vthr_time = UTIL.find_threshold(
-                    #         spike_data["V"],
-                    #         np.mean(np.diff(spike_data["Vtime"])),
-                    #         threshold_slope=threshold_slope,
-                    #     )
-                    #     m.append(Vthr)
-                    # else:
-                    #     m.append(np.nan)
-                elif measure in ["AP_HW"]:
-                    if have_LCS_data:
-                        AP_HW = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_HW"]
-                        self.add_measure(protocol, measure, value=AP_HW)
-                elif (
-                    measure in mapper.keys() and mapper[measure] in spike_data.keys()
-                ):  # if the measure exists for this sweep
-                    CP("r", f"Adding measure: {measure:s} from {mapper[measure]:s}")
-                    self.add_measure(protocol, measure, value=spike_data[mapper[measure]][0])
-                elif measure in ["dvdt_ratio"]:
-                    pass
-                else:
-                    # print(measure in mapper.keys())
-                    # print(spike_data.keys())
-                    CP(
-                        "r",
-                        f"measure <{measure:s}> not found in spike_data keys:, {mapper.keys()!s}",
-                    )
-                    CP(
-                        "r",
-                        f"\n   or mapped in {mapper[measure]!s} to {spike_data.keys()!s}",
-                    )
-                    raise ValueError()
-
-                prot_spike_count += 1
-
-        # CP("c", f"measure: {measure!s}  : {m!s}")
-        # else:
-        #     print(
-        #         f"measure {measure:s} not found in either IV or Spikes keys. Skipping"
-        #     )
-        #     raise ValueError(f"measure {measure:s} not found in either IV or Spikes keys. Skipping")
-        # print("measures: ", measure, m)
-        # print("self.measures: ", self.measures)
+            case _:
+                # CP("r", f"Measure {measure:s} did not match any actions")
+                pass
         for i, xm in enumerate(self.measures["value"]):
             if self.measures["value"][i] is None:
                 self.measures["value"][i] = np.nan
-            # m = [u for u in m if u is not None else np.nan] # sanitize data
         N = np.count_nonzero(~np.isnan(self.measures["value"]))
-        # print("N: ", N)
-        # print("datadict: ", datadict)
-        # print("measure: ", measure)
-        # print(self.measures["value"])
+
         if datadict[measure] is None:
             datadict[measure] = []
         if N > 0:
