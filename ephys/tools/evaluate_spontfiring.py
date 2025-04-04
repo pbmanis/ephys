@@ -53,8 +53,10 @@ def categorize_ages(row, experiment):
 AR = DR.acq4_reader.acq4_reader()
 SP = EP.spike_analysis.SpikeAnalysis()
 
-def setup(config_file_path:Union[Path, str]="./config/experiments.cfg", dataset: str="NF107Ai32_Het"):
-    
+
+def setup(
+    config_file_path: Union[Path, str] = "./config/experiments.cfg", dataset: str = "NF107Ai32_Het"
+):
 
     datasets, experiments = get_configuration(config_file_path)
 
@@ -82,7 +84,7 @@ def setup(config_file_path:Union[Path, str]="./config/experiments.cfg", dataset:
                 Path(map_annotationFile).with_suffix(".xlsx"), sheet_name="Sheet1"
             )
             print("Reading map annotation file: ", map_annotationFile)
-    
+
     dbfile = Path(
         experiments[dataset]["databasepath"],
         experiments[dataset]["directory"],
@@ -114,7 +116,16 @@ def setup(config_file_path:Union[Path, str]="./config/experiments.cfg", dataset:
     return main_db, expt
 
 
-def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list=[None], celltypes:list=["pyramidal"], show_vc:bool=True, show_cc:bool=False):
+def main(
+    db: pd.DataFrame,
+    expt: dict = None,
+    dataset: str = "CBA_Age",
+    sortby: str = "age",
+    categories: list = [None],
+    celltypes: list = ["pyramidal"],
+    show_vc: bool = True,
+    show_cc: bool = False,
+):
     main_db = db
     AR = DR.acq4_reader.acq4_reader()
     app = pg.mkQApp("sponts")
@@ -122,8 +133,23 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
     win.resize(2000, 1400)
     win.setWindowTitle(f"Spont Firing")
     symbols = ["o", "s", "t", "d", "+", "x"]
-    cat_colors = {'B': pg.mkColor('k'), 'A': pg.mkColor('b'), 'AA': pg.mkColor('c'), "AAA": pg.mkColor('magenta')}
-    cat_colors = {"Sham": pg.mkColor("k"), "NE106": pg.mkColor("b"), "NE115": pg.mkColor("c")}
+    if sortby == 'Group' and dataset == 'NF107Ai32-NIHL':
+        cat_colors = {
+        "B": pg.mkColor("k"),
+        "A": pg.mkColor("b"),
+        "AA": pg.mkColor("c"),
+        "AAA": pg.mkColor("magenta"),
+    }
+    elif sortby == "Group" and dataset == "GlyT2-NIHL":
+        cat_colors = {"Sham": pg.mkColor("k"), "NE106": pg.mkColor("b"), "NE115": pg.mkColor("c")}
+    elif sortby == "age" and dataset == "CBA_Age":
+        cat_colors = {
+        "Preweaning": pg.mkColor("pink"),
+        "Pubescent": pg.mkColor("green"),
+        "Young Adult": pg.mkColor("blue"),
+        "Mature Adult": pg.mkColor("dark grey"),
+        "Old Adult": pg.mkColor("lightgrey"),
+    }
     win.setBackground("w")
     cell_count = 0
     rowcount = 0
@@ -146,7 +172,7 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
             if cell_row["Group"].values[0] not in categories:
                 print("Group not in cats: ", cell_row["Group"].values[0])
                 continue
-        if cell_row["cell_type"].values[0] not in  celltypes:
+        if cell_row["cell_type"].values[0] not in celltypes:
             continue
         print("sort by: ", sortby, "category: ", categories)
         # print("cell row: ", cell_row.keys())
@@ -188,7 +214,7 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
                     startindex = np.where(AR.time_base > 0.1)[0][0]
                     ca_data = AR.traces[tr, startindex:].view(typ=np.ndarray) * 1e12
                     ca_data -= np.mean(ca_data)
-                    # ca_diff = np.max(ca_data) - np.min(ca_data) 
+                    # ca_diff = np.max(ca_data) - np.min(ca_data)
                     # if ca_diff != 0:
                     #     ca_data = 100 * ca_data / (np.max(ca_data) - np.min(ca_data))
                     # else:
@@ -198,11 +224,14 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
                     if len(categories) == 1:
                         pcolor = pg.intColor(ncell)
                     else:
-                        pcolor = cat_colors[cell_row["Group"].values[0]]
+                        if sortby == "Group":
+                            pcolor = cat_colors[cell_row["Group"].values[0]]
+                        elif sortby == "age":
+                            pcolor = cat_colors[cell_row["age_category"].values[0]]
                     px.plot(
                         AR.time_base[startindex:] + (start_time - ztime),
                         ca_data + ncells * 100,
-                        title="CC Spontaneous Activity",
+                        title="VC Spontaneous Activity",
                         pen=pcolor,
                     )
                     if not show_cc:
@@ -226,7 +255,10 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
                     if len(categories) == 1:
                         pcolor = pg.intColor(ncell)
                     else:
-                        pcolor = cat_colors[cell_row["Group"].values[0]]
+                        if sortby == "Group":
+                            pcolor = cat_colors[cell_row["Group"].values[0]]
+                        elif sortby == "age":
+                            pcolor = cat_colors[cell_row["age_category"].values[0]]
                     if np.abs(start_time - ztime) > 240:
                         continue
                     px.plot(
@@ -258,7 +290,19 @@ def main(db: pd.DataFrame, expt: dict=None, sortby: str = "age", categories:list
 
 if __name__ == "__main__":
     print("Working dir: ", Path.cwd())
-    main_db, expt = setup(config_file_path=Path(Path.cwd(), "config/experiments.cfg"), dataset="GlyT2_NIHL")
+    dataset = "CBA_Age"
+    main_db, expt = setup(
+        config_file_path=Path(Path.cwd(), "config/experiments.cfg"), dataset="CBA_Age"
+    )
 
-    main(db = main_db, expt=expt, sortby="Group", categories=["Sham", "NE106", "NE115"], # ["B", "A", "AA", "AAA"], 
-         celltypes=["tuberculoventral"], show_vc=True, show_cc=True)
+    main(
+        db=main_db,
+        expt=expt,
+        dataset=dataset,
+        sortby="age",
+        # categories=["Sham", "NE106", "NE115"],  # ["B", "A", "AA", "AAA"],
+        categories=["Preweaning"], # "Preweaning", "Pubescent", "Young Adult", "Mature Adult", "Old Adult"],
+        celltypes=["pyramidal"],
+        show_vc=True,
+        show_cc=False,
+    )

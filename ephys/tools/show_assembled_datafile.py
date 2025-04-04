@@ -410,7 +410,7 @@ def perform_selection(
         select_limits=select_limits,
     )
     for parameter in parameters:
-        CP.cprint("c", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
+        # CP.cprint("c", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
         try:
             data = data.apply(
                 apply_select_by,
@@ -543,7 +543,7 @@ def show_best_rs_data(data, select_limits):
     #     mpl.plot(data.iloc[idx].FI_Curve4[0], data.iloc[idx].FI_Curve4[1])
     # mpl.show()
     yx = ["taum_bestRs", "taum_mean", "CC_taum_bestRs"]
-    yx = ["AP_thr_V_bestRs", "AP_thr_V_mean", "dvdt_rising_bestRs", "dvdt_rising_mean"]
+    yx = ["AP_thr_V_bestRs", "AP_thr_V_mean", "AP_peak_V", "dvdt_rising_bestRs", "dvdt_rising_mean", "AP_peak_V_bestRs"]
     f, ax = mpl.subplots(1, len(yx), figsize=(12, 6))
     for i, axi in enumerate(ax):
         sns.boxplot(
@@ -623,21 +623,38 @@ if __name__ == "__main__":
     # print(data.head(10))
     import matplotlib.pyplot as mpl
     import ephys.tools.parse_ages as parse_ages
-    fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
+    # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
     # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
+    fn = Path("./config/experiments.cfg")
 
     select_by = "Rs"
     cfg, d = get_configuration(str(fn))
-    exptname = "NF107Ai32_NIHL"
+    exptname = "VM_Dentate"
+    print(cfg)
     experiment = d[exptname]
     expts = experiment
 
     assembled_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["assembled_filename"])
     print(assembled_filename)
-    data = read_pickle(assembled_filename)
+    data = read_pickle(assembled_filename, compression="gzip")
+    print(data.columns)
+    # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
+    # exit()
+    for index in data.index:
+        print("index: ", index, data.loc[index]['Subject'], data.loc[index]['protocol'], data.iloc[index].AdaptIndex2)
+        print("      ", data.iloc[index])
+
+        print("Peak V: ", data.iloc[index].AP_peak_V, "thr: ", data.iloc[index].AP_thr_V) # , data.iloc[index].AP_thr_V)
+        # print(data.iloc[index].AdaptRatio2) # , data.iloc[index].protocol)
+        # print(data.iloc[index].Subject, data.iloc[index].protocol)
+        # print(data.iloc[index].cell_id)
+        # print(data.iloc[index].FI_Curve1)
+        # print(data.iloc[index].FI_Curve4)
+        # print(np.array(data.AP_peak_V.values) - np.array(data.AP_thr_V.values))
+    exit()
 
     df_summary_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["datasummaryFilename"])
-    df_summary = read_pickle(df_summary_filename)
+    df_summary = read_pickle(df_summary_filename, compression="infer")
 
 
 
@@ -683,8 +700,10 @@ if __name__ == "__main__":
 
     f, ax = mpl.subplots(2, 2)
     ax = ax.ravel()
-    cells = ['pyramidal', 'tuberculoventral', 'cartwheel']
-    groups = ['B', 'A', 'AA', "AAA"]
+    cells = ['pyramidal'] # , 'tuberculoventral', 'cartwheel']
+
+    # groups = ['B', 'A', 'AA', "AAA"]
+    groups = ['Pubescent', 'Young Adult', 'Mature Adult']
     for i, cell in enumerate(cells):
         dfn = data[data.cell_type == cell]
         # for ix in dfn.index:

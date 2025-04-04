@@ -577,8 +577,13 @@ if __name__ == "__main__":
     # slicecell = make_slicecell(slicestr, cellstr)
     test_fn = "2022_01_01_S00C02_pyramidal_IVs.pkl"
     test_res = change_pickle_filename(test_fn, "S0C2")
-    print(test_res)
+    print("converted test fn from ", test_fn, "to ", test_res)
+
 
     cell_id = "2017.03.28_000/slice_000/cell_001"
-    print(make_cell_filename( "stellate", "S00C01", "IVs"))
+    ncf = make_cell_filename( "stellate", "S00C01", "IVs")
+    print("make_cell_filename converted 'stellate', 'S00C01', 'IVs' to ", ncf)
 
+    sc = "2022.01.01_000_S0C0"
+    cid = make_cellid_from_slicecell(sc)
+    print("make_cellid_from_slicecell converted ", sc, "to ", cid)

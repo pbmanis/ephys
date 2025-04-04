@@ -1,0 +1,42 @@
+[project]
+name = "ephys"
+version = "0.7.5a"
+description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, LSPS maps"
+authors = [
+    {name = "Paul Manis", email = "pmanis@med.unc.edu"},
+    {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
+]
+dependencies = []
+requires-python = "==3.13.*"
+readme = "README.md"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status ::  Beta",
+    "Environment :: Console",
+    "Intended Audience :: Neuroscientists",
+    "License :: MIT",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10+",
+    "Topic :: Data Processing :: Neuroscience",
+    "Topic :: Scientific Software :: Tools :: Python Modules",
+]
+
+
+[project.urls]
+Homepage = "http://github.com/pbmanis/ephys"
+
+[project.scripts]
+analyzemapdata = "ephys.mapanalysistools.analyzeMapData:main"
+bridge = "ephys.tools.bridge:main"
+checkrs = "ephys.tools.check_rs:main"
+datasummary = "ephys.tools.data_summary:main"
+datatable = "ephys.gui.data_tables:main"
+dircheck = "ephys.tools.dir_check:main"
+fix_objscale = "ephys.tools.fix_objscale:main"
+ma2tiff = "ephys.tools.ma2tiff:convertfiles"
+matread = "ephys.ephys_analysis.MatdatacRead:main"
+measure = "ephys.tools.cursor_plot:main"
+miniviewer = "ephys.tools.miniviewer:main"
+plotmaps = "ephys.tools.plot_maps:main"
+[tool.pdm]
+distribution = false

@@ -787,7 +787,8 @@ class MiniViewer(pg.QtWidgets.QWidget):
         importlib.invalidate_caches()
         for module in all_modules:
             print("reloading: ", module)
-            module = importlib.reload(module)
+            module = reload(module, debug=False)
+            # module = importlib.reload(module)
 
         self.MINC = minicalcs.MiniCalcs(parent=self)
 

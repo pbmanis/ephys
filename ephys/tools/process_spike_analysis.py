@@ -151,9 +151,11 @@ class ProcessSpikeAnalysis:
             if dvdts[min_current].halfwidth_interpolated is not None:
                 row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
             row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
+            row.AP_peak_V = 1e3 * dvdts[min_current].peak_V  # this will be pulled from the pkl file
             CP(
                 "y",
-                f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f}, dvdtFall={row.dvdt_falling:6.1f}, APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
+                f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f}, dvdtFall={row.dvdt_falling:6.1f}" + 
+                f", APthr={row.AP_thr_V:6.1f} mV, AP_peak_V= {row.AP_peak_V*1e3:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
             )
         return row
 
@@ -277,8 +279,12 @@ class ProcessSpikeAnalysis:
                 return row
 
             row = self.find_lowest_current_spike(row, IVA.SP)
-            print(IVA.SP.analysis_summary.keys())
-            
+            # print(IVA.SP.analysis_summary.keys())
+            # print("LCS keys: ", IVA.SP.analysis_summary["LowestCurrentSpike"].keys())
+            # raise ValueError("LCS keys: ", IVA.SP.analysis_summary["LowestCurrentSpike"].keys())
+            tr = d['Spikes'][k]['LowestCurrentSpike']['trace']
+            dt = d['Spikes'][k]['LowestCurrentSpike']['dt']
+            sn = d['Spikes'][k]['LowestCurrentSpike']['spike_no']
             row.AP15Rate = IVA.SP.analysis_summary["FiringRate_1p5T"]
             row.AdaptRatio = IVA.SP.analysis_summary["AdaptRatio"]
             row.RMP = IVA.RM.analysis_summary["RMP"]
@@ -288,6 +294,7 @@ class ProcessSpikeAnalysis:
             row.AHP_trough_V = 1e3 * IVA.SP.analysis_summary["AHP_Trough_V"]
             row.AHP_trough_T = 1e3 * IVA.SP.analysis_summary["AHP_Trough_T"]
             row.AHP_depth_V = IVA.SP.analysis_summary["AHP_Depth"]
+            row.AP_peak_V = 1e3*IVA.SP.analysis_summary["peak_V"]
             row.holding = IVA.RM.analysis_summary["holding"]
             row.tauh = IVA.RM.analysis_summary["tauh_tau"]
             row.Gh = IVA.RM.analysis_summary["tauh_Gh"]
@@ -624,6 +631,7 @@ class ProcessSpikeAnalysis:
             "AP15Rate",
             "AdaptRatio",
             "AP_begin_V",
+            "AP_peak_V",
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",

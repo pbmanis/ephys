@@ -660,7 +660,8 @@ class MapTraces(object):
                                      box[3]-0.00005,
                                      0.0001 , 0], 
                 scale = [1e6, 1e6], axesoff=True, orient='left',
-                unitNames={'x': r'$\mu$m', 'y': ''}, fontsize=11, weight='normal', color='k', font='Arial')
+                # unitNames={'x': r'$\mu$m', 'y': ''}, fontsize=11, weight='normal', color='k', font='Arial')
+                unitNames={'x': 'um', 'y': ''}, fontsize=11, weight='normal', color='k', font='Arial')
         ax.set_xlim(self.extent[0:2])
         ax.set_ylim(self.extent[2:4])
         if self.cellpos is not None:

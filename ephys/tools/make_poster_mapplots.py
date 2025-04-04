@@ -198,7 +198,7 @@ class MPP():
         # print('x0, y0, scaled_barlen: ', x0, y0, scaled_barlen)
 
         ax.plot([x0 - scaled_barlen, x0], [y0, y0], color=color, linewidth=3, clip_on=False)
-        micro = r"$\mu m$"
+        micro = "um" # r"$\mu m$"
         ax.text(
             x0 - scaled_barlen / 2.0,
             y0 - 0.06 * y_ht,

@@ -6,6 +6,9 @@ import numpy as np
 fn_base = "/Volumes/Pegasus_004/ManisLab_Data3/Edwards_Reginald/RE_datasets/CBA_Age"
 fn_file = "pyramidal/2024_05_15_S6C1_pyramidal_IVs.pkl"
 
+fn_base = "/Users/pbmanis/Desktop/Python/Macht_Data/datasets/DG"
+fn_file = "granule/2023_02_06_S0C0_granule_IVs.pkl"
+
 fnp = Path(fn_base, fn_file)
 if not fnp.exists():
     print(f"File {fnp} not found.")
