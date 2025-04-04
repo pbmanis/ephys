@@ -159,6 +159,7 @@ class RmTauAnalysis:
             else:  # use a defined input
                 r_ss = rin_region
             this_protocol = Path(self.Clamps.protocol).name[:-4]
+            # Note that if Rin protocls is NOT present, then we analyze anyway.
             if rin_protocols is not None and this_protocol not in rin_protocols:
                 print("    Protocol is not in list of protocols supporting Rin analysis")
                 print("    This protocol: ", this_protocol, "\n    Supporting protocols: ", rin_protocols)
@@ -808,6 +809,9 @@ class RmTauAnalysis:
         assert len(time_window) == 2
 
         data1 = self.Clamps.traces["Time" : time_window[0] : time_window[1]]
+        print(data1.shape)
+        print(time_window)
+        
         data1 = data1.view(np.ndarray)
         self.ivbaseline = data1.mean(axis=1)  # all traces
         self.ivbaseline_cmd = self.Clamps.commandLevels
