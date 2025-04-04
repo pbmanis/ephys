@@ -16,6 +16,7 @@ from ephys.tools.get_computer import get_computer
 CP = cprint.cprint
 FUNCS = data_table_functions.Functions()
 
+
 def make_datetime_date(row, colname="date"):
     if colname == "date" and "Date" in row.keys():
         colname = "Date"
@@ -43,6 +44,7 @@ def make_cell_id(row):
     cell_id = f"{row['date']:s}_S{sliceno:d}C{cellno:d}"
     row["cell_id"] = cell_id
     return row
+
 
 def numeric_age(row):
     """numeric_age convert age to numeric for pandas row.apply
@@ -88,12 +90,10 @@ class AssembleDatasets:
             _description_
         """
         assembled_fn = Path(
-            Path(
                 experiment["analyzeddatapath"],
                 experiment["directory"],
                 experiment["assembled_filename"],
             )
-        )
         return assembled_fn
 
     def assemble_datasets(
@@ -106,6 +106,8 @@ class AssembleDatasets:
         """assemble_datasets : Assemble the datasets from the summary and coding files,
         then combine FI curves (selected) in IV protocols for each cell.
         We also calculate some spike rate measures
+        We check for excluded spike analyses in the configuration file,
+        so that the exclusions are honored.
 
 
         Parameters
@@ -127,13 +129,14 @@ class AssembleDatasets:
 
         """
         if experiment is None and self.experiment is None:
-            raise ValueError("Experiment not defined in AssembleData; should be done at time of the call")
+            raise ValueError(
+                "Experiment not defined in AssembleData; should be done at time of the call"
+            )
         self.experiment = experiment
         coding_file = experiment["coding_file"]
         coding_sheet = experiment["coding_sheet"]
         coding_level = experiment["coding_level"]
         coding_name = experiment["coding_name"]
-
 
         print(
             f"Assembling:\n  coding file: {coding_file!s}\n    Cells: {self.experiment['celltypes']!s}"
@@ -235,12 +238,12 @@ class AssembleDatasets:
         # print(f"    Adddata in read_intermediate_result_files: {adddata!s}")
         if coding_file is not None:  # add coding from the coding file
             coding_filename = Path(
-            Path(
-                self.experiment["analyzeddatapath"],
-                self.experiment["directory"],
-                self.experiment["coding_file"],
+                Path(
+                    self.experiment["analyzeddatapath"],
+                    self.experiment["directory"],
+                    self.experiment["coding_file"],
+                )
             )
-        )
             df = self.read_coding_file(df_summary, coding_filename, coding_sheet, coding_level)
             print(
                 "coding file: ",
@@ -289,7 +292,7 @@ class AssembleDatasets:
         2. Check the cell name and whether it fits the S00C00 or S1C1 format.
         3. When getting spike parameters, use a logical set of restrictions:
             a. Use only the first spike at the lowest current level that evoke spikes
-                for AP HW, AP_thr_V, AP15Rate, AdaptRatio, AHP_trough_V, AHP_depth_V, AHP_trough_T
+                for AP HW, AP_thr_V, AP15Rate, AdaptRatio, AHP_trough_V, AHP_depth_V, AHP_trough_T, AP_peak_V
                 This is in ['spikes']["LowestCurrentSpike"]
 
             b. Do not use traces that are above the spike firing rate turnover point (non-monotonic)
@@ -373,7 +376,7 @@ class AssembleDatasets:
         if parallel:
             with concurrent.futures.ProcessPoolExecutor(max_workers=nworkers) as executor:
                 results = executor.map(
-                    FUNCS.compute_FI_Fits,
+                    FUNCS.combine_measures_and_FI_Fits,
                     [self.experiment] * len(tasks),
                     [df] * len(tasks),
                     [cell_list[i] for i in tasks],
@@ -386,7 +389,7 @@ class AssembleDatasets:
                         )
             # with MP.Parallelize(enumerate(tasks), results=results, workers=nworkers) as tasker:
             #     for i, x in tasker:
-            #         result = FUNCS.compute_FI_Fits(
+            #         result = FUNCS.combine_measures_and_FI_Fits(
             #             self.experiment, df, cell_list[i], protodurs=self.experiment["FI_protocols"]
             #         )
             #         tasker.results[cell_list[i]] = result
@@ -410,7 +413,7 @@ class AssembleDatasets:
                 CP(
                     "c", f"    Computing FI_Fits for cell: {cell:s}"
                 )  # df[df.cell_id==cell].cell_type)
-                datadict = FUNCS.compute_FI_Fits(
+                datadict = FUNCS.combine_measures_and_FI_Fits(
                     self.experiment, df, cell, protodurs=self.experiment["FI_protocols"]
                 )
                 if datadict is None:
@@ -437,7 +440,6 @@ class AssembleDatasets:
         if "Subject" not in cols:
             raise ValueError("Coding file must have a 'Subject' column")
         return
-    
 
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
         df_coding = pd.read_excel(coding_file, sheet_name=coding_sheet)
@@ -452,7 +454,7 @@ class AssembleDatasets:
             else:
                 coding_name = "Group"
             # print(row.date, df_coding.date.values)
-            print("date in the date values: ", row.date, row.date in df_coding.date.values)
+            # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
             if row.date in df_coding.date.values:
                 if "sex" in df_coding.columns:  # update sex? Should be in main table.
