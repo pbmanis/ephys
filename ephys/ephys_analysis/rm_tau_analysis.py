@@ -809,9 +809,6 @@ class RmTauAnalysis:
         assert len(time_window) == 2
 
         data1 = self.Clamps.traces["Time" : time_window[0] : time_window[1]]
-        print(data1.shape)
-        print(time_window)
-        
         data1 = data1.view(np.ndarray)
         self.ivbaseline = data1.mean(axis=1)  # all traces
         self.ivbaseline_cmd = self.Clamps.commandLevels
