@@ -444,6 +444,13 @@ class SpikeAnalysis:
             allspikes[trace_number] = spikes
 
         self.analysis_summary[mode + "_spikes"] = allspikes
+        if mode == 'evoked':
+            self.spikecount = allspikes
+            self.spikes_counted = True
+            self.nospk = np.where(self.spikecount == 0)
+            # self.spk = np.where(len(self.spikecount) > 0)[0]
+            
+        
 
     def _timeindex(self, t):
         """
@@ -701,6 +708,7 @@ class SpikeAnalysis:
             LCS["dvdt_current"] = min_current * 1e12  # put in pA
 
             LCS["AP_thr_T"] = sp.AP_beginIndex * self.Clamps.sample_interval * 1e3
+            LCS["AP_thr_V"] = 1e3 * sp.AP_begin_V
             LCS["AP_peak_V"] = 1e3 * sp.peak_V
             LCS["AP_peak_T"] = sp.peak_T
             # if sp.halfwidth_interpolated is not None:
