@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from pyqtgraph import multiprocess as MP
 from pylibrary.tools import cprint as CP
+import re
 
 import ephys.tools.build_info_string as BIS
 import ephys.tools.functions as functions
@@ -907,8 +908,10 @@ class IVAnalysis(Analysis):
             tau_end = self.AR.tstart + te
         # check if we define specific regions in the configuration file for this analysis
         if "Rin_windows" in self.experiment.keys():
+            # this fails if the protocol name does not match the table.... 
+            # re_rin = re.compile(r"^(?P<num>\d+)_(?P<protocol>[\w_]*)")  # could to it this way as well....
             protocol = Path(self.datapath).name[:-4]
-            if protocol in list(self.experiment["Rin_windows"].keys()):
+            if self.experiment["Rin_windows"] is not None and protocol in list(self.experiment["Rin_windows"].keys()):
                 rin_region = np.array(self.experiment["Rin_windows"][protocol]) + self.AR.tstart
                 print("rin_region from window in config file: ", rin_region)
             else:
@@ -921,7 +924,7 @@ class IVAnalysis(Analysis):
         print("Starting RM analyze")
         # check whether we need to limit the protocols that are used
         rin_protocols = None
-        if "Rin_windows" in self.experiment.keys():
+        if "Rin_windows" in self.experiment.keys() and self.experiment["Rin_windows"] is not None:
             rin_protocols = list(self.experiment["Rin_windows"].keys())
         self.RM.analyze(
             rmp_region=[0.0, self.AR.tstart - 0.001],
