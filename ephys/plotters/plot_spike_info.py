@@ -7,7 +7,7 @@ import pprint
 from pathlib import Path
 import re
 from string import ascii_letters
-from typing import Optional
+from typing import Optional, Literal
 import textwrap
 import dateutil.parser as DUP
 import matplotlib.pyplot as mpl
@@ -159,7 +159,7 @@ def concurrent_data_plotting(
             fontsize=style.get_fontsizes(),
         )
         cont_labels = [up_lets[i] for i in range(ncols, 2 * ncols)]
-        print("cont_labels: ", cont_labels)
+
         cont_figure = PH.regular_grid(
             rows=1,
             cols=ncols,
@@ -950,7 +950,11 @@ class PlotSpikeInfo(QObject):
                     return row
         # print("clear missing groups: ", row[data])
         # print(row["AdaptIndex2_bestRs"])
-        if pd.isnull(row[data]) or row[data] == "nan" or (isinstance(row[data], list) and len(row[data]) == 0):
+        if (
+            pd.isnull(row[data])
+            or row[data] == "nan"
+            or (isinstance(row[data], list) and len(row[data]) == 0)
+        ):
             # print("row[data] is" , row[data])
             if replacement is not None:
                 row[data] = replacement
@@ -990,7 +994,6 @@ class PlotSpikeInfo(QObject):
             Stripplot and boxplot palettes should be a dictionary mapping hue levels to matplotlib colors.
 
         """
-        print("bar_pts: PUB PLOT MODE: ", publication_plot_mode)
         if celltype != "all":
             df_x = df[df["cell_type"] == celltype]
         else:
@@ -1010,7 +1013,7 @@ class PlotSpikeInfo(QObject):
         # df_x = self.fill_missing_groups(df_x, xname, celltype)  # make sure emtpy groups have nan
         # print("dfx type 4: ", type(df_x))
         if "default_group" in self.experiment.keys():
-            # clear both x and y data if nan... 
+            # clear both x and y data if nan...
             df_x = df_x.apply(
                 self.clear_missing_groups,
                 axis=1,
@@ -1052,8 +1055,7 @@ class PlotSpikeInfo(QObject):
         else:
             dodge = False
             hue_order = plot_order  # print("plotting bar plot for ", celltype, yname, hue_category)
-        
-        
+
         if (
             "remove_expression" in self.experiment.keys()
             and self.experiment["remove_expression"] is not None
@@ -1385,6 +1387,7 @@ class PlotSpikeInfo(QObject):
             "AP_thr_V",
             "AP_thr_T",
             "AP_HW",
+            "AP_peak_V",
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",
@@ -1421,7 +1424,7 @@ class PlotSpikeInfo(QObject):
             if c not in columns:
                 columns.append(c)
         select_by = "Rs"
-        df_R = df[[c for c in columns if c != "AP_peak_V"]]
+        df_R = df[[c for c in columns if c != "peak_V"]]
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
         if "Rs" in df_R.columns:
@@ -1503,13 +1506,12 @@ class PlotSpikeInfo(QObject):
         horizontal_spacing = 0.06
         vertical_spacing = 0.09
         if data_class == "spike_measures":
-            ncols = 3
+            ncols = 4
             nrows = 2
             height = 3.25
             horizontal_spacing = 0.1
             vertical_spacing = 0.09
             plabels = [f"{let.upper():s}" for let in letters]
-
 
         figure_width = ncols * 2.5
         P = PH.regular_grid(
@@ -1589,6 +1591,7 @@ class PlotSpikeInfo(QObject):
             nrows = len(self.experiment["celltypes"])
             cols = len(measures)
         print("rows, cols: ", nrows, cols)
+        print("measures: ", measures)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         # print(df.cell_type.unique())
@@ -1604,20 +1607,75 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-        print("local measures: ", local_measures)
+        # print("local measures:::: ", local_measures)
+        # print(df.columns)
+
+
         # print("plot order: ", plot_order)
         for icol, measure in enumerate(local_measures):
-            # if measure in ["AP_thr_V", "AHP_depth_V"]:
-            #     CP("y", f"{measure:s}: {df[measure]!s}")
+            if measure in ["AP_thr_V", "AHP_depth_V", "AP_peak_V"]:
+                CP("y", f"{measure:s}: {df[measure]!s}")
+            # print("Measure IS: ", measure)
             if measure.startswith("dvdt_ratio_bestRs"):
                 if measure not in df.columns:
                     df[measure] = {}
                 df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
+            
+            if measure.startswith("AP_peak_V"):  # height is diff from ap thr to peak ap
+                if measure not in df.columns:
+                    df[measure] = {}
+                for index in df.index:
+                    if index >= len(df.index):
+                        continue
+                    # print("df index, : ", index, len(df.index))
+                    print("AP_peak_V: ", type(df.iloc[index]["AP_peak_V"]), df.iloc[index]["AP_peak_V"], measure)
+                    print("AP_peak_V_bestRs: ", type(df.iloc[index]["AP_peak_V_bestRs"]), df.iloc[index]["AP_peak_V_bestRs"], measure)
+                    print("AP_thr_V_bestRs: ", type(df.iloc[index]["AP_thr_V_bestRs"]), df.iloc[index]["AP_thr_V_bestRs"], measure)
+                    if index > len(df)-1:
+                        continue
+                    # print("AP Peak, checking df: ", df.columns)
+                    # print(len(df))
+                    # print(index)
+                    if isinstance(df.iloc[index]["AP_peak_V_bestRs"], (list, np.ndarray)):
+                        if isinstance(df.iloc[index]["AP_thr_V_bestRs"], list):
+                            # thrv = np.mean(df.iloc[index]["AP_thr_V])
+                            # print("thrv: ", thrv)
+                            thrv = float(df.iloc[index]["AP_thr_V_bestRs"][0])
+                        else:
+                            thrv = float(df.iloc[index]["AP_thr_V_bestRs"])
+                        val = 1e3*float(df.iloc[index]["AP_peak_V_bestRs"][0]) - thrv
+                        # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
+                    elif isinstance(df.iloc[index]["AP_peak_V_bestRs"], float) and isinstance(df.iloc[index]["AP_thr_V_bestRs"], float):
+                            val = 1e3*float(df.iloc[index]["AP_peak_V_bestRs"]) - df.iloc[index]["AP_thr_V_bestRs"]
+                    else:
+                        val = np.nan
+
+                # apv = np.array([xp[0] for xp in df["AP_peak_V"].values if isinstance(xp, list) else xp])
+                    df.at[index, measure] = val
+                    print("index: ", index, "val: ", val)
+                # print("summaryplot params categorical: AP_peak_V: ", df["AP_peak_V_bestRs"].values, measure)
+            if measure.startswith("AP_max_V"):
+                if measure not in df.columns:
+                    df[measure] = {}
+                for index in df.index:
+                    if index >= len(df.index):
+                        continue
+                    # print("AP_peak_V: ", type(df.iloc[index]["AP_peak_V"]), df.iloc[index]["AP_peak_V"], measure)
+                    # print("AP_peak_T: ", type(df.iloc[index]["AP_peak_T"]), df.iloc[index]["AP_peak_T"])
+                    if isinstance(df.iloc[index]["AP_peak_V"], (list, np.ndarray)):
+                        val = 1e3*float(df.iloc[index]["AP_peak_V"][0])
+                        # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
+                    else:
+                        val = np.nan
+                    df.at[index, measure] = val
             if measure in self.transforms.keys():
                 tf = self.transforms[measure]
             else:
                 tf = None
-
+            # print("measures: ", local_measures)
+            # if measure.startswith("AP_max_V"):
+            #     print(df[measure].values)
+            # print("NROWS: ", nrows)
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
                     # print("measure y: ", measure, "celltype: ", celltype)
@@ -1631,10 +1689,15 @@ class PlotSpikeInfo(QObject):
                         ycell = celltype
                     x_measure = "_".join((measure.split("_"))[:-1])
                     if x_measure not in self.ylims[ycell]:
-                        continue
+                        ylims = None
+                        print("setting ylims to None for measure: ", x_measure)
+                    else:
+                        ylims = self.ylims[ycell][x_measure]
                     if measure not in df.columns:
+                        print("Measure : ", measure, "not in columns")
+                        print(df.columns)
                         continue
-
+                    print("Plotting measure: ", measure)
                     picker_func = self.create_one_plot_categorical(
                         data=df,
                         xname=xname,
@@ -1646,25 +1709,22 @@ class PlotSpikeInfo(QObject):
                         colors=colors,
                         # edgecolor=edgecolor,
                         logx=False,
-                        ylims=self.ylims[ycell][x_measure],
+                        ylims=ylims,
                         transform=tf,
                         xlims=None,
                         enable_picking=enable_picking,
                         publication_plot_mode=publication_plot_mode,
                     )
-                    # except Exception as e:
-                    #     print("Categorical plot error in ylims: ", self.ylims.keys(), ycell)
-                    #     raise KeyError(f"\n{e!s}")
                     picker_funcs[axp] = picker_func  # each axis has different data...
                     self.relabel_xaxes(axp)
                     if publication_plot_mode:
                         axp.set_xlabel("")
-
                     elif celltype != self.experiment["celltypes"][-1]:
                         axp.set_xticklabels("")
                         axp.set_xlabel("")
-
                     self.relabel_yaxes(axp, measure=x_measure)
+                    if measure.startswith("AP_max_V"):
+                        PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
 
             else:  # single row
                 # here we probably have the cell type or group as the x category,
@@ -1672,6 +1732,7 @@ class PlotSpikeInfo(QObject):
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 x_measure = "_".join((measure.split("_"))[:-1])
                 if x_measure not in self.ylims["default"]:
+                    print("Measure not in y_lims in config file - cannot plot!", x_measure)
                     continue
                 if measure not in df.columns:
                     print("measure not in df_columns: ", measure, df.columns)
@@ -1708,6 +1769,8 @@ class PlotSpikeInfo(QObject):
                 self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=x_measure)
 
+                if measure.startswith("AP_max_V"):
+                    PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
                 # if icol > 0:
                 #     axp.set_ylabel("")
                 #     print("removed ylabel from ", icol, measure, celltype)
@@ -2208,13 +2271,15 @@ class PlotSpikeInfo(QObject):
         return row.sex
 
     def categorize_ages(self, row):
-        row.age = numeric_age(row)
+        age = int(numeric_age(row))
         for k in self.experiment["age_categories"].keys():
             if (
-                row.age >= self.experiment["age_categories"][k][0]
-                and row.age <= self.experiment["age_categories"][k][1]
+                (age >= self.experiment["age_categories"][k][0])
+                and (age <= self.experiment["age_categories"][k][1])
+                
             ):
                 row.age_category = k
+                break
             else:
                 row.age_category = "ND"
         return row.age_category
@@ -2486,7 +2551,7 @@ class PlotSpikeInfo(QObject):
 
         picker_funcs: Dict = {}
         N = self.experiment["group_map"]
-        print("N.keys: ", N.keys())
+        # print("N.keys: ", N.keys())
         found_groups = []
         FIy_all: dict = {k: [] for k in N.keys()}
         FIx_all: dict = {k: [] for k in N.keys()}
@@ -2507,221 +2572,19 @@ class PlotSpikeInfo(QObject):
                 else:
                     ax = P.axarr[ixr]
                 ax[ic].set_title(celltype.title(), y=1.05)
-                ax[ic].set_xlabel("I$_{inj}$ (nA)")
-                if ic in [0, 1]:
-                    ax[ic].set_ylabel("Rate (sp/s)")
-                elif ic == 2 and ptype == "sum":
-                    ax[ic].set_ylabel(self.experiment["new_ylabels"]["summed_FI"])
-                if celltype != "all":
-                    cdd = df[df["cell_type"] == celltype]
-                else:
-                    cdd = df.copy()
-
-                # if ptype == "mean":  # set up arrays to compute mean
-
-                for index in cdd.index:  # go through the individual cells
-                    group = cdd[group_by][index]
-                    sex = cdd["sex"][index]
-                    if (celltype, group) not in NCells.keys():
-                        NCells[(celltype, group)] = 0
-                    if pd.isnull(group):
-                        continue
-                    if pd.isnull(cdd["cell_id"][index]):
-                        print("No cell ids")
-                        continue
-
-                    try:
-                        FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
-                    except:
-                        print("No FI data", cdd.cell_id[index])
-                        print(cdd.columns)
-                        print("Did you run the assembly on the final IV analysis files?")
-                        continue
-                    # raise KeyError("No FI data")
-
-                    if len(FI_data[0]) == 0:
-                        print("FI data is empty", cdd.cell_id[index])
-                        continue
-
-                    # convert the current to nA
-                    FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
-                    if FI_data.shape == (2, 0):  # no fi data from the excel table....
-                        print("No FI data from excel table?")
-                        continue
-
-                    if "max_FI" in self.experiment.keys():
-                        max_fi = self.experiment["max_FI"] * 1e-9
-                    else:
-                        max_fi = 1.05e-9
-                    FI_dat_saved = FI_data.copy()
-                    ### HERE WE LIMIT FI_data to the range with the max firing
-                    FI_data = self.limit_to_max_rate_and_current(
-                        FI_data, imax=max_fi, id=cdd["cell_id"][index]
-                    )
-
-                    maxi = 1000e-12
-                    ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
-                    if ptype in ["individual"]:
-                        fix, fiy, fiystd, yn = FUNCS.avg_group(
-                            np.array(FI_data[0]), FI_data[1], ndim=1
-                        )
-                        NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                        if group not in found_groups:
-                            if pd.isnull(group) or group == "nan":
-                                group = "Unidentified"
-                            found_groups.append(group)
-
-                        ax[ic].plot(
-                            fix[:ilim] * 1e9,
-                            fiy[:ilim],
-                            color=colors[group],
-                            marker=None,
-                            markersize=2.5,
-                            linewidth=0.5,
-                            clip_on=False,
-                            alpha=0.35,
-                        )
-                    elif ptype == "mean":
-                        # while in this loop, build up the arrays for the mean
-                        if group in FIy_all.keys():
-                            FIy_all[group].append(np.array(FI_data[1][:ilim]))
-                            FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
-                            for iv in range(len(FI_data[1][:ilim])):
-                                longform += f"{cdd['cell_id'][index]:s}, {group:s}, {1e12*FI_data[0][iv]:f}, {FI_data[1][iv]:f}\n"
-                            NCells[
-                                (celltype, group)
-                            ] += 1  # to build legend, only use "found" groups
-                            if pd.isnull(group) or group == "nan":
-                                group = "Unidentified"
-                            found_groups.append(group)
-                    elif ptype == "sum":
-                        fi_group_sum.loc[len(fi_group_sum)] = [
-                            group,
-                            np.sum(np.array(FI_dat_saved[1])),
-                            sex,
-                            celltype,
-                            "None",
-                        ]
-                        NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
-                        if pd.isnull(group) or group == "nan":
-                            group = "Unidentified"
-                        found_groups.append(group)
-
-                if ptype == "mean":
-                    # compute the avearge and plot the data with errorbars
-                    max_FI = 1.0
-                    for index, group in enumerate(FIy_all.keys()):
-                        fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group])
-                        if len(fx) == 0:
-                            # print("unable to get average", cdd["cell_id"][index])
-                            continue
-                        # else:
-                        #     print("getting average: ", cdd["cell_id"][index])
-                        if "max_FI" in self.experiment.keys():
-                            max_FI = self.experiment["max_FI"] * 1e-3
-                        ax[ic].errorbar(
-                            fx[fx <= max_FI],
-                            fy[fx <= max_FI],
-                            yerr=fystd[fx <= max_FI] / np.sqrt(yn[fx <= max_FI]),
-                            color=colors[group],
-                            marker="o",
-                            markersize=2.5,
-                            linewidth=1.5,
-                            clip_on=False,
-                            label=self.experiment["group_legend_map"][group],
-                        )
-
-                        ax[ic].set_xlim(0, max_FI)
-
-                if ptype == "sum":
-                    # Spike sum plot -
-                    # ax[ic] = P.axarr[ir, ic]
-                    ax[ic].set_title("Summed FI", y=1.05)
-                    ax[ic].set_xlabel("Group")
-                    print("SUM: ", fi_group_sum)
-                    # fi_group_sum = fi_group_sum[celltype].isin(self.experiment["celltypes"])
-                    if not all(np.isnan(fi_group_sum["sum"])):
-                        self.bar_pts(
-                            fi_group_sum,
-                            xname="Group",
-                            yname="sum",
-                            celltype=celltype,
-                            # hue_category = "sex",
-                            ax=ax[ic],
-                            plot_order=self.experiment["plot_order"][group_by],  # ["age_category"],
-                            colors=self.experiment["plot_colors"],
-                            enable_picking=False,
-                            publication_plot_mode=publication_plot_mode,
-                        )
-                        all_limits = self.experiment["ylims"]
-                        # check if our cell type is in one of the subkeys of the limits:
-                        ax[ic].set_ylim(all_limits["default"]["summed_FI_limits"])
-                        for limit in all_limits.keys():
-                            print(
-                                "testing limit: ",
-                                limit,
-                                "with celltypes: ",
-                                all_limits[limit]["celltypes"],
-                            )
-                            if celltype in all_limits[limit]["celltypes"]:
-                                print("found limit: ", limit)
-                                ax[ic].set_ylim(all_limits[limit]["summed_FI_limits"])
-                                break
-
-                        ax[ic].legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
-                        PH.talbotTicks(ax[ic], axes="y", density=(1, 1))
-
-                    yoffset = 0
-                    xoffset = 1.05
-                    xo2 = 0.0
-
-                    i_glp = 0
-                    for i, group in enumerate(self.experiment["group_legend_map"].keys()):
-                        if group not in found_groups:
-                            continue
-                        # if celltype == "pyramidal":  # more legend - include the name of group
-                        #     ax.text(
-                        #         x=pos[celltype][0] + xoffset + xo2,
-                        #         y=pos[celltype][1] + 0.095 * (i_glp - 0.5) + yoffset,
-                        #         s=f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d})",
-                        #         ha="left",
-                        #         va="top",
-                        #         fontsize=8,
-                        #         color=colors[group],
-                        #         transform=ax.transAxes,
-                        #     )
-                        #     print(
-                        #         "Pyramidal legend: ",
-                        #         f"{self.experiment['group_legend_map'][group]:s} (N={NCells[(celltype, group)]:>3d}",
-                        #     )
-                        #     i_glp += 1
-                        # else:
-                        if True:
-                            if (celltype, group) in NCells.keys():
-                                textline = (
-                                    f"{group:s}, {celltype:s} N={NCells[(celltype, group)]:>3d}"
-                                )
-                            else:
-                                textline = f"N={0:>3d}"
-                            fcelltype = celltype
-                            if celltype not in pos.keys():
-                                fcelltype = "default"
-                            if (group_by != "cell_type") or (n_celltypes == 1 and ir == 0):
-                                ax[ic].text(
-                                    x=xoffset,  # pos[fcelltype][0] + xoffset + xo2,
-                                    y=yoffset
-                                    + i_glp
-                                    * 0.05,  # pos[fcelltype][1] - 0.095 * (i_glp - 0.5) + yoffset,
-                                    s=textline,
-                                    ha="left",
-                                    va="bottom",
-                                    fontsize=8,
-                                    color=colors[group],
-                                    transform=ax[ic].transAxes,
-                                )
-                            i_glp += 1
-
-            # print("-" * 80)
+                found_groups = self.plot_fi_curve(
+                    df,
+                    ax = ax[ic],
+                    celltype=celltype,
+                    group_by=group_by,
+                    ptype=ptype,
+                    colors=colors,
+                    plot_order=plot_order,
+                    NCells=NCells,
+                    found_groups=found_groups,
+                    longform=longform,
+                )
+                # print("-" * 80)
             # print("FI keys: ", FIx_all.keys())
             # for k in FIx_all.keys():
             #     print("Cell type: ", k)
@@ -2761,6 +2624,240 @@ class PlotSpikeInfo(QObject):
             f.write(longform)
 
         return P, picker_funcs
+
+    def plot_fi_curve(
+        self,
+        df: pd.DataFrame,
+        ax: mpl.axes,
+        celltype: str,
+        group_by: str,
+        ptype: Literal["mean", "std", "sum", "individual"],
+        colors: list,
+        plot_order: list,
+        NCells: dict,
+        found_groups: list,
+        longform:str = "",
+    ):
+        N = self.experiment["group_map"]
+        FIy_all: dict = {k: [] for k in N.keys()}
+        FIx_all: dict = {k: [] for k in N.keys()}
+
+        ax.set_xlabel("I$_{inj}$ (nA)")
+        if ptype in ["mean", "individual"]:
+            ax.set_ylabel("Rate (sp/s)")
+        elif ptype == "sum":
+            ax.set_ylabel(self.experiment["new_ylabels"]["summed_FI"])
+        if celltype != "all":
+            cdd = df[df["cell_type"] == celltype].copy()
+        else:
+            cdd = df.copy()
+
+        for index in cdd.index:  # go through the individual cells
+            group = cdd[group_by][index]
+            # print("index, group: ", index, group)
+            sex = cdd["sex"][index]
+            if (celltype, group) not in NCells.keys():
+                NCells[(celltype, group)] = 0
+            if pd.isnull(group):
+                continue
+            if pd.isnull(cdd["cell_id"][index]):
+                print("No cell ids")
+                continue
+
+            try:
+                FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
+            except:
+                print("No FI data", cdd.cell_id[index])
+                print(cdd.columns)
+                print("Did you run the assembly on the final IV analysis files?")
+                continue
+            # raise KeyError("No FI data")
+
+            if len(FI_data[0]) == 0:
+                print("FI data is empty", cdd.cell_id[index])
+                continue
+
+            # convert the current to nA
+            FI_data[0] = np.round(np.array(FI_data[0]) * 1e9, 2) * 1e-9
+            if FI_data.shape == (2, 0):  # no fi data from the excel table....
+                print("No FI data from excel table?")
+                continue
+
+            if "max_FI" in self.experiment.keys():
+                max_fi = self.experiment["max_FI"] * 1e-9
+            else:
+                max_fi = 1.05e-9
+            FI_dat_saved = FI_data.copy()
+            ### HERE WE LIMIT FI_data to the range with the max firing
+            FI_data = self.limit_to_max_rate_and_current(
+                FI_data, imax=max_fi, id=cdd["cell_id"][index]
+            )
+
+            maxi = 1000e-12
+            ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
+            if ptype in ["individual"]:
+                fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
+                NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                if group not in found_groups:
+                    if pd.isnull(group) or group == "nan":
+                        group = "Unidentified"
+                    found_groups.append(group)
+
+                ax.plot(
+                    fix[:ilim] * 1e9,
+                    fiy[:ilim],
+                    color=colors[group],
+                    marker=None,
+                    markersize=2.5,
+                    linewidth=0.5,
+                    clip_on=False,
+                    alpha=0.35,
+                )
+            elif ptype == "mean":
+                # while in this loop, build up the arrays for the mean
+                if group in FIy_all.keys():
+                    FIy_all[group].append(np.array(FI_data[1][:ilim]))
+                    FIx_all[group].append(np.array(FI_data[0][:ilim]) * 1e9)
+                    for iv in range(len(FI_data[1][:ilim])):
+                        longform += f"{cdd['cell_id'][index]:s}, {group:s}, {1e12*FI_data[0][iv]:f}, {FI_data[1][iv]:f}\n"
+                    NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                    if pd.isnull(group) or group == "nan":
+                        group = "Unidentified"
+                    found_groups.append(group)
+            elif ptype == "sum":
+                fi_group_sum.loc[len(fi_group_sum)] = [
+                    group,
+                    np.sum(np.array(FI_dat_saved[1])),
+                    sex,
+                    celltype,
+                    "None",
+                ]
+                NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
+                if pd.isnull(group) or group == "nan":
+                    group = "Unidentified"
+                found_groups.append(group)
+
+        if ptype == "mean":
+            # compute the avearge and plot the data with errorbars
+            max_FI = 1.0
+            Q = 0.90
+            for index, group in enumerate(FIy_all.keys()):
+                fx, fy, fystd, yn = FUNCS.avg_group(FIx_all[group], FIy_all[group], errtype="std",
+                                                Q=Q)
+                # print("Group: ", group, fx, fy, fystd)
+                if group == "Unidentified" or len(fx) == 0:
+                    continue
+                # try CI instead:
+                # bootstrapped maybe?
+                rng  = np.random.default_rng(seed=19)
+
+                ystd = []
+                for ix, f in enumerate(FIy_all[group]):
+                    # print(len(f), f, FIx_all[group][ix])
+                    if FIx_all[group][ix][0] != 0.0:
+                        FIx_all[group][ix] = np.insert(FIx_all[group][ix], 0, 0)
+                        FIy_all[group][ix] = np.insert(FIy_all[group][ix], 0, 0)
+                # print()
+                # for ix, f in enumerate(FIy_all[group]):
+                print(group, len(f), f, FIx_all[group][ix])
+                fiy = np.array(FIy_all[group])
+                # print(fiy.shape)
+                for i in range(fiy.shape[1]):
+                    # print("fyi[i]: ")
+                    # for j in range(fiy.shape[0]):
+                    #     print(fiy[j,i])
+                    # print(len(fiy[:,i]))
+                    res = scipy.stats.bootstrap((fiy[:,i].ravel(),),
+                                                statistic=np.std, n_resamples=10000, confidence_level=Q, rng=rng,
+                                                vectorized=True)
+                    ystd.append(res.confidence_interval)
+                if len(fx) == 0:
+                    continue
+                if "max_FI" in self.experiment.keys():
+                    max_FI = self.experiment["max_FI"] * 1e-3
+                ax.errorbar(
+                    fx[fx <= max_FI],
+                    fy[fx <= max_FI],
+                    yerr=fystd[fx <= max_FI], # / np.sqrt(yn[fx <= max_FI]),
+                    color=colors[group],
+                    marker="o",
+                    markersize=2.5,
+                    linewidth=0.75,
+                    capsize=1.5,
+                    clip_on=False,
+                    label=self.experiment["group_legend_map"][group],
+                )
+                ax.set_xlim(0, max_FI)
+
+        if ptype == "sum":
+            # Spike sum plot -
+            # ax[ic] = P.axarr[ir, ic]
+            ax.set_title("Summed FI", y=1.05)
+            ax.set_xlabel("Group")
+            print("SUM: ", fi_group_sum)
+            # fi_group_sum = fi_group_sum[celltype].isin(self.experiment["celltypes"])
+            if not all(np.isnan(fi_group_sum["sum"])):
+                self.bar_pts(
+                    fi_group_sum,
+                    xname="Group",
+                    yname="sum",
+                    celltype=celltype,
+                    # hue_category = "sex",
+                    ax=ax,
+                    plot_order=self.experiment["plot_order"][group_by],  # ["age_category"],
+                    colors=self.experiment["plot_colors"],
+                    enable_picking=False,
+                    publication_plot_mode=publication_plot_mode,
+                )
+                all_limits = self.experiment["ylims"]
+                # check if our cell type is in one of the subkeys of the limits:
+                ax.set_ylim(all_limits["default"]["summed_FI_limits"])
+                for limit in all_limits.keys():
+                    print(
+                        "testing limit: ",
+                        limit,
+                        "with celltypes: ",
+                        all_limits[limit]["celltypes"],
+                    )
+                    if celltype in all_limits[limit]["celltypes"]:
+                        print("found limit: ", limit)
+                        ax.set_ylim(all_limits[limit]["summed_FI_limits"])
+                        break
+
+                ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0)
+                PH.talbotTicks(ax, axes="y", density=(1, 1))
+
+            yoffset = 0
+            xoffset = 1.05
+            xo2 = 0.0
+
+            i_glp = 0
+            for i, group in enumerate(self.experiment["group_legend_map"].keys()):
+                if group not in found_groups:
+                    continue
+                if True:
+                    if (celltype, group) in NCells.keys():
+                        textline = f"{group:s}, {celltype:s} N={NCells[(celltype, group)]:>3d}"
+                    else:
+                        textline = f"N={0:>3d}"
+                    fcelltype = celltype
+                    if celltype not in pos.keys():
+                        fcelltype = "default"
+                    if (group_by != "cell_type") or (n_celltypes == 1 and ir == 0):
+                        ax.text(
+                            x=xoffset,  # pos[fcelltype][0] + xoffset + xo2,
+                            y=yoffset
+                            + i_glp * 0.05,  # pos[fcelltype][1] - 0.095 * (i_glp - 0.5) + yoffset,
+                            s=textline,
+                            ha="left",
+                            va="bottom",
+                            fontsize=8,
+                            color=colors[group],
+                            transform=ax.transAxes,
+                        )
+                    i_glp += 1
+        print("Ncells: ", NCells)
+        return found_groups, longform
 
     def rename_group(self, row, group_by: str):
         row[group_by] = row[group_by].replace(" ", "")
@@ -3075,10 +3172,14 @@ class PlotSpikeInfo(QObject):
                 return row.AHP_trough_T
             row.AHP_trough_T = [row.AHP_trough_T]
         for i, att in enumerate(row.AP_thr_T):  # base index on threshold measures
-            # print(row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
-            row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
-            if row.AHP_trough_T[i] < 0:
-                row.AHP_trough_T[i] = np.nan
+            # print("AP_thr_T: ", row.AP_thr_T[i], row.AHP_trough_T)
+            if np.isnan(row.AHP_trough_T[i]):
+                return row.AHP_trough_T[i]
+            # print("trought_t, thrt: ", row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
+            if not np.isnan(row.AHP_trough_T[i]):
+                row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
+                if row.AHP_trough_T[i] < 0:
+                    row.AHP_trough_T[i] = np.nan
         return row.AHP_trough_T
 
     def get_animal_id(self, row, df_summary):
@@ -3433,9 +3534,12 @@ class PlotSpikeInfo(QObject):
             df["AHP_depth_V"] = np.nan
         else:
             df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
+        # print("preload columns: ", df.columns)
+        # print(df["AP_peak_V"])
+        # exit()
         df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
-        print("preprocessing : df cols: ", df.columns)
+        # print("preprocessing : df cols: ", df.columns)
         if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
             CP(
                 "r",
