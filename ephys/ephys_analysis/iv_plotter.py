@@ -553,7 +553,7 @@ class IVPlotter(object):
             # len = 3 means taupars is a list of 3 values, assuming taupars[0] is a float and not a list
             # if taupars[0] is a list, then use the 0th element from the list.
 
-            if "taumpars" in ivs.keys() and len(ivs["taupars"]) > 0:
+            if "taupars" in ivs.keys() and len(ivs["taupars"]) > 0:
                 if isinstance(ivs["taupars"][0], list) and len(ivs["taupars"][0]) == 3:
                     tau_value = ivs["taupars"][0][2]
                 elif len(ivs["taupars"]) == 3:
@@ -567,7 +567,6 @@ class IVPlotter(object):
             else:
                 tstr += f"  {tauh:s}: <no measure>\n"
             tstr += f"  Holding: {np.mean(ivs['Irmp']) * 1e12:.1f} pA\n"
-
             P.axdict["C"].text(
                 0.54,
                 0.72,
@@ -732,6 +731,29 @@ class IVPlotter(object):
                 )
                 if i == 0:
                     break  # only plot the first one
+        if "exclude_Spikes" in self.experiment.keys():
+            ex_spks = self.experiment["exclude_Spikes"]
+            if self.plot_df["cell_id"] in ex_spks.keys():
+                cell = ex_spks[self.plot_df["cell_id"]]
+                mark = False
+                if cell["protocols"] in [["all"], ["All"], ["ALL"]]:
+                    mark = True
+                elif protocol in cell["protocols"]:
+                    mark = True
+                else:
+                    print("Did not match: ", protocol, cell["protocols"])
+                if mark:
+                    P.axdict["E"].text(
+                        0.5,
+                        0.5,
+                        s=f"Excluded Spikes\nReason: {cell['reason']:s}",
+                        color="r",
+                        fontsize=11,
+                        ha="center",
+                        va="center",
+                        transform=P.axdict["E"].transAxes,
+                    )
+
         P.axdict["E"].set_xlabel("V (mV)")
         P.axdict["E"].set_ylabel("dV/dt (mv/ms)")
 
