@@ -7,6 +7,10 @@ import scipy.signal as spSignal
 from typing import Union
 import MetaArray
 
+NOTRAP = True  # Set FALSE to trap when these functions are called
+# for development and debugging only. 
+# Set TRUE to not trap and allow the code to run in production.
+
 def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
     """Filter with Butterworth low pass, using time-causal lfilter 
     
@@ -30,6 +34,7 @@ def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
         filtered version of the input signal
 
     """
+    assert NOTRAP
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
@@ -61,6 +66,7 @@ def SignalFilter_HPFButter(signal, HPF, samplefreq, NPole=8):
         filtered version of the input signal
 
     """
+    assert NOTRAP
     fhpf = float(HPF)
     sf = float(samplefreq)
     wn = [fhpf/(sf/2.0)]
@@ -96,6 +102,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
         w : array
             Filtered version of the input signal
     """
+    assert NOTRAP
     assert filtertype in ["low", "high"]
     flpf = float(LPF)
     sf = float(samplefreq)
@@ -146,6 +153,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
 
 def SignalFilterLPF_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce:bool=False):
     # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
+    assert NOTRAP
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
@@ -165,6 +173,7 @@ def SignalFilterLPF_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce
     return(w)
 
 def SignalFilterHPF_SOS(signal, HPF:float, samplefreq:float, NPole:int=4):
+    assert NOTRAP
     # print("    Filter: SOS at ", LPF, " Poles: ", NPole)
     fhpf = float(HPF)
     sf = float(samplefreq)
@@ -206,6 +215,7 @@ def SignalFilter_Bandpass(signal, HPF, LPF, samplefreq):
     w : array
         filtered version of the input signal
     """
+    assert NOTRAP
     flpf = float(LPF)
     fhpf = float(HPF)
     sf = float(samplefreq)
@@ -224,6 +234,7 @@ def SignalFilter_Bandpass(signal, HPF, LPF, samplefreq):
     
 def NotchFilterZP(signal, notchf=[60.], Q=90., QScale=True, samplefreq=None):
     assert samplefreq is not None
+    assert NOTRAP
     w0 = np.array(notchf)/(float(samplefreq)/2.0)  # all W0 for the notch frequency
     if QScale:
         bw = w0[0]/Q
@@ -243,6 +254,7 @@ def NotchFilterComb(signal, notchf:Union[list, tuple]=[60.], Q:float=90., QScale
     """
     Zero Phase Notch Filter
     """
+    assert NOTRAP
     assert samplefreq is not None
     # resample the signal so that the timing matches the notch frequency
     uint = int(samplefreq/notchf[0])
@@ -273,6 +285,7 @@ def downsample(data, n, axis=0, xvals='subsample'):
     If a metaArray is given, then the axis values can be either subsampled
     or downsampled to match.
     """
+    assert NOTRAP
     ma = None
     if (hasattr(data, 'implements') and data.implements('MetaArray')):
         ma = data
