@@ -1038,7 +1038,6 @@ class DataTables:
                                         mode="categorical",
                                         title="Spike Data",
                                         data_class="spike_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot Spike Data continuous":
@@ -1047,7 +1046,6 @@ class DataTables:
                                         mode="continuous",
                                         title="Spike Data",
                                         data_class="spike_measures",
-                                        colors=colors,
                                     )
                                 case "Plot Spike Data combined":
                                     self.spike_plot = self.generate_summary_plot(
@@ -1055,7 +1053,6 @@ class DataTables:
                                         mode="combined",
                                         title="Spike Data",
                                         data_class="spike_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot Rmtau Data categorical":
@@ -1064,7 +1061,6 @@ class DataTables:
                                         mode="categorical",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot Rmtau Data continuous":
@@ -1073,7 +1069,6 @@ class DataTables:
                                         mode="continuous",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
-                                        colors=colors,
                                     )
                                 case "Plot Rmtau Data combined":
                                     self.rmtau_plot = self.generate_summary_plot(
@@ -1081,7 +1076,6 @@ class DataTables:
                                         mode="combined",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot FIData Data categorical":
@@ -1090,7 +1084,6 @@ class DataTables:
                                         mode="categorical",
                                         title="FI Data",
                                         data_class="FI_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot FIData Data continuous":
@@ -1099,7 +1092,6 @@ class DataTables:
                                         mode="continuous",
                                         title="FI Data",
                                         data_class="FI_measures",
-                                        colors=colors,
                                     )
                                 case "Plot FIData Data combined":
                                     self.fidata_plot = self.generate_summary_plot(
@@ -1107,7 +1099,6 @@ class DataTables:
                                         mode="combined",
                                         title="FI Data",
                                         data_class="FI_measures",
-                                        colors=colors,
                                     )
 
                                 case "Plot FICurves":
@@ -1179,8 +1170,8 @@ class DataTables:
                                         .child("2nd Group By")
                                         .value()
                                     )
-                                    if hue_category == "None":
-                                        hue_category = None
+                                    # if hue_category == "None":
+                                    #     hue_category = self.experiment["plot_order"][group_by]
                                     plot_order = self.experiment["plot_order"][group_by]
                                     header = self.get_analysis_info(fn)
                                     self.selected_index_rows = (
@@ -1199,7 +1190,7 @@ class DataTables:
                                         "assembleddata": table_data,  # only the
                                         "group_by": group_by,
                                         "plot_order": plot_order,
-                                        "colors": colors,
+                                        "colors": self.experiment['plot_colors'],
                                         "hue_category": hue_category,
                                         "pick_display_function": None,  # self.display_from_table_by_cell_id
                                     }
@@ -1556,7 +1547,6 @@ class DataTables:
         mode: str = "categorical",
         data_class: str = "spike_measures",
         title: str = "My Title",
-        colors: dict = {},
 
     ):
         # data class must be in the experiment configuration file, top level keys.
@@ -1570,15 +1560,15 @@ class DataTables:
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
         plot_order = self.experiment["plot_order"][group_by]
         hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
-        if hue_category == "None":
-            hue_category = None
+        # if hue_category == "None":
+        #     hue_category = self.experiment["plot_order"][group_by]
         header = self.get_analysis_info(fn)
         parameters = {
             "header": header,
             "experiment": self.experiment,
             "datasummary": self.datasummary,
             "group_by": group_by,
-            "colors": colors,
+            "plot_colors": self.experiment['plot_colors'],
             "hue_category": hue_category,
             "plot_order": plot_order,
             "pick_display_function": None,  # self.display_from_table_by_cell_id
