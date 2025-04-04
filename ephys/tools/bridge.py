@@ -35,6 +35,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 import pyqtgraph.dockarea as PGD
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 import ephys.tools.bridge_tool as BT
+import ephys.tools.get_configuration as get_config
 
 
 from .. import ephys_analysis as EP
@@ -42,68 +43,78 @@ from .. import datareaders as DR
 
 cprint = CP.cprint
 
+experiments = None
 # known data dirs by experiment:
 try:
-    # print("Current Directory: ", os.getcwd())
-    cpath = Path(os.getcwd(), "config", "experiments.cfg")
-    config = pg.configfile.readConfigFile(cpath)
-    experiments = config['experiments']
-    # print(experiments.keys())
+    print("Current Directory: ", os.getcwd())
+    cpath = Path("./config", "experiments.cfg")
+    datasets, experiments = get_config.get_configuration(cpath)
+    print("Datasets in current experiment configuration: ", experiments.keys())
 
 
 except FileNotFoundError:
-    # use a default
-    experiments = {"nf107": {
-                'datadir':'/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32Het',
-                'dbfile': '/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_Het/NF107Ai32_Het_BridgeCorrections.xlsx'
-                },
-            }
-# print("experiments: ", experiments)
+    # no valid configuration file found
+    raise FileNotFoundError(
+        "No valid configuration file found. Please check the path to the configuration file, which should be config/experiments.cfg"
+    )
 
 
-pg.setConfigOption('antialias', True)
+pg.setConfigOption("antialias", True)
 
 # To make slider handle bigger:
 sliderStyle = """ 
-    QSlider{}
+    QSlider{
     min-height: 300px;
     max-height: 300px;
-    min-width: 50;
-    max-width: 50;
+    min-width: 100;
+    max-width: 100;
     background: #353535;
     }
     QSlider::groove:vertical {
-
-        background-color: darkgray;
-        border: 1px solid;
+        background: darkgray;
+        border: 1px solid #999999;
         height: 300px;
-        width: 10px;
+        width: 5px;
         margin: 0px;
         alignment: center;
         }
 
     QSlider::handle:vertical {
-        background-color: red;
-
-        border: 1px solid;
+        background: red;
+        border: 1px solid #5c5c5c;
         height: 3px;
         width: 150px;
-        margin: -30px -20px;
+        margin: -30 30;
+        }
+    
+    QSlider::add-page:vertical {
+        background: blue;
+        }
+    QSlider::sub-page:vertical {
+        background: white;
         }
     """
 
 
-class Bridge():
+class Bridge:
     """
-    Visual adjustment of bridge balance on acq4 data sets. 
+    Visual adjustment of bridge balance on acq4 data sets.
     Writes out to the database
     """
+
     def __init__(self, args, *kwargs):
-       
-        self.datadir = experiments[args.datadir]['datadir']
-        self.dbFilename = experiments[args.datadir]['dbfile']
+        if args.experiment in experiments.keys():
+            self.experiment = experiments[args.experiment]
+        else:
+            raise ValueError(f"Experiment {args.experiment} not found in configuration file; found [{self.experiment.keys()}]")
+        self.datadir = Path(self.experiment["rawdatapath"], self.experiment["directory"])
+        self.dbFilename = Path(
+            self.experiment["databasepath"],
+            self.experiment["directory"],
+            self.experiment["datasummaryFilename"],
+        )
         self.day = args.day
-        self.df = pd.read_excel(str(self.dbFilename))
+        self.df = pd.read_pickle(str(self.dbFilename))
         cols = self.df.columns.values
         dropcols = []
         for c in cols:
@@ -112,9 +123,9 @@ class Bridge():
         self.df = self.df.drop(dropcols, axis=1)
         cols = self.df.columns
         if "update_date" not in cols:
-            self.df.insert(6, "update_date", "") 
+            self.df.insert(6, "update_date", "")
         self.df.reset_index()
-        
+
         self.AR = (
             DR.acq4_reader.acq4_reader()
         )  # make our own private cersion of the analysis and reader
@@ -124,7 +135,7 @@ class Bridge():
         self.n_adjusted = 0
         self.this_cell = 0
         self.zoom_mode = False
-        self.updated = [] # a list of rows that have been updated since last save
+        self.updated = []  # a list of rows that have been updated since last save
         self.header_map = {}
         dark_palette = QtGui.QPalette()
         white = QtGui.QColor(255, 255, 255)
@@ -146,23 +157,27 @@ class Bridge():
 
         self.app = pg.mkQApp()
         self.app.setStyle("fusion")
-        self.app.setStyleSheet("QLabel{font-size: 11pt;} QText{font-size: 11pt;} {QWidget{font-size: 9pt;}")
-        self.app.setStyleSheet("QTreeWidgetItem{font-size: 9pt;}") #  QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
+        self.app.setStyleSheet(
+            "QLabel{font-size: 11pt;} QText{font-size: 11pt;} {QWidget{font-size: 9pt;}"
+        )
+        self.app.setStyleSheet(
+            "QTreeWidgetItem{font-size: 9pt;}"
+        )  #  QText{font-size: 11pt;} {QWidget{font-size: 8pt;}")
         self.app.setPalette(dark_palette)
         # Apply dark theme to Qt application
 
-        pg.setConfigOption('background', 'k')
-        pg.setConfigOption('foreground', 'w')
+        pg.setConfigOption("background", "k")
+        pg.setConfigOption("foreground", "w")
         # QtWidgets.QWidget.__init__(self)
         self.win = pg.QtWidgets.QMainWindow()
         self.DockArea = PGD.DockArea()
         self.win.setCentralWidget(self.DockArea)
-        self.win.setWindowTitle("Bridge Balance Corrector V0.3")
+        self.win.setWindowTitle("Bridge Balance Corrector V0.4")
         self.win.resize(1600, 1024)
         self.fullscreen_widget = None
 
         self.Dock_Controls = PGD.Dock("Controls", size=(200, 200))
-        
+
         self.Dock_Table = PGD.Dock("Table", size=(400, 400))
         self.Dock_Viewer = PGD.Dock("Viewer", size=(1280, 400))
         self.DockArea.addDock(self.Dock_Controls, "left")
@@ -170,17 +185,27 @@ class Bridge():
         self.DockArea.addDock(self.Dock_Table, "bottom", self.Dock_Viewer)
 
         self.table = pg.TableWidget(sortable=False)
-        self.table.setFont(QtGui.QFont('Arial', 11))
+        self.table.setFont(QtGui.QFont("Arial", 11))
 
         self.Dock_Table.addWidget(self.table)
         self.setup_controls_and_window()
         # populate the table
-        table_data = self.df.T.to_dict()
-        self.table.setData(table_data)
+        def _data_complete_to_series(row):
+            dc = row.data_complete.split(",")
+            dc = [p.strip() for p in dc if p != "nan" and "CCIV".casefold() in p.casefold()]
+            row.protocols = pd.Series(dc)
+            return row
+            
+        self.df['protocols'] = {}
+        self.df  = self.df.apply(_data_complete_to_series, axis=1)
+        self.df = self.df.explode('protocols', ignore_index=True) 
+
+        table_data_df = self.df[['cell_id', 'cell_type', 'protocols', 'date']]   # reduce the table structure to the protocols
+        # table_data_df = table_data_df.explode('protocols', ignore_index=True)  # expand so each row is a protocol
+        table_data_df = table_data_df.T.to_dict()
+        self.table.setData(table_data_df)
         self.table.resizeRowsToContents()
-        self.table.itemDoubleClicked.connect(
-            functools.partial(self.on_double_Click, self.table)
-        )
+        self.table.itemDoubleClicked.connect(functools.partial(self.on_double_Click, self.table))
         # seems QtTableWidget should provide this... or a lookup method
         # Create a map from column names to column number
         self.n_cols = self.table.columnCount()
@@ -198,27 +223,25 @@ class Bridge():
             {"name": "Previous protocol", "type": "action"},
             {"name": "Zero Bridge", "type": "action"},
             {"name": "Reset Bridge", "type": "action"},
-            
             {"name": "Zoom", "type": "action"},
             {"name": "UnZoom", "type": "action"},
             # {"name": "Br Slider", "type": "action", },
             {"name": "Quit", "type": "action"},
         ]
         self.ptree = ParameterTree()
-        self.ptreedata = Parameter.create(
-            name="Controls", type="group", children=self.controls
-        )
+        self.ptreedata = Parameter.create(name="Controls", type="group", children=self.controls)
         self.ptree.setParameters(self.ptreedata)
         self.ptree.setMaximumWidth(320)
         self.ptree.setMinimumWidth(150)
-        self.Dock_Controls.addWidget(self.ptree)  # 
-        
+        self.Dock_Controls.addWidget(self.ptree)  #
+
         self.dataplot = pg.PlotWidget(title="Trace Plots")
+        pg.setConfigOption("leftButtonPan", True)
         self.Dock_Viewer.addWidget(self.dataplot, rowspan=5, colspan=1)
         self.dataplot.setXRange(-5.0, 2.5, padding=0.2)
         self.dataplot.setContentsMargins(10, 10, 10, 10)
 
-        self.w1 = Slider(-20.0, 20.0, scalar=1.0)
+        self.w1 = Slider(-20.0, 20.0, scalar=10.)
 
         self.Dock_Controls.addWidget(self.w1)
         self.w1.slider.valueChanged.connect(self.update_data_from_slider)
@@ -255,7 +278,6 @@ class Bridge():
             if path[0] == "UnZoom":
                 self.zoom_mode = False
                 self.zoom()
- 
 
     def on_double_Click(self, w):
         """
@@ -289,24 +311,47 @@ class Bridge():
 
     def get_protocol(self):
         # deselect previous row, then select new row
-        self.table.setRangeSelected(QtWidgets.QTableWidgetSelectionRange(self.last_row,
-                        0, self.last_row-1, 7, ), False)
-        self.table.setRangeSelected(QtWidgets.QTableWidgetSelectionRange(self.selected_index_row,
-                        0, self.selected_index_row, 7, ), True)
+        self.table.setRangeSelected(
+            QtWidgets.QTableWidgetSelectionRange(
+                self.last_row,
+                0,
+                self.last_row - 1,
+                7,
+            ),
+            False,
+        )
+        self.table.setRangeSelected(
+            QtWidgets.QTableWidgetSelectionRange(
+                self.selected_index_row,
+                0,
+                self.selected_index_row,
+                7,
+            ),
+            True,
+        )
         index = self.table.selectionModel().selectedRows()
         self.table.scrollTo(index[0], hint=QtWidgets.QAbstractItemView.ScrollHint.PositionAtCenter)
-        # This is for the bar to scroll automatically and then the current item added is always visible 
-        self.analyze_from_table(self.selected_index_row )
+        # This is for the bar to scroll automatically and then the current item added is always visible
+        self.analyze_from_table(self.selected_index_row)
 
+    def protocols_to_list(self, selected):
+        """
+        Get the complete protocols from the selected row
+        """
+        protocols = [p.strip() for p in selected.data_complete.split(",") if p.strip().startswith("CCIV")]
+        return protocols
+    
     def analyze_from_table(self, index):
         selected = self.get_table_data(index)
         if selected is None:
             return
-        self.protocolPath = Path(selected.data_directory, selected.Cell_ID, selected.Protocol)
+        print(selected.data_complete)
+        protocols = self.protocols_to_list(selected)
+
+        self.protocolPath = Path(selected.data_directory, selected.cell_id, protocols[0])
         self.newbr = 0.0
         self.protocolBridge = 0.0
         self.analyzeIVProtocol()
-
 
     def zoom(self):
         """
@@ -333,7 +378,7 @@ class Bridge():
         self.newbr = 0.0
         self.w1.slider.setValue(self.w1.getPosValue(self.newbr))
         self.update_data(self.newbr)
-    
+
     def reset_bridge(self):
         # print("reset bridge")
         row = self.df.iloc[self.selected_index_row]
@@ -378,7 +423,7 @@ class Bridge():
         self.analyzeIVProtocol()
         self.currentiv += 1  # cpimt i[]
         self.exhausted_label.setText(f"Remaining: {len(self.validivs)-self.currentiv:d}")
-        
+
     def _date_compare(self, day, date):
         if "_" not in day:
             day = day + "_000"
@@ -419,9 +464,7 @@ class Bridge():
                         f"           BridgeAdjust exists for: {str(k):s}  {ivdata[k]['BridgeAdjust']:f}"
                     )
                 validivs.append(k)
-        print(
-            f"Checked {i:d} indexed protocols, found {len(validivs):d} previously computed IVs"
-        )
+        print(f"Checked {i:d} indexed protocols, found {len(validivs):d} previously computed IVs")
 
     def setupValidIVs(self):
         """
@@ -438,25 +481,27 @@ class Bridge():
 
     def build_date(self, i):
         date = str(
-                Path(
-                    self.df.at[i, "date"],
-                    self.df.at[i, "slice_slice"],
-                    self.df.at[i, "cell_cell"],
-                )
+            Path(
+                self.df.at[i, "date"],
+                self.df.at[i, "slice_slice"],
+                self.df.at[i, "cell_cell"],
             )
+        )
         print("Date: ", date)
         return date
 
     def findIVs(self, index):
         self.validivs = []  # list of valid IVs for this cell at the dataframe index
-        self.currentiv = 0  # number for the current IV we are doing in the list (bumped up in next())
+        self.currentiv = (
+            0  # number for the current IV we are doing in the list (bumped up in next())
+        )
         i = index
-        print('index: ', index)
+        print("index: ", index)
         ivdata = self.df.at[i, "IV"]  # get the IV
         print("ivdata: ", ivdata)
         if len(ivdata) == 0:
             print("no ivdata for: ", i, self.df.at[i, "date"])
-            self.this_cell = i+1
+            self.this_cell = i + 1
 
         for k in list(ivdata.keys()):  # multiple IV's by keys in the dict
             if "BridgeAdjust" not in ivdata[k] or (
@@ -465,7 +510,7 @@ class Bridge():
                 print("         Do Bridge Adjustment for: ", k)
             else:
                 print(
-                      "         BridgeAdjust exists for: {0:s}  {1:f}".format(
+                    "         BridgeAdjust exists for: {0:s}  {1:f}".format(
                         str(k), ivdata[k]["BridgeAdjust"]
                     )
                 )
@@ -473,37 +518,39 @@ class Bridge():
         self.exhausted_label.setText(f"Remaining: {len(self.validivs):d}")
         self.this_cell = i
         self.next()  # go get the first valid protocol and analyze it
-        
+
     def analyzeIVProtocol(self):
         #        print('opening: ', self.protocolPath)
-        self.AR.setProtocol(
-            self.protocolPath
-        )  # define the protocol path where the data is
-        threshold = -0.020
+        self.AR.setProtocol(self.protocolPath)  # define the protocol path where the data is
         if self.AR.getData():  # get that data.
+            print(self.AR.CCComp)
+            print("tstart, end: ", self.AR.tstart, self.AR.tend)
             self.RM.setup(
                 clamps=self.AR, spikes=self.SP, bridge_offset=0.0
             )  # doing setup here also does bridge correction
             self.SP.setup(
                 clamps=self.AR,
-                threshold=threshold,
-                refractory=0.0001,
+                threshold=self.experiment["AP_threshold_V"],
+                refractory=0.0005,
                 peakwidth=0.001,
                 interpolate=False,
                 verify=False,
-                mode="peak",
+
             )
-            self.SP.analyzeSpikes()
-            #            self.SP.analyzeSpikeShape()
-            #            self.SP.analyzeSpikes_brief(mode='baseline')
-            #            self.SP.analyzeSpikes_brief(mode='poststimulus')
+            self.SP.set_detector(detector = self.experiment['spike_detector'],
+                                 pars=self.experiment['detector_pars'])
+            for analysismode in ["baseline", "evoked", "poststimulus"]:
+                self.SP.analyzeSpikes_brief(analysismode)
+            # self.SP.analyzeSpikes()
+            # print(self.AR.tstart, self.AR.tend)
             self.RM.analyze(
                 rmp_region=[0.0, self.AR.tstart - 0.001],
                 tau_region=[
                     self.AR.tstart,
                     self.AR.tstart + (self.AR.tend - self.AR.tstart) / 5.0,
                 ],
-                average_flag=False
+                average_flag=False,
+
             )
             self.cmd = 1e9 * self.AR.cmd_wave.view(np.ndarray)
             self.draw_traces()
@@ -545,7 +592,7 @@ class Bridge():
         """
         thisdata, ivprots = self.getIVProtocols()
         thisprot = ivprots[self.protocolKey]
-        print("\n", "-"*80)
+        print("\n", "-" * 80)
         print(f"Protocol: {str(self.protocolKey):s}")
         for k in thisprot.keys():
             if isinstance(thisprot[k], dict):
@@ -554,42 +601,48 @@ class Bridge():
                     print(f"    {dk:>24s} = {str(thisprot[k][dk]):<24s}")
             else:
                 print(f"{k:s}:   {str(thisprot[k]):s}")
-        print("-"*80, "\n")
+        print("-" * 80, "\n")
 
     def accept_new_value(self):
-        self.df.loc[self.selected_index_row, "update_date"] = datetime.datetime.now().strftime("%Y:%m:%d %H:%M:%S")
+        self.df.loc[self.selected_index_row, "update_date"] = datetime.datetime.now().strftime(
+            "%Y:%m:%d %H:%M:%S"
+        )
         self.df.loc[self.selected_index_row, "BridgeAdjust(ohm)"] = (
             self.newbr * 1e6
         )  # convert to ohms here
         if not self.df.loc[self.selected_index_row, "BridgeEnabled"]:
             self.df.loc[self.selected_index_row, "BridgeResistance"] = 0.0
         # update "TrueRsistance":
-        self.df.loc[self.selected_index_row,"TrueResistance"] = (
-            self.df.loc[self.selected_index_row, "BridgeResistance"] +
-            self.df.loc[self.selected_index_row, "BridgeAdjust(ohm)"] 
+        self.df.loc[self.selected_index_row, "TrueResistance"] = (
+            self.df.loc[self.selected_index_row, "BridgeResistance"]
+            + self.df.loc[self.selected_index_row, "BridgeAdjust(ohm)"]
         )
         # update in table with red text
-        brc = self.header_map['BridgeAdjust(ohm)']
-        self.table.item(self.selected_index_row, brc).setText(f"{self.df.loc[self.selected_index_row, 'BridgeAdjust(ohm)']:f}", )
+        brc = self.header_map["BridgeAdjust(ohm)"]
+        self.table.item(self.selected_index_row, brc).setText(
+            f"{self.df.loc[self.selected_index_row, 'BridgeAdjust(ohm)']:f}",
+        )
         self.table.item(self.selected_index_row, brc).setForeground(pg.mkBrush("r"))
-        btr = self.header_map['TrueResistance']
-        self.table.item(self.selected_index_row, btr).setText(f"{self.df.loc[self.selected_index_row, 'TrueResistance']:f}", )
+        btr = self.header_map["TrueResistance"]
+        self.table.item(self.selected_index_row, btr).setText(
+            f"{self.df.loc[self.selected_index_row, 'TrueResistance']:f}",
+        )
         self.table.item(self.selected_index_row, btr).setForeground(pg.mkBrush("r"))
 
     def update_database(self):
         self.df.reset_index()
         BT.save_excel(self.df, self.dbFilename)  # this also formats the excel file
-        self.updated = [] 
+        self.updated = []
         self.n_adjusted = 0
 
     def rescale(self):
         vb = self.dataplot.getViewBox()
         vb.enableAutoRange(enable=True)
+        
 
     def draw_traces(self):
         print(f"Update traces, br: {self.protocolBridge:f}")
-        self.dataplot.setTitle(
-            f"{str(self.protocolPath):s} {self.protocolBridge:.2f}")
+        self.dataplot.setTitle(f"{str(self.protocolPath):s} {self.protocolBridge:.2f}")
         self.newbr = self.protocolBridge / 1e6  # convert to megaohms
         self.w1.slider.setValue(self.newbr)
         cmdindxs = np.unique(self.AR.commandLevels)  # find the unique voltages
@@ -617,24 +670,22 @@ class Bridge():
         self.zoom()
 
     def update_data_from_slider(self):
-        print("get bridge from slider")
         br = self.w1.x
-        self.update_data(bridge_value = br)
+        self.update_data(bridge_value=br)
 
-    def update_data(self, bridge_value = np.nan):
+    def update_data(self, bridge_value=np.nan):
 
         if np.isnan(bridge_value):
-            bc = 0.
-        print("bc: ", bridge_value)
+            bc = 0.0
         self.newbr = bridge_value
         for i, c in enumerate(self.curves):
             c.setData(
                 self.AR.time_base * 1e3,
                 self.AR.traces[i, :] * 1e3 - (self.cmd[i] * bridge_value),
             )
-        self.updated.append(self.selected_index_row)
-        self.rescale()
-        self.zoom()
+        # self.updated.append(self.selected_index_row)
+        # self.rescale()
+        # self.zoom()
 
 
 class FloatSlider(pg.Qt.QtWidgets.QSlider):
@@ -660,12 +711,15 @@ class FloatSlider(pg.Qt.QtWidgets.QSlider):
 
 
 class Slider(pg.Qt.QtWidgets.QWidget):
-    def __init__(self, minimum, maximum, scalar=1.0, parent=None):
+    def __init__(self, minimum:float=-20., maximum:float=20., scalar:float=1.0, parent=None):
         super(Slider, self).__init__(parent=parent)
         self.label = pg.QtWidgets.QLabel(self)
 
         spacerItem = pg.QtWidgets.QSpacerItem(
-            0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
+            0,
+            40,
+            pg.QtWidgets.QSizePolicy.Policy.Expanding,
+            pg.QtWidgets.QSizePolicy.Policy.Minimum,
         )
 
         self.verticalLayout = pg.QtWidgets.QVBoxLayout(self)
@@ -674,10 +728,13 @@ class Slider(pg.Qt.QtWidgets.QWidget):
         self.horizontalLayout = pg.QtWidgets.QHBoxLayout()
         self.horizontalLayout.addItem(spacerItem)
 
-        self.slider = FloatSlider(self, decimals = 2)
-        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Vertical) # Horizontal)
+        self.slider = FloatSlider(self, decimals=2)
+        self.slider.setOrientation(pg.QtCore.Qt.Orientation.Vertical)  # Horizontal)
         self.slider.setStyleSheet(sliderStyle)
         self.verticalLayout.addWidget(self.slider)
+        self.slider.setTickInterval(5)
+        self.slider.setSingleStep(1)
+        self.slider.setTickPosition(pg.QtWidgets.QSlider.TickPosition.TicksRight)
         # spacerItem1 = pg.QtWidgets.QSpacerItem(
         #     0, 20, pg.QtWidgets.QSizePolicy.Policy.Expanding, pg.QtWidgets.QSizePolicy.Policy.Minimum
         # )
@@ -690,7 +747,7 @@ class Slider(pg.Qt.QtWidgets.QWidget):
         self.scalar = scalar
         self.slider.setMinimum(self.minimum)
         self.slider.setMaximum(self.maximum)
-        # self.slider.setRange(self.minimum, self.maximum)
+        self.slider.setRange(int(self.minimum), int(self.maximum))
         self.slider.valueChanged.connect(self.setLabelValue)
         self.setLabelValue(self.slider.value())
 
@@ -729,9 +786,7 @@ def main():
             --10/2018, 11/2021 pbm
             """
     )
-    parser.add_argument(
-        "datadir", type=str, default="", help="Full path to data directory"
-    )
+    parser.add_argument("--datadir", type=str, default="", help="Full path to data directory")
     parser.add_argument(
         "--dbfile", type=str, default="", help="Name of database file (including path)"
     )
@@ -741,6 +796,13 @@ def main():
         type=str,
         default="all",
         help="Day for analysis if only analyzing data from one day",
+    )
+    parser.add_argument(
+        "-e",
+        "--experiment",
+        type=str,
+        default=None,
+        help="specify experiment in the configuration file for this data set",
     )
 
     args = parser.parse_args()
