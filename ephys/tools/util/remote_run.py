@@ -64,7 +64,7 @@ if upload:
     # mypwd = getpass.getpass("Password for %s: " % machine)
     mypwd = 'lbm$jh1$'
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy)
     print( 'connecting to: ', sysChoice[machine]['addr'])
     print ('as user: ', sysChoice[machine]['uname'])
     conn = ssh.connect(sysChoice[machine]['addr'], username=sysChoice[machine]['uname'], password=mypwd)  # hate putting pwd in file like this...
