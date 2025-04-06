@@ -24,7 +24,7 @@ dill==0.3.8
 colorcet
 colormaps==0.4.1
 termcolor
-jinja2==3.1.2
+jinja2==3.1.6
 python-docx==1.1.0  # for writing Word docx files. Maybe used by associated programs
 
 pyabf==2.3.8  # for reading axon binary files

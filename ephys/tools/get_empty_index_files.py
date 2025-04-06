@@ -20,7 +20,7 @@ def get_remote_file(filepath):
     remoteaddress = "152.19.86.120"
     remotedatapath = "/cygdrive/g/data/Mike/DCN_CBA_pyrdata"
     ssh_client = paramiko.SSHClient()
-    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.set_missing_host_key_policy(paramiko.RejectPolicy)
     ssh_client.connect(
         hostname=remoteaddress, port="22", username="experimenters", password="ent$73$lab"
     )

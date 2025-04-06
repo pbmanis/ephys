@@ -28,7 +28,7 @@ Rig4 = {
 
 def getssh(riginfo):
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy)
     # if host['login'] == 'pbmanis':
     #       continue
     host = Rig4
@@ -53,7 +53,7 @@ def getssh(riginfo):
 
 def connect(riginfo):
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.set_missing_host_key_policy(paramiko.RejectPolicy)
     # if host['login'] == 'pbmanis':
     #       continue
     host = Rig4
