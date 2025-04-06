@@ -2511,25 +2511,11 @@ class PlotSpikeInfo(QObject):
         for ax in P.axdict:
             PH.nice_plot(P.axdict[ax], direction="outward", ticklength=3, position=-0.03)
 
-        # positional information for the plots.
-        pos = {
-            "pyramidal": [0.0, 1.0],
-            "tuberculoventral": [0.0, 1.0],
-            "cartwheel": [0.0, 1.0],
-            "bushy": [0.05, 0.95],
-            "stellate": [0.6, 0.4],
-            "t-stellate": [0.6, 0.4],
-            "d-stellate": [0.6, 0.4],
-            "giant": [0.6, 0.4],
-            "giant_maybe": [0.6, 0.4],
-            "default": [0.4, 0.15],
-        }
         longform = "cell, group, Iinj, rate\n"  # build a csv file the hard way
-        prism_form = ""
         mode = "mean"  # "individual"
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
         if mode == "mean":
-            P.figure_handle.suptitle("FI Mean, SEM ", fontweight="normal", fontsize=18)
+            P.figure_handle.suptitle("FI Mean + errorbars ", fontweight="normal", fontsize=18)
         elif mode == "individual":
             P.figure_handle.suptitle("FI Individual", fontweight="normal", fontsize=18)
         fi_stats = []
