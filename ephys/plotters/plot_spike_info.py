@@ -1033,8 +1033,8 @@ class PlotSpikeInfo(QObject):
             df_x = df_x.apply(self.fix_cell_expression, axis=1)
 
         dodge = True
-        print("xname: ", xname)
-        print("self.experiment hue: ", self.experiment["hue_palette"])
+        # print("xname: ", xname)
+        # print("self.experiment hue: ", self.experiment["hue_palette"])
         hue_palette = self.experiment["hue_palette"][xname]
         hue_order = self.experiment["plot_order"][xname]
         hue_category = xname
@@ -1068,7 +1068,7 @@ class PlotSpikeInfo(QObject):
         # dodge = False
         # print("hue Palette: ", hue_palette)
         # print("hue category: ", hue_category)
-        print("hue category: ", hue_category, hue_palette, xname, yname)
+        # print("hue category: ", hue_category, hue_palette, xname, yname)
         # must use scatterplot if you want to use picking.
         if enable_picking:
             # print("xname, uniqe xnames: ", xname, df_x[xname].unique())
@@ -1551,12 +1551,11 @@ class PlotSpikeInfo(QObject):
         assert data_class in ["spike_measures", "rmtau_measures", "FI_measures", None]
         df["Subject"] = df.apply(set_subject, axis=1)
         df = df.copy()  # make sure we don't modifiy the incoming
-        print("summary plot incoming x : ", df[xname].unique())
-
+ 
         print(
-            "summary_plot_ephys_parameters_categorical: incoming x categories: ", df[xname].unique()
+            "PSI: summary_plot_ephys_parameters_categorical: incoming x categories: ", df[xname].unique()
         )
-        print("Parent figure: ", parent_figure)
+        print("PSI: Parent figure: ", parent_figure)
         if parent_figure is None:
             P, letters, plabels, cols, nrows = self.create_plot_figure(
                 df=df,
@@ -1573,8 +1572,8 @@ class PlotSpikeInfo(QObject):
 
             nrows = len(self.experiment["celltypes"])
             cols = len(measures)
-        print("rows, cols: ", nrows, cols)
-        print("measures: ", measures)
+        print("PSI: rows, cols: ", nrows, cols)
+        print("PSI: measures: ", measures)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         # print(df.cell_type.unique())
@@ -1590,13 +1589,11 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-        # print("local measures:::: ", local_measures)
-        # print(df.columns)
-
-
-        # print("plot order: ", plot_order)
+        print("local measures:::: ", local_measures)
+   
+        # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
-            if measure in ["AP_thr_V", "AHP_depth_V", "AP_peak_V"]:
+            if measure in ["AP_thr_V", "AP_peak_V", "AP_max_V"]:
                 CP("y", f"{measure:s}: {df[measure]!s}")
             # print("Measure IS: ", measure)
             if measure.startswith("dvdt_ratio_bestRs"):
@@ -1610,33 +1607,20 @@ class PlotSpikeInfo(QObject):
                 for index in df.index:
                     if index >= len(df.index):
                         continue
-                    # print("df index, : ", index, len(df.index))
-                    print("AP_peak_V: ", type(df.iloc[index]["AP_peak_V"]), df.iloc[index]["AP_peak_V"], measure)
-                    print("AP_peak_V_bestRs: ", type(df.iloc[index]["AP_peak_V_bestRs"]), df.iloc[index]["AP_peak_V_bestRs"], measure)
-                    print("AP_thr_V_bestRs: ", type(df.iloc[index]["AP_thr_V_bestRs"]), df.iloc[index]["AP_thr_V_bestRs"], measure)
                     if index > len(df)-1:
                         continue
-                    # print("AP Peak, checking df: ", df.columns)
-                    # print(len(df))
-                    # print(index)
                     if isinstance(df.iloc[index]["AP_peak_V_bestRs"], (list, np.ndarray)):
                         if isinstance(df.iloc[index]["AP_thr_V_bestRs"], list):
-                            # thrv = np.mean(df.iloc[index]["AP_thr_V])
-                            # print("thrv: ", thrv)
                             thrv = float(df.iloc[index]["AP_thr_V_bestRs"][0])
                         else:
                             thrv = float(df.iloc[index]["AP_thr_V_bestRs"])
                         val = 1e3*float(df.iloc[index]["AP_peak_V_bestRs"][0]) - thrv
-                        # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
                     elif isinstance(df.iloc[index]["AP_peak_V_bestRs"], float) and isinstance(df.iloc[index]["AP_thr_V_bestRs"], float):
-                            val = 1e3*float(df.iloc[index]["AP_peak_V_bestRs"]) - df.iloc[index]["AP_thr_V_bestRs"]
+                            val = 1e3*float(df.iloc[index]["AP_peak_V_bestRs"]) - df.iloc[index]["AP_thr_V_bestRs"]     
                     else:
                         val = np.nan
-
-                # apv = np.array([xp[0] for xp in df["AP_peak_V"].values if isinstance(xp, list) else xp])
                     df.at[index, measure] = val
-                    print("index: ", index, "val: ", val)
-                # print("summaryplot params categorical: AP_peak_V: ", df["AP_peak_V_bestRs"].values, measure)
+            
             if measure.startswith("AP_max_V"):
                 if measure not in df.columns:
                     df[measure] = {}
@@ -1647,10 +1631,34 @@ class PlotSpikeInfo(QObject):
                     # print("AP_peak_T: ", type(df.iloc[index]["AP_peak_T"]), df.iloc[index]["AP_peak_T"])
                     if isinstance(df.iloc[index]["AP_peak_V"], (list, np.ndarray)):
                         val = 1e3*float(df.iloc[index]["AP_peak_V"][0])
+                        val = self.experiment['junction_potential'] + val
                         # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
                     else:
                         val = np.nan
                     df.at[index, measure] = val
+            
+            if measure.startswith("AP_depth_V"):
+                if measure not in df.columns:
+                    df[measure] = {}
+                for index in df.index:
+                    if index >= len(df.index):
+                        continue
+                    if isinstance(df.iloc[index]["AP_depth_V_bestRs"], (list, np.ndarray)):
+                        if isinstance(df.iloc[index]["AP_thr_V_bestRs"], list):
+                            thrv = float(df.iloc[index]["AP_thr_V_bestRs"][0])
+                        else:
+                            thrv = float(df.iloc[index]["AP_thr_V_bestRs"])
+                        val = 1e3*float(df.iloc[index]["AP_depth_V_bestRs"][0]) - thrv
+                    elif isinstance(df.iloc[index]["AHP_depth_V_bestRs"], float) and isinstance(df.iloc[index]["AP_thr_V_bestRs"], float):
+                            val = 1e3*float(df.iloc[index]["AP_depth_V_bestRs"]) - df.iloc[index]["AP_thr_V_bestRs"]     
+                    else:
+                        val = np.nan
+                    df.at[index, measure] = val
+            #         print("AP_depth_V: ",df.iloc[index]["AP_depth_V_bestRs"], val)
+            # print("\nmeasure: ", measure)
+            # print(df["AHP_rel_depth_V"].values)
+
+
             if measure in self.transforms.keys():
                 tf = self.transforms[measure]
             else:
@@ -1674,13 +1682,15 @@ class PlotSpikeInfo(QObject):
                     if x_measure not in self.ylims[ycell]:
                         ylims = None
                         print("setting ylims to None for measure: ", x_measure)
+                        print(self.ylims[ycell])
                     else:
                         ylims = self.ylims[ycell][x_measure]
                     if measure not in df.columns:
                         print("Measure : ", measure, "not in columns")
                         print(df.columns)
-                        continue
-                    print("Plotting measure: ", measure)
+                        raise ValueError("Missing measure: ", measure)
+                        # continue
+                    # print("Plotting measure: ", measure)
                     picker_func = self.create_one_plot_categorical(
                         data=df,
                         xname=xname,
@@ -1705,8 +1715,8 @@ class PlotSpikeInfo(QObject):
                         axp.set_xticklabels("")
                         axp.set_xlabel("")
                     self.relabel_yaxes(axp, measure=x_measure)
-                    if measure.startswith("AP_max_V"):
-                        PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
+                    # if measure.startswith("AP_max_V"):
+                    #     PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
 
             else:  # single row
                 # here we probably have the cell type or group as the x category,
@@ -1714,10 +1724,12 @@ class PlotSpikeInfo(QObject):
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 x_measure = "_".join((measure.split("_"))[:-1])
                 if x_measure not in self.ylims["default"]:
-                    print("Measure not in y_lims in config file - cannot plot!", x_measure)
+                    CP("r", f"Measure not in y_lims in config file - cannot plot! {x_measure:s}")
+                    raise ValueError("Missing measure in default limits: ", x_measure)
                     continue
                 if measure not in df.columns:
-                    print("measure not in df_columns: ", measure, df.columns)
+                    CP("r", f"measure not in df_columns:  {measure:s}, {df.columns!s}")
+                    raise ValueError("Missing measure: ", measure)
                     continue
                 if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
                     axp.text(
@@ -1729,6 +1741,10 @@ class PlotSpikeInfo(QObject):
                         ha="left",
                         va="bottom",
                     )
+                # if measure.startswith("AHP_depth_V"):
+                #     print(measure, x_measure)
+                #     exit()
+                    
                 plot_order = [p for p in plot_order if p in df[xname].unique()]
                 # print(df[measure], df[xname])
                 picker_func = self.create_one_plot_categorical(
@@ -1751,8 +1767,8 @@ class PlotSpikeInfo(QObject):
                 self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=x_measure)
 
-                if measure.startswith("AP_max_V"):
-                    PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
+                # if measure.startswith("AP_max_V"):
+                #     PH.referenceline(axl=axp, reference=-self.experiment['junction_potential'], )
                 # if icol > 0:
                 #     axp.set_ylabel("")
                 #     print("removed ylabel from ", icol, measure, celltype)
@@ -2140,6 +2156,7 @@ class PlotSpikeInfo(QObject):
             y = "_".join([*y.split("_")[:-1]])  # reassemble without the trailing label
         self.relabel_yaxes(ax, measure=y)
         self.relabel_xaxes(ax)
+        print("ylims: ", ylims, ylims.keys(), celltype, ylims[lim]["celltypes"])
         if ylims is not None:  # make sure we have some limits
             for lim in ylims.keys():  # may be "limits1", etc.
                 if (
@@ -2147,12 +2164,12 @@ class PlotSpikeInfo(QObject):
                 ):  # check the list of cell types in the limit group
                     if y in ylims[lim].keys():  # check the list of measures in the limit group
                         ax.set_ylim(ylims[lim][y])  # finally...
-        print("XLIMS: ", xlims)
+        # print("XLIMS: ", xlims)
         if xlims is not None:
             ax.set_xlim(xlims)
         else:
             ax.set_xlim(0, 600)
-        print("XLIMS as set: ", ax.get_xlim())
+        # print("XLIMS as set: ", ax.get_xlim())
         # PH.do_talbotTicks(ax,axes='x', density=(0.2, 2))
         picker_func = Picker()
         # picker_func.setData(dfp.copy(deep=True), axis=ax)
@@ -2229,6 +2246,8 @@ class PlotSpikeInfo(QObject):
             ax.set_ylim(ylims)
         if xlims is not None:
             ax.set_xlim(xlims)
+
+            
         picker_func = self.bar_pts(
             dfp,
             xname=xname,
@@ -2286,7 +2305,18 @@ class PlotSpikeInfo(QObject):
         return row.Rin
 
     def adjust_AHP_depth_V(self, row):
-
+        """adjust_AHP_depth_V adjust the AHP depth voltage measurement
+        for the junction potential. This does not change the value
+        Parameters
+        ----------
+        row : pandas series
+            data row
+        Returns
+        -------
+        AHP_depth_V : list
+            adjusted AHP depth
+        """
+        # print("adjust AHP Depth ", row.AHP_depth_V)
         if isinstance(row.AHP_depth_V, float):
             row.AHP_depth_V = [row.AHP_depth_V + 1e-3 * self.experiment["junction_potential"]]
         else:
@@ -2296,12 +2326,14 @@ class PlotSpikeInfo(QObject):
         return row.AHP_depth_V
 
     def adjust_AHP_trough_V(self, row):
+        # print("adjust AHP Trough: ", row.AHP_trough_V)
         if isinstance(row.AHP_trough_V, float):
             row.AHP_trough_V = [row.AHP_trough_V + 1e-3 * self.experiment["junction_potential"]]
         else:
             row.AHP_trough_V = [
                 ap + 1e-3 * self.experiment["junction_potential"] for ap in row.AHP_trough_V
             ]
+        
         return row.AHP_trough_V
 
     def adjust_AP_thr_V(self, row):
@@ -3116,24 +3148,27 @@ class PlotSpikeInfo(QObject):
             f"{row.AP_thr_V:15.5f}, {Path(row.cell_id).name!s}, {row.cell_type:16s}, {row.Group:5s}"
         )
 
-    def compute_AHP_depth(self, row):
-        # Calculate the AHP depth, as the voltage between the the AP threshold and the AHP trough
+    def compute_AHP_relative_depth(self, row):
+        # Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
+        # this creates a AHP_rel_depth_V column.
+
         if "LowestCurrentSpike" not in row.keys():
             # This is the first assignment/caluclation of AHP_depth_V, so we need to make sure
             # it is a list of the right length
             if isinstance(row.AP_thr_V, float):
                 row.AP_thr_V = [row.AP_thr_V]
-            if isinstance(row.AHP_trough_V, float):
-                row.AHP_trough_V = [row.AHP_trough_V]
-            row["AHP_depth_V"] = [np.nan] * len(row.AP_thr_V)
+            rel_depth_V = [np.nan] * len(row.AHP_depth_V)
             for i, apv in enumerate(row.AHP_trough_V):
-                row.AHP_depth_V[i] = row.AHP_trough_V[i] - row.AP_thr_V[i]
-                if row.AHP_depth_V[i] > 0:
-                    row.AHP_depth_V[i] = np.nan
-            return row.AHP_depth_V[i]  # convert to mV here
+                rel_depth_V[i] = row.AP_thr_V[i] - row.AHP_depth_V[i]  # note sign is positive ... consistent with LCS in spike analysis
+                # but rescale and change sign for plotting
+                rel_depth_V[i] = -1.0 * rel_depth_V[i] *1e3  # convert to mV
+                if rel_depth_V[i] > 0:
+                    rel_depth_V[i] = np.nan
+            return np.nanmean(rel_depth_V)  # single measure
         else:
             CP("c", "LowestCurrentSpike in row keys")
+            return row.LowestCurrentSpike.AHP_depth  # just return the current value from LCS - already is relative
 
     def compute_AHP_trough_time(self, row):
         # RE-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
@@ -3286,6 +3321,8 @@ class PlotSpikeInfo(QObject):
             df = pd.read_pickle(fn, compression="gzip")
         except:
             df = pd.read_pickle(fn)
+        print("preload columns: ", sorted(df.columns))
+
         df_summary = get_datasummary(self.experiment)
         df = self.preprocess_data(df, self.experiment)
         return df
@@ -3505,23 +3542,23 @@ class PlotSpikeInfo(QObject):
         else:
             df["AHP_trough_V"] = df.apply(self.adjust_AHP_trough_V, axis=1)
         if "AHP_depth_V" not in df.columns:
-            df["AHP_depth_V"] = np.nan
+            df["AHP_depth_V"] = {}
         else:
             df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
-        # print("preload columns: ", df.columns)
-        # print(df["AP_peak_V"])
-        # exit()
-        df["AHP_depth_V"] = df.apply(self.compute_AHP_depth, axis=1)
+        if "AHP_rel_depth_V" not in df.columns:
+            df["AHP_rel_depth_V"] = {}
+        df["AHP_rel_depth_V"] = df.apply(self.compute_AHP_relative_depth, axis=1)
+        print("Relative AHP depths: ", df["AHP_rel_depth_V"])
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
         # print("preprocessing : df cols: ", df.columns)
         if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
             CP(
-                "r",
+                "g",
                 "\nLowestCurrentSpike is valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
             )
         else:
             CP(
-                "g",
+                "r",
                 "\nLowestCurrentSpike is NOT valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
             )
 
@@ -3694,7 +3731,7 @@ if __name__ == "__main__":
             # adddata=adddata,
             fn=fn,
         )
-        exit()
+        # exit()
 
     # df = read_data_files(excelsheet, adddata, analysis_cell_types)
 
