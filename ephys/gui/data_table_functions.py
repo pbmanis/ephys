@@ -3167,7 +3167,10 @@ class Functions:
                         and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
                         and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
                     )
-                    # CP("b", f"    LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
+                    CP("m", f"    LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
+                    # if have_LCS_data:
+                    #     print(df_cell.Spikes[protocol]["LowestCurrentSpike"])
+                    # exit()
                     spike_data = df_cell.Spikes[protocol]["spikes"]
                     # print("    checking measure in protocol: ", measure)
                     if (
@@ -3185,6 +3188,7 @@ class Functions:
                             "AHP_trough_V",
                             "AHP_trough_T",
                             "AHP_depth_V",
+                            "AHP_depth",
                             "AHP_depth_T",
 
                         ]
@@ -3259,6 +3263,14 @@ class Functions:
                                 df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_peak_V"] * 1e-3
                             )  # convert back to V *like AP_thr_V*
                             self.add_measure(protocol, measure, value=AP_peak_V)
+                        else:
+                            self.add_measure(protocol, measure, value=np.nan)
+                    elif measure in ["AHP_depth_V"]:
+                        if have_LCS_data:
+                            AHP_depth = (
+                                df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_depth_V"] * 1e-3
+                            )  # convert back to V *like AP_thr_V*
+                            self.add_measure(protocol, measure, value=AHP_depth)
                         else:
                             self.add_measure(protocol, measure, value=np.nan)
                     elif measure in ["AP_HW"]:
