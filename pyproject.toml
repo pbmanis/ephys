@@ -1,6 +1,6 @@
 [project]
 name = "ephys"
-version = "0.7.5a"
+version = "0.8.0a"
 description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, LSPS maps"
 authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
@@ -40,3 +40,6 @@ miniviewer = "ephys.tools.miniviewer:main"
 plotmaps = "ephys.tools.plot_maps:main"
 [tool.pdm]
 distribution = false
+
+
+]

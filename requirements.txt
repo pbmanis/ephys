@@ -7,7 +7,7 @@ flake8==7.0.0
 Pint>=0.24.4
 isort>=5.13.2
 mypy==1.13.0
-sphinx==8.1.3
+sphinx==8.2.3
 sphinx-automodapi
 sphinx-rtd-theme
 
@@ -22,39 +22,40 @@ dill==0.3.8
 # efel>=3.0.93 
 # envisage==4.7.2
 colorcet
-colormaps==0.4.1
+colormaps==0.4.2
 termcolor
 jinja2==3.1.6
 python-docx==1.1.0  # for writing Word docx files. Maybe used by associated programs
 
 pyabf==2.3.8  # for reading axon binary files
-meegkit==0.1.7 # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
-lmfit==1.2.2
-obspy==1.4.0  # for resampling and filtering
+meegkit==0.1.9 # some filtering and baseline adjustments translated from Python originally from Alain de Cheveigné 
+lmfit==1.3.3
+obspy==1.4.1  # for resampling and filtering
 
-matplotlib>=3.9.0
+matplotlib>=3.10.0
 matplotlib-scalebar>=0.8.1
 MetaArray==2.1.1
 nose==1.3.7
-numba==0.61.0rc2 # ==0.50.1
-numpy>=1.26, <= 2.1.0
-pandas>=2.2.0
+numba==0.61.2
+numpy>=2.2
+pandas>=2.2.3
 pandas_parallel_apply==2.2
 pyarrow==19.0.0
 openpyxl
 XlsxWriter>=3.0
 psutil==5.6.7
-pyparsing==2.4.0
+pyparsing==3.2.3
 tables==3.10.2
-pypdf2
+pypdf
 pingouin==0.5.4
 python-statemachine
-resampy==0.4.2
-scipy>=1.14.0
+resampy==0.4.3
+scipy>=1.15.2
 seaborn
 statsmodels==0.14.4
 scikit_posthocs==0.9.0
 sympy
+shapely 
 deepdiff
 
 pyqt6
@@ -68,12 +69,12 @@ tifffile==2024.06.18
 
 # specific for Allen SDK:
 ruamel.yaml<1,>=0.15
-imageio>=2.34  # scikit image
+imageio>=2.37  # scikit image
 networkx>=2.0  # scikit image
 PyWavelets>=1.6.0  # scikit image
 nest_asyncio==1.2.0  # allensdk 2.11.2
 # jinja2<2.12.0,>=2.7.3  # allensdk2.11.2
-hdmf==3.14.1 
+hdmf>=4.0.0
 isodate==0.6.1
 #========================
 # nwbinspector==0.4.37
@@ -85,11 +86,13 @@ PyOpenGL>=3.1.5
 # tensorflow>=2.17.0
 # tensorflow-metal==1.1.0
 
+efel
 
 pylibrary @ git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary
 # -e /Users/pbmanis/Desktop/Python/MetaArray
-# nwbinspector @ get+https://github.com/pbmanis/nwbinspector.git@egg=nwbinspector
--e /Users/pbmanis/Desktop/Python/nwbinspector
+#  nwbinspector @ get+https://github.com/pbmanis/nwbinspector.git@egg=nwbinspector
+# -e /Users/pbmanis/Desktop/Python/nwbinspector
+nwbinspector>=0.6.3
 imreg_dft>=2.0
 descartes
 #mahotas
