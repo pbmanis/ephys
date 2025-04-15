@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ephys"
 version = "0.8.0a"
@@ -7,14 +11,14 @@ authors = [
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
 ]
 dependencies = []
+
 requires-python = "==3.13.*"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 classifiers = [
     "Development Status ::  Beta",
     "Environment :: Console",
     "Intended Audience :: Neuroscientists",
-    "License :: MIT",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.10+",
     "Topic :: Data Processing :: Neuroscience",
@@ -27,19 +31,26 @@ Homepage = "http://github.com/pbmanis/ephys"
 
 [project.scripts]
 analyzemapdata = "ephys.mapanalysistools.analyzeMapData:main"
-bridge = "ephys.tools.bridge:main"
 checkrs = "ephys.tools.check_rs:main"
 datasummary = "ephys.tools.data_summary:main"
-datatable = "ephys.gui.data_tables:main"
 dircheck = "ephys.tools.dir_check:main"
-fix_objscale = "ephys.tools.fix_objscale:main"
 ma2tiff = "ephys.tools.ma2tiff:convertfiles"
 matread = "ephys.ephys_analysis.MatdatacRead:main"
+show_assembled = "ephys.tools.show_assembled:main"
+plotmaps = "ephys.tools.plot_maps:main"
+
+[project.gui-scripts]
+bridge = "ephys.tools.bridge:main_gui"
+datatable = "ephys.gui.data_tables:main"
+fix_objscale = "ephys.tools.fix_objscale:main"
 measure = "ephys.tools.cursor_plot:main"
 miniviewer = "ephys.tools.miniviewer:main"
-plotmaps = "ephys.tools.plot_maps:main"
+
 [tool.pdm]
 distribution = false
 
+[tool.setuptools]
+packages = ['ephys', 'ephys.gui', 'ephys.mapanalysistools', 'ephys.tools']
 
-]
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements_local.txt"]}
