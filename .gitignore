@@ -151,3 +151,4 @@ ephys/ephysanalysis/PSCAnalyzer_+old.py
 ephys/ephys_analysis/c_deriv.c
 ephys/tools/data/files.toml
 ephys/tools/test_re_dayslicecell.py
+ephys/tools/data/files.toml
