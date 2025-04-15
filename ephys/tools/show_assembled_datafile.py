@@ -630,6 +630,7 @@ if __name__ == "__main__":
     select_by = "Rs"
     cfg, d = get_configuration(str(fn))
     exptname = "VM_Dentate"
+    exptname = "CBA_Age"
     print(cfg)
     experiment = d[exptname]
     expts = experiment
@@ -637,14 +638,15 @@ if __name__ == "__main__":
     assembled_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["assembled_filename"])
     print(assembled_filename)
     data = read_pickle(assembled_filename, compression="gzip")
-    print(data.columns)
+    print("assembled data columns: ", data.columns)
     # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
     # exit()
     for index in data.index:
         print("index: ", index, data.loc[index]['Subject'], data.loc[index]['protocol'], data.iloc[index].AdaptIndex2)
-        print("      ", data.iloc[index])
+        print("     values: ", data.iloc[index])
 
-        print("Peak V: ", data.iloc[index].AP_peak_V, "thr: ", data.iloc[index].AP_thr_V) # , data.iloc[index].AP_thr_V)
+        print("Peak V: ", data.iloc[index].AP_peak_V, "thr: ", data.iloc[index].AP_thr_V, "trough: ", data.iloc[index].AHP_trough_V) # , data.iloc[index].AP_thr_V)
+        print("    AHP depth: ", data.iloc[index].AHP_depth_V, "Relative depth: ", data.iloc[index].AHP_relative_depth_V)
         # print(data.iloc[index].AdaptRatio2) # , data.iloc[index].protocol)
         # print(data.iloc[index].Subject, data.iloc[index].protocol)
         # print(data.iloc[index].cell_id)

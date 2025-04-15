@@ -131,6 +131,7 @@ datacols = [
     "AdaptIndex2",
     "AHP_trough_V",
     "AHP_depth_V",
+    "AHP_relative_depth_V",
     "AHP_trough_T",
     "tauh",
     "Gh",
@@ -182,6 +183,7 @@ spike_keys: list = [
     "dvdt_ratio",
     "AHP_depth_V",
     "AHP_trough_V",
+    "AHP_relative_depth_V",
     "AHP_trough_T" "spikes",
     "iHold",
     "pulseDuration",
@@ -2294,7 +2296,7 @@ class Functions:
                     durations.append(duration)
                     delays.append(delay)
                     important.append(AR.checkProtocolImportant(fullpath))
-                    CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                    # CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
                     valid_prots.append(protocol)
                 except ValueError:
                     CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
@@ -3167,9 +3169,12 @@ class Functions:
                         and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
                         and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
                     )
-                    CP("m", f"    LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
-                    # if have_LCS_data:
-                    #     print(df_cell.Spikes[protocol]["LowestCurrentSpike"])
+                    if have_LCS_data:
+                        CP("y", f"    have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
+                    else:
+                        CP("r", f"    DO NOT have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
+                    if have_LCS_data:
+                        print("LCS Data: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
                     # exit()
                     spike_data = df_cell.Spikes[protocol]["spikes"]
                     # print("    checking measure in protocol: ", measure)
@@ -3188,7 +3193,6 @@ class Functions:
                             "AHP_trough_V",
                             "AHP_trough_T",
                             "AHP_depth_V",
-                            "AHP_depth",
                             "AHP_depth_T",
 
                         ]
@@ -3246,10 +3250,10 @@ class Functions:
 
                             CP(
                                 "r",
-                                f"Missing lowest current spike data in spikes dictionary: {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
+                                f"Missing lowest current spike data in spikes dictionary: {cell_id_full:s} {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
                             )
                             value = np.nan
-                        self.add_measure(protocol, measure, value=np.nan)
+                        self.add_measure(protocol, measure, value=value)
 
                     elif measure in ["AP_thr_T"]:
                         if have_LCS_data:
@@ -3257,6 +3261,24 @@ class Functions:
                             self.add_measure(protocol, measure, value=Vthr_time)
                         else:
                             self.add_measure(protocol, measure, value=np.nan)
+                    
+                    elif measure in ["AHP_trough_V"]:
+                        if have_LCS_data:
+                            print("through look, : ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
+                            try:
+                                AHP_trough_V = (
+                                df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_trough_V"] * 1e-3
+                            )
+                            except:
+                                print("AHP_trough_V not found in LCS data")
+                                AHP_trough_V = np.nan
+                                raise ValueError(
+                                    f"AHP_trough_V not found in LCS data: {cell_id_full:s}  {df_cell.Spikes[protocol]['LowestCurrentSpike'].keys()!s}"
+                                )
+                        else:
+                            AHP_trough_V = np.nan
+                        self.add_measure(protocol, measure, value=AHP_trough_V)
+
                     elif measure in ["AP_peak_V"]:
                         if have_LCS_data:
                             AP_peak_V = (
@@ -3265,14 +3287,19 @@ class Functions:
                             self.add_measure(protocol, measure, value=AP_peak_V)
                         else:
                             self.add_measure(protocol, measure, value=np.nan)
-                    elif measure in ["AHP_depth_V"]:
+                   
+                    elif measure in ["AHP_relative_depth_V"]:
                         if have_LCS_data:
-                            AHP_depth = (
-                                df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_depth_V"] * 1e-3
+                            AHP_relative_depth = (
+                                df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_relative_depth_V"]
                             )  # convert back to V *like AP_thr_V*
-                            self.add_measure(protocol, measure, value=AHP_depth)
                         else:
-                            self.add_measure(protocol, measure, value=np.nan)
+                            AHP_relative_depth = np.nan
+                        self.add_measure(protocol, measure, value=AHP_relative_depth)
+
+                        CP("m", f"AHP_relative depth depth_V set in get_measure: {AHP_relative_depth:6.3f}")
+
+                    
                     elif measure in ["AP_HW"]:
                         if have_LCS_data:
                             AP_HW = df_cell.Spikes[protocol]["LowestCurrentSpike"]["AP_HW"]

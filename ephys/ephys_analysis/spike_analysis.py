@@ -645,7 +645,7 @@ class SpikeAnalysis:
                     pp.pprint(self.spikeShapes[m][n])
         # print("a sp s done")
 
-    def get_lowest_current_spike(self):
+    def get_lowest_current_spike(self, minimum_current:float=20e-12, minimum_postspike_interval:float=0.025):
         """get_lowest_current_spike : get the lowest current spike in the traces
         and save the various measurements in a dictionary
         The critera are:
@@ -670,7 +670,7 @@ class SpikeAnalysis:
                 continue  # no spikes in this trace
             if self.spikeShapes[tr][0].AP_latency < self.Clamps.tstart: # first spike is in forbidden window
                 continue 
-            if self.spikeShapes[tr][0].current < 20e-12:  # current level is too small
+            if self.spikeShapes[tr][0].current < minimum_current:  # current level is too small
                 continue
             # now we can check for the first spike and check that it's interval is > the deadtime we want
             spkshape0 = self.spikeShapes[tr][0]  # get the 1st spike in the trace
@@ -679,7 +679,7 @@ class SpikeAnalysis:
                 spkshape1 = self.spikeShapes[tr][1]
                 if (
                     spkshape1.AP_beginIndex is not None and spkshape0.AP_latency is not None
-                    and (spkshape1.AP_latency - spkshape0.AP_latency) >= 0.025
+                    and (spkshape1.AP_latency - spkshape0.AP_latency) >= minimum_postspike_interval
                 ):
                     dvdts[tr] = spkshape0  # meets criteria, so add to the list
                     CP.cprint("g", f"   Adding trace {tr} spike to lowest current spike list")
@@ -691,7 +691,7 @@ class SpikeAnalysis:
             currents = []
             itr = []
             for tr in dvdts.keys():  # for each first spike, make a list of the currents
-                if dvdts[tr].current >= 20.0e-12:  # require a positive current step - at least 20 pA
+                if dvdts[tr].current >= minimum_current:  # require a positive current step - at least 20 pA
                     # print("candidate spike info: ", dvdts[tr].trace, dvdts[tr].current, dvdts[tr].AP_latency, dvdts[tr].halfwidth_interpolated)
                     currents.append(dvdts[tr].current)
                     itr.append(tr)
@@ -703,6 +703,7 @@ class SpikeAnalysis:
             if sp.AP_begin_V is None:
                 print("\nSpike empty? \n", sp)
                 return None
+            LCS["version"] = 2.0
             LCS["dvdt_rising"] = sp.dvdt_rising
             LCS["dvdt_falling"] = sp.dvdt_falling
             LCS["dvdt_current"] = min_current * 1e12  # put in pA
@@ -723,7 +724,9 @@ class SpikeAnalysis:
                 LCS["AP_HW"] = np.nan
 
             LCS["AP_begin_V"] = 1e3 * sp.AP_begin_V
-            LCS["AHP_depth"] = 1e3 * (sp.AP_begin_V - sp.trough_V)
+            LCS["AHP_relative_depth_V"] = 1e3 * (sp.AP_begin_V - sp.trough_V) # relative value, new
+            LCS["AHP_depth_V"] = 1e3 * (sp.AP_begin_V - sp.trough_V)  # reliative value also, for older analyses (deprecated and not used if relative depth is available)
+            LCS["AHP_trough_V"] = 1e3 * sp.trough_V  # absolute value
             LCS["AHP_trough_T"] = sp.trough_T
             LCS["trace"] = itr[i_min_current]
             LCS["dt"] = sp.dt

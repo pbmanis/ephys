@@ -168,11 +168,11 @@ class AssembleDatasets:
         protostrings = "|".join(list(self.experiment["protocols"]["CCIV"].keys()))
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
-        print(df.head())
         # return
         df = self.combine_by_cell(df)
         print("\nWriting assembled data to : ", fn)
         print(df.head())
+        print("Assembled data columns: ", df.columns)
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
         df.to_pickle(fn, compression="gzip")
 
@@ -364,7 +364,7 @@ class AssembleDatasets:
             limit = len(cells_to_do)
             tasks = range(limit)
         elif isinstance(ilimit, int):
-            limit = min(ilimit, len(cells_to_do))
+            limit = ilimit # min(ilimit, len(cells_to_do))
             tasks = range(limit)
         elif isinstance(ilimit, list):
             limit = ilimit

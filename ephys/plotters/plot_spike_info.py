@@ -675,7 +675,8 @@ cols = [
     "AdaptIndex",
     "AHP_trough_V",
     "AHP_trough_T",
-    "AHP_depth_V",
+    # "AHP_depth_V",
+    "AHP_relative_depth_V"
     "tauh",
     "Gh",
     "FiringRate",
@@ -699,7 +700,7 @@ datacols = [
     "AdaptIndex",
     "AHP_trough_V",
     "AHP_trough_T",
-    "AHP_depth_V",
+    "AHP_relative_depth_V",
     "tauh",
     "Gh",
     "FiringRate",
@@ -1269,6 +1270,7 @@ class PlotSpikeInfo(QObject):
             "AP_HW": 1e6,  # convert to usec
             "AP_thr_V": 1e3,
             "AHP_depth_V": 1e3,
+            "AHP_relative_depth_V": 1,
             "AHP_trough_V": 1e3,
             "AHP_trough_T": 1e3,
             "FISlope": 1e-9,
@@ -1374,6 +1376,7 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",
+            "AHP_relative_depth_V",
             "AdaptRatio",
             "AdaptIndex",
             "FIMax_1",
@@ -1572,8 +1575,11 @@ class PlotSpikeInfo(QObject):
 
             nrows = len(self.experiment["celltypes"])
             cols = len(measures)
-        print("PSI: rows, cols: ", nrows, cols)
-        print("PSI: measures: ", measures)
+        # print("PSI: rows, cols: ", nrows, cols)
+        # print("PSI: measures: ", measures)
+        # print("PSI: df columns: ", df.columns)
+        # print("PSI depth measure types: ", df["AHP_depth_measure"].values)
+        print("unique AHP depth meausre sources: ", df["AHP_depth_measure"].unique())
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         # print(df.cell_type.unique())
@@ -1657,7 +1663,20 @@ class PlotSpikeInfo(QObject):
             #         print("AP_depth_V: ",df.iloc[index]["AP_depth_V_bestRs"], val)
             # print("\nmeasure: ", measure)
             # print(df["AHP_rel_depth_V"].values)
-
+            if measure.startswith("AP_relative_depth_V"):
+                if measure not in df.columns:
+                    df[measure] = {}
+                for index in df.index:
+                    if index >= len(df.index):
+                        continue
+                    # print("AP_peak_V: ", type(df.iloc[index]["AP_peak_V"]), df.iloc[index]["AP_peak_V"], measure)
+                    # print("AP_peak_T: ", type(df.iloc[index]["AP_peak_T"]), df.iloc[index]["AP_peak_T"])
+                    if isinstance(df.iloc[index]["AHP_relative_depth_V_bestRs"], (list, np.ndarray)):
+                        val = 1e3*float(df.iloc[index]["AHP_relative_depth_V_bestRs"][0])
+                        # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
+                    else:
+                        val = np.nan
+                    df.at[index, measure] = val
 
             if measure in self.transforms.keys():
                 tf = self.transforms[measure]
@@ -2305,7 +2324,7 @@ class PlotSpikeInfo(QObject):
         return row.Rin
 
     def adjust_AHP_depth_V(self, row):
-        """adjust_AHP_depth_V adjust the AHP depth voltage measurement
+        """adjust_AHP_relative_depth_V adjust the AHP depth voltage measurement
         for the junction potential. This does not change the value
         Parameters
         ----------
@@ -3152,8 +3171,18 @@ class PlotSpikeInfo(QObject):
         # Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
         # if the depth is positive, then the trough is above threshold, so set to nan.
         # this creates a AHP_rel_depth_V column.
+        # Usually we want to take this from the spike evoked by the lowest-current level (e.g., near rheobase)
+        # as the analysis of that spike is what is used for the dvdt/hw measures and threshold,
+        # and is an isolated spike (minimum default distance to next spike is 25 ms) 
 
-        if "LowestCurrentSpike" not in row.keys():
+        # print("row.keys: ", row.keys())
+        if "AHP_relative_depth_V" in row.keys():
+            lcs_depth = row.get("AHP_relative_depth_V", np.nan)
+            print("lcs depth: ", lcs_depth)
+            CP("c", f"LowestCurrentSpike in row keys, AHP = {row["AHP_relative_depth_V"]}")
+            row.AHP_depth_measure = "Lowest Current Spike"
+            row.AHP_relative_depth_V = -1 * np.array(row.AHP_relative_depth_V)
+        else:
             # This is the first assignment/caluclation of AHP_depth_V, so we need to make sure
             # it is a list of the right length
             if isinstance(row.AP_thr_V, float):
@@ -3165,10 +3194,10 @@ class PlotSpikeInfo(QObject):
                 rel_depth_V[i] = -1.0 * rel_depth_V[i] *1e3  # convert to mV
                 if rel_depth_V[i] > 0:
                     rel_depth_V[i] = np.nan
-            return np.nanmean(rel_depth_V)  # single measure
-        else:
-            CP("c", "LowestCurrentSpike in row keys")
-            return row.LowestCurrentSpike.AHP_depth  # just return the current value from LCS - already is relative
+            row.AHP_depth_measure = "Multiple spikes"
+            row.AHP_relative_depth_V = rel_depth_V
+        return row # single measure
+        
 
     def compute_AHP_trough_time(self, row):
         # RE-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
@@ -3541,26 +3570,30 @@ class PlotSpikeInfo(QObject):
             df["AHP_trough_V"] = np.nan
         else:
             df["AHP_trough_V"] = df.apply(self.adjust_AHP_trough_V, axis=1)
+
         if "AHP_depth_V" not in df.columns:
             df["AHP_depth_V"] = {}
-        else:
-            df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
-        if "AHP_rel_depth_V" not in df.columns:
-            df["AHP_rel_depth_V"] = {}
-        df["AHP_rel_depth_V"] = df.apply(self.compute_AHP_relative_depth, axis=1)
-        print("Relative AHP depths: ", df["AHP_rel_depth_V"])
+        df["AHP_depth_V"] = df.apply(self.adjust_AHP_depth_V, axis=1)
+
+        if "AHP_depth_measure" not in df.columns:
+                df["AHP_depth_measure"] = "None"
+        if "AHP_relative_depth_V" not in df.columns:
+            df["AHP_relative_depth_V"] = {}
+        print("df.keys: ", df.keys())
+        df = df.apply(self.compute_AHP_relative_depth, axis=1)
+        print("Relative AHP depths: ", df["AHP_relative_depth_V"])
         df["AHP_trough_T"] = df.apply(self.compute_AHP_trough_time, axis=1)
         # print("preprocessing : df cols: ", df.columns)
-        if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
-            CP(
-                "g",
-                "\nLowestCurrentSpike is valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
-            )
-        else:
-            CP(
-                "r",
-                "\nLowestCurrentSpike is NOT valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
-            )
+        # if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
+        #     CP(
+        #         "g",
+        #         "\nLowestCurrentSpike is valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
+        #     )
+        # else:
+        #     CP(
+        #         "r",
+        #         "\nLowestCurrentSpike is NOT valid in data  ***********##############!!!!!!!!!!!!!!!!!!!",
+        #     )
 
         if len(df["Group"].unique()) == 1 and df["Group"].unique()[0] == "nan":
             if self.experiment["set_group_control"]:
@@ -3638,7 +3671,7 @@ class PlotSpikeInfo(QObject):
                 "dvdt_falling",
                 "AP_thr_V",
                 "AP_HW",
-                "AHP_depth_V",
+                "AHP_relative_depth_V",
                 "AHP_trough_T",
                 # "AP15Rate",
                 "AdaptRatio",
