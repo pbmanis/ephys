@@ -767,7 +767,7 @@ class Slider(pg.Qt.QtWidgets.QWidget):
         )
 
 
-def main():
+def main_gui():
     parser = argparse.ArgumentParser(
         description="""Bridge balance correction tool.
             Allows the user to adjust the bridge balance on IV curves from cells post-hoc.
@@ -813,4 +813,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main_gui()
