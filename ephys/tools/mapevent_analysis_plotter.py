@@ -42,7 +42,7 @@ import scikit_posthocs as sp
 
 
 from pylibrary.plotting import plothelpers as PH
-from PyPDF2 import PdfFileMerger, PdfFileReader
+from pypdf import PdfFileMerger, PdfFileReader
 from pylibrary.tools import cprint as CP
 Logger = logging.getLogger("MapAnalysis2_Log")
 
