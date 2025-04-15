@@ -38,6 +38,7 @@ def SignalFilter_LPFButter(signal, LPF, samplefreq, NPole=8):
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
+    print("Butter lpf WN: ", wn)
     b, a = spSignal.butter(NPole, wn, btype='low', output='ba')
     zi = spSignal.lfilter_zi(b,a)
     out, zo = spSignal.lfilter(b, a, signal, zi=zi*signal[0])
@@ -70,6 +71,7 @@ def SignalFilter_HPFButter(signal, HPF, samplefreq, NPole=8):
     fhpf = float(HPF)
     sf = float(samplefreq)
     wn = [fhpf/(sf/2.0)]
+    print("BUtter HPF WN: ", wn)
     b, a = spSignal.butter(NPole, wn, btype='high', output='ba')
     zi = spSignal.lfilter_zi(b,a)
     out, zo = spSignal.lfilter(b, a, signal, zi=zi*signal[0])
@@ -106,7 +108,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
     assert filtertype in ["low", "high"]
     flpf = float(LPF)
     sf = float(samplefreq)
-    wn = [flpf/(sf/2.0)]
+    wn = flpf/(sf/2.0)
     reduction = 1
     if LPF <= samplefreq/2.0:
         reduction = int(samplefreq/LPF)
@@ -157,6 +159,7 @@ def SignalFilterLPF_SOS(signal, LPF:float, samplefreq:float, NPole:int=4, reduce
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = [flpf/(sf/2.0)]
+    print("LPFSOS WN: ", wn)
     reduction = 1
     if LPF <= samplefreq/2.0:
         reduction = int(samplefreq/LPF)
