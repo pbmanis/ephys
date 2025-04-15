@@ -49,7 +49,6 @@ from typing import Union
 import numpy as np
 import scipy
 import scipy.stats as stats
-import scipy.misc
 import scipy.interpolate
 
 import pyqtgraph as pg
