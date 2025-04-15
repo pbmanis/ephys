@@ -38,7 +38,7 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+from pypdf import PdfMerger, PdfReader, PdfWriter
 
 import ephys.datareaders as DR
 import ephys.ephys_analysis as EP

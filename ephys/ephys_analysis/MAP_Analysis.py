@@ -14,7 +14,7 @@ import pyqtgraph as pg
 import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
-from PyPDF2 import PdfFileMerger, PdfFileReader, PdfFileWriter
+from pypdf import PdfFileMerger, PdfFileReader, PdfFileWriter
 
 import ephys.mapanalysistools as mapanalysistools
 import ephys.tools.filename_tools as filename_tools
