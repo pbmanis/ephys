@@ -5,9 +5,9 @@ Using eFEL for analysis on acq4 files
 
 from pathlib import Path
 import numpy as np
-from ephys.ephys_analysis import acq4read
+from ephys.datareaders import acq4_reader
 import efel
-AR = acq4read.Acq4Read()
+AR = acq4_reader.acq4_reader()
 
 fn = 'data_for_testing/CCIV'
 
