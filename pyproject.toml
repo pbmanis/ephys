@@ -25,7 +25,6 @@ classifiers = [
     "Topic :: Scientific Software :: Tools :: Python Modules",
 ]
 
-
 [project.urls]
 Homepage = "http://github.com/pbmanis/ephys"
 
