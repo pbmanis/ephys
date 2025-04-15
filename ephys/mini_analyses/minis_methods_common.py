@@ -2020,9 +2020,23 @@ class MiniAnalyses:
             # print('fixed_delay: ', self.fitresult.params['fixed_delay'].value)
             # print('y shape: ', np.shape(self.summary.allevents[j,:]))
             # print('x shape: ', np.shape(self.summary.average.avgeventtb))
+        # just the definitions to be safe
+        #       def doubleexp_lm(
+        # time: np.ndarray,
+        # amp: float,
+        # amp2: float,
+        # tau_1: float,
+        # tau_2: float,
+        # tau_3: float,
+        # tau_4: float,
+        # # tau_ratio: float=1.0,
+        # risepower: float = 1.0,
+        # fixed_delay: float = 0.0,
+        # y: np.ndarray = None,
+
             self.fiterr[j] = self.doubleexp_lm(
                 y=self.summary.allevents[ev_tr],
-                time=self.summary.average.avgeventtb,
+                x=self.summary.average.avgeventtb,
                 amp=self.fitresult.params["amp"].value,
                 amp2=self.fitresult.params["amp2"].value,
                 tau_1=self.fitresult.params["tau_1"].value,
@@ -2048,17 +2062,17 @@ class MiniAnalyses:
 
     @staticmethod
     def doubleexp_lm(
-        time: np.ndarray,
-        amp: float,
-        amp2: float,
-        tau_1: float,
-        tau_2: float,
-        tau_3: float,
-        tau_4: float,
+        x: np.ndarray,
+        amp: float = 0.0,  # thse should all be overridden!
+        amp2: float = 0.0,
+        tau_1: float = 1.0,
+        tau_2: float = 5.0,
+        tau_3: float = 3.0,
+        tau_4: float = 15.0,
         # tau_ratio: float=1.0,
         risepower: float = 1.0,
         fixed_delay: float = 0.0,
-        y: np.ndarray = None,
+        # compare_data: np.ndarray = None
     ) -> np.ndarray:
         """
         Calculate a double exponential EPSC-like waveform, with 2 single_exp functions added together.
@@ -2069,9 +2083,9 @@ class MiniAnalyses:
         from the "time constants"
         """
         # fixed_delay = p[3]  # allow to adjust; ignore input value
-        ix = int(np.argmin(np.fabs(time - fixed_delay)))
-        tm = np.zeros_like(time)
-        tx = time[ix:] - fixed_delay
+        ix = int(np.argmin(np.fabs(x - fixed_delay)))
+        tm = np.zeros_like(x)
+        tx = x[ix:] - fixed_delay
         exp_arg1 = tx / tau_1
         exp_arg1[exp_arg1 > 30] = 30  # limit values
         # exp_arg1 = np.clip(exp_arg1, np.log(1e-16), 0)
@@ -2086,21 +2100,21 @@ class MiniAnalyses:
         tm[ix:] *= np.exp(-tx / tau_2)
         tm[ix:] += (amp2 * (1 - np.exp(-tx / tau_3)) ** risepower) * np.exp(-tx / tau_4)
         # this gets constrained
-        if y is not None:  # return error - single value
-            tm = np.sqrt(np.sum((tm - y) * (tm - y)))
+        # if compare_data is not None:  # return error - single value
+        #     tm = np.sqrt(np.sum((tm - compare_data) * (tm - compare_data)))
         return tm
 
     @staticmethod
     def singleexp_lm(
-        time: np.ndarray,
-        amp: float,
-        amp2: float,
-        tau_1: float,
-        tau_2: float,
+        x: np.ndarray,
+        amp: float = 0.0,
+        amp2: float = 0.0,
+        tau_1: float = 1.0,
+        tau_2: float = 5.0,
         # tau_ratio: float=1.0,
         risepower: float = 1.0,
         fixed_delay: float = 0.0,
-        y: np.ndarray = None,
+        # compare_data: np.ndarray = None,
     ) -> np.ndarray:
         """
         Calculate a double exponential EPSC-like waveform with rise and fall. The rising phase
@@ -2110,9 +2124,9 @@ class MiniAnalyses:
         from the "time constants"
         """
         # fixed_delay = p[3]  # allow to adjust; ignore input value
-        ix = int(np.argmin(np.fabs(time - fixed_delay)))
-        tm = np.zeros_like(time)
-        tx = time[ix:] - fixed_delay
+        ix = int(np.argmin(np.fabs(x - fixed_delay)))
+        tm = np.zeros_like(x)
+        tx = x[ix:] - fixed_delay
         exp_arg1 = tx / tau_1
         exp_arg1[exp_arg1 > 30] = 30  # limit values
         # exp_arg1 = np.clip(exp_arg1, np.log(1e-16), 0)
@@ -2126,8 +2140,8 @@ class MiniAnalyses:
             raise ValueError()
         tm[ix:] *= np.exp(-tx / tau_2)
         # this gets constrained
-        if y is not None:  # return error - single value
-            tm = np.sqrt(np.sum((tm - y) * (tm - y)))
+        # if compare_data is not None:  # return error of fit - single value
+        #     tm = np.sqrt(np.sum((tm - compare_data) * (tm - compare_data)))
         return tm
 
     def event_fitter_lm(
@@ -2161,7 +2175,7 @@ class MiniAnalyses:
         elif n_taus == 1:
             dexpmodel = lmfit.Model(self.singleexp_lm)
         else:
-            raise ValueError("minis_methos_common::event_fitter_lm: n_taus must be 1 or 2")
+            raise ValueError("minis_methods_common::event_fitter_lm: n_taus must be 1 or 2")
         params = lmfit.Parameters()
         # get some logical initial parameters
         init_amp = maxev
@@ -2304,12 +2318,13 @@ class MiniAnalyses:
         params["risepower"] = lmfit.Parameter(name="risepower", value=self.risepower, vary=False)
         # print("params: ", params)
         self.fitresult = dexpmodel.fit(
-            evfit,
-            params,
+            data=evfit,
+            x=timebase,
+            params=params,
             nan_policy="omit",
-            time=timebase,
             # max_nfev=3000,
             method="nelder",
+            # compare_data = None,
         )
         # now repeat with 2 exponentials.
         dexpmodel = lmfit.Model(self.doubleexp_lm)
