@@ -60,7 +60,7 @@ class UserTester(object):
         If *result* and *expect* do not match, then raise an exception.
         """
         # Check test structures are the same
-
+        np.set_printoptions(precision=7, suppress=False)
         # handle case where numpy deprecated np.float 
         if type(info) is np.float64:
             info = float(info)
@@ -72,8 +72,8 @@ class UserTester(object):
             if len(info) != len(expect):
                 print('\nComparing Lists, Model tested: %s, measure: %s' % (self.key, key))
                 print('Lengths: expected: %d  received: %d' % (len(expect), len(info)))
-                print('Array received: ', info)
-                print('Array expected: ', expect)
+                print('Array received: ', np.array(info))
+                print('Array expected: ', np.array(expect))
             assert len(info) == len(expect)
         # print("info, dict: ", type(info), type(expect))
         if isinstance(info, dict):
