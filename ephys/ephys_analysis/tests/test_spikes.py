@@ -17,7 +17,7 @@ import pyqtgraph as pg
 
 import ephys.ephys_analysis.rm_tau_analysis as RMT
 import ephys.ephys_analysis.spike_analysis as SA
-
+import ephys.
 from ephys.mini_analyses.util import UserTester
 
 # set up for plotting
