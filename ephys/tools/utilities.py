@@ -45,7 +45,7 @@ from random import sample
 
 import numpy as np
 import scipy.signal
-from ephys.ephys_analysis import c_deriv
+
 import obspy.signal.interpolation as OSI  # lanczos resampling
 from numba import jit
 from numpy import ma as ma
@@ -140,6 +140,7 @@ def nb_box_spike_find(x:np.ndarray, y:np.ndarray, dt:float,
         
         Returns an array of indices in x where spikes occur
         """
+        from . import c_deriv
         spikes = np.zeros_like(y)
         c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
             x.view(np.ndarray),
@@ -795,6 +796,7 @@ class Utility:
 
     def deriv(self, x: np.ndarray, y: np.ndarray, order: int = 1) -> np.ndarray:
         dout = np.zeros_like(y)
+        from . import c_deriv
         c_deriv.c_deriv(
             x.view(np.ndarray), y.view(np.ndarray), dout.shape[0] - 1, order, dout
         )
@@ -814,6 +816,7 @@ class Utility:
         
         Returns an array of indices in x where spikes occur
         """
+        from . import c_deriv
         spikes = np.zeros_like(y)
         c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
             x.view(np.ndarray),

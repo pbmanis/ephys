@@ -28,7 +28,7 @@ import pylibrary.tools.digital_filters as dfilt
 import pyximport
 import scipy as sp
 import scipy.signal
-from ephys.mini_analyses import clembek  # cythonized... pyx file
+# from ephys.mini_analyses import clembek  # cythonized... pyx file
 from ephys.mini_analyses.minis_methods_common import MiniAnalyses
 from pylibrary.tools.cprint import cprint
 from scipy.optimize import curve_fit
@@ -175,6 +175,7 @@ class ClementsBekkers(MiniAnalyses):
         T: np.ndarray,
     ) -> None:
         # version using cythonized clembek (imported above)
+        from . import clembek
         starttime = timeit.default_timer()
         D = data
         Crit = np.zeros_like(D)
