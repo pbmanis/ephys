@@ -1,6 +1,28 @@
 from __future__ import print_function
 """
-Run unit tests for minis
+Run unit tests for minis and spike analysis. This should be run if pytest fails
+to help isolate the problems. 
+
+This script is intended to be run from the command line. It will
+find the test files in the ephys directory and run them using pytest.
+The script will also add the ephys directory to the Python path.
+
+Flags:
+ -- audit: run the tests in audit mode, which allows you to compare the
+ results with the stored results of a previous run, and either accept
+ or reject the results. This can be useful if there is a change in code
+ that changes the calculations, or if there is a change in libraries
+ that changes the calculations. Usually we find that the differences
+ are in the 10^-4 to 10^-5 range (relative), which is acceptable given
+ that we are using floating point numbers, and that there is noise
+ in the data (although there is not supposed to be noise in the test
+ data). 
+    -- tensor_flow_test: run the tests in the ephys/tools/tests directory
+    for tensor flow installation. This is not supported currently
+    --tb=short: use short traceback for errors. This is the default.
+
+This should be run if pytest fails.
+
 """
 
 import os, sys
