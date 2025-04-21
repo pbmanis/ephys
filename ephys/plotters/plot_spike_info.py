@@ -86,7 +86,6 @@ def concurrent_data_plotting(
 
     if mode == "categorical":
         df = PSI_.preload(filename)
-        print("categorical", group_by)
         if group_by in ["nan"]:
             if status_bar_message is None:
                 raise ValueError("group_by is null: please select group for categorical plot")
@@ -1144,9 +1143,6 @@ class PlotSpikeInfo(QObject):
         if not all(np.isnan(df_x[yname])):
             df_x = df_x.dropna(subset=[yname])
             df_x = df_x.dropna(subset=[xname])
-            print("\n", "Plot colors: ", self.experiment["plot_colors"])
-            print("xname, yname, hue, hue order: ", xname, yname, hue_category, hue_order)
-            print(df_x[xname].unique())
             sns.boxplot(
                 data=df_x,
                 x=xname,
