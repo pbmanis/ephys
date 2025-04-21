@@ -245,6 +245,7 @@ class AssembleDatasets:
                 )
             )
             df = self.read_coding_file(df_summary, coding_filename, coding_sheet, coding_level)
+            print(df.columns)
             print(
                 "coding file: ",
                 coding_filename,
@@ -254,7 +255,8 @@ class AssembleDatasets:
                 coding_level,
                 "coding_name: ",
                 coding_name,
-                "Group: ",
+                 )
+            print("Group: ",
                 df.Group.unique(),
             )
             print("coding data: ", df.columns)
@@ -449,10 +451,8 @@ class AssembleDatasets:
             row = df.loc[index]
             if pd.isnull(row.date):
                 continue
-            if "coding_name" in self.experiment.keys():
-                coding_name = self.experiment["coding_name"]
-            else:
-                coding_name = "Group"
+            coding_name = self.experiment.get("coding_name", "Group")
+            df["Group"] = np.nan
             # print(row.date, df_coding.date.values)
             # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
@@ -467,9 +467,9 @@ class AssembleDatasets:
                     )
 
                 # how to assign groups: by date or subject?
-                print("Level: ", level.lower())
+                # print("Level: ", level.lower())
                 if level.casefold() == "date".casefold():
-                    print("row.date: ", row.date)
+                    # print("row.date: ", row.date)
                     df.loc[index, "Group"] = (
                         df_coding[df_coding.date == row.date][coding_name].astype(str).values[0]
                     )
@@ -504,4 +504,5 @@ class AssembleDatasets:
             else:
                 # print("Assigning nan to : ", df.loc[index].cell_id)
                 df.loc[index, "Group"] = np.nan
+        print("returning coding file: ", df.columns)
         return df

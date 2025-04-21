@@ -105,7 +105,16 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # now do the selection. Find out which protocols have the
     # lowest select_by measurement
     # these arrays are the same length as the number of protocols
-    selector_values = np.array(row[select_by])
+    # also, if the selection value is out of range, set
+    # the parameter to nan, to remove it 
+    select_limits = np.array(select_limits)*1e-6
+    if isinstance(row[select_by], float):
+        selector_vals = np.array([row[select_by]])
+    else:
+        selector_vals = np.array(row[select_by])
+    selector_values = np.array([np.nan if v < select_limits[0] or v > select_limits[1] else v for v in selector_vals])
+
+    # print(" selected values:", selector_values, print(select_limits))
     # print("parametre, row[parameter]: ", parameter, row[parameter])
     params = np.array(row[parameter])
     prots = row["protocols"]
@@ -176,6 +185,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         if np.isnan(value):
             continue
         # this will be set on the first run if min_val is correctly initialized
+        # print(select_by, "select_value: ", select_value, "min val: ", min_val)
         if select_value < min_val:
             min_val = value  # set the value
             equal_mins = [i]  # reset the list of equal minima
@@ -198,7 +208,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if len(iprots) == 0:
         CP.cprint(
             "r",
-            f"No minimum value found for: {row.cell_id!s}, {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
+            f"No minimum value found for: {row.cell_id!s}, {select_by:s} {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
         )
         if verbose:
             print("    protocols: ", row[select_by])
@@ -253,6 +263,29 @@ def innermost(datalist):
             continue
     return datalist  # no inner list found
 
+def filter_rs(row, maxRs, axis=1):
+    """filter_rs : Filter the Rs values to remove those that are too high
+
+    Parameters
+    ----------
+    row : pandas Series
+        The row of data to filter
+    maxRs : float
+        The maximum Rs value allowed
+
+    Returns
+    -------
+    pandas Series
+        The filtered row of data
+    """
+    if isinstance(row["Rs"], float):
+        if row["Rs"] > maxRs:
+            row["Rs"] = np.nan
+            return row
+        else:
+            return row
+    else:
+        return row
 
 def populate_columns(
     data: pd.DataFrame,
@@ -277,7 +310,10 @@ def populate_columns(
             data[b_str] = np.nan
     if "age_category" not in data.columns:
         data["age_category"] = None
-    age_cats = configuration["age_categories"]
+    if "age_categories" in configuration.keys():
+        age_cats = configuration["age_categories"]
+    else:
+        age_cats = None
 
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
@@ -285,7 +321,9 @@ def populate_columns(
     for cellid in configuration["excludeIVs"]:
         for protos in configuration["excludeIVs"][cellid]["protocols"]:
             excludes.append(str(Path(cellid, protos)))
-
+ 
+    data = data.apply(filter_rs, maxRs=select_limits[1]*1e-6, axis=1) # (data["Rs"].values[0] <= select_limits[1]*1e-6)
+    data.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data
     data["CC_taum"] = data.apply(transfer_cc_taum, excludes=excludes, axis=1)
     assert isinstance(data["CC_taum"], pd.Series)
     data["used_protocols"] = ""
@@ -390,7 +428,7 @@ def check_types(data1, data2):
 
 def perform_selection(
     select_by: str = "Rs",
-    select_limits: list = [0, 1e10],
+    select_limits: list = [0, 1e9],
     data: pd.DataFrame = None,
     parameters: list = None,
     configuration: dict = None,
@@ -505,7 +543,6 @@ def get_best_and_mean(
     return data
 
 def show_best_rs_data(data, select_limits):
-    select_limits = [0, 1e9]
     print("Parameters: ", parameters, "select_by", select_by)
     print("Data columns: ", data.columns)
     # for index in data.index:

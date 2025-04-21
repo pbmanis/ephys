@@ -21,6 +21,9 @@ age categories needs to be a dictionary like this:
 """
 
 def categorize_ages(row, age_categories):
+    if age_categories is None:
+        row.age_category = "ND"
+        return row.age_category
     row.age = numeric_age(row)  # convert
     for k in age_categories.keys():
         if (
