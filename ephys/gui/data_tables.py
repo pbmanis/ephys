@@ -1275,7 +1275,7 @@ class DataTables:
                         case "Map Analysis Plots":
                             match path[2]:
                                 case "Rise/Fall/Amplitude":
-                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea = MA2.MapEventAnalyzer(self.experiment)
                                     mea.plot_taus(
                                         df=mea.merged_db,
                                         plot_list=["tau1", "tau2", "Amplitude"],
@@ -1283,18 +1283,18 @@ class DataTables:
                                     )
 
                                 case "Spontaneous Amplitudes":
-                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea = MA2.MapEventAnalyzer(self.experiment)
                                     mea.plot_data(df=mea.merged_db, plotwhat="avg_spont_amp")
 
                                 case "Evoked Event Amplitudes":
-                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea = MA2.MapEventAnalyzer(self.experiment)
                                     mea.plot_data(
                                         df=mea.merged_db,
                                         plotwhat="mean_amp",
                                     )
 
                                 case "Event Latencies":
-                                    mea = MA2.MapEventAnalyzer(self.experimentname)
+                                    mea = MA2.MapEventAnalyzer(self.experiment)
                                     mea.plot_data(
                                         df=mea.merged_db,
                                         plotwhat="latency",
