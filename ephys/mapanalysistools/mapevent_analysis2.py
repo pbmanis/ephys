@@ -53,9 +53,7 @@ current_dir = Path.cwd()
 # # prepend parent directory to the system path:
 # sys.path.insert(0, parent_path)
 
-# getting configuration file
-config_file_path = Path("../mrk-nf107", "config", "experiments.cfg")
-datasets, experiments = get_configuration(config_file_path)
+
 
 Logger = logging.getLogger("MapAnalysis2_Log")
 
@@ -74,9 +72,7 @@ order = [
 
 class MapEventAnalyzer:
     def __init__(self, experiment: str, force_update: bool = False):
-        self.experiment_name = experiment
-        self.expts = experiments[experiment]
-        # print(self.expts)
+        self.expts = experiment
         self.force_map_update = force_update
         database = Path(
             self.expts["databasepath"], self.expts["directory"], self.expts["datasummaryFilename"]
