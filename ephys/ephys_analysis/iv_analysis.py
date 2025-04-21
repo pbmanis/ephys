@@ -935,5 +935,5 @@ class IVAnalysis(Analysis):
             tgap=fit_gap,
             average_flag=average_flag,
         )
-        print("     RM analyze finished")
+        print("    RM analysis finished")
         return True
