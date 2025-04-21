@@ -137,6 +137,7 @@ def validate_configuration(experiments, datasets):
         "NWORKERS",
         "excludeIVs",
         "includeIVs",
+        "exclude_Spikes",
 
         "stats_filename",
         "statistical_comparisons",
@@ -144,11 +145,17 @@ def validate_configuration(experiments, datasets):
         
         "plot_order",
         "plot_colors",
+        "hue_palette",
+        "dodge",
+        "plot_symbols",
         "ylims",
         
         "junction_potential",
         "AP_threshold_dvdt",
         "AP_threshold_V",
+        "Adaptation_measurement_parameters",
+        "maximum_access_resistance",
+        "fitting_adjustments",
         "firing_failure_analysis",
         "spike_measures",
         "rmtau_measures",
@@ -170,7 +177,10 @@ def validate_configuration(experiments, datasets):
         "Protocol_start_times",
         "Adaptation_index_protocols",
         "Rin_windows",
-        "protocols"
+        "protocols",
+        "FI_protocols",
+        "Rin_protocols",
+        
 
     ]
     print("Validating configuration file")
