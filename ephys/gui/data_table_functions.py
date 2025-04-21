@@ -2880,7 +2880,7 @@ class Functions:
             )
             spk_lat = np.array([spk for spk in spk_lat if spk is not None])
             # print("spk_lat: ", spk_lat)
-            if spk_lat is None:
+            if spk_lat is None or len(spk_lat) < 3:
                 continue
             else:
                 spk_lat -= trace_delay
@@ -3145,7 +3145,7 @@ class Functions:
                     # check the spike exclusion list for this protocol.
                     cell_id_full = filename_tools.make_cellid_from_slicecell(cell_id)
                     # print(cell_id, cell_id_full, "\n   ", sp_exc_list.keys())
-                    if (cell_id_full in sp_exc_list.keys()):
+                    if sp_exc_list is not None and (cell_id_full in sp_exc_list.keys()):
                         skip = False
                         if (protocol in sp_exc_list[cell_id_full]['protocols']):
                             skip = True
