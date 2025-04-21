@@ -991,9 +991,7 @@ class MapEventScoring:
         )  # .replace(r"_", r"\_"), fontsize=10)
         self.axl[i].text(0.02, 0.95, f"mscore: {mscore:6.3f}", transform=self.axl[i].transAxes)
 
-
-if __name__ == "__main__":
-
+def main():
     experiment = "NF107Ai32_Het"
     config = "/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg"
     expt = get_configuration(config)
@@ -1002,3 +1000,8 @@ if __name__ == "__main__":
 
     MES = MapEventScoring(experiment, expt)
     MES.score_events(fn, plotflag=True)
+
+if __name__ == "__main__":
+    pass
+
+    
