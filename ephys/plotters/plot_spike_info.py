@@ -1812,7 +1812,7 @@ class PlotSpikeInfo(QObject):
             subset_text = ""
         else:
             subkey = list(subset.keys())[0]
-            subset_text = f"{subkey:s}:{subset[subkey]!s}_)"
+            subset_text = f"{subkey:s}_{subset[subkey][0]:s}_"
 
         if any(c.startswith("dvdt_rising") for c in measures):
             fn = Path(
