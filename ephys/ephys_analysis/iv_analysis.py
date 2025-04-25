@@ -721,7 +721,7 @@ class IVAnalysis(Analysis):
                 "No tauh_voltage (steady-state voltage when measuring tauh) defined in configuration"
             )
 
-        if "fitting_adjustments" in self.experiment.keys():
+        if "fitting_adjustments" in self.experiment.keys() and self.experiment["fitting_adjustments"] is not None:
             cell_id = self.df.at[icell, "cell_id"]
             if cell_id in self.experiment["fitting_adjustments"].keys():
                 taum_bounds = self.experiment["fitting_adjustments"][cell_id]["taum_bounds"]

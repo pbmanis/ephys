@@ -731,7 +731,7 @@ class IVPlotter(object):
                 )
                 if i == 0:
                     break  # only plot the first one
-        if "exclude_Spikes" in self.experiment.keys():
+        if "exclude_Spikes" in self.experiment.keys() and self.experiment["exclude_Spikes"] is not None:
             ex_spks = self.experiment["exclude_Spikes"]
             if self.plot_df["cell_id"] in ex_spks.keys():
                 cell = ex_spks[self.plot_df["cell_id"]]
