@@ -134,7 +134,9 @@ class FilterDataset:
         _type_
             _description_
         """
+        
         CP.cprint("y", "Filtering data entries")
+        print("     Incoming groups: ", df.Group.unique(), " remove_groups: ", remove_groups)
         if remove_groups is not None:
             for group in remove_groups:
                 msg = f"    Filtering out group: {group:s}"
@@ -199,9 +201,9 @@ class FilterDataset:
         # exclude "not" important
         if exclude_unimportant:
             CP.cprint("y", f"    Starting with Important: {df['important'].unique()!s}")
-            print(len(df))
+            print("Excluding non-important, starting with: ", len(df), "entries")
             df = df[df["important"] == True]
-            print(len(df))
+            print("     After filter, have: ", len(df), "entries")
             CP.cprint("y", f"    Remaining important: {len(df['important'])!s}")
         else:  #
             CP.cprint("c", f"    not excluding the unimportant entries - Remaining entries: {len(df['important'])!s}")
