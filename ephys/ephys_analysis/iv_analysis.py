@@ -620,7 +620,7 @@ class IVAnalysis(Analysis):
         print("analyze_iv: cell directory: ", cell_directory)
         print("analyze_iv: protocol: ", protocol)
         protocol_directory = Path(cell_directory, protocol)
-        print("with protocol direcotry: ", Path(cell_directory, protocol))
+        print("with protocol directory: ", Path(cell_directory, protocol))
         average_flag = False
         if str(protocol).find("_taum") > 0:
             average_flag = True  # average ALL traces in the protocol to compute the tau_m
@@ -862,6 +862,7 @@ class IVAnalysis(Analysis):
             taum_bounds=taum_bounds,
             taum_current_range=taum_current_range,
             tauh_voltage=tauh_voltage,
+            rin_current_limit = self.experiment.get("rin_current_limit", np.nan),
         )
         if "Adaptation_measurement_parameters" in self.experiment.keys():
             adapt_min_rate = self.experiment["Adaptation_measurement_parameters"]["min_rate"]

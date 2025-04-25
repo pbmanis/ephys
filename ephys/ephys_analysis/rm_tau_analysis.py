@@ -32,6 +32,7 @@ import ephys.tools as TOOLS
 from pathlib import Path
 import pyqtgraph as pg
 import ephys.tools.exp_estimator_lmfit as exp_estimator_lmfit
+import warnings  # use to catch poor polynomial fits for Rin
 
 
 class RmTauAnalysis:
@@ -61,6 +62,7 @@ class RmTauAnalysis:
         self.taum_bounds = []
         self.taum_current_range = [0, -200e-12]  # in A
         self.analysis_summary = {}
+        self.rin_current_limit:float = np.nan  # no limit, should be in A
 
     def setup(
         self,
@@ -72,6 +74,7 @@ class RmTauAnalysis:
         taum_bounds: list = [0.001, 0.050],
         taum_current_range: list = [0, -200e-12],  # in A
         tauh_voltage: float = -0.08,
+        rin_current_limit: float = np.nan   # no limit, should be in A
     ):
         """
         Set up for the fitting
@@ -109,6 +112,7 @@ class RmTauAnalysis:
         self.taum_bounds = taum_bounds
         self.taum_current_range = taum_current_range
         self.tauh_voltage = tauh_voltage
+        self.rin_current_limit = rin_current_limit
         self.analysis_summary["holding"] = self.Clamps.holding
         self.analysis_summary["WCComp"] = self.Clamps.WCComp
         self.analysis_summary["CCComp"] = self.Clamps.CCComp
@@ -140,6 +144,7 @@ class RmTauAnalysis:
         print("    rmpregion: ", rmp_region)
         print("    tauregion: ", tau_region)
         print("    rin_region: ", rin_region)
+        print("    rin_current_limit: ", self.rin_current_limit)
         self.analysis_summary["analysistimestamp"] = datetime.datetime.now().strftime(
             "%m/%d/%Y, %H:%M:%S"
         )
@@ -567,6 +572,8 @@ class RmTauAnalysis:
             fparx = [np.nan, np.nan, np.nan]
             xf = None
             yf = None
+            epsilon = self.Clamps.sample_interval * 3
+            bounds = sorted(self.taum_bounds)
             for i, k in enumerate(whichdata):
                 data_to_fit = traces[k][it0 + igap : it0 + ipeak]
                 t_fit = time_base[it0 + igap : it0 + ipeak] - time_base[it0]
@@ -620,30 +627,42 @@ class RmTauAnalysis:
                 ):  # bounds on LME.fit1 should prevent this, but you never know
                     print("Negative tau: ", 1.0 / fit.params["R1"].value)
                     continue
-                fparx = [
-                    fit.params["DC"].value,
-                    fit.params["A1"].value,
-                    1.0 / fit.params["R1"].value,
-                ]
-                namesx = ["DC", "A", "taum"]
-                if fparx is None:
-                    fpar.append([np.nan, np.nan, np.nan])
+                tau_k = 1.0/fit.params["R1"].value
+                # print("tau_k: ", tau_k, fit.params["R1"].value)
+                # only accept the fit value if it is not at the boundaries.
+                if tau_k < (bounds[0]+epsilon) or tau_k > (bounds[1]-epsilon):
+                    fparx = None
                 else:
-                    fpar.append(fparx)
-                names.append(namesx)
-                okdata.append(k)
-                self.taum_fitted[k] = [xf, yf]
+                    fparx = [
+                        fit.params["DC"].value,
+                        fit.params["A1"].value,
+                        1.0 / fit.params["R1"].value,
+                    ]
+                    namesx = ["DC", "A", "taum"]
+                    if fparx is None:
+                        fpar.append([np.nan, np.nan, np.nan])
+                    else:
+                        fpar.append(fparx)
+                    names.append(namesx)
+                    okdata.append(k)
+                    self.taum_fitted[k] = [xf, yf]
             taus = []
+            # epsilon = self.Clamps.sample_interval * 3
+            # bounds = sorted(self.taum_bounds)
             for j in range(len(fpar)):
+                # tau_j = fpar[j][2]
+                # print("tauj etc: ", tau_j, self.taum_bounds, epsilon)
+                # if tau_j > (bounds[0]+epsilon) and tau_j < (bounds[1]-epsilon):
                 taus.append(fpar[j][2])
+            # print("taus: ", taus)
             if len(taus) > 0:
                 self.taum_taum = np.nanmean(taus)
                 self.analysis_summary["taum"] = self.taum_taum
             else:
-                self.taum_taum = np.NaN
-                self.analysis_summary["taum"] = np.NaN
+                self.taum_taum = np.nan
+                self.analysis_summary["taum"] = np.nan
             # if fit is against boundary, declare it invalid
-            if self.taum_taum in self.taum_bounds:
+            if self.taum_taum < (bounds[0]+epsilon) or self.taum_taum > (bounds[1]-epsilon):
                 self.taum_taum = np.nan
                 self.analysis_summary["taum"] = np.nan
             self.taum_pars = fpar
@@ -774,8 +793,8 @@ class RmTauAnalysis:
             self.taum_taum = np.nanmean(taus)
             self.analysis_summary["taum"] = self.taum_taum
         else:
-            self.taum_taum = np.NaN
-            self.analysis_summary["taum"] = np.NaN
+            self.taum_taum = np.nan
+            self.analysis_summary["taum"] = np.nan
 
         if len(self.taum_pars) > 0:
             if isinstance(self.taum_pars, list):
@@ -859,20 +878,25 @@ class RmTauAnalysis:
 
         self.ivss_v_all = data1.mean(axis=1)  # all traces
         self.analysis_summary["Rin"] = np.nan
-        # print("len self.Spikes.nospk: ", len(self.Spikes.nospk))
+        # print("*************** len self.Spikes.nospk: ", len(self.Spikes.nospk))
         if len(self.Spikes.nospk) >= 1:
             # Steady-state IV where there are no spikes
             # however, handle case where there are spikes at currents LESS
             # than some of those with no spikes.
             ivss_valid = self.Clamps.commandLevels < 0.5e-9
-            if len(ivss_valid) != len(self.Spikes.spikecount):
-                print("valid traces for IVSS is not the same as the number of traces in spikecount")
+            # handle an upper current limit on the measure of ivss
+            # This is so that we don't try to measure Rin for positive, but subthreshold steps,
+            # where a persistent Na might interfere.
+            # print("************** ivss valid before current limit: ", ivss_valid)
+            if not np.isnan(self.rin_current_limit):
+                ivss_valid = ivss_valid & (self.Clamps.commandLevels <= self.rin_current_limit)
+            # print("*************** ivss valid after current limit: ", ivss_valid)
+            if len(ivss_valid) != len(self.Spikes.spikecount) and np.isnan(self.rin_current_limit):
+                print("Valid traces for IVSS is not the same as the number of traces in spikecount")
                 return  # somehow is invalid...
             ivss_valid = ivss_valid & (self.Spikes.spikecount == 0)
             if not any(ivss_valid):
-                print("No valid traces for IVSS analysis")
-                # print(ivss_valid)
-                # print(self.Spikes.spikecount)  
+                print(" *********** No valid traces for IVSS analysis *********") 
                 return
             self.ivss_v = self.ivss_v_all[ivss_valid]
             self.ivss_cmd_all = self.Clamps.commandLevels[ivss_valid]
@@ -889,16 +913,21 @@ class RmTauAnalysis:
             # successive trials are in order, so we sort above
             # commands are not repeated...
             if len(self.ivss_cmd) > 2 and len(self.ivss_v) > 2:
-                pf = np.polyfit(
-                    self.ivss_cmd,
-                    self.ivss_v,
-                    3,
-                    rcond=None,
-                    full=False,
-                    w=None,
-                    cov=False,
-                )
-
+                with warnings.catch_warnings(record=True) as w:
+                    pf = np.polyfit(
+                        self.ivss_cmd,
+                        self.ivss_v,
+                        3,
+                        rcond=None,
+                        full=False,
+                        w=None,
+                        cov=False,
+                    )
+                if w:
+                    print(f"*********** Polyfit in ivss_analysis: Warning: {w[0].message}")
+                    print("     We do not use the fits if they are poorly conditioned, returning")
+                    return
+                
                 def pderiv(pf, x):
                     y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
                     return y
@@ -985,6 +1014,8 @@ class RmTauAnalysis:
             # if np.max(self.Spikes.nospk) >= len(self.ivss_cmd_all):
             #     return
             self.ivpk_cmd = self.ivpk_cmd_all[self.Spikes.nospk]
+
+
             bl = self.ivbaseline[self.Spikes.nospk]
             isort = np.argsort(self.ivpk_cmd)
             self.ivpk_cmd = self.ivpk_cmd[isort]
@@ -992,16 +1023,22 @@ class RmTauAnalysis:
             bl = bl[isort]
             self.ivpk_bl = bl
             if len(self.ivpk_cmd) > 2 and len(self.ivpk_v) > 2:
-                pf = np.polyfit(
-                    self.ivpk_cmd,
-                    self.ivpk_v,
-                    3,
-                    rcond=None,
-                    full=False,
-                    w=None,
-                    cov=False,
-                )
-
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always")
+                    pf = np.polyfit(
+                        self.ivpk_cmd,
+                        self.ivpk_v,
+                        3,
+                        rcond=None,
+                        full=False,
+                        w=None,
+                        cov=False,
+                    )
+                if w:
+                    print(f"*********** Polyfit in ivpk_analysis: Warning: {w[0].message}")
+                    print("     We do not use the fits if they are poorly conditioned, returning")
+                    return
+                
                 def pderiv(pf, x):
                     y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
                     return y

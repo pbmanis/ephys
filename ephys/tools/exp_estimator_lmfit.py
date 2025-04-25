@@ -348,7 +348,7 @@ class LMexpFit:
         if y32 <= 0 and y21 > 0:
             y32 = 0.15 * y21
         # if verbose:
-            print(f"y32: {y32}, y21: {y21}, d: {d}")
+            # print(f"y32: {y32}, y21: {y21}, d: {d}")
         if np.abs(y21) < 1e-6:
             if y21 < 0: 
                 sign = -1
