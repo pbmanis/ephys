@@ -18,9 +18,10 @@ def transfer_cc_taum(row, excludes: list):
     CC_taum protocol to the taum column. This is done to allow the selection
     of the best value for taum from the CC_taum protocol, if it exists.
     """
+    assert "CC_taum" in row.keys()
+    assert "taum" in row.keys()
     row["CC_taum"] = [np.nan] * len(row["protocols"])
-    if "taum" not in row.keys():
-        row["taum"] = row["CC_taum"]
+    
     n = 0
     for i, p in enumerate(row["protocols"]):
         proto = Path(p)
@@ -28,7 +29,7 @@ def transfer_cc_taum(row, excludes: list):
             CP.cprint("y", f"       Excluding: {proto!s}")
             continue
         if proto.name == "all":
-            return row["CC_taum"]
+            return row
         pn = str(Path(p).name)
 
         if pn.startswith("CC_taum"):
@@ -44,7 +45,7 @@ def transfer_cc_taum(row, excludes: list):
         n += 1
     row["CC_taum"] = row["CC_taum"][:n]  # trim to the correct length
     assert isinstance(row["CC_taum"], list)
-    return row["CC_taum"]
+    return row
 
 
 def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
@@ -294,22 +295,24 @@ def populate_columns(
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
 ):
-    data = data.copy() # defrag dataframe.
+    datap = data.copy(deep=True) # defrag dataframe.
+    # print("populate columns (show assemb data): ", datap.columns)
+
     # populate the new columns for each parameter
-    if "taums" not in data.columns:
-        data["taums"] = np.nan
+    if "taums" not in datap.columns:
+        datap["taums"] = np.nan
     for p in parameters:
-        if p not in data.columns:
+        if p not in datap.columns:
             CP.cprint("c", f"ADDING {p:s} to data columns")
-            data[p] = np.nan
+            datap[p] = np.nan
         m_str = p + "_mean"
-        if m_str not in data.columns:
-            data[p + "_mean"] = np.nan
+        if m_str not in datap.columns:
+            datap[p + "_mean"] = np.nan
         b_str = p + f"_best{select_by:s}"
-        if b_str not in data.columns:
-            data[b_str] = np.nan
-    if "age_category" not in data.columns:
-        data["age_category"] = None
+        if b_str not in datap.columns:
+            datap[b_str] = np.nan
+    if "age_category" not in datap.columns:
+        datap["age_category"] = None
     if "age_categories" in configuration.keys():
         age_cats = configuration["age_categories"]
     else:
@@ -322,13 +325,17 @@ def populate_columns(
         for protos in configuration["excludeIVs"][cellid]["protocols"]:
             excludes.append(str(Path(cellid, protos)))
  
-    data = data.apply(filter_rs, maxRs=select_limits[1]*1e-6, axis=1) # (data["Rs"].values[0] <= select_limits[1]*1e-6)
-    data.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data
-    data["CC_taum"] = data.apply(transfer_cc_taum, excludes=excludes, axis=1)
-    assert isinstance(data["CC_taum"], pd.Series)
-    data["used_protocols"] = ""
-    data["age_category"] = data.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
-    return data
+    datap = datap.apply(filter_rs, maxRs=select_limits[1]*1e-6, axis=1) # (data["Rs"].values[0] <= select_limits[1]*1e-6)
+    datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data
+    if "taum" not in data.columns:
+        datap["taum"] = {}
+    if "CC_taum" not in data.columns:
+        datap["CC_taum"] = {}    
+    datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
+    assert isinstance(datap["CC_taum"], pd.Series)
+    datap["used_protocols"] = ""
+    datap["age_category"] = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
+    return datap
 
 
 def check_types(data1, data2):
