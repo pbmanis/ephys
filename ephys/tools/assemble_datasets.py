@@ -150,10 +150,12 @@ class AssembleDatasets:
             exclude_unimportant=exclude_unimportant,
             status_bar=self.status_bar,
         )
+        print("groups after combining: ", df.Group.unique())
+    
         if "protocol" not in df.columns:
             df["protocol"] = ""
         df = df.apply(self._data_complete_to_series, axis=1)
-        print(len(df), " rows after data complete to series")
+        # print(len(df), " rows after data complete to series")
 
         # now make a new dataframe that has a separate row for each protocol
         df = df.explode(["protocol"], ignore_index=True)
@@ -245,7 +247,7 @@ class AssembleDatasets:
                 )
             )
             df = self.read_coding_file(df_summary, coding_filename, coding_sheet, coding_level)
-            print(df.columns)
+            print("combine summary and coding, columns: ", df.columns)
             print(
                 "coding file: ",
                 coding_filename,
@@ -256,11 +258,11 @@ class AssembleDatasets:
                 "coding_name: ",
                 coding_name,
                  )
-            print("Group: ",
+            print("Groups in combined: ",
                 df.Group.unique(),
             )
             print("coding data: ", df.columns)
-            print("Groups from coding file: ", df[coding_name].unique())
+            print("coding name and Groups from coding file: ", coding_name, df[coding_name].unique())
 
         else:
             df = df_summary
@@ -446,48 +448,49 @@ class AssembleDatasets:
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
         df_coding = pd.read_excel(coding_file, sheet_name=coding_sheet)
         self.check_coding_file(df_coding)
-        print("Coding file head: \n", df_coding.head())
+        # print("Coding file head: \n", df_coding.head())
+        if "Group" not in df.columns:
+            df["Group"] = ""
         for index in df.index:
+            # print("INDEX: ", index)
             row = df.loc[index]
             if pd.isnull(row.date):
                 continue
             coding_name = self.experiment.get("coding_name", "Group")
-            df["Group"] = np.nan
             # print(row.date, df_coding.date.values)
             # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
+            # print("row in coding: ", row.date in df_coding.date.values)
             if row.date in df_coding.date.values:
+                # print("   ok, found date: ", row.date)
                 if "sex" in df_coding.columns:  # update sex? Should be in main table.
-                    df.loc[index, "sex"] = (
+                    df.at[index, "sex"] = (
                         df_coding[df_coding.date == row.date].sex.astype(str).values[0]
                     )
                 if "cell_expression" in df_coding.columns:
-                    df.loc[index, "cell_expression"] = (
+                    df.at[index, "cell_expression"] = (
                         df_coding[df_coding.date == row.date].cell_expression.astype(str).values[0]
                     )
 
                 # how to assign groups: by date or subject?
                 # print("Level: ", level.lower())
                 if level.casefold() == "date".casefold():
-                    # print("row.date: ", row.date)
-                    df.loc[index, "Group"] = (
+                    # print("    row.date match/level::: ", row.date,  "code: ", df_coding[df_coding.date == row.date][coding_name].astype(str).values[0])
+                    df.at[index, "Group"] = (
                         df_coding[df_coding.date == row.date][coding_name].astype(str).values[0]
                     )
-                    if df.loc[index, "Group"] == np.nan:
-                        print(
-                            "     df.loc[index, 'Group']: ",
-                            df.loc[index, "Group"],
-                            "is Nan, but wanted: ",
-                            row[coding_name],
-                            "from coding file column: ",
-                            coding_name,
+                    # print("    df assigned code: ", df.loc[index, "Group"])
+                    if pd.isnull(df.loc[index, "Group"]):
+                        CP("r"
+                            f"     df.at[index, 'Group']: {df.at[index, "Group"]!s}, is Nan, but wanted: " +
+                            f"{row[coding_name]:s} from coding file column: {coding_name:s}",
                         )
                 elif level.casefold() == "subject".casefold():
                     mask = df_coding.subject == row.subject
-                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
+                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.casefold() == "slice".casefold:
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
-                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
+                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.casefold() == "cell".casefold:
                     mask = (
                         (df_coding.date == row.date)
@@ -500,9 +503,10 @@ class AssembleDatasets:
                     print("df_coding.cell_cell: ", row.cell_cell)
                     print("coding name: ", coding_name)
                     print("Mask: ", df_coding[mask][coding_name].astype(str))
-                    df.loc[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
+                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
             else:
-                # print("Assigning nan to : ", df.loc[index].cell_id)
-                df.loc[index, "Group"] = np.nan
-        print("returning coding file: ", df.columns)
+                CP("c", f"Assigning nan to : {df.at[index, 'cell_id']:s}")
+                df.at[index, "Group"] = np.nan
+        # print("returning coding file: ", df.columns)
+        print("Returning with Groups: ", df.Group.unique())
         return df
