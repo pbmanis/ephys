@@ -1188,7 +1188,7 @@ class acq4_reader:
                 print("LED-Blue not in device list, but Laser-Blue-raw is")
                 light_device_name = "Laser-Blue-raw"
             else:
-                print(f"LED-BLue not in device list: {list(supindex['.']['devices'].keys())!s}")
+                # print(f"LED-BLue not in device list: {list(supindex['.']['devices'].keys())!s}")
                 return False
         if light_device_name == "Laser-Blue-raw":
             # fake it by getting the data from the stated device
