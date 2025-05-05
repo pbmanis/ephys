@@ -263,7 +263,7 @@ def adjust_AHP_trough_V(row, experiment: dict):
 
     return row.AHP_trough_V
 
-def compute_AHP_relative_depth(row):
+def compute_AHP_relative_depth(self, row):
     # Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
     # if the depth is positive, then the trough is above threshold, so set to nan.
     # this creates a AHP_rel_depth_V column.
