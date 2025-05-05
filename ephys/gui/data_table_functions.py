@@ -1044,6 +1044,7 @@ class Functions:
         if self.selected_index_rows is None:
             return None
         N = len(self.selected_index_rows)
+        print("N: ", N)
         colors = colormaps.sinebow_dark.discrete(N)
         for nplots, index_row in enumerate(self.selected_index_rows):
             selected = table_manager.get_table_data(index_row)
@@ -1068,8 +1069,9 @@ class Functions:
             min_protocol = None
             for ip, protocol in enumerate(protocols):
                 # print('\nprotocol: ',protocol, ' lowest current spike: ', cell_df["Spikes"][protocol]["LowestCurrentSpike"])
-                if cell_df["Spikes"][protocol]["LowestCurrentSpike"] is None:
+                if cell_df["Spikes"][protocol]["LowestCurrentSpike"] is None or len(cell_df["Spikes"][protocol]["LowestCurrentSpike"]) == 0:
                     continue
+                print(cell_df["Spikes"][protocol]["LowestCurrentSpike"])
                 lcs_trace = cell_df["Spikes"][protocol]["LowestCurrentSpike"]["trace"]
                 min_current_index, current, trace = self.find_lowest_current_trace(
                     cell_df["Spikes"][protocol]
@@ -1488,14 +1490,14 @@ class Functions:
         )
         fig = P.figure_handle
         ax = P.axarr
-        dropout_plot = True
+        dropout_plot = False
         iplot = 0
-        firing_failure_calculation = True
+        firing_failure_calculation = False
         N = len(assembleddata)
         if "firing_failure_analysis" in experiment.keys():
             if experiment["firing_failure_analysis"]["compute"]:
                 firing_failure_calculation = True
-                dropout_plot = True
+                dropout_plot = False
                 dropout_test_current = experiment["firing_failure_analysis"]["test_current"]
                 max_failure_test_current = experiment["firing_failure_analysis"]["max_current"]
                 dropout_test_time = experiment["firing_failure_analysis"]["test_time"]
@@ -1520,7 +1522,7 @@ class Functions:
             # arrays for summary histograms
             #
             drop_out_currents = pd.DataFrame(
-                columns=["cell", "genotype", "sex", "expression", "current", "time"]
+                columns=["cell", "genotype", "sex", "expression", "current", "time", "group"]
             )  # current at which cell drops out by the selected time, dict by genotype, expression
 
             pos_expression = ["+", "GFP+", "EYFP", "EYFP+"]
@@ -1741,83 +1743,83 @@ class Functions:
                 # if the FI curve is non-monotonic, this will be the time of the
                 # last spike that occurs in a train.
 
-                # if len(last_spike) > 0 and firing_failure_calculation:
-                #     # find the largest current where cell fires that is above the dropuout threshold
-                #     # print("datadict last spikes: ", selected.last_spikes)
-                #     print("dropuout threshold, max current: ", dropout_test_current, np.max(currents))
-                #     # get current levels >= test current
-                #     do_pts_I = np.nonzero(np.array(currents >= dropout_test_current))
-                #     do_pts_T = np.array(last_spike > dropout_test_time)
-                #     print("do_pts: ", do_pts_I)
-                #     print("currents[do_pts: ", currents[do_pts_I])
-                #     if len(do_pts_I) > 0 and not np.all(np.isnan(currents[do_pts_I])):
-                #         idrop = np.nanargmax(currents[do_pts_I])# + do_pts[0]
-                #         dropout[1, nplots] = currents[idrop]
-                #         dropout[0, nplots] = last_spike[idrop]
-                #     else: # not points in current range, or no spikes above the threshold current
-                #         dropout[1, nplots] = currents[0]
-                #         dropout[0, nplots] = np.nan
-                #     print(
-                #         "cellexpression: ",
-                #         cell_df.cell_expression,
-                #         pos_expression,
-                #         neg_expression,
-                #     )
-                #     if (
-                #         cell_df.cell_expression in pos_expression
-                #         or cell_df.cell_expression in neg_expression
-                #     ):
-                #         print("Dropout, lastspikes: adding to table", cell_df.cell_expression)
-                #         do_curr = pd.DataFrame(
-                #             {
-                #                 "cell": [Path(selected.cell_id).name],
-                #                 "genotype": [selected.Group],
-                #                 "sex": [cell_df.sex],
-                #                 "expression": [cell_df.cell_expression],
-                #                 "current": [dropout[1, nplots]],
-                #                 "time": [dropout[0, nplots]],
-                #             }
-                #         )
-                #         drop_out_currents = pd.concat(
-                #             [drop_out_currents, do_curr], ignore_index=True
-                #         )
+                if len(last_spike) > 0 and firing_failure_calculation:
+                    # find the largest current where cell fires that is above the dropuout threshold
+                    # print("datadict last spikes: ", selected.last_spikes)
+                    print("dropuout threshold, max current: ", dropout_test_current, np.max(currents))
+                    # get current levels >= test current
+                    do_pts_I = np.nonzero(np.array(currents >= dropout_test_current))
+                    do_pts_T = np.array(last_spike > dropout_test_time)
+                    print("do_pts: ", do_pts_I)
+                    print("currents[do_pts: ", currents[do_pts_I])
+                    if len(do_pts_I) > 0 and not np.all(np.isnan(currents[do_pts_I])):
+                        idrop = np.nanargmax(currents[do_pts_I])# + do_pts[0]
+                        dropout[1, nplots] = currents[idrop]
+                        dropout[0, nplots] = last_spike[idrop]
+                    else: # not points in current range, or no spikes above the threshold current
+                        dropout[1, nplots] = currents[0]
+                        dropout[0, nplots] = np.nan
+                    print(
+                        "cellexpression: ",
+                        cell_df.cell_expression,
+                        pos_expression,
+                        neg_expression,
+                    )
+                    if (
+                        cell_df.cell_expression in pos_expression
+                        or cell_df.cell_expression in neg_expression
+                    ):
+                        print("Dropout, lastspikes: adding to table", cell_df.cell_expression)
+                        do_curr = pd.DataFrame(
+                            {
+                                "cell": [Path(selected.cell_id).name],
+                                "genotype": [selected.Group],
+                                "sex": [cell_df.sex],
+                                "expression": [cell_df.cell_expression],
+                                "current": [dropout[1, nplots]],
+                                "time": [dropout[0, nplots]],
+                            }
+                        )
+                        drop_out_currents = pd.concat(
+                            [drop_out_currents, do_curr], ignore_index=True
+                        )
 
-                #     cellids[nplots] = selected.cell_id
-                #     expression[nplots] = cell_df.cell_expression
-                #     genotype[nplots] = selected.Group
-                #     print(
-                #         "Dropout info: ",
-                #         selected.cell_id,
-                #         dropout[0, nplots],
-                #         dropout[1, nplots],
-                #     )
-                #     ax[1, 1].set_title("1,1")
-                #     # ax[1, 1].plot(
-                #     #     last_spike, # [dropout_test_current, dropout_test_current],
-                #     #     last_spike_current, # [0, max_failure_test_current*1e-3],
-                #     #     color="gray",
-                #     #     linestyle="--",
-                #     #     linewidth=0.33,
-                #     # )
-                #     ax[1, 1].plot(
-                #         dropout[1, nplots],  # currents are 1, on x axis
-                #         dropout[0, nplots],  # time of last spike is 0, on y axis
-                #         marker=symbol,
-                #         linestyle="-",
-                #         markersize=4,
-                #         fillstyle=fillstyle,
-                #         markerfacecolor=facecolor,
-                #         color=gcolor, # pcolor,
-                #         clip_on=False,
-                #     )
-                #     # ax[1, 1].text(
-                #     #     x=dropout[1, nplots],
-                #     #     y=dropout[0, nplots],
-                #     #     s=str(Path(selected.cell_id).name),
-                #     #     fontsize=6,
-                #     #     horizontalalignment="right",
-                #     #     color=fcol[cell_df.genotype],
-                #     #     )
+                    cellids[nplots] = selected.cell_id
+                    expression[nplots] = cell_df.cell_expression
+                    genotype[nplots] = selected.Group
+                    print(
+                        "Dropout info: ",
+                        selected.cell_id,
+                        dropout[0, nplots],
+                        dropout[1, nplots],
+                    )
+                    ax[1, 1].set_title("1,1")
+                    # ax[1, 1].plot(
+                    #     last_spike, # [dropout_test_current, dropout_test_current],
+                    #     last_spike_current, # [0, max_failure_test_current*1e-3],
+                    #     color="gray",
+                    #     linestyle="--",
+                    #     linewidth=0.33,
+                    # )
+                    ax[1, 1].plot(
+                        dropout[1, nplots],  # currents are 1, on x axis
+                        dropout[0, nplots],  # time of last spike is 0, on y axis
+                        marker=symbol,
+                        linestyle="-",
+                        markersize=4,
+                        fillstyle=fillstyle,
+                        markerfacecolor=facecolor,
+                        color=gcolor, # pcolor,
+                        clip_on=False,
+                    )
+                    # ax[1, 1].text(
+                    #     x=dropout[1, nplots],
+                    #     y=dropout[0, nplots],
+                    #     s=str(Path(selected.cell_id).name),
+                    #     fontsize=6,
+                    #     horizontalalignment="right",
+                    #     color=fcol[cell_df.genotype],
+                    #     )
                 # for g in LS.keys(): # genotypes:
 
                 iplot += 1
@@ -1926,7 +1928,7 @@ class Functions:
         for i in np.argsort(dropout[1]):
             print(i, ", ", cellids[i], ", ", expression[i], ", ", genotype[i], ", ", dropout[1, i])
         print("-" * 20)
-        if dropout_plot > 0:
+        if dropout_plot:
             ax[0, 0].set_xlabel("Current (nA)")
             ax[0, 0].set_ylabel("Firing Rate (mean, Hz) (1 sec)")
 
@@ -2403,8 +2405,14 @@ class Functions:
         for ip, protocol in enumerate(protocols):
             if protocol.endswith("0000"):  # bad protocol name
                 continue
+        
             full_protocol = Path(protocol).name
             short_proto_name = Path(protocol).name[:-4]
+            # limit FI protocols to ones with specific ranges and current levels
+            if "FI_protocols_selected"  in experiment.keys():
+                if short_proto_name not in experiment["FI_protocols_selected"].keys():
+                    CP("y", f"    >>>> Protocol {protocol:s} not selected for FI analysis")
+                    continue
             # check if duration is acceptable: protodurs is a dictionary from the configuration file.
             # Keys are acceptable protocols
             # values are a list of their acceptable durations
