@@ -2378,17 +2378,18 @@ class Functions:
         adaptation_rates: list = []
         adaptation_indices2: list = []
         adaptation_rates2: list = []
+        post_durations: list = []
+        post_rates: list = []
         protofails = 0
         # check protocols for AT least the minimum required
 
         if "FI_protocols_required" in experiment.keys():
             any_required_protocols = False
-            CP("y", "\nChecking for required protocols")
-            print("   Protocols in dataset: ", protocols)
-            print("   Protocols required: ", experiment["FI_protocols_required"].keys())
+            # CP("y", "\nChecking for required protocols")
+            # print("   Protocols in dataset: ", protocols)
+            # print("   Protocols required: ", experiment["FI_protocols_required"].keys())
             for ip, protocol in enumerate(protocols):
                 short_proto_name = Path(protocol).name[:-4]
-                print("    short_proto_name: ", short_proto_name)
                 if short_proto_name in experiment["FI_protocols_required"].keys():
                     any_required_protocols = True
             CP("g", f"  Have required protocols: {any_required_protocols}")
@@ -2438,6 +2439,9 @@ class Functions:
                         f"    >>>> Protocol {protocol:s} has acceptable duration of {durations[ip]:e}",
                     )
             # print("protocol: ", protocol, "spikes: ", df_cell.Spikes[protocol]['spikes'])
+            
+       
+
             if len(df_cell.Spikes[protocol]["spikes"]) == 0:
                 CP("y", f"    >>>> Skipping protocol with no spikes:  {protocol:s}")
                 continue
@@ -2465,8 +2469,8 @@ class Functions:
             # get mean rate spike rate in the train
             current = []
             rate = []
-
             last_spike = []
+
             # only do adaptation calculation for the protocols in the list
             if short_proto_name in experiment["Adaptation_index_protocols"].keys():
                 adaptation_index, adaptation_rate = self.compute_adaptation_index(
@@ -2493,9 +2497,33 @@ class Functions:
                 adaptation_index2 = []
                 adaptation_rate = []
                 adaptation_rate2 = []
-            # print("adaptation_indices: ", adaptation_indices)
-            # print("adaptation_rates: ", adaptation_rates)
-            # exit()
+
+            # do rebound calculations as specified in the config file
+            # get the duration and firing rate for current pulses at -specified current
+            post_duration = []
+            post_rate = []
+            if "rebound_firing_analysis" in experiment.keys():
+                rebound_current = experiment["rebound_firing_analysis"].get("rebound_current_level", None)
+                rebound_current_duration = experiment["rebound_firing_analysis"].get("rebound_current_duration", None)
+                rebound_protocols = experiment["rebound_firing_analysis"].get("rebound_protocols", None)
+                if short_proto_name in rebound_protocols:
+                    spikes = df_cell.Spikes[protocol]  # spike data for this protocol
+                    print("spikes keys: ", spikes.keys())
+                    print("protocol keys: ", df_cell.Spikes[protocol].keys())
+                    for i in range(len(spikes['poststimulus_spikes'])):
+                        nsp = len(spikes['poststimulus_spikes'][i])
+                        iinj = spikes['FI_Curve'][0][i]
+                        if iinj != rebound_current:
+                            continue
+                        if nsp >= 2:
+                            post_duration.append(spikes['poststimulus_spikes'][i][-1] - spikes['poststimulus_spikes'][i][0])
+                            post_rate.append(np.mean(1./np.diff(spikes['poststimulus_spikes'][i])))
+                            CP("y", f"    >>>> Rebound protocol: {protocol:s} current: {iinj:.3f} nA, duration: {post_duration[-1]:.3f} sec, rate: {post_rate[-1]:.3f} Hz")
+            else:
+                rebound_current = None
+                rebound_current_duration = None
+                rebound_protocols = None
+
 
             for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
                 if len(spikes) == 0:
@@ -2536,10 +2564,14 @@ class Functions:
                 adaptation_indices2.extend(adaptation_index2)
                 adaptation_rates.extend(adaptation_rate)
                 adaptation_rates2.extend(adaptation_rate2)
+                post_durations.extend(post_duration)
+                post_rates.extend(post_rate)
         adaptation_indices = np.array(adaptation_indices)
         adaptation_indices2 = np.array(adaptation_indices2)
         adaptation_rates = np.array(adaptation_rates)
         adaptation_rates2 = np.array(adaptation_rates2)
+        post_durations = np.array(post_durations)
+        post_rates = np.array(post_rates)
 
         FI_Data_I1 = []
         FI_Data_FR1 = []
@@ -2597,6 +2629,8 @@ class Functions:
         ]  # remove nans...
         datadict["AdaptRates"] = adaptation_rates[~np.isnan(adaptation_rates)]  # remove nans...
         datadict["AdaptRates2"] = adaptation_rates2[~np.isnan(adaptation_rates2)]  # remove nans...
+        datadict["post_durations"] = post_durations[~np.isnan(post_durations)]  # remove nans...
+        datadict["post_rates"] = post_rates[~np.isnan(post_rates)]  # remove nans...
         datadict["last_spikes"] = None
         if len(linfits) > 0:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
