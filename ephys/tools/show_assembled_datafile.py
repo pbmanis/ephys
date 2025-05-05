@@ -83,11 +83,22 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         return row
     if parameter == "used_protocols":
         return row
-    if isinstance(row[parameter], float):
-        row[parameter] = [row[parameter]]
-    # if there is just one value, propagate it to all protocols
-    if len(row[parameter]) == 1 and np.isnan(row[parameter][0]):
+    # print("type of row[parameter]: ", type(row[parameter]), row[parameter])
+    if isinstance(row[parameter], np.ndarray) and row[parameter].shape == (0,):
+        row[parameter] = [np.nan]*len(row["protocols"])
+    elif isinstance(row[parameter], (float, np.float64)) or not hasattr(row[parameter], "__iter__"):
+        row[parameter] = [row[parameter]] * len(row["protocols"])
+    elif isinstance(row[parameter], list):
+        if len(row[parameter]) > 0:
+            row[parameter] = row[parameter][0] * len(row["protocols"])
+        else:
+            row[parameter] = [np.nan] * len(row["protocols"])
+    elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 1:
         row[parameter] = [row[parameter][0]] * len(row["protocols"])
+    elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 0:
+        row[parameter] = [row[parameter]] * len(row["protocols"])
+    # if len(row[parameter]) == 1 and np.isnan(row[parameter][0]):
+    #     row[parameter] = [row[parameter][0]] * len(row["protocols"])
     # if no valid measurements, just return the row
     if verbose:
         print("row par: ", row[parameter])
@@ -683,6 +694,12 @@ if __name__ == "__main__":
     print(assembled_filename)
     data = read_pickle(assembled_filename, compression="gzip")
     print("assembled data columns: ", data.columns)
+    print(data["post_durations"].values)
+    print(data["post_rates"].values)
+    print(data["post_spike_counts"].values)
+    print(data["FI_Curve1"][0][0]*1e9)
+    exit()
+
     # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
     # exit()
     for index in data.index:
