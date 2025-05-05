@@ -836,14 +836,13 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
-            # print("measure: ", row[measure])
+            # print(measure, row[measure])
             if isinstance(row[measure], list):
-                # meanmeasure = np.nanmean(row[measure])*scale
-                # print(type(meanmeasure))
                 row[measure] = np.nanmean(row[measure]) * scale
+            elif isinstance(row[measure], float):
+                row[measure] = row[measure] * scale
             else:
                 row[measure] = row[measure] * scale
-
         return row[measure]
 
     def rescale_values(self, df):
@@ -861,6 +860,9 @@ class PlotSpikeInfo(QObject):
             "dvdt_falling": -1.0,
             "taum": 1e3,
             "Rs": 1e-6,
+            "Gh": 1e9,
+            "tauh": 1e3,
+            "post_durations": 1e3
         }
         for measure, scale in rescaling.items():
             if measure not in df.columns:
@@ -978,6 +980,7 @@ class PlotSpikeInfo(QObject):
             "AdaptIndex",
             "FIMax_1",
             "FIMax_4",
+            "poststimulus_spikes",
             "maxHillSlope",
             "I_maxHillSlope",
         ]
