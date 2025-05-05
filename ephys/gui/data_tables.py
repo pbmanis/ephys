@@ -109,6 +109,7 @@ from ephys.gui import data_table_manager as table_manager
 from ephys.gui import table_tools
 from ephys.gui import command_params
 import ephys.plotters.plot_spike_info as plot_spike_info
+import ephys.plotters.psi_functions as plot_spike_funcs
 from ephys.tools import assemble_datasets
 from ephys.tools.get_computer import get_computer
 import ephys.tools.get_configuration as GETCONFIG
@@ -649,8 +650,8 @@ class DataTables:
         will have the subcommand, if there is one data will be the field data
         (if there is any)
         """
-        porder = plot_spike_info.get_plot_order(self.experiments[self.dataset])
-        colors = plot_spike_info.get_plot_colors(self.experiments[self.dataset])
+        porder = plot_spike_funcs.get_plot_order(self.experiments[self.dataset])
+        colors = plot_spike_funcs.get_plot_colors(self.experiments[self.dataset])
 
         for param, change, data in changes:
             path = self.ptreedata.childPath(param)
@@ -882,7 +883,7 @@ class DataTables:
                                 excelsheet,
                                 analysis_cell_types,
                                 adddata,
-                            ) = plot_spike_info.setup(self.experiment)
+                            ) = plot_spike_funcs.setup(self.experiment)
                             print("adddata: ", adddata)
                             print(self.experiment["coding_file"])
                             if self.experiment["coding_file"] is not None:
