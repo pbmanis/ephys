@@ -15,6 +15,7 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 250],
+        "Gh": [0, 10],
     }
     ylims_tv = {
         "dvdt_rising": [0, 800],
@@ -32,6 +33,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+ 
     }
     ylims_cw = {
         "dvdt_rising": [0, 800],
@@ -49,6 +52,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 200],
+        "Gh": [0, 10],
+ 
     }
 
     ylims_giant = {
@@ -67,6 +72,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+ 
     }
     ylims_giant_maybe = {
         "dvdt_rising": [0, 800],
@@ -84,6 +91,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+ 
     }
 
     ylims_bushy = {
@@ -102,6 +111,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+
     }
 
     ylims_tstellate = {
@@ -120,6 +131,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+ 
     }
 
     ylims_dstellate = {
@@ -138,6 +151,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+ 
     }
 
     ylims_octopus = {
@@ -156,6 +171,8 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, 400],
+        "Gh": [0, 10],
+        
     }
     ylims_default = {
         "dvdt_rising": [0, 1000],
@@ -173,6 +190,7 @@ def get_default_ylims():
         "taum_averaged": [0, None],
         "RMP": [-80, -40],
         "Rin": [0, None],
+        "Gh": [0, 10],
     }
 
     ylims = {
