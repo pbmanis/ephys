@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Union
 
 import colormaps
+import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -1450,12 +1451,13 @@ class Functions:
                 age_category = k
         return age_category
 
-    def get_selected_cell_data_FI(
+    def get_dropout_data(
         self,
         experiment: pd.DataFrame,
         assembleddata: pd.DataFrame,
+        parameters: dict,
     ):
-        """get_selected_cell_data_FI Analyze and Plot FI data for selected cells.
+        """
         If the configuration file includes dropouts, then the dropouts are plotted.
 
         Parameters
@@ -1470,13 +1472,35 @@ class Functions:
         figure information
             plothelpers Plotter object with figure information.
         """
-        print("got row selection")
-        print("# selected: ", len(assembleddata))
-        if len(assembleddata) == 0:
+        if "firing_failure_analysis" not in experiment.keys():
+            if self.status_bar is not None:
+                self.status_bar.showMessage(
+                    f"Firing failure analysis is not configured in the configuration file",
+                    color="red",
+                )
             return None
-
-        import matplotlib.pyplot as mpl
-
+        if experiment["firing_failure_analysis"]["compute"]:
+            firing_failure_calculation = True
+            dropout_test_current = experiment["firing_failure_analysis"]["test_current"]
+            max_failure_test_current = experiment["firing_failure_analysis"]["max_current"]
+            dropout_test_time = experiment["firing_failure_analysis"]["test_time"]
+        else:
+            if self.status_bar is not None:
+                self.status_bar.showMessage(
+                    f"Firing failure analysis: Computation is off (false)",
+                    color="red",
+                )
+            return None
+        
+        if len(assembleddata) == 0:
+            if self.status_bar is not None:
+                self.status_bar.showMessage(
+                    f"Select cells in the 'IV Data Table' tab",
+                    color="red",
+                )
+            return None
+        print("Dropout data # selected: ", len(assembleddata))
+    
         P = PH.regular_grid(
             3,
             2,
@@ -1490,198 +1514,215 @@ class Functions:
         )
         fig = P.figure_handle
         ax = P.axarr
-        dropout_plot = False
+
         iplot = 0
-        firing_failure_calculation = False
+
         N = len(assembleddata)
-        if "firing_failure_analysis" in experiment.keys():
-            if experiment["firing_failure_analysis"]["compute"]:
-                firing_failure_calculation = True
-                dropout_plot = False
-                dropout_test_current = experiment["firing_failure_analysis"]["test_current"]
-                max_failure_test_current = experiment["firing_failure_analysis"]["max_current"]
-                dropout_test_time = experiment["firing_failure_analysis"]["test_time"]
 
-            if "Max_FI_I" in experiment.keys():
-                max_I = experiment["Max_FI_I"]
-            fcol = {"+/+": "green", "-/-": "orange"}
-            max_fr = {"+/+": [], "-/-": []}
-            dropout = np.zeros((2, N))
-            cellids = ["None"] * N
-            expression = ["None"] * N
-            genotype = ["None"] * N
-            # cmap = mpl.cm.get_cmap("tab20", N)
-            # colors = [matplotlib.colors.to_hex(cmap(i)) for i in range(N)]
-            colors = colormaps.sinebow_dark.discrete(N)
-            xpalette = sns.xkcd_palette(
-                ["teal", "crimson", "light violet", "faded green", "dusty purple"]
+        if "Max_FI_I" in experiment.keys():
+            max_I = experiment["Max_FI_I"]
+        dropout = np.zeros((2, N))
+        cellids = ["None"] * N
+        expression = ["None"] * N
+        genotype = ["None"] * N
+ 
+        nplots = 0
+        expression_list = []
+
+        # dataframe for summary histograms
+        drop_out_currents = pd.DataFrame(
+            columns=["cell", "genotype", "sex", "expression", "age_category", "current", "time", "group"]
+        )  # current at which cell drops out by the selected time, dict by genotype, expression
+
+        pos_expression = ["+", "GFP+", "EYFP", "EYFP+"]
+        neg_expression = ["-", "GFP-", "EYFP-", "EGFP-"]
+
+        # One analysis is this:
+        # for each cell class,
+        #   for each cell, for each level, plot the latency of the LAST spike in the train
+        LS = dict.fromkeys(list(experiment["group_map"].keys()), {})
+        n1 = dict.fromkeys(list(LS.keys()), [])
+        # {
+        #     "+/+": {},
+        #     "-/-": {},   # dict keys are current level, lastspikes are arrays of spikes
+        # }  # last spike dict: keys are current level, lastspikes are arrays of spikes .
+        # LS[I]{genotype1: dict of {I: , lastspikesarray of latencies, genotype2: array of latencies}
+        Ns: dict = {}
+
+        for ells in LS.keys():
+            Ns[ells] = []  # track cells used.
+        for selected in assembleddata.itertuples():
+            day = selected.date[:-4]
+            slicecell = selected.cell_id[-4:]
+            # we need to reach into the main data set to get the expression,
+            # as it is not carried into the assembled data.
+            cell_df, _ = filename_tools.get_cell(
+                experiment, assembleddata, cell_id=selected.cell_id
             )
-            nplots = 0
-            expression_list = []
-            age_list = []
-            # arrays for summary histograms
-            #
-            drop_out_currents = pd.DataFrame(
-                columns=["cell", "genotype", "sex", "expression", "current", "time", "group"]
-            )  # current at which cell drops out by the selected time, dict by genotype, expression
+            if "age_category" not in cell_df.keys():
+                cell_df["age_category"] = np.nan
+            cell_df["age_category"] = self.categorize_ages(cell_df, experiment=experiment)
 
-            pos_expression = ["+", "GFP+", "EYFP", "EYFP+"]
-            neg_expression = ["-", "GFP-", "EYFP-", "EGFP-"]
-
-            # One analysis is this:
-            # for each cell class,
-            #   for each cell, for each level, plot the latency of the LAST spike in the train
-            LS = dict.fromkeys(list(experiment["group_map"].keys()), {})
-            n1 = dict.fromkeys(list(LS.keys()), [])
-            # {
-            #     "+/+": {},
-            #     "-/-": {},   # dict keys are current level, lastspikes are arrays of spikes
-            # }  # last spike dict: keys are current level, lastspikes are arrays of spikes .
-            # LS[I]{genotype1: dict of {I: , lastspikesarray of latencies, genotype2: array of latencies}
-            Ns: dict = {}
-
-            for ells in LS.keys():
-                Ns[ells] = []  # {"+/+": [], "-/-": []}  # track cells used.
-            for selected in assembleddata.itertuples():
-                pcolor = colors[nplots].colors
+            # assign group
+            group_type = parameters['group_by']
+         
+            if group_type == "age_category":
+                grp = cell_df["age_category"]
+            elif group_type == "genotype":
+                grp = cell_df["genotype"]
+            elif group_type == "expression":
+                grp = cell_df["cell_expression"]
+            elif group_type == "sex":
+                grp = cell_df["sex"]
+            else:
                 grp = selected.Group
-                day = selected.date[:-4]
-                slicecell = selected.cell_id[-4:]
-                # we need to reach into the main data set to get the expression,
-                # as it is not carried into the assembled data.
-                cell_df, _ = filename_tools.get_cell(
-                    experiment, assembleddata, cell_id=selected.cell_id
-                )
-                if "age_category" not in cell_df.keys():
-                    cell_df["age_category"] = np.nan
-                cell_df["age_category"] = self.categorize_ages(cell_df, experiment=experiment)
-                if cell_df.cell_expression is None:
+            pcolor = experiment['plot_colors']['symbol_colors'][grp]  # colors[nplots].colors
+
+            # if cell_df.cell_expression is None:
+            #     continue
+            if cell_df.cell_expression not in expression_list:
+                expression_list.append(cell_df.cell_expression)
+
+            prots = list(cell_df["IV"].keys())
+            # IVdata = cell_df["IV"][prots[0]].keys()
+
+            # for this cell, build spike arrays for all spike
+            # latencies at each current level.
+            splat = []
+            spinj = []
+            pused = []
+
+            # print("Experiment FI protocols: ", experiment["raster_protocols"])
+            rpnames = [r for r in experiment["raster_protocols"]]
+            pulse_start = {}
+            for prot in prots:
+                if cell_df["Spikes"][prot] is None:
                     continue
-                if cell_df.cell_expression not in expression_list:
-                    expression_list.append(cell_df.cell_expression)
-
-                prots = list(cell_df["IV"].keys())
-                # IVdata = cell_df["IV"][prots[0]].keys()
-
-                # for this cell, build spike arrays for all spike
-                # latencies at each current level.
-                splat = []
-                spinj = []
-                pused = []
-
-                # print("Experiment FI protocols: ", experiment["raster_protocols"])
-                rpnames = [r for r in experiment["raster_protocols"]]
-                pulse_start = {}
-                for prot in prots:
-                    if cell_df["Spikes"][prot] is None:
-                        continue
-                    protname = str(Path(prot).name)
-                    if protname[:-4] not in rpnames:
-                        continue
-                    if "4nA" in protname:
-                        print("skipping: ", protname)
-                        continue
-                    pused.append(prot)
-                    pulse_start = experiment["Protocol_start_times"][protname[:-4]]
-
-                    for tr in cell_df["Spikes"][prot]["spikes"].keys():
-                        for nsp in cell_df["Spikes"][prot]["spikes"][tr].keys():
-                            lat = cell_df["Spikes"][prot]["spikes"][tr][nsp].AP_latency
-                            if lat is not None and lat > pulse_start + 0.0005:
-                                splat.append(lat - pulse_start)
-                                spinj.append(cell_df["Spikes"][prot]["spikes"][tr][0].current)
-                # print("prots: used ", pused)
-                # print(splat)
-                # print(spinj)
-                spinj = np.array(spinj) * 1e9  # currents in nA
-                splat = np.array(splat)  # latencies in seconds
-                currents = np.unique(spinj)
-                if len(currents) == 0:  # be sure there is something to be had..
+                protname = str(Path(prot).name)
+                if protname[:-4] not in rpnames:
                     continue
+                if "4nA" in protname:
+                    continue
+                pused.append(prot)
+                pulse_start = experiment["Protocol_start_times"][protname[:-4]]
 
-                print("currents in/max: ", np.min(currents), np.max(currents))
-                firing_rate_mean = np.zeros(len(currents))
-                firing_rate_fl = np.zeros(len(currents))  # first to last spike
-                last_spike = np.zeros(len(currents)) * np.nan
-                last_spike_current = np.zeros(len(currents)) * np.nan
-                for i, current in enumerate(currents):
-                    if current > 1.0:
-                        continue
-                    # get latencies at this current level
-                    latency_at_I = [splat[j] for j in range(len(spinj)) if spinj[j] == current]
-                    current_at_I = [spinj[j] for j in range(len(spinj)) if spinj[j] == current]
-                    if len(latency_at_I) <= 1:  # always more than one spike
-                        continue
-                    i_arg = np.argmax(latency_at_I)
-                    last_spike[i] = latency_at_I[
-                        i_arg
-                    ]  # latency of the LAST spike in the train at this current
-                    last_spike_current[i] = current_at_I[i_arg]  # current for this last spike
-                    firing_rate_mean[i] = len(latency_at_I)  # 1 is pulse duration in sec
-                    firing_rate_fl[i] = len(latency_at_I) / ((last_spike[i] - np.min(latency_at_I)))
-                    ucurr = np.around(current, 2)
+                for tr in cell_df["Spikes"][prot]["spikes"].keys():
+                    for nsp in cell_df["Spikes"][prot]["spikes"][tr].keys():
+                        lat = cell_df["Spikes"][prot]["spikes"][tr][nsp].AP_latency
+                        if lat is not None and lat > pulse_start + 0.0005:
+                            splat.append(lat - pulse_start)
+                            spinj.append(cell_df["Spikes"][prot]["spikes"][tr][0].current)
 
-                    print(grp)
-                    if isinstance(grp, float) and np.isnan(grp):
-                        continue
-                    if grp is None or (isinstance(grp, float) and np.isnan(grp)):
-                        grp = cell_df["age_category"]
-                    if ucurr not in LS[grp].keys():
-                        LS[grp][ucurr] = [last_spike[i]]
-                    else:
-                        LS[grp][ucurr].append(last_spike[i])
+            spinj = np.array(spinj) * 1e9  # currents in nA
+            splat = np.array(splat)  # latencies in seconds
+            currents = np.unique(spinj)
+            if len(currents) == 0:  # be sure there is something to be had..
+                continue
 
-                # designate symbols:
-                # s for +/+ genotype
-                # o for -/- genotype
-                # filled for GFP+ or EYFP+
-                # open for GFP- or EYFP-
+            # print("get_selected_cell_data_FI: currents in/max: ", np.min(currents), np.max(currents))
+            firing_rate_mean = np.zeros(len(currents))
+            firing_rate_fl = np.zeros(len(currents))  # first to last spike
+            last_spike = np.zeros(len(currents)) * np.nan
+            last_spike_current = np.zeros(len(currents)) * np.nan
+            for i, current in enumerate(currents):
+                if current > 1.0:
+                    continue
+                # get latencies at this current level
+                latency_at_I = [splat[j] for j in range(len(spinj)) if spinj[j] == current]
+                current_at_I = [spinj[j] for j in range(len(spinj)) if spinj[j] == current]
+                if len(latency_at_I) <= 1:  # always more than one spike
+                    continue
+                i_arg = np.argmax(latency_at_I)
+                last_spike[i] = latency_at_I[
+                    i_arg
+                ]  # latency of the LAST spike in the train at this current
+                last_spike_current[i] = current_at_I[i_arg]  # current for this last spike
+                firing_rate_mean[i] = len(latency_at_I)  # 1 is pulse duration in sec
+                firing_rate_fl[i] = len(latency_at_I) / ((last_spike[i] - np.min(latency_at_I)))
+                ucurr = np.around(current, 2)
 
+                # print("get_selected_cell_data_FI: Group: ", grp)
                 if isinstance(grp, float) and np.isnan(grp):
                     continue
-                Ns[grp].append(selected.cell_id)
-                gcolor = "k"
-                symbol = "o"
-                fillstyle = "full"
-                facecolor = "lightgrey"
+                if grp is None or (isinstance(grp, float) and np.isnan(grp)):
+                    grp = cell_df["age_category"]
+                if ucurr not in LS[grp].keys():
+                    LS[grp][ucurr] = [last_spike[i]]
+                else:
+                    LS[grp][ucurr].append(last_spike[i])
 
-                if grp in ["+/+", "-/-", "+/-"]:
-                    match grp:
-                        case "+/+":
-                            symbol = "s"
-                            gcolor = "blue"
-                        case "-/-":
-                            symbol = "o"
-                            gcolor = "salmon"
-                        case "+/-" | "-/+":
-                            symbol = "D"
-                            gcolor = "grey"
-                        case _:
-                            symbol = "X"
-                    match cell_df.cell_expression:
-                        case "+" | "GFP+" | "EYFP" | "EYFP+":
-                            fillstyle = "full"
-                            facecolor = gcolor
-                        case "-" | "GFP-" | "EYFP-" | "EGFP-":
-                            fillstyle = "full"
-                            facecolor = "white"
-                        case _:
-                            fillstyle = "full"
-                            facecolor = "lightgrey"
-                elif grp in ["Preweaning", "Pubescent", "Young Adult", "Old Adult"]:
-                    facecolor = experiment["plot_colors"][grp]
-                    symbol = "o"
-                    fillstyle = "full"
-                    # facecolor = "lightgrey"
-                # print("Fill style, symbol, facecolor: ", fillstyle, symbol, facecolor)
-                try:
-                    fit = selected.fit[0][0]
-                except:
-                    print("No fit? : ")
-                    print("     fit ", selected.fit)
+            # designate symbols:
+            # s for +/+ genotype
+            # o for -/- genotype
+            # filled for GFP+ or EYFP+
+            # open for GFP- or EYFP-
+
+            if isinstance(grp, float) and np.isnan(grp):
+                continue
+            Ns[grp].append(selected.cell_id)
+            # gcolor = "k"
+            # symbol = "o"
+            # fillstyle = "full"
+            # facecolor = "lightgrey"
+
+            # if grp in ["+/+", "-/-", "+/-"]:
+            #     match grp:
+            #         case "+/+":
+            #             symbol = "s"
+            #             gcolor = "blue"
+            #         case "-/-":
+            #             symbol = "o"
+            #             gcolor = "salmon"
+            #         case "+/-" | "-/+":
+            #             symbol = "D"
+            #             gcolor = "grey"
+            #         case _:
+            #             symbol = "X"
+            #     match cell_df.cell_expression:
+            #         case "+" | "GFP+" | "EYFP" | "EYFP+":
+            #             fillstyle = "full"
+            #             facecolor = gcolor
+            #         case "-" | "GFP-" | "EYFP-" | "EGFP-":
+            #             fillstyle = "full"
+            #             facecolor = "white"
+            #         case _:
+            #             fillstyle = "full"
+            #             facecolor = "lightgrey"
+
+            facecolor = experiment["plot_colors"]['symbol_colors'][grp]
+            symbol = experiment["plot_symbols"][grp]
+            fillstyle = "full"
+                # facecolor = "lightgrey"
+            # print("Fill style, symbol, facecolor: ", fillstyle, symbol, facecolor)
+            try:
+                fit = selected.fit[0][0]
+            except:
+                print("get_selected_cell_data_FI: No fit? : ")
+                print("     fit ", selected.fit)
+            ax[0, 0].plot(
+                currents,
+                firing_rate_mean,
+                marker=symbol,
+                linestyle="-",
+                markersize=4,
+                fillstyle=fillstyle,
+                markerfacecolor=facecolor,
+                color=pcolor,
+            )
+            if len(selected.fit[0]) > 0:
+                fit = selected.fit[0][0]
+                ax[0, 0].plot(np.array(fit[0][0]) * 1e9, fit[1][0], "b--")
+            # try:
+            #     max_fr[selected.Group].append(np.nanmax(datadict["FI_Curve1"][1]))
+            # except:
+            #     print("FI curve: ", datadict["FI_Curve1"])
+            #     print("cell, group: ", selected.cell_id, selected.Group)
+            #     print(selected)
+            ax[0, 0].set_title("0,0")
+            if max_failure_test_current > 1000:  # add the 4 nA data
                 ax[0, 0].plot(
-                    currents,
-                    firing_rate_mean,
+                    np.array(selected.FI_Curve4[0]) * 1e9,
+                    np.array(selected.FI_Curve4[1]),
                     marker=symbol,
                     linestyle="-",
                     markersize=4,
@@ -1689,207 +1730,188 @@ class Functions:
                     markerfacecolor=facecolor,
                     color=pcolor,
                 )
-                if len(selected.fit[0]) > 0:
-                    fit = selected.fit[0][0]
-                    ax[0, 0].plot(np.array(fit[0][0]) * 1e9, fit[1][0], "b--")
-                # try:
-                #     max_fr[selected.Group].append(np.nanmax(datadict["FI_Curve1"][1]))
-                # except:
-                #     print("FI curve: ", datadict["FI_Curve1"])
-                #     print("cell, group: ", selected.cell_id, selected.Group)
-                #     print(selected)
-                ax[0, 0].set_title("0,0")
-                if max_failure_test_current > 1000:  # add the 4 nA data
-                    ax[0, 0].plot(
-                        np.array(selected.FI_Curve4[0]) * 1e9,
-                        np.array(selected.FI_Curve4[1]),
-                        marker=symbol,
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=facecolor,
-                        color=pcolor,
-                    )
-                # print(selected.firing_currents)
-                if len(splat) == 0:
-                    # print(selected)
-                    continue  # raise ValueError("No firing currents")
-                # firing rate (time to last spike basis)
-                ax[0, 1].set_title("x=current, y=[f-l]rates, 0, 1")
-                ax[0, 1].plot(
-                    currents,
-                    firing_rate_fl,
-                    marker=symbol,
-                    linestyle="-",
-                    markersize=4,
-                    fillstyle=fillstyle,
-                    markerfacecolor=facecolor,
-                    color=pcolor,
-                )
-                ax[1, 0].set_title("x=last spike time, y = current, 1 ,0")
-                ax[1, 0].plot(
-                    currents,
-                    last_spike,
-                    marker=symbol,
-                    linestyle="-",
-                    markersize=4,
-                    fillstyle=fillstyle,
-                    markerfacecolor=facecolor,
-                    color=pcolor,
-                )
-                # plot maximal firing rate
+            # print(selected.firing_currents)
+            if len(splat) == 0:
+                # print(selected)
+                continue  # raise ValueError("No firing currents")
+            # firing rate (time to last spike basis)
+            ax[0, 1].set_title("x=current, y=[f-l]rates, 0, 1")
+            ax[0, 1].plot(
+                currents,
+                firing_rate_fl,
+                marker=symbol,
+                linestyle="-",
+                markersize=4,
+                fillstyle=fillstyle,
+                markerfacecolor=facecolor,
+                color=pcolor,
+            )
+            ax[1, 0].set_title("x=last spike time, y = current, 1 ,0")
+            ax[1, 0].plot(
+                currents,
+                last_spike,
+                marker=symbol,
+                linestyle="-",
+                markersize=4,
+                fillstyle=fillstyle,
+                markerfacecolor=facecolor,
+                color=pcolor,
+            )
+            # plot maximal firing rate
 
-                # compute "dropout" time to the last spike in a train.
-                # if the FI curve is non-monotonic, this will be the time of the
-                # last spike that occurs in a train.
+            # compute "dropout" time to the last spike in a train.
+            # if the FI curve is non-monotonic, this will be the time of the
+            # last spike that occurs in a train.
 
-                if len(last_spike) > 0 and firing_failure_calculation:
-                    # find the largest current where cell fires that is above the dropuout threshold
-                    # print("datadict last spikes: ", selected.last_spikes)
-                    print("dropuout threshold, max current: ", dropout_test_current, np.max(currents))
-                    # get current levels >= test current
-                    do_pts_I = np.nonzero(np.array(currents >= dropout_test_current))
-                    do_pts_T = np.array(last_spike > dropout_test_time)
-                    print("do_pts: ", do_pts_I)
-                    print("currents[do_pts: ", currents[do_pts_I])
-                    if len(do_pts_I) > 0 and not np.all(np.isnan(currents[do_pts_I])):
-                        idrop = np.nanargmax(currents[do_pts_I])# + do_pts[0]
-                        dropout[1, nplots] = currents[idrop]
-                        dropout[0, nplots] = last_spike[idrop]
-                    else: # not points in current range, or no spikes above the threshold current
-                        dropout[1, nplots] = currents[0]
-                        dropout[0, nplots] = np.nan
-                    print(
-                        "cellexpression: ",
-                        cell_df.cell_expression,
-                        pos_expression,
-                        neg_expression,
-                    )
-                    if (
-                        cell_df.cell_expression in pos_expression
-                        or cell_df.cell_expression in neg_expression
-                    ):
-                        print("Dropout, lastspikes: adding to table", cell_df.cell_expression)
-                        do_curr = pd.DataFrame(
-                            {
-                                "cell": [Path(selected.cell_id).name],
-                                "genotype": [selected.Group],
-                                "sex": [cell_df.sex],
-                                "expression": [cell_df.cell_expression],
-                                "current": [dropout[1, nplots]],
-                                "time": [dropout[0, nplots]],
-                            }
+            if len(last_spike) > 0 and firing_failure_calculation:
+                # find the largest current where cell fires that is above the dropuout threshold
+                # print("datadict last spikes: ", selected.last_spikes)
+                # print("get_selected_cell_data_FI: dropout threshold, max current: ", dropout_test_current, np.max(currents))
+                # get current levels >= test current
+                do_pts_I = np.nonzero(np.array(currents >= dropout_test_current))
+                do_pts_T = np.array(last_spike > dropout_test_time)
+                # print("get_selected_cell_data_FI: do_pts: ", do_pts_I)
+                # print("get_selected_cell_data_FI: currents[do_pts: ", currents[do_pts_I])
+                if len(do_pts_I) > 0 and not np.all(np.isnan(currents[do_pts_I])):
+                    idrop = np.nanargmax(currents[do_pts_I])# + do_pts[0]
+                    dropout[1, nplots] = currents[idrop]
+                    dropout[0, nplots] = last_spike[idrop]
+                else:  # not points in current range, or no spikes above the threshold current
+                    dropout[1, nplots] = currents[0]
+                    dropout[0, nplots] = np.nan
+                # print(
+                #     "get_selected_cell_data_FI: cellexpression: ",
+                #     cell_df.cell_expression,
+                #     pos_expression,
+                #     neg_expression,
+                # )
+                # if (
+                #     cell_df.cell_expression in pos_expression
+                #     or cell_df.cell_expression in neg_expression
+                # ):
+                #     print("get_selected_cell_data_FI: Dropout, lastspikes: adding to table", cell_df.cell_expression)
+                do_curr = pd.DataFrame(
+                    {
+                        "cell": [Path(selected.cell_id).name],
+                        "genotype": [selected.Group],
+                        "sex": [cell_df.sex],
+                        "expression": [cell_df.cell_expression],
+                        "current": [dropout[1, nplots]],
+                        "age_category": [cell_df.age_category],
+                        "time": [dropout[0, nplots]],
+                    }
+                )
+                drop_out_currents = pd.concat(
+                    [drop_out_currents, do_curr], ignore_index=True
+                )
+
+                cellids[nplots] = selected.cell_id
+                expression[nplots] = cell_df.cell_expression
+                genotype[nplots] = selected.Group
+                # print(
+                #     "get_selected_cell_data_FI: Dropout info: ",
+                #     selected.cell_id,
+                #     dropout[0, nplots],
+                #     dropout[1, nplots],
+                # )
+                ax[1, 1].set_title("1,1")
+                # ax[1, 1].plot(
+                #     last_spike, # [dropout_test_current, dropout_test_current],
+                #     last_spike_current, # [0, max_failure_test_current*1e-3],
+                #     color="gray",
+                #     linestyle="--",
+                #     linewidth=0.33,
+                # )
+                ax[1, 1].plot(
+                    dropout[1, nplots],  # currents are 1, on x axis
+                    dropout[0, nplots],  # time of last spike is 0, on y axis
+                    marker=symbol,
+                    linestyle="-",
+                    markersize=4,
+                    fillstyle=fillstyle,
+                    markerfacecolor=facecolor,
+                    color=pcolor,
+                    clip_on=False,
+                )
+                # ax[1, 1].text(
+                #     x=dropout[1, nplots],
+                #     y=dropout[0, nplots],
+                #     s=str(Path(selected.cell_id).name),
+                #     fontsize=6,
+                #     horizontalalignment="right",
+                #     color=fcol[cell_df.genotype],
+                #     )
+            # for g in LS.keys(): # genotypes:
+
+            iplot += 1
+            nplots += 1
+
+        for grp in list(LS.keys()):
+            if grp not in experiment["plot_colors"]["bar_background_colors"].keys():
+                continue
+            for i, current in enumerate(LS[grp].keys()):
+                # print("current: ", current)
+                icurr = current
+                if icurr < 0.2:
+                    continue
+                h1, b1 = np.histogram(
+                    np.array(LS[grp][current]),
+                    bins=np.linspace(0, 1, 20, endpoint=True),
+                )
+                # h2, b2 = np.histogram(
+                #     np.array(LS[grp][current]),
+                #     bins=np.linspace(0, 1, 20, endpoint=True),
+                # )
+                n1[grp].append([icurr, np.sum(h1), h1[-1], h1[0]])
+                # n2.append([icurr, np.sum(h2), h2[-1], h1[0]])
+                # print(np.array(LS["+/+"][current]))
+                # print(h1)
+                yd = 0.035
+                pmode = 1
+                if np.sum(h1) > 0:
+                    if pmode == 0:
+                        ax[1, 1].bar(
+                            b1[:-1] - 0.05,
+                            yd * h1 / np.sum(h1),
+                            width=0.05,
+                            color=experiment["plot_colors"]["bar_background_colors"][grp],
+                            alpha=0.7,
+                            bottom=current,
                         )
-                        drop_out_currents = pd.concat(
-                            [drop_out_currents, do_curr], ignore_index=True
+                    if pmode == 1:
+                        ax[1, 1].stairs(
+                            edges=b1,
+                            values=yd * h1 / np.sum(h1) + icurr,
+                            color=experiment["plot_colors"]["line_plot_colors"][grp],
+                            alpha=0.7,
+                            baseline=icurr,
+                            fill=None,
                         )
+                # if np.sum(h2) > 0:
+                #     if pmode == 0:
+                #         ax[1, 1].bar(b2[:-1] + 0.05, yd*h2/np.sum(h2), width=0.05, color="salmon", alpha=0.7, bottom=current)
+                #     if pmode == 1:
+                #         ax[1,1].stairs(edges=b2+0.05, values=yd*h2/np.sum(h2)+icurr, color="salmon", alpha=0.7, baseline=icurr, fill="salmon")
 
-                    cellids[nplots] = selected.cell_id
-                    expression[nplots] = cell_df.cell_expression
-                    genotype[nplots] = selected.Group
-                    print(
-                        "Dropout info: ",
-                        selected.cell_id,
-                        dropout[0, nplots],
-                        dropout[1, nplots],
-                    )
-                    ax[1, 1].set_title("1,1")
-                    # ax[1, 1].plot(
-                    #     last_spike, # [dropout_test_current, dropout_test_current],
-                    #     last_spike_current, # [0, max_failure_test_current*1e-3],
-                    #     color="gray",
-                    #     linestyle="--",
-                    #     linewidth=0.33,
-                    # )
-                    ax[1, 1].plot(
-                        dropout[1, nplots],  # currents are 1, on x axis
-                        dropout[0, nplots],  # time of last spike is 0, on y axis
-                        marker=symbol,
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=facecolor,
-                        color=gcolor, # pcolor,
-                        clip_on=False,
-                    )
-                    # ax[1, 1].text(
-                    #     x=dropout[1, nplots],
-                    #     y=dropout[0, nplots],
-                    #     s=str(Path(selected.cell_id).name),
-                    #     fontsize=6,
-                    #     horizontalalignment="right",
-                    #     color=fcol[cell_df.genotype],
-                    #     )
-                # for g in LS.keys(): # genotypes:
-
-                iplot += 1
-                nplots += 1
-
-            for grp in list(LS.keys()):
-                for i, current in enumerate(LS[grp].keys()):
-                    # print("current: ", current)
-                    icurr = current
-                    if icurr < 0.2:
-                        continue
-                    h1, b1 = np.histogram(
-                        np.array(LS[grp][current]),
-                        bins=np.linspace(0, 1, 20, endpoint=True),
-                    )
-                    # h2, b2 = np.histogram(
-                    #     np.array(LS[grp][current]),
-                    #     bins=np.linspace(0, 1, 20, endpoint=True),
-                    # )
-                    n1[grp].append([icurr, np.sum(h1), h1[-1], h1[0]])
-                    # n2.append([icurr, np.sum(h2), h2[-1], h1[0]])
-                    # print(np.array(LS["+/+"][current]))
-                    # print(h1)
-                    yd = 0.035
-                    pmode = 1
-                    color = experiment["plot_colors"][grp]
-                    if np.sum(h1) > 0:
-                        if pmode == 0:
-                            ax[1, 1].bar(
-                                b1[:-1] - 0.05,
-                                yd * h1 / np.sum(h1),
-                                width=0.05,
-                                color=color,
-                                alpha=0.7,
-                                bottom=current,
-                            )
-                        if pmode == 1:
-                            ax[1, 1].stairs(
-                                edges=b1,
-                                values=yd * h1 / np.sum(h1) + icurr,
-                                color=color,
-                                alpha=0.7,
-                                baseline=icurr,
-                                fill=None,
-                            )
-                    # if np.sum(h2) > 0:
-                    #     if pmode == 0:
-                    #         ax[1, 1].bar(b2[:-1] + 0.05, yd*h2/np.sum(h2), width=0.05, color="salmon", alpha=0.7, bottom=current)
-                    #     if pmode == 1:
-                    #         ax[1,1].stairs(edges=b2+0.05, values=yd*h2/np.sum(h2)+icurr, color="salmon", alpha=0.7, baseline=icurr, fill="salmon")
-
-                    #         ax[1,1].plot([0, 1], [icurr, icurr], '--', linewidth=0.33, color="gray")
-                    # n1[grp] = np.array(n1[grp])#.reshape(-1, 4)
-                    # n2 = np.array(n2)#.reshape(-1, 4)
-                    # print(n1[:,0])
-                    ax[2, 0].plot(
-                        np.array(n1[grp])[:, 0],
-                        np.array(n1[grp])[:, 2] / np.array(n1[grp])[:, 1],
-                        color=experiment["plot_colors"][grp],
-                        marker="o",
-                        linestyle="-",
-                        markersize=4,
-                        fillstyle=fillstyle,
-                        markerfacecolor=experiment["plot_colors"][grp],
-                        clip_on=False,
-                    )
-                # ax[2, 0].plot(n2[:,0], n2[:, 2]/n2[:,1], "ro-")
-                ax[2, 0].set_ylim(0, 1)
-                ax[2, 0].set_xlim(0, 1)
-                ax[1, 1].set_ylim(0.4, 1.05)
+                #         ax[1,1].plot([0, 1], [icurr, icurr], '--', linewidth=0.33, color="gray")
+                # n1[grp] = np.array(n1[grp])#.reshape(-1, 4)
+                # n2 = np.array(n2)#.reshape(-1, 4)
+                # print(n1[:,0])
+                ax[2, 1].plot(
+                    np.array(n1[grp])[:, 0],
+                    np.array(n1[grp])[:, 2] / np.array(n1[grp])[:, 1],
+                    color=experiment["plot_colors"]["line_plot_colors"][grp],
+                    marker="o",
+                    linestyle="-",
+                    markersize=4,
+                    fillstyle=fillstyle,
+                    markerfacecolor=experiment["plot_colors"]["symbol_colors"][grp],
+                    clip_on=False,
+                )
+            # ax[2, 0].plot(n2[:,0], n2[:, 2]/n2[:,1], "ro-")
+            ax[2, 1].set_ylim(0, 1)
+            ax[2, 1].set_xlim(0, 1)
+            ax[1, 1].set_ylim(0.4, 1.05)
 
         # plot some summary stuff
         # sns.jointplot(
@@ -1908,17 +1930,24 @@ class Functions:
         #     palette=xpalette,
         #     ax=ax[2, 1],
         # )
-        print("Dropout currents: ", drop_out_currents.columns)
-        print("Dropout current table: ", drop_out_currents.head(100))
+        # print("get_selected_cell_data_FI: Dropout current columns: ", drop_out_currents.columns)
+        # print("get_selected_cell_data_FI: Dropout current table: ", drop_out_currents.head(100))
+        # print("ages: ", drop_out_currents.age_category.unique())
         if not drop_out_currents.empty:
             sns.ecdfplot(
-                data=drop_out_currents, x="current", hue="genotype", palette=xpalette, ax=ax[2, 0]
+                data=drop_out_currents, x="current", hue=group_type, 
+                palette=experiment["plot_colors"]["line_plot_colors"], 
+                ax=ax[2, 0],
+                clip_on=False,
             )
-            sns.ecdfplot(
-                data=drop_out_currents, x="current", hue="expression", palette="tab10", ax=ax[2, 1]
-            )
-
-        print("Dropout current levels: ")
+            # sns.ecdfplot(
+            #     data=drop_out_currents, x="current", hue="expression", palette="tab10", ax=ax[2, 1]
+            # )
+        ax[2, 0].set_ylim(0, 1.1)
+        axr = ax.ravel()
+        for i in range(len(axr)):
+            axr[i].set_clip_on(False)
+        print("get_selected_cell_data_FI: Dropout current levels: ")
         print("-" * 20)
         # print(cell_df.keys())
         for g in Ns.keys():
@@ -1926,28 +1955,29 @@ class Functions:
         print("N, cell, expression, genotype, idrop")
         drop_out_currents.to_csv("dropout.csv")
         for i in np.argsort(dropout[1]):
-            print(i, ", ", cellids[i], ", ", expression[i], ", ", genotype[i], ", ", dropout[1, i])
+            print(f"{i:3d} {cellids[i]:18s} {expression[i]!s} {genotype[i]!s} {dropout[1, i]:6.3f}")
         print("-" * 20)
-        if dropout_plot:
-            ax[0, 0].set_xlabel("Current (nA)")
-            ax[0, 0].set_ylabel("Firing Rate (mean, Hz) (1 sec)")
 
-            ax[0, 1].set_ylabel("Firing rate (1st to last) (Hz)")
-            ax[0, 1].set_xlabel("Current(nA)")
+        ax[0, 0].set_xlabel("Current (nA)")
+        ax[0, 0].set_ylabel("Firing Rate (mean, Hz) (1 sec)")
 
-            ax[1, 0].set_xlabel("Current (pA)")
-            ax[1, 0].set_ylabel("Time to last spike)")
+        ax[0, 1].set_ylabel("Firing rate (1st to last) (Hz)")
+        ax[0, 1].set_xlabel("Current(nA)")
 
-            ax[1, 1].set_ylabel("Current (nA)")
-            test_i = experiment["firing_failure_analysis"]["test_current"]
-            ax[1, 1].set_xlabel(f"Time of last spike (sec)")
-            # ax[1, 1].set_xlim(0, 1)
-            # ax[1, 1].set_ylim(0, max_failure_test_current * 1e-3)
+        ax[1, 0].set_xlabel("Current (nA)")
+        ax[1, 0].set_ylabel("Time to last spike)")
 
-            exprs = (", ").join(list(set(expression)))
-            genotypes = (", ").join(list(set(genotype)))
-            fig.suptitle(f"Firing analysis for {exprs:s} and {genotypes:s}")
-            mpl.show()
+        ax[1, 1].set_ylabel("Time of last spike (sec)")
+        test_i = experiment["firing_failure_analysis"]["test_current"]
+        ax[1, 1].set_xlabel(f"Current (nA)")
+        # ax[1, 1].set_xlim(0, 1)
+        # ax[1, 1].set_ylim(0, max_failure_test_current * 1e-3)
+
+        # exprs = (", ").join(list(set(expression)))
+        # print("set of genotypes: ", set(genotype))
+        # genotypes = (", ").join(list(set([x for x in genotype if not np.isnan(x) else "None"])))
+        # fig.suptitle(f"Firing analysis for expression: {exprs:s} and genootypes: {genotypes:s}")
+        mpl.show()
         return P
 
     def average_FI(self, FI_Data_I_, FI_Data_FR_, max_current: float = 1.0e-9):
@@ -1957,11 +1987,6 @@ class Functions:
             except:
                 raise ValueError("couldn't zip the data sets: ")
             if len(FI_Data_I) > 0:  # has data...
-                # print("averaging FI data")
-                # print("   FI_Data_I : ", FI_Data_I*1e9)
-                # print("   FI_Data_FR: ", FI_Data_FR)
-
-                # raise ValueError()
                 FI_Data_I_ = np.array(FI_Data_I)
                 FI_Data_FR_ = np.array(FI_Data_FR)
                 f1_index = np.where((FI_Data_I_ >= 0.0) & (FI_Data_I_ <= max_current))[
@@ -2455,7 +2480,7 @@ class Functions:
                 print("FI curve not found for protocol: ", protocol, "for cell: ", cell)
                 if self.status_bar is not None:
                     self.status_bar.showMessage(
-                        f"FI curve not found for protocol: {protocol:s} for cell: {cell:s}"
+                        f"FI curve not found for protocol: {protocol:s} for cell: {cell:s}", color="red"
                     )
                 # print(df_cell.Spikes[protocol])
                 protofails += 1
@@ -3240,9 +3265,8 @@ class Functions:
                         CP("y", f"    have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
                     else:
                         CP("r", f"    DO NOT have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}")
-                    if have_LCS_data:
-                        print("LCS Data: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
-                    # exit()
+                    # if have_LCS_data:
+                    #     print("LCS Data: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
                     spike_data = df_cell.Spikes[protocol]["spikes"]
                     # print("    checking measure in protocol: ", measure)
                     if (
