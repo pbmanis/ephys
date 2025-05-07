@@ -2379,6 +2379,7 @@ class Functions:
         adaptation_indices2: list = []
         adaptation_rates2: list = []
         post_durations: list = []
+        post_latencies: list = []
         post_rates: list = []
         post_spike_counts: list = []
         protofails = 0
@@ -2501,9 +2502,10 @@ class Functions:
 
             # do rebound calculations as specified in the config file
             # get the duration and firing rate for current pulses at -specified current
-            post_duration = []
-            post_rate = []
-            post_spike_count = []
+            post_duration = []  # mean duration of spiking in the post-pulse period
+            post_rate = []  # mean rate in the post-pulse period
+            post_spike_count = []  # # of spikes in the post-pulse period
+            post_latency = []  # latency to first spike after current pulse
             if "rebound_firing_analysis" in experiment.keys():
                 rebound_current = experiment["rebound_firing_analysis"].get("rebound_current_level", None)
                 rebound_current_duration = experiment["rebound_firing_analysis"].get("rebound_current_duration", None)
@@ -2518,22 +2520,30 @@ class Functions:
                         iinj = spikes['FI_Curve'][0][i]
                         # print("iinj: ", iinj, " rebound_current: ", rebound_current, " nsp: ", nsp)
                         if not np.isclose(iinj*1e9, rebound_current*1e9):
-                            print("    did not match current")
+                            # print("    did not match current")
                             continue
                         if nsp >= 2:
                             post_duration.append(float(spikes['poststimulus_spikes'][i][-1] - spikes['poststimulus_spikes'][i][0]))
                             post_rate.append(float(np.mean(1./np.diff(spikes['poststimulus_spikes'][i]))))
+                            post_latency.append(float(spikes['poststimulus_spikes'][i][0] - spikes['poststimulus_spike_window'][0]))
+                            # CP("m", f"{spikes['poststimulus_spikes'][i][0]!s}, {spikes['poststimulus_spike_window']!s}")
                         else:
                             post_duration.append(np.nan)
                             post_rate.append(np.nan)
+                            if nsp == 1:
+                                post_latency.append(float(spikes['poststimulus_spikes'][i][0] - spikes['poststimulus_spike_window'][0]))
+                            else:
+                                post_latency.append(np.nan)
                         post_spike_count.append(nsp)  # count when just one spike
-                        CP("y", f"    >>>> Rebound protocol: {protocol:s} current: {iinj:.3f} nA, duration: {post_duration[-1]:.3f} sec, rate: {post_rate[-1]:.3f} Hz")
+                        msg = []
+                        msg.append(f"    >>>> Rebound protocol: {protocol:s} current: {iinj:.3f} nA, ")
+                        msg.append(f"duration: {post_duration[-1]:.3f} sec, rate: {post_rate[-1]:7.3f} Hz, fsl: {post_latency[-1]:7.3f} sec")
+                        CP("y", " ".join(msg))
             else:
                 rebound_current = None
                 rebound_current_duration = None
                 rebound_protocols = None
-            # print("post duration: ", post_duration, " post rate: ", post_rate)
-
+   
             for k, spikes in df_cell.Spikes[protocol]["spikes"].items():
                 if len(spikes) == 0:
                     continue
@@ -2576,6 +2586,7 @@ class Functions:
                 post_durations.extend(post_duration)
                 post_rates.extend(post_rate)
                 post_spike_counts.extend(post_spike_count)
+                post_latencies.extend(post_latency)
         adaptation_indices = np.array(adaptation_indices)
         adaptation_indices2 = np.array(adaptation_indices2)
         adaptation_rates = np.array(adaptation_rates)
@@ -2583,6 +2594,7 @@ class Functions:
         post_durations = np.array(post_durations)
         post_rates = np.array(post_rates)
         post_spike_counts = np.array(post_spike_counts)
+        post_latencies = np.array(post_latencies)
 
         FI_Data_I1 = []
         FI_Data_FR1 = []
@@ -2643,6 +2655,7 @@ class Functions:
         datadict["post_durations"] = post_durations[~np.isnan(post_durations)]  # remove nans...
         datadict["post_rates"] = post_rates[~np.isnan(post_rates)]  # remove nans...
         datadict["post_spike_counts"] = post_spike_counts[~np.isnan(post_spike_counts)]  # remove nans...
+        datadict["post_latencies"] = post_latencies[~np.isnan(post_latencies)]  # remove nans...
         datadict["last_spikes"] = None
         if len(linfits) > 0:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
