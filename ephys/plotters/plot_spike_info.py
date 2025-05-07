@@ -862,7 +862,8 @@ class PlotSpikeInfo(QObject):
             "Rs": 1e-6,
             "Gh": 1e9,
             "tauh": 1e3,
-            "post_durations": 1e3
+            "post_durations": 1e3,
+            "post_latencies": 1e3,
         }
         for measure, scale in rescaling.items():
             if measure not in df.columns:
@@ -2052,7 +2053,8 @@ class PlotSpikeInfo(QObject):
         N = self.experiment["group_map"]
         # print("N.keys: ", N.keys())
         found_groups: Union[list, None] = None
-        self.FI_Data = pd.DataFrame(["cell", "group", "current", "firing_rate", "protocol"])
+        self.FI_Data = pd.DataFrame(["cell", "sex", "group", "current", "firing_rate", "protocol"])
+        print("Immediate head: ", self.FI_Data.head(10))
         for ic, ptype in enumerate(["mean", "individual", "sum"]):
             NCells: dict[tuple] = {}
             for ir, celltype in enumerate(self.experiment["celltypes"]):
@@ -2116,12 +2118,13 @@ class PlotSpikeInfo(QObject):
         )
         # with open("FI_Data.csv", "w") as f:
         #     f.write(longform)
-        # print(self.FI_Data.head(10))
+        print(self.FI_Data.head(10))
         self.FI_Data.dropna(subset=["cell_id", "current", "firing_rate"], inplace=True)
         for index in self.FI_Data.index:
             current = self.FI_Data["current"][index]
             # print("current: ", current)
             cellid = self.FI_Data["cell_id"][index]
+
             matches = self.FI_Data[self.FI_Data["cell_id"] == cellid]
             matches = matches[matches["current"] == current]
             if len(matches) <= 1:
