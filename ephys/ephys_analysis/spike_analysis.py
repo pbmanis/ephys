@@ -442,8 +442,9 @@ class SpikeAnalysis:
             if len(spikes) == 0:
                 continue
             allspikes[trace_number] = spikes
-
+        spike_window = [float(t) for t in twin]
         self.analysis_summary[mode + "_spikes"] = allspikes
+        self.analysis_summary[mode + '_spike_window'] = spike_window
         if mode == 'evoked':
             self.spikecount = allspikes
             self.spikes_counted = True
