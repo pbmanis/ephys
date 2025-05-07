@@ -1143,6 +1143,63 @@ class DataTables:
                                         horizontalalignment="left",
                                     )
                                     P4.figure_handle.show()
+                                
+                                case "Plot Dropout Data":
+                                    if self.assembleddata is None:
+                                        raise ValueError("Must load assembled data file first")
+
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                                    print("Loading assembled data file: ", fn)
+                                    group_by = (
+                                        self.ptreedata.child("Plotting").child("Group By").value()
+                                    )
+                                    hue_category = (
+                                        self.ptreedata.child("Plotting")
+                                        .child("2nd Group By")
+                                        .value()
+                                    )
+
+                                    plot_order = self.experiment["plot_order"][group_by]
+                                    header = self.get_analysis_info(fn)
+                                    
+                                    # get the selected rows
+                                    self.selected_index_rows = (
+                                        self.table.selectionModel().selectedRows()
+                                    )
+                                    table_data = pd.DataFrame()
+                                    for irow in self.selected_index_rows:
+                                        cellid = self.table_manager.get_table_data(irow).cell_id
+                                        dfi = self.assembleddata[self.assembleddata.ID == cellid]
+                                        table_data = pd.concat([table_data, dfi])
+                                    parameters = {
+                                        "header": header,
+                                        "experiment": self.experiment,
+                                        "datasummary": self.datasummary,
+                                        "assembleddata": table_data,  # only the
+                                        "group_by": group_by,
+                                        "plot_order": plot_order,
+                                        "colors": self.experiment['plot_colors'],
+                                        "hue_category": hue_category,
+                                        "pick_display_function": None,  # self.display_from_table_by_cell_id
+                                    }
+
+                                    with concurrent.futures.ProcessPoolExecutor() as executor:
+                                        print("executing")
+                                        f = executor.submit(
+                                            plot_spike_info.concurrent_selected_dropout_data_plotting,
+                                            filename=fn,
+                                            parameters=parameters,
+                                            picker_active=self.picker_active,
+                                            infobox={
+                                                "x": self.infobox_x,
+                                                "y": self.infobox_y,
+                                                "fontsize": self.infobox_fontsize,
+                                            },
+                                        )
+                                        print(f.result())
+                                        self.dropout_plot = f.result()
+                                    print("Plotting Dropout data Done")
+                                
                                 case "Set BSpline S":
                                     self.bspline_s = data
                                 case "Plot Selected Spike":
@@ -1156,7 +1213,6 @@ class DataTables:
                                         self.Dock_Traces,
                                         self.win,  # target dock and window for plot
                                     )
-
                                 case "Plot Selected FI Fitting":
                                     if self.assembleddata is None:
                                         raise ValueError("Must load assembled data file first")
@@ -1195,16 +1251,6 @@ class DataTables:
                                         "hue_category": hue_category,
                                         "pick_display_function": None,  # self.display_from_table_by_cell_id
                                     }
-                                    # plot_spike_info.concurrent_selected_fidata_data_plotting(
-                                    #         fn,
-                                    #         parameters,
-                                    #         self.picker_active,
-                                    #         infobox={
-                                    #             "x": self.infobox_x,
-                                    #             "y": self.infobox_y,
-                                    #             "fontsize": self.infobox_fontsize,
-                                    #         },
-                                    #     )
 
                                     with concurrent.futures.ProcessPoolExecutor() as executor:
                                         print("executing")

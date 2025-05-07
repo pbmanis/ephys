@@ -290,6 +290,41 @@ def concurrent_selected_fidata_data_plotting(
         P2.figure_handle.show()
     return P2
 
+def concurrent_selected_dropout_data_plotting(
+    filename: str,
+    parameters: dict = None,
+    picker_active: bool = False,
+    publication_plot_mode: bool = False,
+    infobox: dict = None,
+):
+    print("Unpacking concurrent selected...")
+
+    # unpack parameters:
+    header = parameters["header"]
+    experiment = parameters["experiment"]
+    assembleddata = parameters["assembleddata"]
+
+    P2 = FUNCS.get_dropout_data(
+        experiment=experiment,
+        assembleddata=assembleddata,
+        parameters = parameters,
+    )
+
+    if P2 is not None:
+        P2.figure_handle.text(
+            infobox["x"],
+            infobox["y"],
+            header,
+            fontdict={
+                "fontsize": infobox["fontsize"],
+                "fontstyle": "normal",
+                "font": "helvetica",
+            },
+            verticalalignment="top",
+            horizontalalignment="left",
+        )
+        P2.figure_handle.show()
+    return P2
 
 after = "2000.01.01"
 after_parsed = datetime.datetime.timestamp(DUP.parse(after))
@@ -836,11 +871,11 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
-            # print(measure, row[measure])
-            if isinstance(row[measure], list):
+            print(measure, row[measure])
+            if isinstance(row[measure], float):
+                row[measure] = [row[measure] * scale]
+            elif isinstance(row[measure], list):
                 row[measure] = np.nanmean(row[measure]) * scale
-            elif isinstance(row[measure], float):
-                row[measure] = row[measure] * scale
             else:
                 row[measure] = row[measure] * scale
         return row[measure]

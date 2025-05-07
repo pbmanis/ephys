@@ -141,6 +141,7 @@ class CommandParams:
                             {"name": "Plot FIData Data continuous", "type": "action"},
                             {"name": "Plot FIData Data combined", "type": "action"},
                             {"name": "Plot FICurves", "type": "action"},
+                            {"name": "Plot Dropout Data", "type": "action"},
                             {
                                 "name": "Set BSpline S",
                                 "type": "float",

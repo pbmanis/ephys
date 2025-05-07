@@ -214,11 +214,9 @@ def clean_rin(row, experiment: dict):
             min_Rin = experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
         else:
             min_Rin = experiment["data_inclusion_criteria"]["default"]["Rin_min"]
-    # print("rowrin: ", row.Rin)
     if isinstance(row.Rin, float):
         row.Rin = [row.Rin]
     for i, rin in enumerate(row.Rin):
-        # print("rin: ", rin)
         if row.Rin[i] < min_Rin:
             row.Rin[i] = np.nan
     return row.Rin
@@ -345,7 +343,7 @@ def clean_rmp(row, experiment: dict):
     if isinstance(row.RMP, float):
         rmp = [row.RMP + jp]
     else:
-        rmp = [rmpi + experiment["junction_potential"] for rmpi in row.RMP]
+        rmp = [(rmpi + jp) for rmpi in row.RMP]
     if "data_inclusion_criteria" in experiment.keys():
         # print("RMP clean: ", row.cell_type)
         # print("RMPS: ", row.RMP)
@@ -354,6 +352,8 @@ def clean_rmp(row, experiment: dict):
             min_RMP = experiment["data_inclusion_criteria"][row.cell_type]["RMP_min"]
         else:
             min_RMP = experiment["data_inclusion_criteria"]["default"]["RMP_min"]
+    else:
+        min_RMP = -50.0
 
     for i, rmpi in enumerate(rmp):
         if rmpi > min_RMP:
@@ -383,11 +383,12 @@ def clean_rmp_zero(row, experiment: dict):
         else:
             min_RMP = experiment["data_inclusion_criteria"]["default"]["RMP_min"]
     if isinstance(row.RMP_Zero, float):
+        jp = experiment['junction_potential']
         r0 = [
-            row.RMP_Zero + experiment["junction_potential"]
-        ]  # handle case where there is only one float value
+            row.RMP_Zero + jp]
+          # handle case where there is only one float value
     else:
-        r0 = [rmp_0 + experiment["junction_potential"] for rmp_0 in row.RMP_Zero]
+        r0 = [(rmp_0 + jp) for rmp_0 in row.RMP_Zero]
     for i, r0 in enumerate(r0):
         if min_RMP is not None and r0 > min_RMP:
             row.RMP_Zero[i] = np.nan
