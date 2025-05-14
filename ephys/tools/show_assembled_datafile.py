@@ -1,15 +1,17 @@
 # show assembed file data
-
-from ephys.tools.get_configuration import get_configuration
+import datetime
 from pathlib import Path
-from pandas import read_pickle
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as mpl
+import numpy as np
+import pandas as pd
+import pylibrary.tools.cprint as CP
 import seaborn as sns
+from pandas import read_pickle
+
 import ephys.tools.categorize_ages as CatAge
 import ephys.tools.filename_tools as FT
-import pylibrary.tools.cprint as CP
+from ephys.tools.get_configuration import get_configuration
 
 
 def transfer_cc_taum(row, excludes: list):
@@ -21,7 +23,7 @@ def transfer_cc_taum(row, excludes: list):
     assert "CC_taum" in row.keys()
     assert "taum" in row.keys()
     row["CC_taum"] = [np.nan] * len(row["protocols"])
-    
+
     n = 0
     for i, p in enumerate(row["protocols"]):
         proto = Path(p)
@@ -59,7 +61,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     Typically, the selection will be for the protocol with the lowest Rs that
     has a valid measurement for the parameter.
 
-    This routine stes the following columns in the row:
+    This routine sets the following columns in the row:
         'parameter'_mean : the mean of the parameter values
         'parameter'_bestselect_by : the best value of the parameter
         If the parameter is "CC_taum", then the value is taken only from the
@@ -72,10 +74,11 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # handle the case where there is no data, which may be indicated by a single [nan]
     # representing all protocols:
     verbose = False
-    if verbose:
+    verbose_selects = [None] # ["RMP", "taum", "Rs", "Rin"]
+    if verbose and (select_by in verbose_selects):
+        print("\n", "="*60)
         print("Selector to use: ", select_by)
         print("Parameter to test, value: ", parameter, row[parameter])
-    # first, convert the measurements to a list if they are not already
     if parameter not in row.keys():
         CP.cprint("y", f"Parameter {parameter:s} is not in current data row")
         raise ValueError
@@ -83,24 +86,45 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         return row
     if parameter == "used_protocols":
         return row
-    # print("type of row[parameter]: ", type(row[parameter]), row[parameter])
-    if isinstance(row[parameter], np.ndarray) and row[parameter].shape == (0,):
-        row[parameter] = [np.nan]*len(row["protocols"])
-    elif isinstance(row[parameter], (float, np.float64)) or not hasattr(row[parameter], "__iter__"):
-        row[parameter] = [row[parameter]] * len(row["protocols"])
-    elif isinstance(row[parameter], list):
-        if len(row[parameter]) > 0:
-            row[parameter] = row[parameter][0] * len(row["protocols"])
-        else:
-            row[parameter] = [np.nan] * len(row["protocols"])
-    elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 1:
-        row[parameter] = [row[parameter][0]] * len(row["protocols"])
-    elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 0:
-        row[parameter] = [row[parameter]] * len(row["protocols"])
+
+    # first, convert the measurements to a *list* if they are not already
+    if verbose and (select_by in verbose_selects):
+        print("type of row[parameter]: ", type(row[parameter]), row[parameter])
+    if isinstance(row[parameter], (float, np.float64)):
+        row[parameter] = [row[parameter]]
+    # print("row par: ", row[parameter], type(row[parameter]))
+    if isinstance(row[parameter], np.ndarray):
+        # print("ndim: ", row[parameter].ndim)
+        if row[parameter].ndim == 1:
+            if len(row[parameter]) > 0:
+                row[parameter] = [row[parameter][0]] * len(row["protocols"])
+            else:
+                row[parameter] = [np.nan] * len(row["protocols"])
+        elif row[parameter].ndim == 0:
+            row[parameter] = [row[parameter]] * len(row["protocols"])
+    if len(row[parameter]) > 0:
+        row[parameter] = [float(x) for x in row[parameter]]
+    else:
+        row[parameter] = [np.nan]
+    if verbose and (select_by in verbose_selects):
+        print("converted: type of row[parameter]: ", type(row[parameter]), row[parameter])
+    # if isinstance(row[parameter], np.ndarray) and row[parameter].shape == (0,):
+    #     row[parameter] = [np.nan] * len(row["protocols"])
+    # elif isinstance(row[parameter], (float, np.float64)) or not hasattr(row[parameter], "__iter__"):
+    #     row[parameter] = [row[parameter]] * len(row["protocols"])
+    # elif isinstance(row[parameter], list):
+    #     if len(row[parameter]) > 0:
+    #         row[parameter] = row[parameter][0] * len(row["protocols"])
+    #     else:
+    #         row[parameter] = [np.nan] * len(row["protocols"])
+    # elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 1:
+    #     row[parameter] = [row[parameter][0]] * len(row["protocols"])
+    # elif isinstance(row[parameter], np.ndarray) and row[parameter].ndim == 0:
+    #     row[parameter] = [row[parameter]] * len(row["protocols"])
     # if len(row[parameter]) == 1 and np.isnan(row[parameter][0]):
     #     row[parameter] = [row[parameter][0]] * len(row["protocols"])
     # if no valid measurements, just return the row
-    if verbose:
+    if verbose and (select_by in verbose_selects):
         print("row par: ", row[parameter])
         print("type: ", type(row[parameter]))
         print("row parameter: ", row[parameter])
@@ -118,19 +142,21 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # lowest select_by measurement
     # these arrays are the same length as the number of protocols
     # also, if the selection value is out of range, set
-    # the parameter to nan, to remove it 
-    select_limits = np.array(select_limits)*1e-6
+    # the parameter to nan, to remove it
+    select_limits = np.array(select_limits) * 1e-6
     if isinstance(row[select_by], float):
         selector_vals = np.array([row[select_by]])
     else:
         selector_vals = np.array(row[select_by])
-    selector_values = np.array([np.nan if v < select_limits[0] or v > select_limits[1] else v for v in selector_vals])
+    selector_values = np.array(
+        [np.nan if v < select_limits[0] or v > select_limits[1] else v for v in selector_vals]
+    )
 
     # print(" selected values:", selector_values, print(select_limits))
     # print("parametre, row[parameter]: ", parameter, row[parameter])
     params = np.array(row[parameter])
     prots = row["protocols"]
-    if verbose:
+    if verbose and (select_by in verbose_selects):
         print("selector_values: , ", selector_values)
         print(
             "   # measures, selectors, protocols : ",
@@ -141,7 +167,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         print("   row[parameter], selector values: ", params, selector_values)
 
     valid_measures = np.argwhere(~np.isnan(params)).ravel()
-    if verbose:
+    if verbose and (select_by in verbose_selects):
         print("Params: ", params)
         print("selector values: ", selector_values)
         print("valid indices: ", valid_measures)
@@ -165,12 +191,12 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     equal_mins = []  # indicices to equal minimum values (to be averaged)
     values = []  # measurement value
     taums = []  # taum values for CC_taum protocol
-    if verbose:
+    if verbose and (select_by in verbose_selects):
         print("prots: ", prots)
     for i, prot in enumerate(prots):
         if i not in valid_measures:  # no measure for this protocol, so move on
             continue
-        if verbose:
+        if verbose and (select_by in verbose_selects):
             print("prot: ", prot)
         p = str(Path(prot).name)  # get the name of the protocol
         # skip specific protocols
@@ -180,7 +206,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             continue
         # if p.startswith("CC_taum"):
         #     continue
-        if verbose:
+        if verbose and (select_by in verbose_selects):
             print("select by: ", select_by)
             print("index: ", i)
             print("row selection data: ", row[select_by])
@@ -192,7 +218,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             # print("I, selectby: ", i, row[select_by])
             if i < len(row[select_by]):
                 select_value = row[select_by][i]
-        
+
         value = params[i]
         if np.isnan(value):
             continue
@@ -215,14 +241,14 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             else:
                 taums.append(params[i])
 
-    if verbose:
+    if verbose  and (select_by in verbose_selects):
         print("iprot, eq_mins, values, taums: ", iprots, equal_mins, values, taums)
     if len(iprots) == 0:
         CP.cprint(
             "r",
             f"No minimum value found for: {row.cell_id!s}, {select_by:s} {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
         )
-        if verbose:
+        if verbose and (select_by in verbose_selects):
             print("    protocols: ", row[select_by])
             print("row[parameter]: ", row[parameter])
         return row
@@ -243,12 +269,20 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if not parameter.startswith("CC_taum"):  # standard IV protocols
         # print("Params: ", params)
         # print("prots: ", prots)
-        p_mean = [v for i, v in enumerate(params) if i < len(prots) and not Path(prots[i]).name.startswith("CC_taum")]
+        p_mean = [
+            v
+            for i, v in enumerate(params)
+            if i < len(prots) and not Path(prots[i]).name.startswith("CC_taum")
+        ]
         if len(p_mean) > 0:
             row[parameter + f"_mean"] = np.nanmean(p_mean)
     else:  # specific to CC_taum protocol
         row[parameter + f"_mean"] = np.nanmean(
-            [v for i, v in enumerate(params) if i < len(prots) and Path(prots[i]).name.startswith("CC_taum")]
+            [
+                v
+                for i, v in enumerate(params)
+                if i < len(prots) and Path(prots[i]).name.startswith("CC_taum")
+            ]
         )
 
     row["used_protocols"] = ",".join((row["used_protocols"], used_prots))
@@ -275,6 +309,7 @@ def innermost(datalist):
             continue
     return datalist  # no inner list found
 
+
 def filter_rs(row, maxRs, axis=1):
     """filter_rs : Filter the Rs values to remove those that are too high
 
@@ -299,6 +334,7 @@ def filter_rs(row, maxRs, axis=1):
     else:
         return row
 
+
 def populate_columns(
     data: pd.DataFrame,
     configuration: dict = None,
@@ -306,7 +342,7 @@ def populate_columns(
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
 ):
-    datap = data.copy(deep=True) # defrag dataframe.
+    datap = data.copy(deep=True)  # defrag dataframe.
     # print("populate columns (show assemb data): ", datap.columns)
 
     # populate the new columns for each parameter
@@ -335,13 +371,15 @@ def populate_columns(
     for cellid in configuration["excludeIVs"]:
         for protos in configuration["excludeIVs"][cellid]["protocols"]:
             excludes.append(str(Path(cellid, protos)))
- 
-    datap = datap.apply(filter_rs, maxRs=select_limits[1]*1e-6, axis=1) # (data["Rs"].values[0] <= select_limits[1]*1e-6)
+
+    datap = datap.apply(
+        filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
+    )  # (data["Rs"].values[0] <= select_limits[1]*1e-6)
     datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data
     if "taum" not in data.columns:
         datap["taum"] = {}
     if "CC_taum" not in data.columns:
-        datap["CC_taum"] = {}    
+        datap["CC_taum"] = {}
     datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
     assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
@@ -437,7 +475,9 @@ def check_types(data1, data2):
             if d1 != d2:
                 CP.cprint("r", f"One of the types is 'None'; not matched: d1={d1}, d2={d2}")
         else:
-            CP.cprint("r", f"show_assembled_datafile: check_types: Uncaught comparision for variable: {d}")
+            CP.cprint(
+                "r", f"show_assembled_datafile: check_types: Uncaught comparision for variable: {d}"
+            )
             CP.cprint("r", f"original data: {original_data}")
 
     # print("Done checking types")
@@ -504,7 +544,7 @@ parameters = [
     "AP_thr_T",
     "AP_HW",
     "AdaptRatio",
-    "AdaptIndex", 
+    "AdaptIndex",
     "AHP_trough_V",
     "AHP_trough_T",
     "AHP_depth_V",
@@ -560,6 +600,7 @@ def get_best_and_mean(
     )
     return data
 
+
 def show_best_rs_data(data, select_limits):
     print("Parameters: ", parameters, "select_by", select_by)
     print("Data columns: ", data.columns)
@@ -598,7 +639,14 @@ def show_best_rs_data(data, select_limits):
     #     mpl.plot(data.iloc[idx].FI_Curve4[0], data.iloc[idx].FI_Curve4[1])
     # mpl.show()
     yx = ["taum_bestRs", "taum_mean", "CC_taum_bestRs"]
-    yx = ["AP_thr_V_bestRs", "AP_thr_V_mean", "AP_peak_V", "dvdt_rising_bestRs", "dvdt_rising_mean", "AP_peak_V_bestRs"]
+    yx = [
+        "AP_thr_V_bestRs",
+        "AP_thr_V_mean",
+        "AP_peak_V",
+        "dvdt_rising_bestRs",
+        "dvdt_rising_mean",
+        "AP_peak_V_bestRs",
+    ]
     f, ax = mpl.subplots(1, len(yx), figsize=(12, 6))
     for i, axi in enumerate(ax):
         sns.boxplot(
@@ -657,15 +705,20 @@ def show_best_rs_data(data, select_limits):
     # print("Rin mean: ", data["Rin_mean"].values)
     # print("Rin raw: ", data["Rin"].values)
 
+
 def categorize_ages(row, experiment: dict):
     age_category = "NA"
     if row.age == "P0D ?":
         return np.nan
     intage = parse_ages.age_as_int(parse_ages.ISO8601_age(row.age))
     for k in experiment["age_categories"].keys():
-        if intage >= experiment["age_categories"][k][0] and intage <= experiment["age_categories"][k][1]:
+        if (
+            intage >= experiment["age_categories"][k][0]
+            and intage <= experiment["age_categories"][k][1]
+        ):
             age_category = k
     return age_category
+
 
 def mean_adaptation(row):
     if row.AdaptIndex is not None:
@@ -674,40 +727,92 @@ def mean_adaptation(row):
         row.ADR = np.nanmean(row.AdaptRates)
     return row
 
+
 if __name__ == "__main__":
     # print(data.head(10))
     import matplotlib.pyplot as mpl
+
     import ephys.tools.parse_ages as parse_ages
+
     # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
     # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
+
     fn = Path("./config/experiments.cfg")
 
     select_by = "Rs"
     cfg, d = get_configuration(str(fn))
-    exptname = "VM_Dentate"
+    # exptname = "VM_Dentate"
     exptname = "CBA_Age"
     print(cfg)
     experiment = d[exptname]
     expts = experiment
 
-    assembled_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["assembled_filename"])
+    assembled_filename = Path(
+        expts["analyzeddatapath"], expts["directory"], expts["assembled_filename"]
+    )
     print(assembled_filename)
     data = read_pickle(assembled_filename, compression="gzip")
+    assembled_time = assembled_filename.stat().st_mtime
     print("assembled data columns: ", data.columns)
-    print(data["post_durations"].values)
-    print(data["post_rates"].values)
-    print(data["post_spike_counts"].values)
-    print(data["FI_Curve1"][0][0]*1e9)
-    exit()
+    print("assembled data: ", data.iloc[0].keys())
+    # print(data["post_durations"].values)
+    # print(data["post_rates"].values)
+    # print(data["post_spike_counts"].values)
+    # print(data["FI_Curve1"][0][0]*1e9)
+    for i, row in data.iterrows():
+        pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
+        pkl_time = pkl.stat().st_mtime
+
+        print(
+            i, 
+            "cell id: ",
+            pkl,
+            pkl.is_file(),
+            datetime.datetime.fromtimestamp(pkl.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        if pkl_time > assembled_time:
+            pkl_d = datetime.datetime.fromtimestamp(pkl_time).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            ass_d = datetime.datetime.fromtimestamp(assembled_time).strftime("%Y-%m-%d %H:%M:%S")
+            CP.cprint(
+                "r",
+                f"     *pkl file: {pkl.name} at {pkl_d} is newer than assembled data file: {assembled_filename.name} at {ass_d}",
+            )
+
 
     # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
     # exit()
     for index in data.index:
-        print("index: ", index, data.loc[index]['Subject'], data.loc[index]['protocol'], data.iloc[index].AdaptIndex2)
-        print("     values: ", data.iloc[index])
+        print(
+            "index: ",
+            index,
+            data.loc[index]["Subject"],
+            data.loc[index]["protocol"],
+            "AI2: ",
+            data.iloc[index].AdaptIndex2,
+            "FSL: ", 
+            data.iloc[index].post_latencies,
+        )
+        # print("     values: ", data.iloc[index])
 
-        print("Peak V: ", data.iloc[index].AP_peak_V, "thr: ", data.iloc[index].AP_thr_V, "trough: ", data.iloc[index].AHP_trough_V) # , data.iloc[index].AP_thr_V)
-        print("    AHP depth: ", data.iloc[index].AHP_depth_V, "Relative depth: ", data.iloc[index].AHP_relative_depth_V)
+        # print(
+        #     "Peak V: ",
+        #     data.iloc[index].AP_peak_V,
+        #     "thr: ",
+        #     data.iloc[index].AP_thr_V,
+        #     "trough: ",
+        #     data.iloc[index].AHP_trough_V,
+        # )  # , data.iloc[index].AP_thr_V)
+        # print(
+        #     "    AHP depth: ",
+        #     data.iloc[index].AHP_depth_V,
+        #     "Relative depth: ",
+        #     data.iloc[index].AHP_relative_depth_V,
+        # )
+        # print(
+        #     data.loc[index]['post_latencies']
+        # )
         # print(data.iloc[index].AdaptRatio2) # , data.iloc[index].protocol)
         # print(data.iloc[index].Subject, data.iloc[index].protocol)
         # print(data.iloc[index].cell_id)
@@ -716,15 +821,15 @@ if __name__ == "__main__":
         # print(np.array(data.AP_peak_V.values) - np.array(data.AP_thr_V.values))
     exit()
 
-    df_summary_filename = Path(expts["analyzeddatapath"], expts['directory'], expts["datasummaryFilename"])
+    df_summary_filename = Path(
+        expts["analyzeddatapath"], expts["directory"], expts["datasummaryFilename"]
+    )
     df_summary = read_pickle(df_summary_filename, compression="infer")
-
-
 
     data["ADI"] = {}
     data["ADR"] = {}
-    data['age_category'] = None
-    data['age_category'] = data.apply(categorize_ages, experiment=experiment, axis=1)
+    data["age_category"] = None
+    data["age_category"] = data.apply(categorize_ages, experiment=experiment, axis=1)
 
     data = data.apply(mean_adaptation, axis=1)
     data.dropna(subset=["age"], inplace=True)
@@ -763,33 +868,40 @@ if __name__ == "__main__":
 
     f, ax = mpl.subplots(2, 2)
     ax = ax.ravel()
-    cells = ['pyramidal'] # , 'tuberculoventral', 'cartwheel']
+    cells = ["pyramidal"]  # , 'tuberculoventral', 'cartwheel']
 
     # groups = ['B', 'A', 'AA', "AAA"]
-    groups = ['Pubescent', 'Young Adult', 'Mature Adult']
+    groups = ["Pubescent", "Young Adult", "Mature Adult"]
     for i, cell in enumerate(cells):
         dfn = data[data.cell_type == cell]
         # for ix in dfn.index:
         #         print(dfn.loc[ix].cell_type, dfn.loc[ix].cell_id, FT.make_cellid_from_slicecell(dfn.loc[ix].cell_id))
         #         # continue
         # continue
-        ax[i].set_title(f"{cell:s}") 
+        ax[i].set_title(f"{cell:s}")
         for j, group in enumerate(groups):
             dfg = dfn[dfn.Group == group]
             # print("ct: ", cell, "group: ", group, "len: ", len(dfg))
             if i == 0 and j == 0:
                 print("dataframe grouping columns: \n", dfg.columns)
             # just to keep it simple, sort so we can compare
-            dfg.sort_values(by=["cell_id"], ignore_index=False, inplace=True)  # sort by date within the group
+            dfg.sort_values(
+                by=["cell_id"], ignore_index=False, inplace=True
+            )  # sort by date within the group
             for cellidx in dfg.index:
-                dc = dfg.loc[cellidx]  
+                dc = dfg.loc[cellidx]
                 # print(cellidx, cell, dc.cell_id)
                 # print(dir(dc))
-                if cell == 'tuberculoventral':
+                if cell == "tuberculoventral":
                     proper_cellid = FT.make_cellid_from_slicecell(dc.cell_id)
-                    print(f"\n{group:3s}: Cell index: : {cellidx:4d}, {dc.cell_id:32s} ProperID: {proper_cellid:s}")
+                    print(
+                        f"\n{group:3s}: Cell index: : {cellidx:4d}, {dc.cell_id:32s} ProperID: {proper_cellid:s}"
+                    )
                     print(f"      analyzed Protocols: {dc.protocols}")
-                    print("       complete Protocols: ", df_summary[df_summary.cell_id == proper_cellid]["data_complete"].values)
+                    print(
+                        "       complete Protocols: ",
+                        df_summary[df_summary.cell_id == proper_cellid]["data_complete"].values,
+                    )
                     print("       len fi curve: ", len(dc.FI_Curve1), len(dc.FI_Curve1[0]))
                     if len(dc.FI_Curve1) == 0:
                         print("Nothing in FI_Curve1 for: ", dc.cell_id)
@@ -797,15 +909,16 @@ if __name__ == "__main__":
                 color = experiment["plot_colors"][group]
                 lw = 0.5
 
-                if cell == 'tuberculoventral' and proper_cellid in ['2018.07.27_000/slice_001/cell_000']:
-                    color = 'k'
+                if cell == "tuberculoventral" and proper_cellid in [
+                    "2018.07.27_000/slice_001/cell_000"
+                ]:
+                    color = "k"
                     lw = 1.5
                     print("*****")
                     print(dc.FI_Curve1)
                 fi = dc.FI_Curve1
                 # print("FI is: ", fi)
-                ax[i].plot(fi[0], fi[1], label=f"{cell:s}, {group:s}", 
-                        color=color, lw=lw)
+                ax[i].plot(fi[0], fi[1], label=f"{cell:s}, {group:s}", color=color, lw=lw)
             ax[i].legend()
 
     mpl.show()
