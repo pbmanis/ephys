@@ -871,7 +871,7 @@ class PlotSpikeInfo(QObject):
 
     def rescale_values_apply(self, row, measure, scale=1.0):
         if measure in row.keys():
-            print(measure, row[measure])
+            # print("rescale values: ", measure, row[measure])
             if isinstance(row[measure], float):
                 row[measure] = [row[measure] * scale]
             elif isinstance(row[measure], list):
@@ -943,22 +943,6 @@ class PlotSpikeInfo(QObject):
             row["AP_peak_V_re_threshold"] = ap_pkv - ap_thr
         return row
 
-    def place_legend(self, P):
-        legend_text = {
-            "Ctl: Control (sham)  (P56)": "g",
-            "103dB: 96-106 dB SPL@P42, 14D": "b",
-            "115dB 2W: 115 dB SPL@P42, 14D": "orange",
-            "115dB 3D: 115 dB SPL@P53, 3D": "magenta",
-        }
-        for i, txt in enumerate(legend_text.keys()):
-            mpl.text(
-                x=0.8,
-                y=0.95 - i * 0.02,
-                s=txt,
-                color=legend_text[txt],  # ns.color_palette()[i],
-                fontsize="medium",
-                transform=P.figure_handle.transFigure,
-            )
 
     def remove_nans(self, row, measure):
         if isinstance(row[measure], list):
@@ -1128,13 +1112,13 @@ class PlotSpikeInfo(QObject):
             plabels = [f"{let.upper():s}" for let in letters]
         horizontal_spacing = 0.06
         vertical_spacing = 0.09
-        if data_class == "spike_measures":
-            ncols = 4
-            nrows = 2
-            height = 3.25
-            horizontal_spacing = 0.1
-            vertical_spacing = 0.09
-            plabels = [f"{let.upper():s}" for let in letters]
+        # if data_class == "spike_measures":
+        #     ncols = 4
+        #     nrows = 2
+        #     height = 3.25
+        #     horizontal_spacing = 0.1
+        #     vertical_spacing = 0.09
+        #     plabels = [f"{let.upper():s}" for let in letters]
 
         figure_width = ncols * 2.5
         plot_grid = PH.regular_grid(
@@ -1350,10 +1334,10 @@ class PlotSpikeInfo(QObject):
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
                     # print("measure y: ", measure, "celltype: ", celltype)
-                    if data_class not in ["spike_measures"]:
-                        axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-                    else:
-                        axp = P.axdict[f"{letters[icol]:s}"]
+                    # if data_class not in ["spike_measures"]:
+                    #     axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    # else:
+                    axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
                     if celltype not in self.ylims.keys():
                         ycell = "default"
                     else:
@@ -1369,7 +1353,15 @@ class PlotSpikeInfo(QObject):
                         print("Measure : ", measure, "not in columns")
                         print(df.columns)
                         raise ValueError("Missing measure: ", measure)
-
+                    print(
+                        "celltype: " ,celltype,
+                        "Plotting measure: ",
+                        measure,
+                        "xname: ", xname,
+                        "Unique x values: ", df[xname].unique(),
+                        "plot order: ", plot_order,
+                        "hue cagegory: ", hue_category,
+                    )
                     picker_func = self.create_one_plot_categorical(
                         data=df,
                         xname=xname,
@@ -1461,7 +1453,6 @@ class PlotSpikeInfo(QObject):
                 P.axdict[
                     ax
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
-        # place_legend(P)
         i = 0
         icol = 0
         axp = P.axdict[f"{plabels[i]:s}"]
