@@ -118,7 +118,7 @@ class IVAnalysis(Analysis):
         self.mode = "acq4"
         self.AR: object = acq4_reader()
         self.RM: object = RmTauAnalysis()
-        self.SP: objects = SpikeAnalysis()
+        self.SP: object = SpikeAnalysis()
         self.allow_partial = False
         self.record_list = []
 
@@ -728,6 +728,21 @@ class IVAnalysis(Analysis):
                 taum_current_range = self.experiment["fitting_adjustments"][cell_id][
                     "taum_current_range"
                 ]
+        cell_type = self.df.at[icell, "cell_type"].lower()
+        if cell_type in self.experiment["Lowest_current_spike_parameters"].keys():
+            lcs_minimum_current = self.experiment["Lowest_current_spike_parameters"][
+                cell_type
+            ]["minimum_current"]
+            lcs_minimum_postspike_interval = self.experiment["Lowest_current_spike_parameters"][
+                cell_type
+            ]["minimum_postspike_interval"]
+        else:
+            lcs_minimum_current = self.experiment["Lowest_current_spike_parameters"]["default"][
+                "minimum_current"
+            ]
+            lcs_minimum_postspike_interval = self.experiment["Lowest_current_spike_parameters"][
+                "default"
+            ]["minimum_postspike_interval"]
 
         self.plot_mode(mode=self.IV_pubmode)
         self.compute_iv(
@@ -743,6 +758,8 @@ class IVAnalysis(Analysis):
             tauh_voltage=tauh_voltage,
             taum_bounds=taum_bounds,
             taum_current_range=taum_current_range,
+            lcs_minimum_current=lcs_minimum_current,
+            lcs_minimum_postspike_interval=lcs_minimum_postspike_interval,
             additional_iv_records=additional_iv_records,
         )
 
@@ -776,6 +793,8 @@ class IVAnalysis(Analysis):
         tauh_voltage: float = -80.0,
         taum_bounds: List = [0.0002, 0.050],
         taum_current_range: List = [-10.0e-12, 200e-12],
+        lcs_minimum_current: float = 20e-12,
+        lcs_minimum_postspike_interval: float = 0.025,
         additional_iv_records: Union[dict, None] = None,
     ) -> bool:
         """
@@ -864,6 +883,7 @@ class IVAnalysis(Analysis):
             tauh_voltage=tauh_voltage,
             rin_current_limit = self.experiment.get("rin_current_limit", np.nan),
         )
+        
         if "Adaptation_measurement_parameters" in self.experiment.keys():
             adapt_min_rate = self.experiment["Adaptation_measurement_parameters"]["min_rate"]
             adapt_max_rate = self.experiment["Adaptation_measurement_parameters"]["max_rate"]
@@ -872,6 +892,13 @@ class IVAnalysis(Analysis):
             adapt_min_rate = 20.0
             adapt_max_rate = 40.0
             adapt_last_spike_time = 0.5
+        # if "Lowest_current_spike_parameters" in self.experiment.keys():
+        #     minimum_current = self.experiment["Lowest_current_spike_parameters"]["minimum_current"]
+        #     minimum_postspike_interval = self.experiment["Lowest_current_spike_parameters"]["minimum_postspike_interval"]
+        # else:
+        #     minimum_current = 20e-12
+        #     minimum_postspike_interval = 0.025
+
         self.SP.setup(
             clamps=self.AR,
             threshold=threshold,
@@ -880,6 +907,8 @@ class IVAnalysis(Analysis):
             adaptation_min_rate = adapt_min_rate,
             adaptation_max_rate = adapt_max_rate,
             adaptation_last_spike_time = adapt_last_spike_time,  # seconds
+            lcs_minimum_current = lcs_minimum_current,
+            lcs_minimum_postspike_interval = lcs_minimum_postspike_interval,
             interpolate=True,
             verify=False,
             mode="schmitt",

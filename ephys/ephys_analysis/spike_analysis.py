@@ -158,6 +158,8 @@ class SpikeAnalysis:
         adaptation_max_rate: float = 40.0,
         adaptation_last_spike_time: float = 0.5,  # seconds
         adaptation_minimum_spike_count: int = 4,  # minimum number of spikes to compute adaptation ratio
+        lcs_minimum_current: float = 20e-12,  # minimum current for LCS
+        lcs_minimum_postspike_interval: float = 0.025,  # minimum time after the spike
         verify=False,
         interpolate=True,
         verbose=False,
@@ -213,10 +215,12 @@ class SpikeAnalysis:
         self.interpolate = interpolate  # use interpolation on spike thresholds...
         self.peakwidth = peakwidth
         self.min_halfwidth = min_halfwidth
+        self.lcs_minimum_current = lcs_minimum_current
+        self.lcs_minimum_postspike_interval = lcs_minimum_postspike_interval
         self.verify = verify
         self.verbose = verbose
         self.mode = mode
-
+        CP.cprint("m", f"SpikeAnalysis: setup: {self.lcs_minimum_current*1e12:.1f} pA {self.lcs_minimum_postspike_interval:.6f} sec")
         # self.ar_window = self.ar_lastspike = 0.5  # default window for adaptation ratio
         self.ar_minimum_spike_count = (
             adaptation_minimum_spike_count  # minimum # of spikes when computing adaptation ratio
@@ -631,7 +635,8 @@ class SpikeAnalysis:
             self.analysis_summary["pulseDuration"] = np.max(self.Clamps.time_base)
 
         if len(self.spikeShapes.keys()) > 0:  # only try to classify if there are spikes
-            lcs = self.get_lowest_current_spike()
+            lcs = self.get_lowest_current_spike(minimum_current=self.lcs_minimum_current, 
+                                                minimum_postspike_interval=self.lcs_minimum_postspike_interval)
             self.analysis_summary["LowestCurrentSpike"] = lcs
             self.getClassifyingInfo()  # build analysis summary here as well.
         else:
@@ -644,7 +649,6 @@ class SpikeAnalysis:
                 print(("----\nTrace: %d  has %d APs" % (m, len(list(self.spikeShapes[m].keys())))))
                 for n in sorted(self.spikeShapes[m].keys()):
                     pp.pprint(self.spikeShapes[m][n])
-        # print("a sp s done")
 
     def get_lowest_current_spike(self, minimum_current:float=20e-12, minimum_postspike_interval:float=0.025):
         """get_lowest_current_spike : get the lowest current spike in the traces
@@ -668,14 +672,16 @@ class SpikeAnalysis:
         for tr in self.spk:  # for each trace with spikes
             # proceed only if there is at least one spike and it starts after the stimulus onset
             if self.spikeShapes[tr] is None or len(self.spikeShapes[tr]) < 1 or self.spikeShapes[tr][0].AP_latency is None:
+                CP.cprint("y", f"No spikes in trace: {tr:d}")
                 continue  # no spikes in this trace
             if self.spikeShapes[tr][0].AP_latency < self.Clamps.tstart: # first spike is in forbidden window
                 continue 
             if self.spikeShapes[tr][0].current < minimum_current:  # current level is too small
+                CP.cprint("y", f"Current too small in trace: {tr:d}, minimum: {minimum_current*1e12:.1f}, current: {self.spikeShapes[tr][0].current*1e12:.1f}")
                 continue
             # now we can check for the first spike and check that it's interval is > the deadtime we want
             spkshape0 = self.spikeShapes[tr][0]  # get the 1st spike in the trace
-                # check for following spike - if it is too close (< 25 msec), skip this one
+                # check for following spike - if it is too close (< min postspike interval msec), skip this one
             if len(self.spikeShapes[tr]) > 1:
                 spkshape1 = self.spikeShapes[tr][1]
                 if (
@@ -684,7 +690,9 @@ class SpikeAnalysis:
                 ):
                     dvdts[tr] = spkshape0  # meets criteria, so add to the list
                     CP.cprint("g", f"   Adding trace {tr} spike to lowest current spike list")
-                    found_spike = True  # only need the first spike in the trace that meets the criteria                    
+                    found_spike = True  # only need the first spike in the trace that meets the criteria    
+                else:
+                    CP.cprint("y", f"Spikes too close in trace: {tr:d}, min: {minimum_postspike_interval:.3f}, current: {self.spikeShapes[tr][0].current*1e12:.1f}")                
             if found_spike:
                 break
 
@@ -702,9 +710,9 @@ class SpikeAnalysis:
                 0
             ]  # gets just the first spike in the lowest current trace
             if sp.AP_begin_V is None:
-                print("\nSpike empty? \n", sp)
+                CP.cprint("r", f"\nSpike empty? \n, {sp!s}")
                 return None
-            LCS["version"] = 2.0
+            LCS["version"] = 2.1
             LCS["dvdt_rising"] = sp.dvdt_rising
             LCS["dvdt_falling"] = sp.dvdt_falling
             LCS["dvdt_current"] = min_current * 1e12  # put in pA
