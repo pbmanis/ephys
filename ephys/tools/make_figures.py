@@ -25,6 +25,12 @@ AR = DR.acq4_reader.acq4_reader()
 SP = EP.spike_analysis.SpikeAnalysis()
 
 experiments = src.set_expt_paths.get_experiments()
+if "Lowest_current_spike_paramters" in self.experiment.keys():
+    minimum_current = self.experiment["Lowest_current_spike_paramters"]["minimum_current"]
+    minimum_postspike_interval = self.experiment["Lowest_current_spike_paramters"]["minimum_postspike_interval"]
+else:
+    minimum_current = 20e-12
+    minimum_postspike_interval = 0.025
 
 class Mfig(object):
     def __init__(self):
@@ -40,7 +46,10 @@ class Mfig(object):
                 AR.setProtocol(c)
                 AR.getData()
                 SP.setup(clamps=AR, threshold=0., refractory=0.0007, peakwidth=0.001,
-                                    verify=False, interpolate=True, verbose=False, mode='peak', min_halfwidth=0.010)
+                                    verify=False, interpolate=True, verbose=False, mode='peak', min_halfwidth=0.010,
+                                    lcs_minimum_current=minimum_current,
+                                    lcs_minimum_postspike_interval=minimum_postspike_interval,
+                                    )
                 SP.analyzeSpikes()
                 spks.append(SP.spikes)
             return spks
