@@ -4,6 +4,7 @@ import json
 import numpy as np
 from pylibrary.tools import cprint as CP
 import sympy.geometry
+import shapely
 import scipy.interpolate
 import numpy as np
 import pint
@@ -142,7 +143,7 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
                         )
                 case _:
                     pass
-            # print("didnt parse item type: ", item["type"])
+            # CP.cprint('r', f"didnt parse item type: {item['type']!s}")
 
         soma_xy: list = []
         somapos = []
@@ -190,6 +191,91 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
     return marker_dict
 
 
+def find_min_max_axes(boundary):
+    """Find the shortest line in a boundary polygon that goes through the centroid,
+    and the longest line crossing the boundary polygon that is perpendicular to that line.
+
+    Parameters
+    ----------
+    boundary : shapely.geometry.Polygon
+        The boundary polygon to find the axes in.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the shortest line and the longest line.
+        The shortest line is a shapely LineString that goes through the centroid of the boundary polygon.
+        The longest line is a shapely LineString that crosses the boundary polygon and is perpendicular to the shortest line.
+
+    """
+    if isinstance(boundary, sympy.geometry.polygon.Polygon):
+        # convert sympy polygon to shapely polygon
+        boundary = shapely.geometry.Polygon(
+            [(v.x, v.y) for v in boundary.vertices]
+        )
+    if not isinstance(boundary, shapely.geometry.Polygon):
+        raise ValueError("Boundary must be a shapely Polygon.")
+
+    min_length = float("inf")
+    shortest_line = None
+    longest_line = None
+    centroid = boundary.centroid
+    # first find the shortest line through the centroid
+    lfac = 2000  # length factor to extend the line beyond the boundary
+    for i in range(360):  # brute force search for the shortest line
+        # by rotatiing it around the centroid
+        ray = shapely.LineString(  # make a line through the centroid.
+            [
+                (
+                    centroid.x - lfac * np.cos(np.radians(i)),
+                    centroid.y - lfac * np.sin(np.radians(i)),
+                ),
+                (
+                    centroid.x + lfac * np.cos(np.radians(i)),
+                    centroid.y + lfac * np.sin(np.radians(i)),
+                ),
+            ]
+        )
+        intersection = boundary.intersection(ray)  # find the intersection with the boundary
+        length = intersection.length
+        if length < min_length:
+            min_length = length
+            shortest_line = shapely.LineString(intersection.coords)
+    # now find the longest line that is perpendicular to the shortest line
+    if shortest_line is None:
+        raise ValueError("No intersection found with the boundary polygon.")
+
+    # shortest_line holds the shapely LineString of the shortest line
+    # now find the longest line that is perpendicular to the shortest line
+    perp_length = shortest_line.length * 10.0  # length of the perpendicular line
+    for t in np.linspace(0, 1, 20):
+        # get a parameterized point on the shortest line - this is the point where the perpendicular line will be drawn
+        pt = shortest_line.line_interpolate_point(t, normalized=True)
+        # now get a perpendicular line to the shortest line at this point
+        offset_dist = perp_length / 2.0
+        left = shortest_line.parallel_offset(offset_dist, "left")
+        right = shortest_line.parallel_offset(offset_dist, "right")
+
+        # Find the points on the left and right offset lines corresponding to the original point
+        # make a simple linestring for each of the points, and then
+        # make a final linestring
+        left_point = left.interpolate(shortest_line.project(pt))
+        right_point = right.interpolate(shortest_line.project(pt))
+        li = shapely.LineString([left_point, right_point])
+        long_intersection = boundary.intersection(li)
+        if isinstance(long_intersection, shapely.geometry.MultiLineString):
+            # if the intersection is a MultiLineString, skip it
+            # but we probably should go through each line in the MultiLineString
+            # and figure out if it is the longest line of the group (e.g., 
+            # if the line crossed the boundary twice in one direction))
+            continue
+        li = shapely.LineString(long_intersection)
+        if longest_line is None or li.length > longest_line.length:
+            longest_line = li
+
+    return shortest_line, longest_line
+
+
 def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
     coordinates_x = np.array([x[0] for x in coord_pairs])
     coordinates_y = np.array([x[1] for x in coord_pairs])
@@ -207,6 +293,18 @@ def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
     xx, yy = scipy.interpolate.splev(xx, b_spline)
     return xx, yy
 
+def compute_measures(poly: sympy.geometry.polygon.Polygon) -> dict:
+    """compute_measures computes the area and medial-lateral distance of a polygon"""
+    measures = {}
+    if poly is not None:
+        measures["area"] = np.abs(poly.area)
+        medialpt = sympy.geometry.point.Point(poly.vertices[0], dim=2)
+        lateralpt = sympy.geometry.point.Point(poly.vertices[1], dim=2)
+        measures["medial_lateral_distance"] = medialpt.distance(lateralpt)
+    else:
+        measures["area"] = np.nan
+        measures["medial_lateral_distance"] = np.nan
+    return measures
 
 def plot_mosaic_markers(
     markers: dict,
@@ -267,16 +365,19 @@ def plot_mosaic_markers(
             axp.plot(xx[0], yy[0], "ro", markersize=6, alpha=0.5)
             axp.plot(xx[-2], yy[-2], "rX", markersize=6, alpha=0.5)
         deep_boundary_coordinates: list = []
-        # we use a wrap-around here, but then will limit the data
+        # we use a wrap-around here to mesh with the surface points, but then will limit the data
         # to the end points for the caudal border and rostral border.
         for marker in [
             "caudalsurface",
             "caudalborder",
+            "AN_Notch1",
+            "AN_Notch2",
             "medialborder",
             "rostralborder",
             "rostralsurface",
         ]:
-            deep_boundary_coordinates.append(tuple(markers[marker]))
+            if marker in markers.keys():
+                deep_boundary_coordinates.append(tuple(markers.get(marker, {})))
         # print("deep_boundary_coordinates: ", deep_boundary_coordinates)
         # b_spline, u_par = scipy.interpolate.make_splprep([deep_boundary_coordinates_x, deep_boundary_coordinates_y], s=0)
         deep_xx, deep_yy = compute_splines(deep_boundary_coordinates, npoints=20, remove_ends=True)
@@ -286,22 +387,35 @@ def plot_mosaic_markers(
             axp.plot(deep_xx[0], deep_yy[0], "bo", markersize=4, alpha=0.5)
             axp.plot(deep_xx[-1], deep_yy[-1], "bX", markersize=4, alpha=0.5)
 
-        smoothed_poly = [(xx[i], yy[i]) for i in range(len(xx) - 1)]
-        surface_poly = smoothed_poly.copy()
-        smoothed_poly.extend([(deep_xx[i], deep_yy[i]) for i in range(len(deep_xx) - 1)])
+        smoothed_poly_list = [(xx[i], yy[i]) for i in range(len(xx) - 1)]
+        surface_poly_list = smoothed_poly_list.copy()
+        smoothed_poly_list.extend([(deep_xx[i], deep_yy[i]) for i in range(len(deep_xx) - 1)])
         # smoothed_poly.append(smoothed_poly[0])  # close the loop
         # print("smoothed_poly: ", smoothed_poly)
-        smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly)
-
+        smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly_list)
+        shapely_smoothed_poly = shapely.geometry.Polygon(smoothed_poly_list)
         medialpt = sympy.geometry.point.Point(markers["medialborder"], dim=2)
         lateralpt = sympy.geometry.point.Point(markers["surface"], dim=2)
-        measures["medial_lateral_distance"] = medialpt.distance(lateralpt)
-        measures["area"] = smoothed_poly.area
+        measures["medial_lateral_distance"] = float(medialpt.distance(lateralpt))
+        measures["area"] = np.abs(float(smoothed_poly.area))
+        measures["cir_circle"] = float(1.0 - (measures['area'] / shapely.minimum_bounding_circle(shapely_smoothed_poly).area))
+        measures['perimeter'] = float(smoothed_poly.perimeter)
+        measures['shape_index'] = float(0.25*measures['perimeter'] / np.sqrt(float(measures['area'])))  # shape index, see https://en.wikipedia.org/wiki/Shape_index
+        measures['fractal_dimension'] = float(2.0*np.log(float(measures['perimeter'])/4.0) / np.log(float(measures['area']))) # fractal dimension, see https://en.wikipedia.org/wiki/Fractal_dimension
+        
+        shortest_line, longest_line = find_min_max_axes(smoothed_poly)
+        measures["short_axis"] = shortest_line.length
+        measures["long_axis"] = longest_line.length if longest_line is not None else 0.0
+        measures["eccentricty"] = (
+            longest_line.length / shortest_line.length if shortest_line.length > 0 else 0.0
+        )
+        measures["shortest_line"] = np.array(shortest_line.coords)
+        measures["longest_line"] = np.array(longest_line.coords)
         rostralpt = sympy.geometry.point.Point(markers["rostralborder"], dim=2)
         caudalpt = sympy.geometry.point.Point(markers["caudalborder"], dim=2)
-        measures["rostral_caudal_distance"] = rostralpt.distance(caudalpt)
+        measures["rostral_caudal_distance"] = float(rostralpt.distance(caudalpt))
         # print(markers.keys())
-        somas = markers['somas']
+        somas = markers.get('somas', {})
         soma_depth = {}
         soma_radius = {}
         # print("somas: ", somas)
@@ -339,7 +453,9 @@ def plot_mosaic_markers(
             # print('intersect with surface: ', intersect[0].evalf())
 
             axp.plot([cell_pt.x, intersect[0].x], [cell_pt.y, intersect[0].y], "c-", lw=1.0, alpha=0.5)
-
+        axp.plot(measures["shortest_line"][:, 0], measures["shortest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
+        axp.plot(measures["longest_line"][:, 0], measures["longest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
+        # print("soma_depth: ", soma_depth)
         # if cell_pt is not None:
         #     cell_pt = sympy.geometry.point.Point(cell_pt)
         #     cell_line = sympy.geometry.Line(
@@ -349,6 +465,13 @@ def plot_mosaic_markers(
         UR.define("mm = 1e-3 * m")
         UR.define("um = 1e-6 * m")
         print(f"Smoothed Polygon Slice area: {measures['area']*1e6:.4f}")
+        print(f"Medial-Lateral distance: {measures['medial_lateral_distance']*1e6:.4f} um")
+        print(f"Rostral-Caudal distance: {measures['rostral_caudal_distance']*1e6:.4f} um")
+        print(f"Perimeter: {measures['perimeter']*1e6:.4f} um")
+        print(f"Shape index: {measures['shape_index']:.4f}")
+        print(f"Fractal dimension: {measures['fractal_dimension']:.4f}")
+        print(f"Circulatory circle: {measures['cir_circle']:.4f}")
+        print(f"Eccentricity: {measures['eccentricty']:.4f}")
         area_txt = f"Area={measures['area']*1e6:5.3f} D={measures['medial_lateral_distance']*1e6:5.1f}"
         area_txt += f"RC={measures['rostral_caudal_distance']*1e6:5.1f}"
         if axp is not None:

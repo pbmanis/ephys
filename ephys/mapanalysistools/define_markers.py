@@ -1,6 +1,8 @@
 ###
 ### definedarkers comes from acq4/analysis/modules/MosaicEditor/definedMarkers.py
 ### If that file is changed, then this file must be changed as well.
+### THIS FILE IS DEPRECATED: definedMarkers is now defined in the
+### acq4/config/modules/MosaicEditor.cfg file.
 ###
 def define_markers():
     definedMarkers = {
@@ -9,6 +11,8 @@ def define_markers():
             "rostralsurface": (75e-6, 175e-6),
             "rostralborder": (-150e-6, 250e-6),
             "medialborder": (-150e-6, 0),
+            "AN_Notch1": (-150e-6, -50e-6),
+            "AN_Notch2": (-150e-6, -100e-6),
             "caudalborder": (-150e-6, -200e-6),
             "caudalsurface": (75e-6, -175e-6),
             "AN": (-80e-6, 50e-6),
@@ -51,9 +55,8 @@ def define_markers():
             "caudalventralAN": (-100e-6, -300e-6),
             "doraalAN": (-200e-6, 200e-6),
             "AN": (0e-6, -150e-6),
-            "VN": (-100e-6, -200e-6), 
+            "VN": (-100e-6, -200e-6),
         },
-       
         "VCN Coronal": {
             "dorsomedial": (-100e-6, 500e-6),
             "medial": (-100e-6, 0e-6),
@@ -86,13 +89,12 @@ def define_markers():
     for k in definedMarkers.keys():
         all_markernames.extend([tkey for tkey in definedMarkers[k].keys()])
 
-
     mark_colors = {}
     mark_symbols = {}
     mark_alpha = {}
     for k in all_markernames:
         mark_alpha[k] = 1.0
-    for k in ['cell', 'soma']:
+    for k in ["cell", "soma"]:
         mark_alpha[k] = 0.33
     for k in all_markernames:
         if k.startswith(("surface")):
@@ -110,7 +112,7 @@ def define_markers():
         elif k.startswith(("soma", "cell")):
             mark_colors[k] = "y"
             mark_symbols[k] = "*"
-            mark_alpha[k]=0.33
+            mark_alpha[k] = 0.33
 
         else:
             mark_colors[k] = "m"
@@ -119,6 +121,6 @@ def define_markers():
         if c not in mark_colors.keys():
             mark_colors[c] = "y"
             mark_symbols[c] = "*"
-            mark_alpha[k]=0.33
-    
+            mark_alpha[k] = 0.33
+
     return definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames
