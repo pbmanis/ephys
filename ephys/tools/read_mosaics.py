@@ -5,7 +5,7 @@ Then for each cell, compute the depth based on a line orthogonal to that referen
 This "standardizes" the depth measurements. 
 
 """
-
+import os
 import json
 from typing import Union
 import re
@@ -13,7 +13,8 @@ from pathlib import Path
 import ephys.datareaders.acq4_reader as AR
 import ephys.tools.tools_plot_maps as TPM
 import ephys.mapanalysistools.get_markers as get_markers
-import ephys.mapanalysistools.define_markers as define_markers
+import pyqtgraph.configfile
+# import ephys.mapanalysistools.define_markers as define_markers
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
@@ -27,10 +28,13 @@ from ephys.ephys_analysis.analysis_common import Analysis
 from ephys.mapanalysistools import analyze_map_data
 from ephys.mini_analyses import mini_event_dataclasses as MEDC
 from ephys.tools.get_configuration import get_configuration
+import ephys.tools.configfile as CF
 from ephys.tools import data_summary
 from ephys.gui import data_table_functions as functions
+import ephys.tools.show_paraview_csv as show_paraview_csv
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint as CP
+
 from sympy import Point, Line, Segment
 
 FUNCS = functions.Functions()
@@ -39,12 +43,62 @@ DSUM = data_summary.DataSummary()
 UR = pint.UnitRegistry()
 
 Expt = "CBA_Age"
-datasets, experiments = get_configuration("./config/experiments.cfg")
+datasets, experiments = get_configuration("config/experiments.cfg")
 experiment = experiments[Expt]
 # print(experiment.keys())
 # mosaic_dir = "mosaics"
 # mosaic_paths = Path(experiment["analyzeddatapath"], Expt, mosaic_dir)
 # assert mosaic_paths.exists(), f"Path {mosaic_paths} does not exist"
+
+def define_markers():
+    print(os.getcwd())
+    definedMarkers = CF.readConfigFile("config/MosaicEditor.cfg")['definedMarkers']
+    all_markernames: list = []
+    for k in definedMarkers.keys():
+        all_markernames.extend([tkey for tkey in definedMarkers[k].keys()])
+
+    mark_colors = {}
+    mark_symbols = {}
+    mark_alpha = {}
+    for k in all_markernames:
+        mark_alpha[k] = 1.0
+    for k in ["cell", "soma"]:
+        mark_alpha[k] = 0.33
+    for k in all_markernames:
+        if k.startswith(("surface")):
+            mark_colors[k] = "c"
+            mark_symbols[k] = "o"
+        elif k.startswith(("rostralborder", "caudalborder")):
+            mark_colors[k] = "b"
+            mark_symbols[k] = "+"
+        elif k.startswith(("medial", "lateral", "dorsal", "ventral", "rostral", "caudal")):
+            mark_colors[k] = "g"
+            mark_symbols[k] = "o"
+        elif k.startswith(("VN", "injection", "hpc")):
+            mark_colors[k] = "r"
+            mark_symbols[k] = "D"
+        elif k.startswith(("AN_Notch")):
+            mark_colors[k] = "magenta"
+            mark_symbols[k] = "X"
+        elif k == "AN":
+            mark_colors[k] = 'r'
+            mark_symbols[k] = "D"
+        elif k.startswith(("soma", "cell")):
+            mark_colors[k] = "y"
+            mark_symbols[k] = "*"
+            mark_alpha[k] = 0.33
+        else:
+            # CP.cprint("r", f"Did not tag marker type {k:s}, using default")
+            mark_colors[k] = "m"
+            mark_symbols[k] = "o"
+    
+    for c in ["soma", "cell"]:  # may not be in the list above
+        if c not in mark_colors.keys():
+            mark_colors[c] = "y"
+            mark_symbols[c] = "*"
+            mark_alpha[k] = 0.33
+
+    return definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames
 
 
 class MosaicData:
@@ -62,7 +116,8 @@ class MosaicData:
 
     def get_from_original_data(self, experiment_name: str):
         mosaic_ext = ".mosaic"
-        datadir = Path(self.experiment["rawdatapath"], self.experiment_name)
+        datadir = Path(self.experiment["rawdatapath"], self.experiment["directory"])
+        print("datadir: ", datadir)
         mosaic_files = list(datadir.rglob(f"*{mosaic_ext}"))
         # for mf in mosaic_files:
         #     print(str(mf.name))
@@ -107,7 +162,7 @@ class MosaicData:
         marker_dict = get_markers.get_markers(fullfile)
         # get the marker types and colors from a dictionary
         definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = (
-            define_markers.define_markers()
+            define_markers()
         )
 
         if ax is None:
@@ -119,7 +174,7 @@ class MosaicData:
         ax.set_aspect("equal")
         # if ax is None:
         #     mpl.show()
-
+        return measures
     
     def parse_coronal(self, markers):
         """parse_coronal _summary_
@@ -527,21 +582,26 @@ if __name__ == "__main__":
 
     need_update = False
     experiment_name = "CBA_Age"
+    # experiment_name = "GlyT2_NIHL"
     MOS = MosaicData(experiment_name)
+    print("MOS.experiment_name: ", MOS.experiment_name)
     mfiles = MOS.get_from_original_data(experiment_name)
+    # print("mfiles: ", mfiles)
     # for f in mfiles:
     #     print(f.name)
-    # exit()
 
-    relavent_files = ["2023.11.10.S0.mosaic", "2023.11.10.S1.mosaic", "2024.01.12.s2.mosaic",
+
+    relevant_files = ["2023.11.10.S0.mosaic", "2023.11.10.S1.mosaic", "2024.01.12.s2.mosaic",
                       "2024.05.07.s0.mosaic", "2024.05.07.s2.mosaic", "2024.05.16.S2.mosaic",
                       "2024.07.29.S2.mosaic", "2024.08.21.S1.mosaic", ]
+    # relevant_files = ["2024.12.17.s0.mosaic"]
     mfiles = set(mfiles)
     fig, ax = mpl.subplots(3,3, figsize=(12, 12))
     ax = np.ravel(ax)
     n = 0
+    measures = []
     for f in mfiles:
-        if f.name in relavent_files:
+        if f.name in relevant_files:
             # print("file: ", f.name)
             # continue
             # markers, cells= MOS.read_mosaic(f)
@@ -550,10 +610,15 @@ if __name__ == "__main__":
             # print(markers)
             # print("cells: ", cells)
             print("Parsing mosiac: ", str(f))
-            MOS.parse_transstrial(f, ax=ax[n])
+            meas = MOS.parse_transstrial(f, ax=ax[n])
+            meas["mosaic_file"] = f.name
+            measures.append(meas)
             ax[n].set_title(str(f.name), fontsize=7)
             n += 1
     mpl.tight_layout()
+    ms = f"{measures!s}"
+    print(ms)
+    
     mpl.show()
 
 
