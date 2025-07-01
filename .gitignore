@@ -52,6 +52,7 @@ doc/api/
 .vscode/**
 ephys.egg*
 ephys_venv/
+.venv/
 build/
 develop-eggs/
 dist/
