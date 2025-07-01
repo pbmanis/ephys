@@ -136,3 +136,23 @@ optional arguments: -h, --help            show this help message and exit -i,
   A requirements file for doing a local install is provided, along with a bash
   shell script to create an environment. 
   
+
+  Uupdate: Now using pyproject.toml and uv to handle build
+  Requirements
+------------
+Python 3.13, matplotlib, scipy, numpy, seaborn, pyqtgraph.
+pylibrary (github.com/pbmanis/pylibrary)
+and many other things... 
+
+#Installation
+------------
+Clone the repository and run the following command in the root directory:
+`uv venv`  # build the virtual environment
+`source .venv/bin/activate`  # activate the virtual environment
+`uv build` # build the package if you want it in that format
+`python ephys/ephys_analysis/tests/hh_sim.py` # build the test data .pkl files
+# The tests test the mini analysis detection and spike shape analysis routines.
+Then run the tests:
+`python test.py`
+
+
