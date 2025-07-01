@@ -22,7 +22,19 @@ This module provides tools for analyzing laser scanning photostimulation data fr
 
 Requirements
 ------------
-Python 3.7, matplotlib, scipy, numpy, seaborn.
+Python 3.13, matplotlib, scipy, numpy, seaborn, pyqtgraph.
 pylibrary (github.com/pbmanis/pylibrary)
-and no doubt other things... 
+and many other things... 
 
+Installation
+------------
+Clone the repository and run the following command in the root directory:
+`uv venv``  # build the virtual environment
+`source .venv/bin/activate``  # activate the virtual environment
+`uv build`` # build the package if you want it in that format
+`python ephys/ephys_analysis/tests/hh_sim.py`` # build the test data .pkl files
+# The tests test the mini analysis detection and spike shape analysis routines.
+Then run the tests:
+`python test.py`
+
+ephys is meant to be used as an imported library, or use datatables to load data and run analyses.
