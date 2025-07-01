@@ -164,10 +164,10 @@ class ReadDatac:
         self.fid = None  # the file id of an open file
         self.amplifier_igain = 10.0  # for primary channel
         self.amplifier_vgain = 10.0
-        self.amplifier_icmd_scale = 10.0
-        self.amplifier_vcmd_scale = 133.9
+        self.amplifier_icmd_scale = 10.0  # for command channels
+        self.amplifier_vcmd_scale = 133.9  # 2048 levels, 10 V 
 
-    def set_amplfier_gains(self, vgain=None, igain=None):
+    def set_amplifier_gains(self, vgain=None, igain=None):
         if vgain is not None:
             self.amplifier_vgain = vgain
         if igain is not None:
@@ -602,10 +602,10 @@ class ReadDatac:
 
         if self.dmode == "CC":  #
             mainch = 0
-            dacoffset = 2147.0 # 1024.0
+            dacoffset = 2047.0 # 1024.0
             cmdch = 1
             maingain = 1e-3  / (self.amplifier_vgain * self.gain[0, mainch + 1])
-            cmdgain = 1e-9 / (self.amplifier_icmd_scale * self.gain[0, mainch + 1])
+            cmdgain = 1e-10 / (self.amplifier_icmd_scale) #  * self.gain[0, mainch + 1])
         else:
             dacoffset = 2047.0
             mainch = 1
@@ -616,7 +616,7 @@ class ReadDatac:
         for i in range(self.data.shape[0]):
             self.data[i, mainch, :] = (self.data[i, mainch, :] - dacoffset) * maingain
             self.data[i, cmdch, :] = (self.data[i, cmdch, :] - dacoffset) * cmdgain
-
+    
         self.err = 0
         return self.err
 
@@ -724,6 +724,16 @@ class GetClamps:
         40000.0, 'type': 'ai', 'startTime': 1296241556.7347913}}, 'startTime': 1296241556.7347913}]
 
         )
+
+
+        ***NOTE***
+        Axoprobe 1A : 
+        Current is actual electrod current, 10/H mV/nA where H is the headstage gain 
+        Only headstage used was an HS2, gain = 0.1L (100 mV/nA)
+        Voltage is 10*Vm 
+        Acquisition used the Bertrand/Manis A/D board, which can be configured for either
+        5V (+/- 5V, 10V span) or +/-10 V (20V span).
+        Usually, the 5V span is used, so the voltage of the input is -500 to +500 mV. 
         """
         if self.datac.data is None:
             raise ValueError("No data has been read from the file %s" % self.datac.fullfile)
@@ -794,10 +804,10 @@ class GetClamps:
                         "SlowCompTau": 0.0,
                     },
                     "secondarySignal": "Command Current",
-                    "secondaryGain": 1.0,
-                    "secondaryScaleFactor": 2e-09,
+                    "secondaryGain": 0.1,
+                    "secondaryScaleFactor": 2e-10, # 2 nA/V for H = 0.1
                     "primarySignal": "Membrane Potential",
-                    "extCmdScale": 4e-10,
+                    "extCmdScale": 4e-10,   # 20H nA/V or 2 nA/V for H = 0.1
                     "mode": self.datac.dmode,
                     "holding": 0.0,
                     "primaryUnits": "V",
@@ -885,7 +895,8 @@ def printNotes(filename, indent=0):
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-def plotonefile(filename:Union[Path, str], datamode:str="CC", records:Optional[List[int]]=None, vgain: float=1.0, iscale: float=1.0):
+def plotonefile(filename:Union[Path, str], datamode:str="CC", arrange:str="grid", 
+                records:Optional[List[int]]=None, vgain: float=1.0, iscale: float=1.0):
     """
     Plot the traces from 2 channels from this data file
     should specify data mode ('CC' or 'VC')
@@ -902,15 +913,29 @@ def plotonefile(filename:Union[Path, str], datamode:str="CC", records:Optional[L
         return
     print(dfile.err)
     print(dfile.expInfo)
-    nrecs = (dfile.records_in_file+2)//2
+    if records is None:
+        nrecs = (dfile.records_in_file+2)//2
+        records = list(range(nrecs))
+        r, c = PH.getLayoutDimensions(nrecs)
+    else:
+        nrecs = len(records)
+        if arrange == "grid":
+            r, c = PH.getLayoutDimensions(nrecs)
+        elif arrange == "horizontal":
+            r, c = 1, nrecs
+        elif arrange == "vertical":
+            r, c = nrecs, 1
     k = dfile.expInfo.keys()
     if len(k) == 0:
         i = 0
         dfile.expInfo[i] = {"R": records[0], "Rend": records[-1], "time": "00:00:00", "Protocol": "Unknown"}
-    r, c = PH.getLayoutDimensions(nrecs)
+   
     # r, c = 4, 5
     # nrecs = r*c
-    P = PH.regular_grid(r, c, order="rowsfirst", figsize=(12, 10), 
+    figsize = (12, 10)
+    if nrecs < 4 and arrange == "horizontal":
+        figsize = (7, 3.5)
+    P = PH.regular_grid(r, c, order="rowsfirst", figsize=figsize, 
                         verticalspacing=0.02, horizontalspacing=0.02)
     axr = P.axarr.ravel()
     axr[0].set_ylim(-0.1, 0.02)
@@ -922,10 +947,17 @@ def plotonefile(filename:Union[Path, str], datamode:str="CC", records:Optional[L
     # if records is not None:
     # for i in :
         # dfile.readrecords(range(dfile.expInfo[i]["R"], dfile.expInfo[i]["Rend"]))
-    dfile.readrecords(np.arange(0, nrecs))
+    dfile.readrecords(records)
     cl = GetClamps(dfile)
     cl.getClampData(1, verbose=False)
-
+    print(1e9*cl.commandLevels)
+    # f, ax = mpl.subplots(2,1)
+    # nn=78
+    # ax[0].plot(0.5*1e9*cl.commandLevels[:nn], 'ko-', markersize=3, label='Command Levels (nA)')
+    # ax[0].plot(cl.cmd_wave[:nn, 0]*0.5*1e9, 'b-', linewidth=0.5, label='Command Waveform (V)')
+    # ax[1].plot(cl.traces[:nn, 0].view(np.ndarray) * vgain, 'k-', linewidth=0.5, label='Primary Trace (V)')
+    # mpl.show()
+    # exit()
     # if dfile.err == 0:
     #     txt = dfile.expInfo[i]["Protocol"] + " " "[R:%d-%d] " % (
     #         dfile.expInfo[i]["R"],
@@ -933,17 +965,18 @@ def plotonefile(filename:Union[Path, str], datamode:str="CC", records:Optional[L
     #     )
     #     txt += dfile.expInfo[i]["time"]
     #    dfile.plotcurrentrecs(i, title=txt)
-    for j in range(nrecs):
+    for i, j in enumerate(records):
         # tr = cl.traces[j, :].view(np.ndarray)
-        axr[j].plot(cl.time_base, vgain * cl.traces[j,:].view(np.ndarray), 'k-', linewidth=0.5)
-        axr[j].plot(cl.time_base, -0.055*np.ones_like(cl.time_base), 'r--', linewidth=0.3)
-        axr[j].text(0.01, 0.95, f"R: {j+1:d}", transform=axr[j].transAxes,
+        print(i, cl.cmd_wave[i].min(), cl.cmd_wave[i].max())
+        axr[i].plot(cl.time_base, vgain * cl.traces[i,:].view(np.ndarray), 'k-', linewidth=0.5)
+        axr[i].plot(cl.time_base, -0.055*np.ones_like(cl.time_base), 'k--', linewidth=0.3)
+        axr[i].text(0.01, 0.95, f"R: {j+1:d}", transform=axr[i].transAxes,
                     fontsize=8, color='b', va='top', ha='left')
-        in_ax = axr[j].inset_axes([0, 0, 1.0, 0.15])
+        in_ax = axr[i].inset_axes([0, 0, 1.0, 0.12])
         PH.noaxes(in_ax)
-        in_ax.plot(cl.time_base, cl.cmd_wave[j,:]*iscale, 'b-', linewidth=0.5, clip_on =False)
-        in_ax.set_ylim(-5e-8, 5e-8)
-        in_ax.plot(cl.time_base, 0.0 * np.ones_like(cl.time_base), 'r--', linewidth=0.3)
+        in_ax.plot(cl.time_base, cl.cmd_wave[i,:]*iscale, 'k-', linewidth=0.5, clip_on =False)
+        in_ax.set_ylim(-10e-10, 10e-10)
+        in_ax.plot(cl.time_base, 0.0 * np.ones_like(cl.time_base), 'k--', linewidth=0.15)
     P.figure_handle.suptitle(f"Data file: {filename.name} ({datamode})")
     mpl.tight_layout()
     mpl.show()
@@ -1016,10 +1049,13 @@ def show_file_recs(file, rec_start, rec_end, datamode="CC"):
 
 
 if __name__ == "__main__":
+    # dcn: 13Jun889L is good
     # example_dir_scan(searchstr='/Users/pbmanis/Documents/data/HWF0001B/VCN/*.HWF')
     # plotonefile(Path('/Volumes/Pegasus_004/ManisLab_Data3/DCN1/6DEC88B.PBM'), datamode='CC', records = np.arange(0, 41))
-    plotonefile(Path('/Volumes/Pegasus_004/ManisLab_Data3/DCN2/13JUN89L.PBM'), datamode='CC', records = np.arange(92,
-                                                                                                                 95))
+    plotonefile(Path('/Volumes/Pegasus_004/ManisLab_Data3/DCN2/13JUN89L.PBM'), datamode='CC', records = 
+                [78, 68, 99],
+                arrange='horizontal', iscale=0.1) # np.arange(92,
+                                                                                                                 # 95))
 
     # plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '11SEP96H.HWF'), datamode='CC')
     # plotonefile(os.path.join('/Users/pbmanis/Documents/data/HWF0001B/VCN', '26AUG96B.HWF'), datamode='CC')
