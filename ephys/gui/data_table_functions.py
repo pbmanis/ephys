@@ -216,6 +216,7 @@ mapper1: dict = {
     "AP15Rate": "FiringRate_1p5T",
     "AdaptRatio": "AdaptRatio",
     "AdaptIndex": "AdaptIndex",
+    "AdaptIndex2": "AdaptIndex2",
     # "holding": "iHold",
 }
 
@@ -3369,7 +3370,7 @@ class Functions:
                     
                     elif measure in ["AHP_trough_V"]:
                         if have_LCS_data:
-                            print("through look, : ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
+                            CP("c", f"looking for AHP_trough_V, : {df_cell.Spikes[protocol]['LowestCurrentSpike']!s}")
                             try:
                                 AHP_trough_V = (
                                 df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_trough_V"] * 1e-3
@@ -3422,8 +3423,10 @@ class Functions:
                     else:
                         CP(
                             "r",
-                            f"Measure <{measure:s}> not found in spike_data keys:, {mapper.keys()!s}",
+                            f"Measure <{measure:s}> not found in spike_data keys:, {spike_data.keys()!s}",
                         )
+                        CP("r",
+                           f"   or mapped in mapper keys: {mapper.keys()!s}",)
                         # CP(
                         #     "r",
                         #     f"\n   or mapped in {mapper[measure]!s} to {spike_data.keys()!s}",
