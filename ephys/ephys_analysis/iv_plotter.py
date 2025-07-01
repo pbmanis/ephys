@@ -125,10 +125,11 @@ class IVPlotter(object):
         if self.plot_df is None:  # likely no spike or IV protocols for this cell
             CP("r", f"Cell had no spike or IV protocol cell: {cell_id!s}")
             return
+        print("Plot IVs 128: cell type: ", df_selected["cell_type"].values[0])
         if isinstance(df_selected["cell_type"], str):
             celltype = df_selected["cell_type"]
         else:
-            celltype = df_selected["cell_type"].item()
+            celltype = df_selected["cell_type"].values[0]
         self.nfiles = 0
         pdffile = filename_tools.make_pdf_filename(
             self.file_out_path,
