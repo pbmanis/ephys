@@ -722,6 +722,7 @@ class PlotSpikeInfo(QObject):
 
         else:
             # main strip plot, but data are clipped to axes
+            print("plot colors: ", self.experiment['plot_colors'])
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -2938,7 +2939,7 @@ class PlotSpikeInfo(QObject):
             # includes will ALWAYS be fully specified day/slice/cell names, with protocols.
 
             # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
-            drAopped = False
+            dropped = False
 
             if re_day.match(fn) is not None:  # specified a day, not a cell:
                 df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
