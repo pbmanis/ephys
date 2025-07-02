@@ -722,7 +722,6 @@ class PlotSpikeInfo(QObject):
 
         else:
             # main strip plot, but data are clipped to axes
-            print("plot colors: ", self.experiment['plot_colors'])
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -772,6 +771,7 @@ class PlotSpikeInfo(QObject):
         if not all(np.isnan(df_x[yname])):
             df_x = df_x.dropna(subset=[yname])
             df_x = df_x.dropna(subset=[xname])
+            print(f"Plotting {xname:s} vs {yname:s} with hue: {hue_category:s}")
             sns.boxplot(
                 data=df_x,
                 x=xname,
@@ -1361,7 +1361,7 @@ class PlotSpikeInfo(QObject):
                         "xname: ", xname,
                         "Unique x values: ", df[xname].unique(),
                         "plot order: ", plot_order,
-                        "hue cagegory: ", hue_category,
+                        "hue category: ", hue_category,
                     )
                     picker_func = self.create_one_plot_categorical(
                         data=df,
