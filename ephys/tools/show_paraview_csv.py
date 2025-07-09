@@ -592,7 +592,7 @@ def test_find_min_max_axes():
     mpl.show()
 
 
-def compute_geometry_measures(boundary: shapely.geometry.Polygon, scale:bool=True) -> dict:
+def compute_geometry_measures(boundary: shapely.geometry.Polygon) -> dict:
     """compute_geometry_measures : Calculate various geometric measures from
     a boundary polygon.
     Computed measures in the returned dictionary include:
