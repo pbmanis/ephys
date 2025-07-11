@@ -47,6 +47,7 @@ dependencies = [
     "pandas-parallel-apply==2.2",
     "pingouin==0.5.4",
     "pint>=0.24.4",
+    "pre-commit>=4.2.0",
     "psutil==5.6.7",
     "pyabf==2.3.8",
     "pyarrow==19.0.0",
@@ -66,6 +67,7 @@ dependencies = [
     "refurb==1.13.0",
     "resampy==0.4.3",
     "ruamel-yaml>=0.15,<1",
+    "ruff>=0.12.2",
     "scikit-posthocs==0.9.0",
     "scipy==1.15.3",
     "seaborn>=0.13.2",
@@ -73,11 +75,12 @@ dependencies = [
     "sphinx==8.2.3",
     "sphinx-automodapi>=0.20.0",
     "sphinx-rtd-theme>=3.0.2",
-    "statsmodels==0.16.4",
+    "statsmodels==0.14.4",
     "sympy>=1.14.0",
     "tables==3.10.2",
     "termcolor>=3.1.0",
     "tifffile==2024.6.18",
+    "ty>=0.0.1a14",
     "xlrd>=1.0.0",
     "xlsxwriter>=3.0",
 ]
@@ -128,3 +131,19 @@ dependencies = { file = ["requirements.txt"]}
 [tool.uv.sources]
 pylibrary = { git = "https://github.com/pbmanis/pylibrary.git" }
 montage = { path = "../montage" }
+
+[tool.ruff.format]
+indent-style = "space"
+line-length = 120
+
+# [tool.ty]
+# respect-ignore-files = true
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+possibly-unbound-attribute = "warn"
+# possiby-unbound-import = "error"
+invalid-return-type = "error"
+invalid-argument-type = "error"
+division-by-zero = "error"
+redundant-cast = "warn"
