@@ -3,7 +3,9 @@ import pandas as pd
 import openpyxl as OX
 from pathlib import Path
 import datetime
-import src.set_expt_paths as SEP
+import ephys.tools.set_expt_paths as SEP
+
+raise NotImplementedError("This script needs to be update to use the configuraiotn file")
 
 baseDataDirectory, codeDirectory, datasetDirectory = SEP.get_paths()
 
