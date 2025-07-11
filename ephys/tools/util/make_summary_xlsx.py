@@ -19,7 +19,7 @@ for ct in celltypes:
         day = cn[:10]
         slicecell = cn[11:15]
 
-        d = codedb.loc[codedb[d].str.endswith(day)]
+        d = codedb.loc[codedb['day'].str.endswith(day)]
         ds.append({'Cell_ID': day, 'slicecell': slicecell, 'Group': d.Group.values[0], 'CellType': ct})
 df = pd.DataFrame(ds)
 print(df.head(20))
