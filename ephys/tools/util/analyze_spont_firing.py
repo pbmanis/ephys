@@ -362,43 +362,42 @@ def cleanup(excelsheet, outfile:str="test.xlsx"):
         excelsheet (_type_): _description_
     """
     df_new = pd.read_excel(excelsheet)
-    writer = pd.ExcelWriter(outfile, engine='xlsxwriter')
+    with pd.ExcelWriter(outfile, engine='xlsxwriter')   as writer:
 
-    df_new.to_excel(writer, sheet_name = "Sheet1")
-    df_new = organize_columns(df_new)
-    workbook = writer.book
-    worksheet = writer.sheets["Sheet1"]
-    fdot3 = workbook.add_format({'num_format': '####0.000'})
-    df_new.to_excel(writer, sheet_name = "Sheet1")
+        df_new.to_excel(writer, sheet_name = "Sheet1")
+        df_new = organize_columns(df_new)
+        workbook = writer.book
+        worksheet = writer.sheets["Sheet1"]
+        fdot3 = workbook.add_format({'num_format': '####0.000'})
+        df_new.to_excel(writer, sheet_name = "Sheet1")
 
-    resultno = ['holding',  'dvdt_rising', 'dvdt_falling', 
-        'AP_thr_V', 'AP_HW', "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
-    df_new[resultno] = df_new[resultno].apply(pd.to_numeric)    
-    for i, column in enumerate(df_new):
-        # print('column: ', column)
-        if column in resultno:
-            writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1,  cell_format=fdot3)
-        if column not in ['notes', 'description', 'OriginalTable', 'FI_Curve']:
-            coltxt = df_new[column].astype(str)
-            coltxt = coltxt.map(str.rstrip)
-            maxcol = coltxt.map(len).max()
-            column_width = maxcol
-            #column_width = max(df_new[column].astype(str).map(len).max(), len(column))
-        else:
-            column_width = 25
-        if column_width < 8:
-            column_width = 8
-        if column in resultno:
-            writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, cell_format=fdot3, width=column_width) # column_dimensions[str(column.title())].width = column_width
-            print(f"formatted {column:s} with {str(fdot3):s}")
-        else:
-            writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
-        
+        resultno = ['holding',  'dvdt_rising', 'dvdt_falling', 
+            'AP_thr_V', 'AP_HW', "AdaptRatio", "AP_begin_V", "AHP_trough_V", "AHP_depth_V"]
+        df_new[resultno] = df_new[resultno].apply(pd.to_numeric)    
+        for i, column in enumerate(df_new):
+            # print('column: ', column)
+            if column in resultno:
+                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1,  cell_format=fdot3)
+            if column not in ['notes', 'description', 'OriginalTable', 'FI_Curve']:
+                coltxt = df_new[column].astype(str)
+                coltxt = coltxt.map(str.rstrip)
+                maxcol = coltxt.map(len).max()
+                column_width = maxcol
+                #column_width = max(df_new[column].astype(str).map(len).max(), len(column))
+            else:
+                column_width = 25
+            if column_width < 8:
+                column_width = 8
+            if column in resultno:
+                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, cell_format=fdot3, width=column_width) # column_dimensions[str(column.title())].width = column_width
+                print(f"formatted {column:s} with {str(fdot3):s}")
+            else:
+                writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
+            
 
-    df_new = df_new.style.apply(highlight_by_cell_type, axis=1)
-    df_new.to_excel(writer, sheet_name = "Sheet1")
-    writer.save()
-
+        df_new = df_new.style.apply(highlight_by_cell_type, axis=1)
+        df_new.to_excel(writer, sheet_name = "Sheet1")
+    
 if __name__ == "__main__":
     filename = "~/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_NIHL/NIHL_Summary.pkl"
     filename = "~/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_NIHL/Controls_NF107_Het.pkl"
