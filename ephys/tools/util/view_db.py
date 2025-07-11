@@ -1,8 +1,8 @@
 import pandas as pd
 import pickle
 from pathlib import Path
-import src.analyze_ivs as IVS
-import src.CBA_maps as MAPS
+import ephys.tools.analyze_ivs as IVS
+
 
 import argparse
 
