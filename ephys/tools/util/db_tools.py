@@ -41,7 +41,7 @@ def make_cell_ID(dfs, iday):
     return str(Path(datestr, slicestr, cellstr))
 
 
-def get_pickled_cell_data(df, idx, analyzed_datapath: Union[Path, str] = None):
+def get_pickled_cell_data(df, idx, analyzed_datapath: Union[Path, str, None] = None):
     # try looking for spikes from the analysis .pkl file
     # make a file name:
     cell_id = df.iloc[idx].cell_id
