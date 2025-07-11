@@ -17,7 +17,7 @@ import pyqtgraph as pg
 from ephys.tools.get_configuration import get_configuration
 from pylibrary.tools import cprint as CP
 
-CP = CP.cprint
+
 import re
 
 config_file_path = "./config/experiments.cfg"
@@ -89,9 +89,9 @@ def main(dataset):
             # print("csv protocols: ", csv_protocols)
             for f in additional_ivs:
                 if f not in csv_protocols:
-                    CP("r", f" {cell_id} Missing included file {f} in {latest_path} for {measure}")
+                    CP.cprint("r", f" {cell_id} Missing included file {f} in {latest_path} for {measure}")
                 else:
-                    CP("g", f" {cell_id} Found included file {f} in {latest_path} for {measure}")
+                    CP.cprint("g", f" {cell_id} Found included file {f} in {latest_path} for {measure}")
 
 
 def main2(dataset):
@@ -112,7 +112,7 @@ def main2(dataset):
         for f in includes:
             print("    Checking includes for: ", f, end=' ')
             if f not in cells:
-                CP("r", f" Missing included file {f} in {latest_path}")
+                CP.cprint("r", f" Missing included file {f} in {latest_path}")
                 print(f" {experiment['includeIVs'][f]!s}  ")
             else:
                 print(f" Found included file {f} in {latest_path}")
