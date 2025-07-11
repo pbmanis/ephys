@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Union
 from pylibrary.tools import cprint as CP
 
 """write to an excel sheet with a standard set of colors for the cell types
@@ -127,7 +127,7 @@ class ColorExcel():
         df = df[columns + [c for c in df.columns if c not in columns]]
         return df
 
-    def make_excel(self, df:pd.DataFrame, outfile:Path, sheetname:str="Sheet1", columns:list=None):
+    def make_excel(self, df:pd.DataFrame, outfile:Path, sheetname:str="Sheet1", columns:Union[list, None]=None):
         """cleanup: reorganize columns in spreadsheet, set column widths
         set row colors by cell type
 
@@ -175,7 +175,7 @@ class ColorExcel():
                 writer.sheets[sheetname].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
 
         if "cell_type" in df.columns:
-            df = df.style.apply(self._highlight_by_cell_type, axis=1)
+            df.style.apply(self._highlight_by_cell_type, axis=1)
         
         try:
             df.to_excel(writer, sheet_name = sheetname, columns=columns)  # organize columns at the end
