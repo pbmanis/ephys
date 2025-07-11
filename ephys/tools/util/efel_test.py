@@ -22,7 +22,7 @@ def main():
     data = AR.getData()
     print(data)
     # Time is the first column
-    time = AR.time_base*1e3
+    time = np.array(AR.time_base)*1e3
     traces = []
 
     voltage = np.array(AR.traces)*1e3
