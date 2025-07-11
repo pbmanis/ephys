@@ -256,10 +256,10 @@ if __name__ == "__main__":
     # cochleas = ['A1']
     df = generate_db(cochleas, topdir=topdir)
     df.to_pickle('Cochleas.pkl')
-    writer = pd.ExcelWriter('Cochleas.xlsx')
-    df.to_excel(writer, sheet_name = "FileManifest")
-    for i, column in enumerate(df):
-        column_width = max(df[column].astype(str).map(len).max(), len(column))
-        writer.sheets['FileManifest'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
-    writer.save()
+    with pd.ExcelWriter('Cochleas.xlsx') as writer:
+        df.to_excel(writer, sheet_name = "FileManifest")
+        for i, column in enumerate(df):
+            column_width = max(df[column].astype(str).map(len).max(), len(column))
+            writer.sheets['FileManifest'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
+
     
