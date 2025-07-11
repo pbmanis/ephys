@@ -140,7 +140,7 @@ def nb_box_spike_find(x:np.ndarray, y:np.ndarray, dt:float,
         
         Returns an array of indices in x where spikes occur
         """
-        from . import c_deriv
+        from . import c_deriv  # ty: ignore[unresolved-import]
         spikes = np.zeros_like(y)
         c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
             x.view(np.ndarray),
@@ -231,8 +231,8 @@ class Utility:
         npts = len(data)
         # we should window the data here
         if npts == 0:
-            print("? no data in pSpectrum")
-            return
+            raise ValueError(FloatingPointError, "? no data in pSpectrum")
+  
         # pad to the nearest higher power of 2
         (a, b) = np.frexp(npts)
         if a <= 0.5:
@@ -337,7 +337,7 @@ class Utility:
         b, a = scipy.signal.butter(NPole, wn, btype="low", output="ba")
         zi = scipy.signal.lfilter_zi(b, a)
         if bidir:
-            out, zo = scipy.signal.filtfilt(b, a, signal, zi=zi * signal[0])
+            out, zo = scipy.signal.filtfilt(b, a, signal) # , zi=zi * signal[0])
         else:
             out, zo = scipy.signal.lfilter(b, a, signal, zi=zi * signal[0])
         return np.array(out)
@@ -419,6 +419,12 @@ class Utility:
             print(
                 f"signalfilter: samplef: {samplefreq:f}  wn: {wn:f}  lpf: {LPF:f}  NPoles: {NPole:d}"
             )
+        if signal.ndim > 3:
+            raise ValueError(
+                NotImplementedError,
+                "Error: signal dimesions of > 3 are not supported (no filtering applied)",
+            )
+        if signal.ndim == 1:
             sm = np.mean(signal)
             if bidir:
                 w = scipy.signal.filtfilt(
@@ -432,7 +438,6 @@ class Utility:
             w = w + sm
             if reduction > 1:
                 w = scipy.signal.resample(w, reduction)
-            return w
         if signal.ndim == 2:
             sh = np.shape(signal)
             for i in range(0, np.shape(signal)[0]):
@@ -448,7 +453,6 @@ class Utility:
                 if i == 0:
                     w = np.empty((sh[0], np.shape(w1)[0]))
                 w[i, :] = w1
-            return w
         if signal.ndim == 3:
             sh = np.shape(signal)
             for i in range(0, np.shape(signal)[0]):
@@ -468,12 +472,8 @@ class Utility:
                     if i == 0 and j == 0:
                         w = np.empty((sh[0], sh[1], np.shape(w1)[0]))
                     w[i, j, :] = w1
-            return w
-        if signal.ndim > 3:
-            print(
-                "Error: signal dimesions of > 3 are not supported (no filtering applied)"
-            )
-            return signal
+        return w
+
 
     # do an eval on a long line (longer than 512 characters)
     # assumes input is a dictionary (as a string) that is too long
@@ -796,7 +796,7 @@ class Utility:
 
     def deriv(self, x: np.ndarray, y: np.ndarray, order: int = 1) -> np.ndarray:
         dout = np.zeros_like(y)
-        from . import c_deriv
+        from . import c_deriv  # ty: ignore[unresolved-import]
         c_deriv.c_deriv(
             x.view(np.ndarray), y.view(np.ndarray), dout.shape[0] - 1, order, dout
         )
@@ -816,7 +816,7 @@ class Utility:
         
         Returns an array of indices in x where spikes occur
         """
-        from . import c_deriv
+        from . import c_deriv  # ty: ignore[unresolved-import]
         spikes = np.zeros_like(y)
         c_deriv.c_box_spike_find(  # use a cython implementation : much much faster
             x.view(np.ndarray),
@@ -1042,9 +1042,9 @@ class Utility:
         self,
         x: np.ndarray,  # expected in seconds
         v: np.ndarray,  # expected in Volts, but can modifiy with scaling below
+        t0: float,  # sec
+        t1: float,  # sec
         thresh: float = 0.0,  # V
-        t0: Union[float, None] = None,  # sec
-        t1: Union[float, None] = None,  # sec
         dt: float = 2e-5,  # sec
         mode: str = "schmitt",
         detector: str = "threshold",
@@ -1620,8 +1620,8 @@ class Utility:
             return np.array([])
 
     def clipdata(self, y, xm, x0, x1):
-        mx = ma.getdata(np.mask(xm, xm, x0, x1))
-        my = ma.getdata(np.mask(y, xm, x0, x1))
+        mx = ma.getdata(np.ma.masked_where(x0 < xm & xm > x1, xm))
+        my = ma.getdata(np.ma.masked_where(x0 < xm & xm > x1, y))
         return (mx, my)
 
     def count_spikes(self, spk):
@@ -1851,18 +1851,18 @@ class Utility:
         (sln, sep, rest2) = rest1.partition("/")
         (sskip, sep, mo) = rest2.partition("*")  # look for mode
         
-        fn = float(sfn)
-        ln = float(sln)
+        fn = np.array(sfn)
+        ln = np.array(sln)
         if sskip != '':
-            skip = float(sskip)
+            skip = np.array(sskip)
         else:
-            skip = 1.0
+            skip = np.array(1.0)
         ln = ln + 0.01 * skip
         if mo == "":  # linear spacing; skip is size of step
             recs = np.arange(fn, ln, skip)
 
         if mo.find("l") >= 0:  # log spacing; skip is length of result
-            recs = np.logspace(np.log10(fn), np.log10(ln),skip)
+            recs = np.logspace(np.log10(fn), np.log10(ln), skip)
 
         if mo.find("t") >= 0:  # just repeat the first value
             recs = [fn]
