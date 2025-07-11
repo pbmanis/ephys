@@ -17,7 +17,7 @@ The program:
 
 Note you must be on campus or using a VPN to access the machine this way
 """
-import paramiko
+import paramiko  # ty: ignore[unresolved-import]
 import sys
 
 upload = True
