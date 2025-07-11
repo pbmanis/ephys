@@ -38,16 +38,17 @@ def main():
     # Allow user to audit tests with --audit flag
     import ephys.ephys_analysis
     import ephys.tools
+        # generate test flags
+    flags = sys.argv[1:]
     if '--audit' in sys.argv:
         sys.argv.remove('--audit')
         sys.argv.append('-s') # needed for cli-based user interaction
         ephys.mini_analyses.AUDIT_TESTS = True
     if '--tensor_flow_test' in sys.argv:
         sys.argv.remove('--tensor_flow_test')
-        sys.argc.append('-s')
+        sys.argv.append('-s')
         flags.append('ephys/tools/tests/test_tensorflow.py')
-    # generate test flags
-    flags = sys.argv[1:]
+
     flags.append('-v')
     tb = [flag for flag in flags if flag.startswith('--tb')]
     if len(tb) == 0:
