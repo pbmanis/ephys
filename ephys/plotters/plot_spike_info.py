@@ -890,6 +890,7 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_V": 1e3,
             "AHP_trough_T": 1e3,
             "AP_peak_V": 1e3,
+            "AP_max_V": 1e3,
             "FISlope": 1e-9,
             "maxHillSlope": 1,
             "I_maxHillSlope": 1e-3,
@@ -1167,7 +1168,9 @@ class PlotSpikeInfo(QObject):
             _description_
         representation : _type_
             _description_
-
+        ap_thr_relative : bool, optional
+            If True, the AP threshold is subtracted from the AP peak voltage and AHP depth
+            voltage, by default False
         Returns
         -------
         _type_
@@ -1175,6 +1178,8 @@ class PlotSpikeInfo(QObject):
         """
         df = self.rescale_values(df)
         local_measures = measures.copy()
+        if ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures):
+            local_measures.append("AP_peak_V")
         if representation in ["bestRs", "mean"]:
             max_rs = self.experiment.get("maximum_access_resistance", 1e8)
             df = SAD.get_best_and_mean(
@@ -1196,6 +1201,11 @@ class PlotSpikeInfo(QObject):
                 if measure not in df.columns:
                     df[measure] = {}
                 df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
+
+            if measure.startswith("AP_max_V"):
+                if measure not in df.columns:
+                    df[measure] = {}    
+                df["AP_max_V_bestRs"] = df["AP_peak_V"] + self.experiment["junction_potential"]
 
             if measure.startswith("AP_peak_V_bestRs"):  # height is diff from ap thr to peak ap
                 if measure not in df.columns:
@@ -1227,21 +1237,7 @@ class PlotSpikeInfo(QObject):
 
                 df = df.apply(compute_ap_peak_v, axis=1)
 
-            if measure.startswith("AP_max_V"):
-                if measure not in df.columns:
-                    df[measure] = {}
 
-                def compute_ap_max_v(row):
-                    if isinstance(row["AP_peak_V"], (list, np.ndarray)):
-                        val = 1e3 * float(row["AP_peak_V"][0])
-                        val = self.experiment["junction_potential"] + val
-                        # print(thrv, df.iloc[index]["AP_peak_V"][0], val)
-                    else:
-                        val = np.nan
-                    row["AP_max_V"] = val
-                    return row
-
-                df = df.apply(compute_ap_max_v, axis=1)
 
             if measure.startswith("AP_depth_V"):
                 # print("AP depth measure: ", measure)
@@ -1325,6 +1321,8 @@ class PlotSpikeInfo(QObject):
         df, local_measures = self.compute_calculated_measures(
             df, measures=measures, representation=representation
         )
+        print("Nrows: ", nrows)
+        print("Local measures: ", local_measures)
         for icol, measure in enumerate(local_measures):
 
             if measure in self.transforms.keys():
@@ -1392,6 +1390,7 @@ class PlotSpikeInfo(QObject):
                 # here we probably have the cell type or group as the x category,
                 # so we will simplify some things
                 axp = P.axdict[f"{plabels[icol]:s}"]
+                print("measure::: ", measure)
                 x_measure = "_".join((measure.split("_"))[:-1])
                 if x_measure not in self.ylims["default"]:
                     CP("r", f"Measure not in y_lims in config file - cannot plot! {x_measure:s}")
