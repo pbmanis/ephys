@@ -419,14 +419,11 @@ class Utility:
             print(
                 f"signalfilter: samplef: {samplefreq:f}  wn: {wn}  lpf: {LPF:f}  NPoles: {NPole:d}"
             )
-<<<<<<< HEAD
         if signal.ndim > 3:
             raise ValueError(
                 NotImplementedError,
                 "Error: signal dimesions of > 3 are not supported (no filtering applied)",
             )
-=======
->>>>>>> 682afe0 (fix print in lpfbessel routine)
         if signal.ndim == 1:
             sm = np.mean(signal)
             if bidir:
