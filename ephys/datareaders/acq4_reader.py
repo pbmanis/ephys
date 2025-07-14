@@ -894,8 +894,8 @@ class acq4_reader:
                 continue
             self.rec_info = self.getDataInfo(fn)
             self.protoDirs.append(Path(d).name)  # keep track of valid protocol directories here
-            if allow_partial and len(record_list) > 0:  # only get the records in the list - allows us to capture incomplete protocols
-                # CP.cprint("y", "Partial with record lislt > 0")
+            if allow_partial and isinstance(record_list, list) and len(record_list) > 0:  # only get the records in the list - allows us to capture incomplete protocols
+                # CP.cprint("y", "Partial with record list > 0")
                 if i not in record_list:  # that was easy...
                     continue
                 else:
