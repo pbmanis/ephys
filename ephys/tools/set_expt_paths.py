@@ -1,7 +1,7 @@
 import os
 import platform
 from pathlib import Path
-import toml
+import tomllib
 import pprint
 pp = pprint.PrettyPrinter(width=88, compact=False)
 
@@ -64,7 +64,7 @@ def get_paths():
         , as strings
     """
     print(os.getcwd())
-    datapaths = toml.load(open("wheres_my_data.toml", "r"))
+    datapaths = tomllib.load(open("wheres_my_data.toml", "r"))
     computer = get_computer(datapaths)
     codeDirectory = Path(datapaths['computer'][computer]['codeDirectory'])
     datasetDirectory = Path(datapaths['computer'][computer]['datasetDirectory'])

@@ -8,6 +8,7 @@ import pandas as pd
 import pylibrary.tools.cprint as CP
 import seaborn as sns
 from pandas import read_pickle
+from typing import Union
 
 import ephys.tools.categorize_ages as CatAge
 import ephys.tools.filename_tools as FT
@@ -337,8 +338,8 @@ def filter_rs(row, maxRs, axis=1):
 
 def populate_columns(
     data: pd.DataFrame,
-    configuration: dict = None,
-    parameters: list = None,
+    configuration: dict,
+    parameters: list,
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
 ):
@@ -485,13 +486,15 @@ def check_types(data1, data2):
 
 
 def perform_selection(
+    data: pd.DataFrame,
+    parameters: list,
+    configuration: dict,
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
-    data: pd.DataFrame = None,
-    parameters: list = None,
-    configuration: dict = None,
+
 ):
     assert configuration is not None
+    assert data is not None
     # fn = experiment['databasepath']
     # print(fn.is_file())
     # select_by = "Rs"

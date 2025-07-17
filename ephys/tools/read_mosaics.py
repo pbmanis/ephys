@@ -1,3 +1,5 @@
+# type: ignore
+# ignore because this is incomplete code/stub
 """ Read the mosaic files, and find the markers.
 DCN Mosaics.
 
@@ -289,9 +291,13 @@ class MosaicData:
             _description_
         """
         depths = {}
-
+        refline = None
+        l6c = None
+        refc = None
+        S = None
         if markers is None:
             return None, depths
+        
         if markers["name"] == "Cortex Coronal":
             refline, S, L6 = self.parse_coronal(markers["markers"])
             l6c = self.convert_line(L6)
@@ -305,9 +311,11 @@ class MosaicData:
             refc = self.convert_line(refline)
 
         elif markers["name"] == "DCN Transstrial":
-            m = parse_transstrial(markers["markers"])
+            m = self.parse_transstrial(markers["markers"])
             exit()
-
+        if S is None:
+            print("No surface marker found in markers")
+            return "bad marker", depths
         depths["type"] = markers["name"]
         depths["L6"] = l6c
         depths["Ref"] = refc

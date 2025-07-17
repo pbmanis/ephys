@@ -121,7 +121,7 @@ def cal_boundary(points, k=30, save_filename=None, visualize=False):
             p1 = points[i]
             p2 = points[pairs[j][0]]
             p3 = points[pairs[j][1]]
-            c = Circle(p1, p2, p3)
+            c = shapely.geometry.Circle(p1, p2, p3)  #type: ignore   Note: Circle is not a valid shapely geometry, use Point and radius instead
             if c.radius == None:
                 continue
 
@@ -331,7 +331,7 @@ def cluster_points(
     X: List,
     n_clusters: int = 3,
     algorithm: str = "KMeans",
-    centroids: Union[list, np.ndarray] = None,
+    centroids: Union[list, np.ndarray, None] = None,
     epsilon: float = 20.0,
     n_neighbors: int = 10,
     mode: str = "Place-CN",
@@ -422,13 +422,13 @@ def cluster_points(
 
         case _:
             raise ValueError(
-                f"Unknown clustering algorithm: {alg}. Use 'HDBSCAN', 'ward', 'Birch', 'KMeans', 'AffinityProp', or 'Spectral'."
+                f"Unknown clustering algorithm: {algorithm}. Use 'HDBSCAN', 'ward', 'Birch', 'KMeans', 'AffinityProp', or 'Spectral'."
             )
 
     if mode == "Place-CN":  # use only some data - here the cochlear distance
         # print(X.shape)
         # Xm = X[:, 0].reshape(-1, 1)  # use only the first column (cochlear distance) for clustering
-        Xm = X[:, (0, 1, 2)]  # print("Xm: ", Xm.shape, Xm)
+        Xm = X[:, (0, 1, 2)]  # type: ignore     print("Xm: ", Xm.shape, Xm)
         # mpl.hist(X[:,0], bins=100, color="grey", alpha=0.5)
         # mpl.show()
         # exit()
@@ -487,7 +487,7 @@ def find_min_max_axes(boundary):
         The longest line is a shapely LineString that crosses the boundary polygon and is perpendicular to the shortest line.
 
     """
-    if not isinstance(boundary, shapely.geometry.Polygon):
+    if not isinstance(boundary, shapely.Polygon):
         raise ValueError("Boundary must be a shapely Polygon.")
 
     min_length = float("inf")
@@ -537,7 +537,7 @@ def find_min_max_axes(boundary):
         right_point = right.interpolate(shortest_line.project(pt))
         li = shapely.LineString([left_point, right_point])
         long_intersection = boundary.intersection(li)
-        if isinstance(long_intersection, shapely.geometry.MultiLineString):
+        if isinstance(long_intersection, shapely.MultiLineString):
             # if the intersection is a MultiLineString, skip it
             # but we probably should go through each line in the MultiLineString
             # and figure out if it is the longest line of the group (e.g.,
@@ -572,7 +572,7 @@ def test_find_min_max_axes():
     noise = 0.1  # if you make this too large, the ellipse will not be recognized as an ellipse
     # and the geometry will fail
     for i, angle in enumerate(np.arange(0, 360, astep)):
-        ellipse = shapely.geometry.Polygon(
+        ellipse = shapely.Polygon(
             [
                 (
                     (a * (1 + noise * np.random.random())) * np.cos(theta),
@@ -581,7 +581,8 @@ def test_find_min_max_axes():
                 for j, theta in enumerate(np.linspace(0, 2 * np.pi, 50))
             ]
         )
-        ellipse = shapely.affinity.rotate(ellipse, angle)  # rotate the ellipse for testing
+        # rotate the ellipse for testing
+        ellipse = shapely.affinity.rotate(ellipse, angle)  # type: ignore 
         shortest_line, longest_line = find_min_max_axes(ellipse)
         ax = axr[i]
         ax.plot(*ellipse.exterior.xy, color="blue", label="Boundary")
@@ -592,7 +593,7 @@ def test_find_min_max_axes():
     mpl.show()
 
 
-def compute_geometry_measures(boundary: shapely.geometry.Polygon) -> dict:
+def compute_geometry_measures(boundary: shapely.Polygon) -> dict:
     """compute_geometry_measures : Calculate various geometric measures from
     a boundary polygon.
     Computed measures in the returned dictionary include:
@@ -1182,6 +1183,8 @@ def main(basepath: Path, dataset: dict):
         fig, ax = mpl.subplots(nr, nc, figsize=(12, 12))
         axr = np.ravel(ax) if isinstance(ax, np.ndarray) else [ax]
     all_meas = {}
+    xlims = np.empty((0, 0))
+    ylims = np.empty((0, 0))
     
     # define the measures to assign to each axis
     selections = {"x": "area", "y": "shape_index", "z": "eccentricty"}
@@ -1300,8 +1303,9 @@ def main(basepath: Path, dataset: dict):
 import numpy as np
     # fractal dimension and shape_index are highly correlated, so we can use either
     
-def compute_3d_mapping(dataset, all_meas, selections, dist_axes, factor: float=0.5, plotting=False,
-                       colors=None, cmap=None, ax3d=None):
+def compute_3d_mapping(dataset, all_meas, selections, dist_axes, cmap:mpl.Colormap, 
+                    factor: float=0.5, plotting=False,
+                       colors=None, ax3d=None):
     nd = len(dataset.keys())
     x_select = selections["x"]
     y_select = selections["y"]
@@ -1346,7 +1350,7 @@ def compute_3d_mapping(dataset, all_meas, selections, dist_axes, factor: float=0
     x_vals_s = u(x_fr_s)[:, 0]
     y_vals_s = u(x_fr_s)[:, 1]
     z_vals_s = u(x_fr_s)[:, 2]
-
+    min_dist = 1e9  # initialize the minimum distance to a large value
     # plot the frequency mapping line in this space
     if plotting and ax3d is not None:
         ax3d.plot(

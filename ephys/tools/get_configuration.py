@@ -10,7 +10,7 @@ import ephys.tools.configfile as CF
 PP = pprint.PrettyPrinter(indent=4)
 
 
-def get_configuration(configfile: Union[str, None] = None):
+def get_configuration(configfile: Union[str, Path, None] = None):
     """get_configuration : retrieve the configuration file from the current
     working directory, and return the datasets and experiments
     Note: if some keys are missing, we will attempt to get them from the

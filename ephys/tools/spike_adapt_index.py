@@ -335,7 +335,7 @@ def superimpose_all_cells(datapath, protocol):
         margins={"leftmargin": 0.1, "rightmargin": 0.1, "topmargin": 0.1, "bottommargin": 0.1},
         figsize=(5, 5),
     )
-    P.figure_handle.facecolor = "lightgrey"
+    P.figure_handle.set_facecolor("lightgrey")
 
     ax = P.axarr[0, 0]
     ax.set_facecolor("lightgrey")

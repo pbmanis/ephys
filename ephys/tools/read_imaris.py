@@ -5,6 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 import tables
 from mpl_toolkits.mplot3d.proj3d import proj_transform
+import ngauge
 
 """ read_imaris: Read and provide a basic plot of filament tracing data from Imaris files.
 
@@ -104,7 +105,8 @@ def read_filaments(filename, verbose: bool = False):
 
 def plot_filament_pg(filament, radii):
     app = pg.QtWidgets.QApplication([])
-    # window = GL.GLViewWidget()
+    import pyqtgraph.opengl as GL
+    window = GL.GLViewWidget()
     window = pg.GraphicsLayoutWidget(show=True, title="Filament")
     window.setGeometry(100, 100, 800, 800)
     window.show()
@@ -122,8 +124,8 @@ def plot_filament_pg(filament, radii):
     colors = colormap.getLookupTable(0, 1.0, nPts=nPts)
     pens = colors[np.searchsorted(valueRange, filament_distance)]
     dvar = GL.GLLinePlotItem(pos=filament, color=pens, width=15, antialias=True)
-    window.addWidget(dvar)
-    app.exec()
+    window.addItem(dvar)
+    app.exec()  
 
 
 def plot_scene(data):
@@ -178,7 +180,7 @@ def show_raw_image(hf):
     app.exec()
 
 
-def show_swc_cell_using ngauge(filename, ax=None):
+def show_swc_cell_using_ngauge(filename, ax=None):
     cell = ngauge.Neuron.from_swc(f"{filename}")
     if ax is None:
         f, ax = mpl.subplots(1, 1)
@@ -189,5 +191,5 @@ def show_swc_cell_using ngauge(filename, ax=None):
 
 
 if __name__ == "__main__":
-    filname ="make a filename"
+    filename ="make a filename"
     filaments, radii, edges, filament_types = read_filaments(filename)
