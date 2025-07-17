@@ -1182,7 +1182,7 @@ class Utility:
 
         elif detector in ["argrelmax", "find_peaks", "find_peaks_cwt"]:
             if detector == "find_peaks_cwt":
-                spv = np.where(vma > thresh)[0].tolist()  # find points above threshold
+                spv = np.where(vma > threshold)[0].tolist()  # find points above threshold
                 spks = scipy.signal.find_peaks_cwt(vma, widths=np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
                 if len(spks) > 0:
                     stn = spks[np.where(vma[spks] >= threshold)[0]]
