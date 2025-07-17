@@ -1,3 +1,4 @@
+# type: ignore
 # -*- coding: utf-8 -*-
 # tifffile.py
 
@@ -10403,7 +10404,8 @@ def main(argv=None):
                     title = '%s\n %s' % (str(tif), str(page))
                 photometric = 'MINISBLACK'
                 if page.photometric not in (3,):
-                    photometric = TIFF.PHOTOMETRIC(page.photometric).name
+                    # photometric = TIFF.PHOTOMETRIC(page.photometric).name
+                    photometric = TIFF.PHOTOMETRIC().name
                 imshow(img, title=title, vmin=vmin, vmax=vmax,
                        bitspersample=page.bitspersample,
                        photometric=photometric,
