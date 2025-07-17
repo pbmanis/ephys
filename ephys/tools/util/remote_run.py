@@ -17,7 +17,7 @@ The program:
 
 Note you must be on campus or using a VPN to access the machine this way
 """
-import paramiko  # ty: ignore[unresolved-import]
+import paramiko
 import sys
 
 upload = True
@@ -102,9 +102,9 @@ if upload:
      # print (l,)
 
 # starting shell script
-    ssh.get_pty()
+    # ssh.get_pty()
     ssh.invoke_shell()
-    stdin, stdout, stderr = ssh.exec_command(remote_basedir + 'scripts/' + 'nf107.sh')
+    stdin, stdout, stderr = ssh.exec_command(remote_basedir + 'scripts/' + 'nf107.sh', get_pty=True)
     print(stderr.readlines())
     # for l in line_buffered(stdout.readlines()):
     #     print (l)
