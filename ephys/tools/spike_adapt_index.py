@@ -141,7 +141,7 @@ def get_adapt_index_to_hist(
                     if rate < rate_bounds[0] or rate > rate_bounds[1]:
                         continue
                     rates.append(rate)
-                    adapt_indices.append(self.adaptation_index(spk_lat, tr_dur))
+                    adapt_indices.append(adaptation_index(spk_lat, tr_dur))
 
                     # print("adaptation index: ", adapt_indices[-1])
         if len(adapt_indices) > 0:
@@ -443,9 +443,10 @@ def get_spikes(filename):
     print(df["Spikes"].keys())
 
     cellprotocols = list(df["Spikes"].keys())
+    return df, cellprotocols
 
 
-def plot_spikes(cellprotocols, filename):
+def plot_spikes(df, cellprotocols, filename):
     f, ax = mpl.subplots(len(cellprotocols), 1)
     if not isinstance(ax, list):
         ax = np.array(ax)
