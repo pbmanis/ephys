@@ -14,24 +14,24 @@ import scipy.stats as stats
 
 cprint = CP.cprint
 
-# def poissonProb(n, t, l, clip=False):
-#     """
-#     For a poisson process, return the probability of seeing at least *n* events in *t* seconds given
-#     that the process has a mean rate *l*.
-#     """
-#     if l == 0:
-#         if np.isscalar(n):
-#             if n == 0:
-#                 return 1.0
-#             else:
-#                 return 1e-25
-#         else:
-#             return np.where(n==0, 1.0, 1e-25)
+def poissonProb(n, t, l, clip=False):
+    """
+    For a poisson process, return the probability of seeing at least *n* events in *t* seconds given
+    that the process has a mean rate *l*.
+    """
+    if l == 0:
+        if np.isscalar(n):
+            if n == 0:
+                return 1.0
+            else:
+                return 1e-25
+        else:
+            return np.where(n==0, 1.0, 1e-25)
 
-#     p = stats.poisson(l*t).sf(n)
-#     if clip:
-#         p = np.clip(p, 0, 1.0-1e-25)
-#     return p
+    p = stats.poisson(l*t).sf(n)
+    if clip:
+        p = np.clip(p, 0, 1.0-1e-25)
+    return p
 
 
 class Shuffler(object):
