@@ -1044,7 +1044,7 @@ class Utility:
         v: np.ndarray,  # expected in Volts, but can modifiy with scaling below
         t0: float,  # sec
         t1: float,  # sec
-        thresh: float = 0.0,  # V
+        threshold: float = 0.0,  # V
         dt: float = 2e-5,  # sec
         mode: str = "schmitt",
         detector: str = "threshold",
@@ -1124,7 +1124,7 @@ class Utility:
         if data_volt_units == 'mV':
             vfac = 1e-3
             v = v*vfac
-            thresh = thresh*vfac
+            threshold = threshold*vfac
 
         if t1 is not None and t0 is not None:
             xt = ma.masked_outside(x, t0, t1)
@@ -1152,7 +1152,7 @@ class Utility:
                 assert ('dt2' in k) and ('C1' in k) and ('C2' in k)
 
             u = self.box_spike_find(
-                x=x, y=v, dt=dt, thr=thresh, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
+                x=x, y=v, dt=dt, thr=threshold, C1=pars['C1'], C2=pars['C2'], dt2=pars['dt2'],
                 minwidth=pars['minwidth'],
             )
             st = np.array([x for x in u if (x >= t0) and (x <= t1)])  # limit to those in the window
@@ -1171,7 +1171,7 @@ class Utility:
         st = np.array([])  # store spike times
 
         if detector == "threshold":
-            spv = np.where(vma > thresh)[0].tolist()  # find points above threshold
+            spv = np.where(vma > threshold)[0].tolist()  # find points above threshold
             sps = (
                 np.where(dv > 0.0)[0] + 1
             ).tolist()  # find points where slope is positive
@@ -1185,17 +1185,17 @@ class Utility:
                 spv = np.where(vma > thresh)[0].tolist()  # find points above threshold
                 spks = scipy.signal.find_peaks_cwt(vma, widths=np.arange(2, int(peakwidth/dt)), noise_perc=0.1)
                 if len(spks) > 0:
-                    stn = spks[np.where(vma[spks] >= thresh)[0]]
+                    stn = spks[np.where(vma[spks] >= threshold)[0]]
                 else:
-                    stn = []
+                    stn = []    
             elif detector == 'find_peaks':
                 order = int(refract / dt) + 1
-                stn = scipy.signal.find_peaks(vma, height=thresh, distance=order)[0]
+                stn = scipy.signal.find_peaks(vma, height=threshold, distance=order)[0]
             elif detector == "argrelmax":
                 # argrelmax seems to miss peaks occasionally
                 order = int(refract / dt) + 1
                 spks = scipy.signal.argrelmax(vma, order=order)[0]
-                stn = spks[np.where(vma[spks] >= thresh)[0]]
+                stn = spks[np.where(vma[spks] >= threshold)[0]]
             if len(stn) > 0:
                 stn2 = [stn[0]]
             else:
@@ -1263,7 +1263,7 @@ class Utility:
                 if interpolate:
                     m = (y[1] - y[0]) / dt  # local slope
                     b = y[0] - (xx[0] * m)
-                    st = np.append(st, xx[1] + (thresh - b) / m)
+                    st = np.append(st, xx[1] + (threshold - b) / m)
                 else:
                     if len(x) > 1:
                         st = np.append(st, xx[1])
@@ -1309,11 +1309,11 @@ class Utility:
             print(("nspikes detected: ", len(st)))
             mpl.figure()
             mpl.plot(x, v, "k-", linewidth=0.5)
-            mpl.plot(st, thresh * np.ones_like(st), "ro")
+            mpl.plot(st, threshold * np.ones_like(st), "ro")
             mpl.plot(xt[spv], v[spv], "r-")
             mpl.plot(xt[sps], v[sps], "m-", linewidth=1)
             mpl.show()
-        # exit(1)
+        # exit(1)   
 
         return self.clean_spiketimes(st, mindT=refract)
 

@@ -307,14 +307,14 @@ class SpikeAnalysis:
             if track:
                 CP.cprint("r", f"    AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
             spikes = self.U.findspikes(
-                self.Clamps.time_base,
-                np.array(self.Clamps.traces[trace_number]),
-                self.threshold,
+                x=self.Clamps.time_base,
+                v=np.array(self.Clamps.traces[trace_number]),
                 t0=self.Clamps.tstart,
                 t1=self.Clamps.tend,
                 dt=self.Clamps.sample_interval,
                 mode=self.mode,  # mode to use for finding spikes
                 interpolate=self.interpolate,
+                threshold=self.threshold,
                 detector=self.spike_detector,
                 mindip=1e-2,
                 refract=self.refractory,
@@ -428,14 +428,14 @@ class SpikeAnalysis:
 
         for trace_number in range(ntr):
             spikes = self.U.findspikes(
-                self.Clamps.time_base,
-                np.array(self.Clamps.traces[trace_number]),
-                self.threshold,
+                x=self.Clamps.time_base,
+                v=np.array(self.Clamps.traces[trace_number]),
                 t0=twin[0],
                 t1=twin[1],
                 dt=self.Clamps.sample_interval,
                 mode=self.mode,  # mode to use for finding spikes
                 interpolate=self.interpolate,
+                threshold = self.threshold,
                 detector=self.spike_detector,
                 refract=self.refractory,
                 peakwidth=self.peakwidth,
