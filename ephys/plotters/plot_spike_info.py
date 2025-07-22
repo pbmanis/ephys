@@ -1301,12 +1301,19 @@ class PlotSpikeInfo(QObject):
             )
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
         df["Subject"] = df.apply(PSIF.set_subject, axis=1)
+
+        picker_funcs = {}
+        # n_celltypes = len(self.experiment["celltypes"])
+        df, local_measures = self.compute_calculated_measures(
+            df, measures=measures, representation=representation
+        )
+
         if parent_figure is None:
             P, letters, plabels, cols, nrows = self.create_plot_figure(
                 df=df,
                 xname=xname,
                 data_class=data_class,
-                measures=measures,
+                measures=local_measures,
                 parent_figure=parent_figure,
             )
         else:
@@ -1316,13 +1323,10 @@ class PlotSpikeInfo(QObject):
                 plabels = [f"{let.upper():s}" for let in letters]
 
             nrows = len(self.experiment["celltypes"])
-        picker_funcs = {}
-        # n_celltypes = len(self.experiment["celltypes"])
-        df, local_measures = self.compute_calculated_measures(
-            df, measures=measures, representation=representation
-        )
         print("Nrows: ", nrows)
         print("Local measures: ", local_measures)
+
+
         for icol, measure in enumerate(local_measures):
 
             if measure in self.transforms.keys():
