@@ -525,7 +525,7 @@ class Analysis:
             nothing
         """
         CP.cprint(
-            "r", f"\nStarting Analysis run, self.day = {self.day!s}, slicecell= {self.cell_id!s}"
+            "c", f"\nStarting Analysis run, self.day = {self.day!s}, slicecell= {self.cell_id!s}"
         )
         # raise ValueError()
         self.n_analyzed = 0
