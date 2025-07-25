@@ -5,24 +5,19 @@ Provide synthesis of test data, and run each of the tests.
 """
 
 import dataclasses
-import sys
-from typing import Union
-import time
-from dataclasses import dataclass, field
 import pickle
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-import numpy as np
-import scipy.signal
-import pyqtgraph as pg
+
+import matplotlib.pyplot as mpl
 
 import ephys.ephys_analysis.rm_tau_analysis as RMT
 import ephys.ephys_analysis.spike_analysis as SA
 from ephys.mini_analyses.util import UserTester
 
 # set up for plotting
-import matplotlib
-import warnings  # need to turn off a scipy future warning.
-import matplotlib.pyplot as mpl
+
 
 testmode = False  # set false to hold graphs up until closed;
 # true for 2 sec display
