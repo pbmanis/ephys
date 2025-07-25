@@ -505,7 +505,7 @@ class DataSummary:
             ):  # skip directories that are not data directories at this level
                 continue
             str_file = str(thisfile.name)
-            if str_file.endswith(".sql"):
+            if str_file.endswith(".sql") or str.file.startswith("corrupted"):
                 continue
             if str_file in [".DS_Store", ".index"]:
                 continue
