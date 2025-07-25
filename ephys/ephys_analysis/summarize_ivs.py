@@ -1,4 +1,8 @@
 """IV_Summarize:
+
+*** THIS MODULE IS DEPRECATED ***
+Use DataTables instead.
+
 A module to summarize data from individual cells generated through from iv_analysis
 in the ephys.ephys_analysis library. iv_Analysis makes measurements of passive properties
 and spike shape from individual cells and protocols using ephys_analysis modules
@@ -1747,6 +1751,10 @@ def get_protocols_from_datasheet(
 
 
 def main():
+    raise DeprecationWarning(
+        "This script is deprecated and will be removed in a future release. "
+        "Please use the new analysis framework through DataTables."
+    )
     parser = argparse.ArgumentParser(description="iv analysis")
     parser.add_argument(
         "-E",
