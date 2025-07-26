@@ -256,7 +256,7 @@ class DataSummary:
             "genotype",
             "reporters",
             "age",
-            "animal_identifier",
+            "animal identifier",
             "sex",
             "weight",
             "reporters",
@@ -301,11 +301,10 @@ class DataSummary:
             "strain",
             "genotype",
             "age",
-            "animal_identifier",
+            "animal identifier",
             "sex",
             "weight",
             "solution",
-            "animal identification",
             "__timestamp__",
             "internal",
             "temperature",
@@ -499,13 +498,13 @@ class DataSummary:
         self.pstring = ""
         days = []
         # print('allfiles: ', allfiles)
-        for thisfile in allfiles:
+        for file_n, thisfile in enumerate(allfiles):
             if not str(thisfile.name).startswith(
                 "20"
             ):  # skip directories that are not data directories at this level
                 continue
             str_file = str(thisfile.name)
-            if str_file.endswith(".sql") or str.file.startswith("corrupted"):
+            if str_file.endswith(".sql") or str_file.startswith("corrupted"):
                 continue
             if str_file in [".DS_Store", ".index"]:
                 continue
@@ -531,6 +530,8 @@ class DataSummary:
                 print("Days in pandas frame: ", self.pddata["date"].tolist())
 
         for nd, day in enumerate(days):
+            # if nd > 10:
+            #     exit()
             if self.append and (day in self.pddata["date"].tolist()):
                 if not self.update:
                     print("\nAppend mode: day already in list: {0:s}".format(day))
@@ -564,7 +565,12 @@ class DataSummary:
             #  self.day_index = self.AR.readDirIndex(ind)
             # print('day index: ', self.day_index, "day: ", day)
             self.day_index["date"] = str(Path(*day_list)).strip()
+            # print("Day index: ",self.day_index)
+            # CP("y", f"day index animal id:  {self.day_index['animal identifier']:s}")
             # now add the rest of the index information to the daystring
+            # print(self.day_index.keys())
+            # print(self.day_defs)
+       
             for k in self.day_defs:  # for all the keys
                 if k not in self.day_index.keys():
                     # print('\nadded: ', k)
@@ -595,6 +601,7 @@ class DataSummary:
                     self.day_index[k] = " "
             for k in self.day_defs:
                 print("{:>32s} : {:<40s}".format(k, self.day_index[k]))
+
             self._doSlices(day)  # next level
             # os.closerange(8, 65535)  # close all files in each iteration
             gc.collect()
@@ -1272,20 +1279,20 @@ def dir_recurse(ds, current_dir, exclude_list: list = [], indent=0):
         exclude_list = []
     print("Found current dir?: ", Path(current_dir).is_dir())
     files = sorted(list(current_dir.glob("*")))
-    print("files: ", files)
+    # print("files: ", files)
     alldatadirs = [
         f
         for f in files
         if f.is_dir() and str(f.name).startswith("20") and str(f.name) not in exclude_list
     ]
-    print("# dirs: ", alldatadirs)
+    # print("# dirs: ", alldatadirs)
     sp = " " * indent
     for d in alldatadirs:
         Printer(f"{sp:s}Data: {str(d.name):s}", "green")
     if len(alldatadirs) > 0:
         ds.getDay(alldatadirs)
         ds.write_string_pandas()
-    print("files 2: ", files)
+    # print("files 2: ", files)
     allsubdirs = [
         f
         for f in files

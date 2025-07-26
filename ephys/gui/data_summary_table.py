@@ -84,7 +84,7 @@ class IndexData:
     genotype: str = ""
     solution: str = ""
     internal: str = ""
-    subject: str = ""
+    animal_identifier: str = ""
     sex: str = ""
     age: str = ""
     weight: str = ""
@@ -141,10 +141,23 @@ class TableManager:
         Index_data.genotype = str(row.genotype)
         Index_data.solution = str(row.solution)
         Index_data.internal = str(row.internal)
-        if "animal_identifier" in row.keys():
-            Index_data.subject = str(row["animal_identifier"])
-        elif "animal identifier" in row.keys():
-            Index_data.subject = str(row["animal identifier"])
+        print("row keys: ", row.keys())
+        print(row['animal identifier'])
+        ai = row.get("animal identifier", None)
+        print("1: ", ai)
+        if ai is None:
+            ai = row.get("animal_identifier", None)
+            print("2: ", ai)
+            if ai is None:
+                ai = "No ID"
+        print("recovered animal identifier: ", ai)
+        Index_data.animal_identifier = str(ai)
+        #     if "animal_identifier" in row.keys():
+        #     Index_data.animal_identifier = str(row["animal_identifier"])
+        # elif "animal identifier" in row.keys():
+        #     Index_data.animal_identifier = str(row["animal identifier"])
+        # else:
+        #     Index_data.animal_identifier = "No subject ID found"
         Index_data.sex = str(row.sex)
         Index_data.age = str(row.age)
         Index_data.weight = str(row.weight)
@@ -194,12 +207,12 @@ class TableManager:
                     indxs[i].genotype,
                     indxs[i].solution,
                     indxs[i].internal,
-                    indxs[i].subject,
+                    indxs[i].animal_identifier,
                     indxs[i].sex,
                     indxs[i].age,
                     indxs[i].weight,
                     indxs[i].temperature,
-                     indxs[i].slice_orientation,
+                    indxs[i].slice_orientation,
                     indxs[i].cell_cell,
                     indxs[i].slice_slice,
                     indxs[i].cell_location,
@@ -221,7 +234,7 @@ class TableManager:
                 ("genotype", object),  # 7
                 ("solution", object),  # 8
                 ("internal", object),  # 9
-                ("subject", object),  # 10
+                ("aniaml identifier", object),  # 10
                 ("sex", object),  # 11  $$$$$
                 ("age", object),  # 12
                 ("weight", object),  # 13
@@ -530,7 +543,7 @@ class TableManager:
             reporters = row.reporters
             age = row.age
             dob = "" # row.dob
-            animal_id = row['subject']  # animal_id
+            animal_id = row['animal identifier']  # animal_id
             sex = row.sex
             slice_slice = row.slice_slice
             cell_cell = row.cell_cell

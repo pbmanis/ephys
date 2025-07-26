@@ -496,7 +496,7 @@ class AssembleDatasets:
                             f"{row[coding_name]:s} from coding file column: {coding_name:s}",
                         )
                 elif level.casefold() == "subject".casefold():
-                    mask = df_coding.subject == row.subject
+                    mask = df_coding.subject == row['animal identifier'] # row.subject
                     df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.casefold() == "slice".casefold:
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
