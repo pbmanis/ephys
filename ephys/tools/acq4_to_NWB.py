@@ -496,7 +496,11 @@ class ACQ4toNWB:
         # dobstr = dob.strftime("%d/%m/%Y%Z")
         if "mouse" in info["species"] or "Mouse" in info["species"]:
             info["species"] = "Mus musculus"
-        subject_id = info.get("animal identifier", "No ID")
+        subject_id = info.get("animal identifier", None)
+        if subject_id is None:
+            subject_id = info.get("animal_identifier", None)
+        if subject_id is None:
+            subject_id = "NO ID"
         dset = Path(path_to_cell).parts
         if subject_id.strip() in [None, "?", "", "NA"]:
             subject_id = str(Path(dset[-3])).split("_")[0]  # get the day from the path
