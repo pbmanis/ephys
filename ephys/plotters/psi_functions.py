@@ -70,11 +70,11 @@ def get_datasummary(experiment):
     if not datasummary.exists():
         raise ValueError(f"Data summary file {datasummary!s} does not exist")
     df_summary = pd.read_pickle(datasummary)
-    df_summary.rename(
-        {"Subject": "animal_identifier", "animal identifier": "animal_identifier"},
-        axis=1,
-        inplace=True,
-    )
+    # df_summary.rename(  # this should no longer be needed.
+    #     {"Subject": "animal_identifier", "animal identifier": "animal_identifier"},
+    #     axis=1,
+    #     inplace=True,
+    # )
     return df_summary
 
 
