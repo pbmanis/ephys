@@ -1,4 +1,4 @@
-from __future__ import print_function
+# type: ignore
 
 #!/usr/bin/python
 
