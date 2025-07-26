@@ -1012,8 +1012,8 @@ class PlotSpikeInfo(QObject):
             select_by="Rs",
             parameters=parameters,
         )
-        if "animal identifier" in columns:
-            df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
+        # if "animal identifier" in columns:
+        #     df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
         ensure_cols = [
             "Group",
             "age",
