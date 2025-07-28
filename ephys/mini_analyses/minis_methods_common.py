@@ -125,6 +125,7 @@ class MiniAnalyses:
         self.sdthr = self.threshold  # for starters
         self.analysis_window = analysis_window
         self.do_individual_fits = do_individual_fits
+        self.avg_best_fit = None  # average best fit for all events
         self.set_filters(filters)
         self.set_datatype("VC")
         print("MiniAnalysis - template pre time: ", self.template_pre_time)
@@ -1612,6 +1613,7 @@ class MiniAnalyses:
             summary.average.avgevent25 = []
             summary.average.avgevent75 = []
 
+        self.fitted = False
         if summary.average.averaged and summary.average.Nevents > 5:
             CP.cprint("m", "    Fitting averaged event")
             self.fit_average_event(
@@ -1646,6 +1648,22 @@ class MiniAnalyses:
             CP.cprint(
                 "r", "    average_events: **** insufficient events found that meet criteria ****"
             )
+            summary.average.fitted_n_taus = n_taus
+            summary.average.fitted_tau1 = np.nan
+            summary.average.fitted_tau2 = np.nan
+            summary.average.fitted_tau3 = np.nan
+            summary.average.fitted_tau4 = np.nan
+            summary.average.fitted_tau_ratio = np.nan
+            summary.average.fitted = self.fitted
+            summary.average.best_fit = None
+            summary.average.amplitude = np.nan
+            summary.average.amplitude2 = np.nan
+            summary.average.avg_fiterr = np.nan
+            summary.average.risetenninety = np.nan
+            summary.average.t10 = np.nan
+            summary.average.t90 = np.nan
+            summary.average.risepower = np.nan
+            summary.average.decaythirtyseven = np.nan
             return
         # for testing, plot out the clean events
         # fig, ax = mpl.subplots(1,2)
@@ -1798,6 +1816,7 @@ class MiniAnalyses:
             delay to start of event from start of trace, by default 0.001
         """
         CP.cprint("c", f"        MiniMethodsCommon::MiniAnalysis::Fitting average event with initial delay ={initdelay:f}")
+        self.fitted = False  # this will be set to True when a fit is done.
         self.risetenninety = np.nan
         self.t10 = np.nan
         self.t90 = np.nan
@@ -2003,7 +2022,7 @@ class MiniAnalyses:
                 label=f"Fitting event in trace: {str(ev_tr):s}  j = {j:d}",
             )
             if res is None:  # skip events that won't fit
-                continue
+                self.avg_best_fit = Nonecontinue
 
             self.bfdelay[j] = res.values["fixed_delay"]
             self.avg_best_fit = res.best_fit
