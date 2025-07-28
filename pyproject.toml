@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ephys"
-version = "0.8.0a"
+version = "0.8.1"
 description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, LSPS maps"
 authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
