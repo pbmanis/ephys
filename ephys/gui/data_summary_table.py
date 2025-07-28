@@ -141,16 +141,11 @@ class TableManager:
         Index_data.genotype = str(row.genotype)
         Index_data.solution = str(row.solution)
         Index_data.internal = str(row.internal)
-        print("row keys: ", row.keys())
-        print(row['animal identifier'])
         ai = row.get("animal identifier", None)
-        print("1: ", ai)
         if ai is None:
             ai = row.get("animal_identifier", None)
-            print("2: ", ai)
             if ai is None:
                 ai = "No ID"
-        print("recovered animal identifier: ", ai)
         Index_data.animal_identifier = str(ai)
         #     if "animal_identifier" in row.keys():
         #     Index_data.animal_identifier = str(row["animal_identifier"])
@@ -198,6 +193,7 @@ class TableManager:
             [
                 (
                     indxs[i].cell_id,
+                    indxs[i].animal_identifier,
                     indxs[i].cell_type,
                     indxs[i].important,
                     indxs[i].description,
@@ -207,7 +203,7 @@ class TableManager:
                     indxs[i].genotype,
                     indxs[i].solution,
                     indxs[i].internal,
-                    indxs[i].animal_identifier,
+
                     indxs[i].sex,
                     indxs[i].age,
                     indxs[i].weight,
@@ -225,6 +221,7 @@ class TableManager:
             ],
             dtype=[
                 ("cell_id", object),  # 0
+                ("animal identifier", object),  # 10
                 ("cell_type", object),  # 1
                 ("important", object),  # 2
                 ("description", object),  # 3
@@ -234,7 +231,6 @@ class TableManager:
                 ("genotype", object),  # 7
                 ("solution", object),  # 8
                 ("internal", object),  # 9
-                ("aniaml identifier", object),  # 10
                 ("sex", object),  # 11  $$$$$
                 ("age", object),  # 12
                 ("weight", object),  # 13
