@@ -52,12 +52,11 @@ class DataPlan():
             h = open(fn+ext).read()
             # print('h: ', h)
             exec(open(fn+ext).read(), data)
-            #execfile(fn + ext, data)  old python 2.7 version
             self.datasource = datadictname
             print("ephys.tools.data_plan, data keys: ", data.keys())
-            # self.datasets = data['datasets']  # convenience
             self.datadir = data['basepath']
-            self.outputpath = data['outputpath']
+            print("data: ", data.keys())
+            self.outputpath = data['outputdir']
             self.data = data  # just save the dict for anything else
         elif ext == '.xlsx':
             self.datasets = self.read_xlsx_datasummary(fn + ext, sheet=sheet)
