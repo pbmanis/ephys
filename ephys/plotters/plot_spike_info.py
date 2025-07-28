@@ -2752,7 +2752,7 @@ class PlotSpikeInfo(QObject):
             # handle variations in the column name (historical changes)
             idname = "Subject"
             row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][
-                "animal_identifier"
+                "animal identifier"
             ].values[0]
             # else:
             #     print("row keys: ", sorted(row.keys()))
