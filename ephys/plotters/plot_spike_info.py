@@ -1178,7 +1178,9 @@ class PlotSpikeInfo(QObject):
         """
         df = self.rescale_values(df)
         local_measures = measures.copy()
-        if ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures):
+        print("local_measures: ", local_measures)
+        # don't add AP_peak_V unless AP_thr_V is there
+        if( ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures)) and "AP_thr_V" in local_measures:
             local_measures.append("AP_peak_V")
         if representation in ["bestRs", "mean"]:
             max_rs = self.experiment.get("maximum_access_resistance", 1e8)
