@@ -97,6 +97,7 @@ class MINID:
     NotchFreqs: list = field(default_factory=def_notch_list)
     Notch_Q: float = 60.0
     sign: float = -1.0  # 1 for IPSCs, -1 for EPSCs (depending on RMP, of course.)
+    vc_holding: float = -0.065  # holding potential for voltage clamp, in Volts
     rt: float = 0.001  # EPSC rise time (all values in seconds)
     decay: float = 0.006  # EPSC decay time const
     thr: float = 3.5  # threshold for detection algorithm
