@@ -2265,7 +2265,7 @@ class Functions:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         except ValueError:
             print("datatable functions:ComputeFIFits:get_cell failed to find:\n    ", df.cell_id)
-            print("Here are the cell_ids in the dataframe: ", [x for x in df.cell_id.values])
+            # print("Here are the cell_ids in the dataframe: ", [x for x in df.cell_id.values])
             if self.status_bar is not None:
                 self.status_bar.showMessage(f"Couldn't get cell: {cell:s} from dataframe")
             raise ValueError(f"Couldn't get cell: {cell:s} from dataframe")

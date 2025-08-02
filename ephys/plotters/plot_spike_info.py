@@ -772,6 +772,7 @@ class PlotSpikeInfo(QObject):
             df_x = df_x.dropna(subset=[yname])
             df_x = df_x.dropna(subset=[xname])
             print(f"Plotting {xname:s} vs {yname:s} with hue: {hue_category:s}")
+
             sns.boxplot(
                 data=df_x,
                 x=xname,
@@ -781,7 +782,7 @@ class PlotSpikeInfo(QObject):
                 palette=self.experiment["plot_colors"]["bar_background_colors"],
                 ax=ax,
                 order=plot_order,
-                saturation=self.experiment["plot_colors"]["bar_saturation"],
+                saturation=float(self.experiment["plot_colors"]["bar_saturation"]),
                 width=self.experiment["plot_colors"]["bar_width"],
                 orient="v",
                 showfliers=False,
@@ -1178,7 +1179,7 @@ class PlotSpikeInfo(QObject):
         """
         df = self.rescale_values(df)
         local_measures = measures.copy()
-        print("local_measures: ", local_measures)
+        # print("local_measures: ", local_measures)
         # don't add AP_peak_V unless AP_thr_V is there
         if( ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures)) and "AP_thr_V" in local_measures:
             local_measures.append("AP_peak_V")
@@ -1193,7 +1194,8 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-
+        # print("groups B: ", df["Group"].unique())
+    
         # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
             # if measure in ["AP_thr_V", "AP_peak_V", "AP_max_V"]:
@@ -1303,13 +1305,14 @@ class PlotSpikeInfo(QObject):
             )
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
         df["Subject"] = df.apply(PSIF.set_subject, axis=1)
-
+        print("Summary plot ephys parameters categorical: df columns: \n", df.columns)
+        print("df groups 1: ", df["Group"].unique())
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         df, local_measures = self.compute_calculated_measures(
             df, measures=measures, representation=representation
         )
-
+        print("df groups 1.5: ", df["Group"].unique())
         if parent_figure is None:
             P, letters, plabels, cols, nrows = self.create_plot_figure(
                 df=df,
@@ -1327,6 +1330,8 @@ class PlotSpikeInfo(QObject):
             nrows = len(self.experiment["celltypes"])
         print("Nrows: ", nrows)
         print("Local measures: ", local_measures)
+        print("df Groups 2: ", df["Group"].unique())
+        print("Xname: ", xname)
 
 
         for icol, measure in enumerate(local_measures):
@@ -2748,11 +2753,13 @@ class PlotSpikeInfo(QObject):
         """
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
+        print("cellid match: ", cell_id_match)
         if cell_id_match is None:
             return ""  # no match, leave empty
         if cell_id_match is not None:  # we have a match, so save as the Subject
             # handle variations in the column name (historical changes)
             idname = "Subject"
+            # print(df_summary.columns)
             row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][
                 "animal identifier"
             ].values[0]

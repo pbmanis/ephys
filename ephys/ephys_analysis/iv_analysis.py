@@ -362,6 +362,7 @@ class IVAnalysis(Analysis):
         validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
             cell_id, inclusions=self.inclusions, exclusions=self.exclusions, allivs=allivs
         )
+        print("Include/exclude returns: ", validivs, additional_ivs, additional_iv_records)
         if len(additional_ivs) > 0:
             validivs.extend(additional_ivs)
         # print("validivs: ", validivs)
