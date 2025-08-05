@@ -29,7 +29,7 @@ def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, deco
             decorate=decorate,
         )
         # print("Plotting for: ", df_selected)
-        plotter.plot_ivs(df_selected)
+        plotter.plot_IVs(df_selected)
 
 
 class IVPlotter(object):
@@ -125,7 +125,7 @@ class IVPlotter(object):
         if self.plot_df is None:  # likely no spike or IV protocols for this cell
             CP("r", f"Cell had no spike or IV protocol cell: {cell_id!s}")
             return
-        print("Plot IVs 128: cell type: ", df_selected["cell_type"].values[0])
+
         if isinstance(df_selected["cell_type"], str):
             celltype = df_selected["cell_type"]
         else:
@@ -233,7 +233,9 @@ class IVPlotter(object):
         )
         dv = 50.0
         jsp = 0
-        # print("cell id: ", self.plot_df["cell_id"])
+        # guard against empty allprots
+        if allprots is None:
+            allprots = {'CCIV': None}
         res = (
             CIE.include_exclude(
                 cell_id=self.plot_df["cell_id"],
