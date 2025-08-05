@@ -54,6 +54,7 @@ dependencies = [
     "pyabf==2.3.8",
     "pyarrow==19.0.0",
     # "pylibrary",
+    "pylibrary",
     "pynwb==3.1.0",
     "pyopengl>=3.1.5",
     "pyparsing==3.2.3",
@@ -72,13 +73,13 @@ dependencies = [
     "ruamel-yaml>=0.15,<1",
     "ruff>=0.12.2",
     "scikit-posthocs==0.9.0",
-    "scipy==1.15.3",
+    "scipy==1.16.0",
     "seaborn>=0.13.2",
     "shapely>=2.1.1",
     "sphinx==8.2.3",
     "sphinx-automodapi>=0.20.0",
     "sphinx-rtd-theme>=3.0.2",
-    "statsmodels==0.14.4",
+    "statsmodels==0.14.5",
     "sympy>=1.14.0",
     "tables==3.10.2",
     "termcolor>=3.1.0",
@@ -132,8 +133,8 @@ packages = ['ephys', 'ephys.gui', 'ephys.mapanalysistools', 'ephys.tools']
 dependencies = { file = ["requirements.txt"]}
 
 [tool.uv.sources]
-pylibrary = { git = "https://github.com/pbmanis/pylibrary.git" }
 montage = { path = "../montage" }
+pylibrary = { git = "https://github.com/pbmanis/pylibrary" }
 
 [tool.ruff.format]
 indent-style = "space"
