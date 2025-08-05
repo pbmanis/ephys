@@ -352,9 +352,11 @@ class DataTables:
         self.voltage = False
         self.runtype = runtypes[0]
         self.cellID = None
+        self.current_cell_ids = None
         self.start_date = "None"
         self.end_date = "None"
         self.CD = None  # not set up yet -
+        self.DS_table_manager = None  # not set up yet
         self.dataset = self.datasets[0]
 
         self.set_experiment(self.dataset)
@@ -612,6 +614,9 @@ class DataTables:
             self.CD.set_datasets(self.dataset)
             self.CD.set_experiment(self.experiment)
         self.win.setWindowTitle(f"DataTables: {self.experimentname!s}")
+        FUNCS.set_current_table_selection(
+                        table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids
+                    )
         if self.ptreedata is not None:
             group = self.ptreedata.child("Plotting").child("Group By")
             group.setLimits(self.experiment["group_by"])  # update the group_by list
@@ -668,6 +673,8 @@ class DataTables:
 
                 case "Choose Experiment":
                     self.set_experiment(data)
+                    self.load_data_summary()
+                    self.Dock_DataSummary.raiseDock()
 
                 case "Reload Configuration":
                     # first, get the current selection in the main table
@@ -711,6 +718,9 @@ class DataTables:
                 case "Load DataSummary":
                     self.load_data_summary()
                     self.Dock_DataSummary.raiseDock()
+                    FUNCS.set_current_table_selection(
+                        table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids
+                    )
 
                 case "Load Assembled Data":
                     self.load_assembled_data()
