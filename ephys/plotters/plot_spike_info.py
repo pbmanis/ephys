@@ -876,8 +876,11 @@ class PlotSpikeInfo(QObject):
             # print("rescale values: ", measure, row[measure])
             if isinstance(row[measure], float):
                 row[measure] = [row[measure] * scale]
-            elif isinstance(row[measure], list):
+            elif isinstance(row[measure], list) and len(row[measure]) > 0 and row[measure] != [np.nan]:
+                # print(row[measure], measure)
                 row[measure] = np.nanmean(row[measure]) * scale
+            elif isinstance(row[measure], list) and len(row[measure]) == 0:
+                row[measure] = [np.nan]
             else:
                 row[measure] = row[measure] * scale
         return row[measure]
@@ -1326,227 +1329,9 @@ class PlotSpikeInfo(QObject):
             if plabels is None:
                 letters = ascii_letters.upper()
                 plabels = [f"{let.upper():s}" for let in letters]
-
-            nrows = len(self.experiment["celltypes"])
-        print("Nrows: ", nrows)
-        print("Local measures: ", local_measures)
-        print("df Groups 2: ", df["Group"].unique())
-        print("Xname: ", xname)
-
-
-        for icol, measure in enumerate(local_measures):
-
-            if measure in self.transforms.keys():
-                tf = self.transforms[measure]
             else:
-                tf = None
-
-            if nrows > 1:
-                for i, celltype in enumerate(self.experiment["celltypes"]):
-                    # print("measure y: ", measure, "celltype: ", celltype)
-                    # if data_class not in ["spike_measures"]:
-                    #     axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-                    # else:
-                    axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
-                    if celltype not in self.ylims.keys():
-                        ycell = "default"
-                    else:
-                        ycell = celltype
-                    x_measure = "_".join((measure.split("_"))[:-1])
-                    if x_measure not in self.ylims[ycell]:
-                        ylims = None
-                        # print("setting ylims to None for measure: ", x_measure)
-                        # print(self.ylims[ycell])
-                    else:
-                        ylims = self.ylims[ycell][x_measure]
-                    if measure not in df.columns:
-                        print("Measure : ", measure, "not in columns")
-                        print(df.columns)
-                        raise ValueError("Missing measure: ", measure)
-                    print(
-                        "celltype: " ,celltype,
-                        "Plotting measure: ",
-                        measure,
-                        "xname: ", xname,
-                        "Unique x values: ", df[xname].unique(),
-                        "plot order: ", plot_order,
-                        "hue category: ", hue_category,
-                    )
-                    picker_func = self.create_one_plot_categorical(
-                        data=df,
-                        xname=xname,
-                        yname=measure,
-                        ax=axp,
-                        celltype=celltype,
-                        hue_category=hue_category,
-                        plot_order=plot_order,
-                        plot_colors=plot_colors,
-                        logx=False,
-                        ylims=ylims,
-                        transform=tf,
-                        xlims=None,
-                        enable_picking=enable_picking,
-                        publication_plot_mode=publication_plot_mode,
-                    )
-                    picker_funcs[axp] = picker_func  # each axis has different data...
-                    self.relabel_xaxes(axp)
-                    if publication_plot_mode:
-                        axp.set_xlabel("")
-                    elif celltype != self.experiment["celltypes"][-1]:
-                        axp.set_xticklabels("")
-                        axp.set_xlabel("")
-                    self.relabel_yaxes(axp, measure=x_measure)
-
-            else:  # single row
-                # here we probably have the cell type or group as the x category,
-                # so we will simplify some things
-                axp = P.axdict[f"{plabels[icol]:s}"]
-                print("measure::: ", measure)
-                x_measure = "_".join((measure.split("_"))[:-1])
-                if x_measure not in self.ylims["default"]:
-                    CP("r", f"Measure not in y_lims in config file - cannot plot! {x_measure:s}")
-                    raise ValueError("Missing measure in default limits: ", x_measure)
-
-                if measure not in df.columns:
-                    CP("r", f"measure not in df_columns:  {measure:s}, {df.columns!s}")
-                    raise ValueError("Missing measure: ", measure)
-
-                if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
-                    axp.text(
-                        x=0.01,
-                        y=0.01,
-                        s=f"JP: {self.experiment['junction_potential']:.1f}mV",
-                        fontsize="x-small",
-                        transform=axp.transAxes,
-                        ha="left",
-                        va="bottom",
-                    )
-                print(
-                    "Plotting measure: ",
-                    measure,
-                    xname,
-                    df[xname].unique(),
-                    plot_order,
-                    hue_category,
-                )
-                if len(df[xname].unique()) == 0:
-                    raise ValueError(f"xname is not in df: <{xname:s}>, {df.columns!s}")
-                # plot_order = [p for p in plot_order if p in df[xname].unique()]
-                picker_func = self.create_one_plot_categorical(
-                    data=df,
-                    xname=xname,
-                    yname=measure,
-                    ax=axp,
-                    celltype="all",
-                    hue_category=hue_category,
-                    plot_order=plot_order,
-                    plot_colors=plot_colors,
-                    logx=False,
-                    ylims=self.ylims["default"][x_measure],
-                    transform=tf,
-                    xlims=None,
-                    enable_picking=enable_picking,
-                    publication_plot_mode=publication_plot_mode,
-                )
-                picker_funcs[axp] = picker_func
-                self.relabel_xaxes(axp)
-                self.relabel_yaxes(axp, measure=x_measure)
-
-        if len(picker_funcs) > 0 and enable_picking:
-            P.figure_handle.canvas.mpl_connect(
-                "pick_event", lambda event: self.pick_handler(event, picker_funcs)
-            )
-        else:
-            picker_funcs = None
-
-        for ax in P.axdict:
-            if P.axdict[ax].legend_ is not None:
-                P.axdict[
-                    ax
-                ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
-        i = 0
-        icol = 0
-        axp = P.axdict[f"{plabels[i]:s}"]
-        axp.legend(
-            fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
-        )
-        datestring = datetime.datetime.now().strftime("%d-%b-%Y")
-        subset = self.experiment.get("subset_on", None)
-        if subset is None:
-            subset_text = ""
-        else:
-            subkey = list(subset.keys())[0]
-            subset_text = f"{subkey:s}_{subset[subkey][0]:s}_"
-
-        if any(c.startswith("dvdt_rising") for c in measures):
-            fn = Path(
-                f"spike_shapes_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv"
-            )  # "spike_shapes.csv"
-        elif any(c.startswith("Adapt") for c in measures):
-            fn = Path(
-                f"firing_parameters_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv"
-            )  # "firing_parameters.csv"
-        elif any(c.startswith("RMP") for c in measures):
-            fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
-        self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
-        return P, picker_funcs
-
-    def summary_plot_ephys_parameters_continuous(
-        self,
-        df_in: pd.DataFrame,
-        measures,
-        hue_category=None,
-        plot_order=None,
-        plot_colors=None,
-        xname: str = "",
-        logx=False,
-        xlims=None,
-        plabels=None,
-        representation: str = "bestRs",  # bestRs, mean, all
-        enable_picking: bool = False,
-        publication_plot_mode: bool = False,
-        parent_figure=None,
-    ):
-        """Make a summary plot of spike parameters for selected cell types.
-
-        Args:
-            df (Pandas dataframe): _description_
-        """
-        # print("starting continuous with representation = ", representation)
-        # print("Incoming parameters: ")
-        # print("measures: ", measures)
-        # print("hue_category: ", hue_category)
-        # print("plot_order: ", plot_order)
-        # print("colors: ", colors)
-        # print("xname: ", xname)
-        # print("logx: ", logx)
-        # print("xlims: ", xlims)
-        # print("representation: ", representation)
-        # print("enable_picking: ", enable_picking)
-        # print("publication_plot_mode: ", publication_plot_mode)
-        # print("parent_figure: ", parent_figure)
-        axes = None
-        df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
-        picker_funcs = {}
-        if parent_figure is None:
-            P, letters, plabels, cols, nrows = self.create_plot_figure(
-                df=df, xname=xname, measures=measures, parent_figure=parent_figure
-            )
-        else:
-            P = parent_figure
-            if plabels is None:
-                letters = ascii_letters.upper()
-                plabels = [f"{let.upper():s}" for let in letters]
+                letters = plabels
             nrows = len(self.experiment["celltypes"])
-
-        df = df.copy()
-        # df["FIMax_1"] = df.apply(get_fi_max_1, axis=1)
-        # df["FIMax_4"] = df.apply(get_fi_max_imax, axis=1, imax=4.0)
-        df["FIRate"] = df.apply(self.get_fi_rate, axis=1)
-        df.dropna(subset=["Group"], inplace=True)  # remove empty groups
-        df["age"] = df.apply(PSIF.numeric_age, axis=1)
-        if "max_age" in self.experiment.keys():
-            df = df[(df.Age >= 0) & (df.Age <= self.experiment["max_age"])]
         df["shortdate"] = df.apply(PSIF.make_datetime_date, axis=1)
         df["SR"] = df.apply(self.flag_date, axis=1)
         # df.dropna(subset=["age"], inplace=True)
@@ -1563,7 +1348,6 @@ class PlotSpikeInfo(QObject):
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
 
-        # print("continuous measures: ", measures)
         for icol, measure in enumerate(local_measures):
             if measure.startswith("dvdt_ratio_bestRs"):
                 if measure not in df.columns:
@@ -1573,10 +1357,8 @@ class PlotSpikeInfo(QObject):
                 tf = self.transforms[measure]
             else:
                 tf = None
-            # print("continuous: nrows > 1:  "    , nrows)
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
-                    # print("measure y: ", measure, "celltype: ", celltype)
                     if axes is None:
                         axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
                     else:
@@ -1660,14 +1442,12 @@ class PlotSpikeInfo(QObject):
                         if xlab in self.experiment["new_xlabels"]:
                             xlab = self.experiment["new_xlabels"][xlab]
                             axp.set_xlabel(xlab)
-
         if len(picker_funcs) > 0 and enable_picking:
             P.figure_handle.canvas.mpl_connect(
                 "pick_event", lambda event: self.pick_handler(event, picker_funcs)
             )
         else:
             picker_funcs = None
-
         for ax in P.axdict:
             if P.axdict[ax].legend_ is not None:
                 P.axdict[
@@ -1688,7 +1468,6 @@ class PlotSpikeInfo(QObject):
                     fontweight="bold",
                     transform=P.figure_handle.transFigure,
                 )
-
         return P, picker_funcs
 
     def pick_handler(self, event, picker_funcs):
@@ -1773,10 +1552,7 @@ class PlotSpikeInfo(QObject):
         dfp[yname] = dfp[yname] * yscale
         if transform is not None:
             dfp[yname] = dfp[yname].apply(transform, axis=1)
-        # print(dfp.columns)
-        # print(dfp[y])
         if regplot:
-
             sns.regplot(
                 data=dfp,
                 x=xname,
@@ -1786,18 +1562,13 @@ class PlotSpikeInfo(QObject):
                 scatter_kws={"s": 4, "edgecolor": edgecolor, "facecolor": "k", "alpha": 0.8},
                 line_kws={"color": "b"},
             )
-            print(dfp.columns)
-            print(yname, xname)
             model = statsmodels.api.OLS.from_formula(
                 f"{yname:s} ~ {xname:s}", data=dfp, cov_type="robust"
             )
             results = model.fit()
-            print(results.summary())
-            # print(dir(results))
             # results.fvalue is the F statistic
             # the f_pvalue is the p of the F statistic
             # These compare the null (slope = 0) to the fit to the data (slope != 0)
-            print(results.f_pvalue, results.fvalue)
             r2 = r"$r^2$"
             if results.f_pvalue < 0.001:
                 fp = f"{results.f_pvalue:.3e}"
@@ -1825,20 +1596,18 @@ class PlotSpikeInfo(QObject):
             yname = "_".join([*yname.split("_")[:-1]])  # reassemble without the trailing label
         self.relabel_yaxes(ax, measure=yname)
         self.relabel_xaxes(ax)
-        print("ylims: ", ylims, ylims.keys(), celltype)
         if ylims is not None:  # make sure we have some limits
-            for lim in ylims.keys():  # may be "limits1", etc.
-                if (
-                    celltype in ylims[lim]["celltypes"]
-                ):  # check the list of cell types in the limit group
-                    if yname in ylims[lim].keys():  # check the list of measures in the limit group
-                        ax.set_ylim(ylims[lim][yname])  # finally...
-        # print("XLIMS: ", xlims)
+            ax.set_ylim(ylims)
+            # for lim in ylims.keys():  # may be "limits1", etc.
+            #     if (
+            #         celltype in ylims[lim]["celltypes"]
+            #     ):  # check the list of cell types in the limit group
+            #         if yname in ylims[lim].keys():  # check the list of measures in the limit group
+            #             ax.set_ylim(ylims[lim][yname])  # finally...
         if xlims is not None:
             ax.set_xlim(xlims)
         else:
             ax.set_xlim(0, 600)
-        # print("XLIMS as set: ", ax.get_xlim())
         # PH.do_talbotTicks(ax,axes='x', density=(0.2, 2))
         picker_func = Picker()
         # picker_func.set_data(dfp.copy(deep=True), axis=ax)
