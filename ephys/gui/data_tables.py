@@ -77,8 +77,8 @@ Support::
     DC R01 DC004551 (Manis, 2013-2019, Early development)
     DC R01 DC019053 (Manis, 2020-2025, Later development)
 
-Copyright 2019-2023 Paul B. Manis
-Distributed under MIT/X11 license. See license.txt for more infomation. 
+Copyright 2019-2025 Paul B. Manis
+Distributed under MIT/X11 license. See LICENSE.txt for more infomation. 
 """
 
 import datetime
@@ -287,7 +287,7 @@ class DataTables:
         self.Dock_DataSummary = PGD.Dock(
             "DataSummary", size=(right_docks_width, right_docks_height)
         )
-        self.Dock_IV_Table = PGD.Dock("IV Data Table", size=(right_docks_width, right_docks_height))
+        self.Dock_IV_Table = PGD.Dock("IV Assembled Data", size=(right_docks_width, right_docks_height))
         self.Dock_Map_Table = PGD.Dock(
             "Map Data Table", size=(right_docks_width, right_docks_height)
         )
