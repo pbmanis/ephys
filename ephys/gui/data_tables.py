@@ -1395,8 +1395,8 @@ class DataTables:
                         case "Filter Actions":
                             if path[2] in ["Apply"]:
                                 self.filters["Use Filter"] = True
-                                self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
-                                self.DS_table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)
+                                self.table_manager.apply_filter()
+                                self.DS_table_manager.apply_filter()
                             elif path[2] in ["Clear"]:
                                 self.filters["Use Filter"] = False
                                 self.table_manager.apply_filter(QtCore=QtCore, QtGui=QtGui)

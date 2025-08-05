@@ -457,7 +457,7 @@ class TableManager:
             self.update_table(self.data)
 
         else:
-            self.filter_table(self.parent.filters, QtCore=QtCore, QtGui=QtGui)
+            self.filter_table(self.parent.filters)
 
     def filter_table(self, filters):
         """filter_table _summary_
