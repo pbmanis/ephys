@@ -322,7 +322,9 @@ class Functions:
         """set_current_table_selection: Set the current table selection to the cell_ids in the list
         Used to restore the selection after a table update.
         """
-        if len(cell_ids) == 0:
+        if table_manager is None:
+            return None
+        if cell_ids is None or len(cell_ids) == 0:
             return  # nothing to select
         selection = pg.Qt.QtCore.QItemSelection()  # create a selection object
         for row in range(table_manager.table.model().rowCount()):
