@@ -643,13 +643,12 @@ class Functions:
         self.get_row_selection(table_manager)
         if self.selected_index_rows is None:
             return None
-        N = len(self.selected_index_rows)
-        colors = colormaps.sinebow_dark.discrete(N)
+        N = int(len(self.selected_index_rows))
         for nplots, index_row in enumerate(self.selected_index_rows):
             selected = table_manager.get_table_data(index_row)
             day = selected.date[:-4]
             slicecell = selected.cell_id[-4:]
-            pcolor = colors[nplots].colors
+            pcolor = pg.intColor(nplots, hues=N)
             cell_df, cell_df_tmp = filename_tools.get_cell(
                 experiment, assembleddata, cell_id=selected.cell_id
             )
@@ -1048,18 +1047,15 @@ class Functions:
         if self.selected_index_rows is None:
             return None
         N = len(self.selected_index_rows)
-        print("N: ", N)
-        colors = colormaps.sinebow_dark.discrete(N)
         for nplots, index_row in enumerate(self.selected_index_rows):
             selected = table_manager.get_table_data(index_row)
             day = selected.date[:-4]
             slicecell = selected.cell_id[-4:]
-            pcolor = colors[nplots].colors[0]
+            pcolor = pg.intColor(nplots, hues=N, values=1, minValue=200, maxValue=255)
             cell_df, cell_df_tmp = filename_tools.get_cell(
                 experiment, assembleddata, cell_id=selected.cell_id
             )
             self.cell_df = cell_df
-            print("cell id: ", selected.cell_id)
             self.current_selection = selected
             print("cell_df: ", cell_df["date"], cell_df["slice_slice"], cell_df["cell_id"])
             protocols = list(cell_df["Spikes"].keys())
@@ -1432,7 +1428,7 @@ class Functions:
 
             nplots += 1
 
-        return cell_df
+        return
 
     def mouse_move(self, event):
         """
