@@ -33,7 +33,7 @@ dependencies = [
     "matplotlib-scalebar>=0.8.1",
     "meegkit==0.1.9",
     "metaarray==2.1.1",
-    "montage",
+    # "montage",
     "mypy==1.13.0",
     "nest-asyncio==1.2.0",
     "networkx>=2.0",
