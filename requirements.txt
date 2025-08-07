@@ -98,4 +98,4 @@ imreg_dft>=2.0
 descartes
 #mahotas
 #-e git+https://github.com/pbmanis/montager.git@578ba75af12bb2321e377451f35921977656041a#egg=montage
--e /Users/pbmanis/Desktop/Python/montage
+# -e /Users/pbmanis/Desktop/Python/montage
