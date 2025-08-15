@@ -1348,11 +1348,11 @@ class PlotSpikeInfo(QObject):
             else:
                 letters = plabels
             nrows = len(self.experiment["celltypes"])
-        print("Nrows: ", nrows)
-        print("Local measures: ", local_measures)
-        print("df Groups 2: ", df["Group"].unique())
-        print("Xname: ", xname)
-        print("letters: ", letters)
+        # print("Nrows: ", nrows)
+        # print("Local measures: ", local_measures)
+        # print("df Groups 2: ", df["Group"].unique())
+        # print("Xname: ", xname)
+        # print("letters: ", letters)
 
         iplot_n = 0
         for icol, measure in enumerate(local_measures):
