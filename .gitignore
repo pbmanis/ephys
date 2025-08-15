@@ -4,6 +4,7 @@ ephys/mini_analyses/clembek.c
 archived/
 # file history:
 ephys/tools/data/files.toml
+ephys/tools/archives/*
 mini_viewer_recent_files.cfg
 
 # excel files
