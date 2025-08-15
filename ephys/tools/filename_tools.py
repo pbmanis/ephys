@@ -462,6 +462,8 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
         CP(
             "r", f"filename_tools:get_cell:: Cell ID not found in summary dataframe: {cell_id:s}"
         )
+        print("Cells in df: ", df.cell_id.unique())
+        raise ValueError(f"Filename_tools: get_cell_pkl_filename: Cell ID not found in summary dataframe: {cell_id:s}")
         return None, None
     try:
         celltype = df_tmp.cell_type.values[0]
@@ -549,7 +551,8 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
-    # print("get cell: ", experiment, df, cell_id)
+    CP("r", f"get cell: {cell_id!s}")
+
     datapath = get_cell_pkl_filename(experiment, df, cell_id)
     df_tmp = df[df.cell_id == cell_id]
     try:

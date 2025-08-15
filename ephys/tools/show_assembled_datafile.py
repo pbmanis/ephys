@@ -97,9 +97,9 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if isinstance(row[parameter], np.ndarray):
         # print("ndim: ", row[parameter].ndim)
         if row[parameter].ndim == 1:
-            if len(row[parameter]) > 0:
-                row[parameter] = [row[parameter][0]] * len(row["protocols"])
-            else:
+            if len(row[parameter]) == 0:
+                # row[parameter] = [row[parameter][0]] * len(row["protocols"])
+            # else:
                 row[parameter] = [np.nan] * len(row["protocols"])
         elif row[parameter].ndim == 0:
             row[parameter] = [row[parameter]] * len(row["protocols"])
@@ -345,7 +345,6 @@ def populate_columns(
 ):
     datap = data.copy(deep=True)  # defrag dataframe.
     # print("populate columns (show assemb data): ", datap.columns)
-
     # populate the new columns for each parameter
     if "taums" not in datap.columns:
         datap["taums"] = np.nan
@@ -361,18 +360,17 @@ def populate_columns(
             datap[b_str] = np.nan
     if "age_category" not in datap.columns:
         datap["age_category"] = None
+    age_cats = None
     if "age_categories" in configuration.keys():
         age_cats = configuration["age_categories"]
-    else:
-        age_cats = None
-
+    
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
     excludes = []
     for cellid in configuration["excludeIVs"]:
         for protos in configuration["excludeIVs"][cellid]["protocols"]:
             excludes.append(str(Path(cellid, protos)))
-
+   
     datap = datap.apply(
         filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
     )  # (data["Rs"].values[0] <= select_limits[1]*1e-6)
@@ -382,6 +380,7 @@ def populate_columns(
     if "CC_taum" not in data.columns:
         datap["CC_taum"] = {}
     datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
+   
     assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
     datap["age_category"] = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
@@ -508,6 +507,9 @@ def perform_selection(
         select_by=select_by,
         select_limits=select_limits,
     )
+    # print("In perform selection, did populate columns again")
+    # check_values(data, halt=False)
+
     for parameter in parameters:
         # CP.cprint("c", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
         try:
@@ -522,17 +524,7 @@ def perform_selection(
             print("Error in apply_select_by on key=", parameter)
             raise ValueError
 
-    # for idx, row in data.iterrows():
-    #     for parameter in parameters:
-    #         print("param, idx: ", parameter, idx)
-    #         rowdat = apply_select_by(
-    #             row,
-    #             parameter=parameter,
-    #             select_by=select_by,
-    #             select_limits=select_limits,
-    #         )
-    #         data.loc[idx] = check_types(rowdat, data.loc[idx])
-    #         #check_types(rowdat, data.loc[idx])
+    # check_values(data, halt=True)
 
     return data
 
@@ -559,6 +551,15 @@ parameters = [
     "used_protocols",
 ]
 
+def check_values(df, halt:bool=False):
+    print("*"*80)
+    for index in df.index[:20]:
+        row = df.loc[index]
+        print(row['cell_id'], row['AdaptIndex2'])
+    if halt:
+        print("stop, debugging")
+        raise ValueError("Debugging")
+        
 
 def get_best_and_mean(
     data: pd.DataFrame, experiment: dict, parameters: list, select_by: str, select_limits: list
@@ -586,6 +587,8 @@ def get_best_and_mean(
     pandas dataframe
         the updated data frame
     """
+    # print("get_best_and_mean: 1", data["Group"].unique())
+    # check_values(data, halt=False)
     data = populate_columns(
         data,
         configuration=experiment,
@@ -593,7 +596,9 @@ def get_best_and_mean(
         select_by=select_by,
         select_limits=select_limits,
     )
-
+    # print("get_best_and_mean: 2", data["Group"].unique())
+    # print("after populate columns: ")
+    # check_values(data, halt=False)
     data = perform_selection(
         data=data,
         configuration=experiment,
@@ -601,10 +606,13 @@ def get_best_and_mean(
         select_by=select_by,
         select_limits=select_limits,
     )
+    # print("after perform selection:")
+    # check_values(data, halt=True)
+    # print("get_best_and_mean: 3", data["Group"].unique())
     return data
 
 
-def show_best_rs_data(data, select_limits):
+def show_best_rs_data(data, experiment, select_limits):
     print("Parameters: ", parameters, "select_by", select_by)
     print("Data columns: ", data.columns)
     # for index in data.index:
@@ -739,13 +747,13 @@ if __name__ == "__main__":
 
     # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
     # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
-
-    fn = Path("./config/experiments.cfg")
+    fn  = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
+    # fn = Path("./config/experiments.cfg")
 
     select_by = "Rs"
     cfg, d = get_configuration(str(fn))
     # exptname = "VM_Dentate"
-    exptname = "CBA_Age"
+    exptname = "GlyT2_NIHL"
     print(cfg)
     experiment = d[exptname]
     expts = experiment

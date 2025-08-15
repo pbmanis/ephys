@@ -180,7 +180,7 @@ class MiniSummarize():
 
 
 if __name__ == '__main__':
-    fn = 'summarydata_%s.p' % sys.argv[1]  # data file to plot from - should hold a dict of mouse entries
+    fn = sys.argv[1] #  'summarydata_%s.p' % sys.argv[1]  # data file to plot from - should hold a dict of mouse entries
     MS = MiniSummarize(sys.argv[1])
     MS.load_file(fn)
     MS.set_groups(['F/+', 'F/F'])

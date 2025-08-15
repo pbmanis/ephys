@@ -1433,7 +1433,7 @@ class PlotSpikeInfo(QObject):
                 if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
                     axp.text(
                         x=0.01,
-                        y=0.01,
+                        y=0.001,
                         s=f"JP: {self.experiment['junction_potential']:.1f}mV",
                         fontsize="x-small",
                         transform=axp.transAxes,
