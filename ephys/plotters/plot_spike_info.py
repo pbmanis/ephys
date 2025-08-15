@@ -1324,6 +1324,7 @@ class PlotSpikeInfo(QObject):
         df["Subject"] = df.apply(PSIF.set_subject, axis=1)
         print("Summary plot ephys parameters categorical: df columns: \n", df.columns)
         print("df groups 1: ", df["Group"].unique())
+        print("plabels: ", plabels)
         picker_funcs = {}
         # n_celltypes = len(self.experiment["celltypes"])
         df, local_measures = self.compute_calculated_measures(
@@ -1343,7 +1344,7 @@ class PlotSpikeInfo(QObject):
             P = parent_figure
             if plabels is None:
                 letters = ascii_letters.upper()
-                plabels = [f"{let.upper():s}" for let in letters]
+                # plabels = [f"{let.upper():s}" for let in letters]
             else:
                 letters = plabels
             nrows = len(self.experiment["celltypes"])
@@ -1351,8 +1352,9 @@ class PlotSpikeInfo(QObject):
         print("Local measures: ", local_measures)
         print("df Groups 2: ", df["Group"].unique())
         print("Xname: ", xname)
+        print("letters: ", letters)
 
-
+        iplot_n = 0
         for icol, measure in enumerate(local_measures):
 
             if measure in self.transforms.keys():
@@ -1366,7 +1368,11 @@ class PlotSpikeInfo(QObject):
                     # if data_class not in ["spike_measures"]:
                     #     axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
                     # else:
-                    axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    if plabels is None:
+                        axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
+                    else:
+                        axp = P.axdict[f"{plabels[iplot_n]:s}"]
+                        iplot_n += 1
                     if celltype not in self.ylims.keys():
                         ycell = "default"
                     else:
