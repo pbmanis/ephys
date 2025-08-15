@@ -2856,7 +2856,15 @@ class Functions:
             FI_Data_I4, FI_Data_FR4, FI_Data_FR4_Std, FI_Data_N1 = self.average_FI(
                 FI_Data_I4_, FI_Data_FR4_, 4e-9
             )
-
+        
+        # Check to see if we need to filter the fits by limits:
+        if self.experiment.get("Hill_slope_limits", None) is not None:
+            min_I_slope_limit = self.experiment["Hill_slope_limits"].get("min_I_maxHillSlope", 0.0)
+            max_slope_limit = self.experiment["Hill_slope_limits"].get("max_maxHillSlope", np.inf)
+        else: # no limit.. except 0 and inf
+            min_I_slope_limit = 0.0
+            max_slope_limit = np.inf
+        
         # save the results
         datadict["FI_Curve1"] = [FI_Data_I1, FI_Data_FR1]
         datadict["FI_Curve4"] = [FI_Data_I4, FI_Data_FR4]
@@ -2896,11 +2904,14 @@ class Functions:
             datadict["FISlope"] = np.mean([s.slope for s in linfits])
         else:
             datadict["FISlope"] = np.nan
-        if len(hill_max_derivs) > 0:
-            datadict["maxHillSlope"] = np.mean(hill_max_derivs)
-            datadict["maxHillSlope_SD"] = np.std(hill_max_derivs)
-            datadict["I_maxHillSlope"] = np.mean(hill_i_max_derivs)
-            datadict["I_maxHillSlope_SD"] = np.std(hill_i_max_derivs)
+       if len(hill_max_derivs) > 0:  # update if there are values
+            mean_max_deriv = np.mean(hill_max_derivs)  # check window for BOTH measures
+            mean_I_max_deriv = np.mean(hill_i_max_derivs)
+            if mean_max_deriv > max_slope_limit and mean_I_max_deriv <= min_I_slope_limit:
+                datadict["maxHillSlope"] = np.mean(hill_max_derivs)
+                datadict["maxHillSlope_SD"] = np.std(hill_max_derivs)
+                datadict["I_maxHillSlope"] = np.mean(hill_i_max_derivs)
+                datadict["I_maxHillSlope_SD"] = np.std(hill_i_max_derivs)
         if len(FI_Data_I1) > 0:
             i_one = np.where(FI_Data_I1 <= 1.01e-9)[0]
             datadict["FIMax_1"] = np.nanmax(FI_Data_FR1[i_one])
