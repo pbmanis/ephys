@@ -591,22 +591,17 @@ class PlotSpikeInfo(QObject):
         _type_
             _description_
         """
-        # print("clear missing groups for : ", data, row[data])
         if "remove_groups" in self.experiment.keys():
-            # print("config has groups to remove: ", self.experiment["remove_groups"])
             if self.experiment["remove_groups"] is not None:
                 if row.Group in self.experiment["remove_groups"]:
                     print("row group: ", row.Group, " is in removables")
                     row[data] = np.nan
                     return row
-        # print("clear missing groups: ", row[data])
-        # print(row["AdaptIndex2_bestRs"])
         if (
             pd.isnull(row[data])
             or row[data] == "nan"
             or (isinstance(row[data], list) and len(row[data]) == 0)
         ):
-            # print("row[data] is" , row[data])
             if replacement is not None:
                 row[data] = replacement
             else:
@@ -983,6 +978,7 @@ class PlotSpikeInfo(QObject):
             columns = [xname, hue_category]
         columns.extend(measures)
 
+
         parameters = [
             "Rs",
             "Rin",
@@ -1004,6 +1000,7 @@ class PlotSpikeInfo(QObject):
             "AHP_relative_depth_V",
             "AdaptRatio",
             "AdaptIndex",
+            "AdaptIndex2",
             "FIMax_1",
             "FIMax_4",
             "poststimulus_spikes",
@@ -1016,6 +1013,7 @@ class PlotSpikeInfo(QObject):
             select_by="Rs",
             parameters=parameters,
         )
+        print("columns populated: ", df.columns)
         # if "animal identifier" in columns:
         #     df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
         ensure_cols = [
@@ -1049,6 +1047,7 @@ class PlotSpikeInfo(QObject):
         # for meas in measures:
         #     if meas in df_R.columns:
         #         print("meas: ", meas)
+
         df_R = SAD.perform_selection(
             select_by=select_by,
             select_limits=[0, self.experiment.get("maximum_access_resistance", 1e8)],
@@ -1056,6 +1055,7 @@ class PlotSpikeInfo(QObject):
             parameters=measures,
             configuration=self.experiment,
         )
+
         fn = self.get_stats_dir()
         filename = Path(fn, filename)
         CP("g", f"Exporting analyzed data to {filename!s}")
@@ -1150,6 +1150,14 @@ class PlotSpikeInfo(QObject):
             PH.nice_plot(plot_grid.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         return plot_grid, letters, plabels, cols, nrows
 
+    def check_values(self, df, halt:bool=False):
+        for index in df.index[:20]:
+            row = df.loc[index]
+            print(row['cell_id'], row['AdaptIndex2'])
+        if halt:
+            print("stop, debugging")
+            raise ValueError("Debugging")
+
     def compute_calculated_measures(self, df, measures, representation):
         """compute_calculated_measures : From the list of measures, compute
         the calculated measures that are not in the original data set.
@@ -1186,6 +1194,9 @@ class PlotSpikeInfo(QObject):
         # don't add AP_peak_V unless AP_thr_V is there
         if( ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures)) and "AP_thr_V" in local_measures:
             local_measures.append("AP_peak_V")
+        # print("representation: ", representation)
+        # self.check_values(df, halt=False)
+
         if representation in ["bestRs", "mean"]:
             max_rs = self.experiment.get("maximum_access_resistance", 1e8)
             df = SAD.get_best_and_mean(
@@ -1198,7 +1209,7 @@ class PlotSpikeInfo(QObject):
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
         # print("groups B: ", df["Group"].unique())
-    
+        # self.check_values(df, halt=True)
         # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
             # if measure in ["AP_thr_V", "AP_peak_V", "AP_max_V"]:
@@ -1307,6 +1318,9 @@ class PlotSpikeInfo(QObject):
                 "data_class must be one of: spike_measures, rmtau_measures, FI_measures"
             )
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
+
+
+    
         df["Subject"] = df.apply(PSIF.set_subject, axis=1)
         print("Summary plot ephys parameters categorical: df columns: \n", df.columns)
         print("df groups 1: ", df["Group"].unique())
@@ -1315,6 +1329,7 @@ class PlotSpikeInfo(QObject):
         df, local_measures = self.compute_calculated_measures(
             df, measures=measures, representation=representation
         )
+        # self.check_values(df, halt=False)
         print("df groups 1.5: ", df["Group"].unique())
         if parent_figure is None:
             P, letters, plabels, cols, nrows = self.create_plot_figure(
@@ -2741,7 +2756,7 @@ class PlotSpikeInfo(QObject):
         """
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
-        print("cellid match: ", cell_id_match)
+        # print("cellid match: ", cell_id_match)
         if cell_id_match is None:
             return ""  # no match, leave empty
         if cell_id_match is not None:  # we have a match, so save as the Subject
