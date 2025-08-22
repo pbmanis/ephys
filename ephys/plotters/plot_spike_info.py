@@ -2821,7 +2821,7 @@ class PlotSpikeInfo(QObject):
         if cell_id_match is None:
             CP(
                 "y",
-                f"get cell expression: cell id match is None: {cell_id:s}, \n{df_summary.cell_id.values!s}",
+                f"get cell expression: cell id match is None: {cell_id}, \n{df_summary.cell_id.values}",
             )
             return ""
         # print("cell id match ok: ", cell_id)

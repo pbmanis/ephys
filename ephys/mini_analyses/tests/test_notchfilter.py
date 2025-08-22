@@ -48,16 +48,10 @@ hwin = int(winpts/2)
 window = scipy.signal.windows.hann(winpts, 1)
 twin = np.concatenate((window[:hwin], np.ones(npts-winpts), window[hwin:]))
 data = data*twin
-print(dir(MI))
 datan = MI.NotchFilterData(data=data, notchfreqs=notchfreqs, notchQ=Q)
 datan = datan[hwin:-hwin]
 tbn = tb[hwin:-hwin]
-# datan, _, _ = MEK.detrend.detrend(datan, order=5)
 print(f"Max difference: {np.max(datan-data[hwin:-hwin]):.6e}")
-# f, ax = mpl.subplots(1,1)
-# mpl.plot(tb, data, 'k-')
-# mpl.plot(tbn, datan, 'r--')
-# mpl.show()
 
 #2. test multiple sine waves
 data  = np.zeros_like(tb)
@@ -75,19 +69,11 @@ for te in evts:
     ist = int(te/samprate)
     if ist+iwv < len(data):
         data[ist:ist+iwv] += wv
-# import matplotlib.pyplot as mpl
-# mpl.plot(data)
-# mpl.show()
-# print(data)
-# data, _, _ = MEK.detrend.detrend(data, order=5)
 winpts = int(1/samprate)
 hwin = int(winpts/2)
 window = scipy.signal.windows.hann(winpts, 1)# , at=100)
 twin = np.concatenate((window[:hwin], np.ones(npts-winpts), window[hwin:]))
 data = data*twin
-# datan, _, _ = MEK.detrend.detrend(data, order=5)
-# MI.filters.Notch_frequencies = notch
-# MI.filters.Notch_Q = Q
 datan = MI.NotchFilterComb(data=data, notchfreqs=notch, notchQ=Q)
 datan = datan[hwin:-hwin]
 tbn = tb[hwin:-hwin]
