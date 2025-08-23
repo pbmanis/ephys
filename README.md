@@ -1,6 +1,10 @@
-Version 0.7.0a
+Version 0.8.1
 
-New in this version:
+New in this version (23 Aug 2025):
+* Updated tests.
+* Stabilized transistion to pyproject.toml and uv builder
+  
+Previously (2021-2024):
 * Simplified process for analysis of IV/spike data (current clamp IVs).
 All analyzed data is stored in Python pkl files in cell-specific subdirectories
 in a "dataset" directory.
@@ -8,8 +12,11 @@ in a "dataset" directory.
 directories, etc. This serves both to expose some parameters in the analysis,
 and to make sure that parameters that get changed are not hidden in the code.
 
-Note that this is "alpha" code, meaning that it works for me, but also that
-errors may occur that have to be identified and solved. 
+Note that this is "beta" code, meaning that it works for me and is
+actively used. However,
+errors may occur that have to be identified and solved. The code base is
+under frequent revision as needed for our lab's own work, so check back
+frequently.
 
 
 Ephys
@@ -28,9 +35,21 @@ The analysis part of the package is broken up into 4 parts: ephysanalysis,
 minianalysis, psc_analysis and
 mapanalysis, plus a set of tools that make use of these packages.
 
-A GUI is available to help with the ephys analysis.
+A GUI is available to help with the ephys analysis ("datatable").
 
-Requirements: Python3.11+, and modules specified in requirements_local.txt
+The vast majority of parameters that control the analysis are stored
+in a configuration file. Many errors can be traced to incorrect configurations,
+or failure to update the configuration file to include newly-added
+parameters. An ongoing goal is to have all "free" parameters explicitely
+listed in the configuration file. Note that the configuration file
+also includes paths to data, analyzed data, definitions for individual cell
+types, information to drive plotting, and can even include parameters that might
+be required for other programs/analysis such as ABR measurements or specific
+plotting/figure generation scripts. Configuration entries not needed by ephys
+are ignored (so you can add at will).
+
+Requirements: Python3.13+, and modules specified in requirements_local.txt
+or pyproject.toml.
 
 ephysanalysis
 -------------
@@ -137,12 +156,19 @@ optional arguments: -h, --help            show this help message and exit -i,
   shell script to create an environment. 
   
 
-  Uupdate: Now using pyproject.toml and uv to handle build
-  Requirements
+  Update 2025: Now using pyproject.toml and uv to handle build
+  requirements. As before, this creates a local environment (independent
+  of any other environment, such as from conda). Currently, the
+  suite is only "guaranteed" to function using this environment.
+  
 ------------
 Python 3.13, matplotlib, scipy, numpy, seaborn, pyqtgraph.
 pylibrary (github.com/pbmanis/pylibrary)
-and many other things... 
+and many other things... See the list in pyproject.toml.
+The environment incudes a number of packages that are only
+needed during development, but this can be helpful when
+troubleshooting problems.
+
 
 #Installation
 ------------
@@ -151,7 +177,7 @@ Clone the repository and run the following command in the root directory:
 `source .venv/bin/activate`  # activate the virtual environment
 `uv build` # build the package if you want it in that format
 `python ephys/ephys_analysis/tests/hh_sim.py` # build the test data .pkl files
-# The tests test the mini analysis detection and spike shape analysis routines.
+# The tests primarily check the mini analysis detection and spike shape analysis routines.
 Then run the tests:
 `python test.py`
 
