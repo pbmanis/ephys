@@ -176,9 +176,14 @@ Clone the repository and run the following command in the root directory:
 `uv venv`  # build the virtual environment
 `source .venv/bin/activate`  # activate the virtual environment
 `uv build` # build the package if you want it in that format
-`python ephys/ephys_analysis/tests/hh_sim.py` # build the test data .pkl files
-# The tests primarily check the mini analysis detection and spike shape analysis routines.
+Note:
+The tests primarily check the mini analysis detection and spike shape analysis routines.
+
 Then run the tests:
 `python test.py`
+
+If the test data for the spike analysis is not found, it will be generated. This step
+can take a few minutes. Once generated it does not need to be updates.
+
 
 
