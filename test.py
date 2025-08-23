@@ -35,6 +35,14 @@ def main():
     print("Parent path: ", path)
     sys.path.insert(0, str(path))
 
+    # be sure the simulation data exists, but if not, create it.
+    simfile = Path('ephys', 'ephys_analysis', 'tests', 'HHData.pkl')
+    if not simfile.is_file():
+        print(f"HH simulation data file {simfile} not found. Creating it now.")
+        import ephys.ephys_analysis.tests.hh_sim as hh_sim
+        hh_sim.main()
+    else:
+        print(f"HH simulation data file {simfile} found ok.")
     # Allow user to audit tests with --audit flag
     import ephys.ephys_analysis
     import ephys.tools
