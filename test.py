@@ -17,17 +17,27 @@ Flags:
  that we are using floating point numbers, and that there is noise
  in the data (although there is not supposed to be noise in the test
  data). 
+
     -- tensor_flow_test: run the tests in the ephys/tools/tests directory
     for tensor flow installation. This is not supported currently
     --tb=short: use short traceback for errors. This is the default.
 
-This should be run if pytest fails.
+This should be run if any tests fail.
+
 
 """
 
-import os, sys
+import argparse
+import sys
 from pathlib import Path
 import pytest
+
+
+@pytest.fixture
+def audit(request):
+    print("audit fixture called")
+    return request.config.getoption("--audit")
+
 
 def main():
     # Make sure we look for minis here first.
@@ -46,15 +56,26 @@ def main():
     # Allow user to audit tests with --audit flag
     import ephys.ephys_analysis
     import ephys.tools
-        # generate test flags
-    flags = sys.argv[1:]
-    if '--audit' in sys.argv:
-        sys.argv.remove('--audit')
-        sys.argv.append('-s') # needed for cli-based user interaction
+    # generate test flags
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--audit', action='store_true', help='run tests in audit mode')
+    parser.add_argument('--tensor_flow_test', action='store_true', help='run tensor flow tests')
+    args, unknown = parser.parse_known_args()
+    flags = []
+    if args.audit:
+        flags.append('--audit')
+    if args.tensor_flow_test:
+        flags.append('--tensor_flow_test')
+    # pytest.add_option("--audit", action="store_true", default=False, help="run tests in audit mode")
+    if '--audit' in flags:
+        # sys.argv.remove('--audit')
+        # sys.argv.append('-s') # needed for cli-based user interaction
+        flags.append('-s')
         ephys.mini_analyses.AUDIT_TESTS = True
-    if '--tensor_flow_test' in sys.argv:
-        sys.argv.remove('--tensor_flow_test')
-        sys.argv.append('-s')
+    if '--tensor_flow_test' in flags:
+        flags.append('-s')
+        # sys.argv.remove('--tensor_flow_test')
+        # sys.argv.append('-s')
         flags.append('ephys/tools/tests/test_tensorflow.py')
 
     flags.append('-v')
@@ -63,7 +84,6 @@ def main():
         flags.append('--tb=short')
 
     add_path = True
-    print("flags: ", flags)
     for flag in flags:
         pflag = Path(flag)
         if pflag.is_dir() or pflag.is_file():
@@ -75,7 +95,6 @@ def main():
         flags.append('ephys/ephys_analysis')
         flags.append('ephys/psc_analysis')
 
-    print("flags: ", flags)
     # ignore the an cache
     # flags.append('--ignore=minis/somedir')
 
