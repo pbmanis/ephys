@@ -18,7 +18,7 @@ import ephys.mini_analyses.minis_methods as MM
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 from ephys.mini_analyses.util import UserTester
 
-testmode = True # set True show hold graphs for just a few seconds;
+testmode = False # set True show hold graphs for just a few seconds;
 
 def def_taus():
     return [0.001, 0.010]  # [0.0003, 0.001]  # in seconds (was 0.001, 0.010)
@@ -124,7 +124,7 @@ def generate_testdata(
     exp_test_set: bool = True,
 ):
     """
-    meanrate is in Hz(events/second)
+    mean rate is in Hz(events/second)
     maxt is in seconds - duration of trace
     bigevent is a dict {'t': delayinsec, 'I': amplitudeinA}
     """
@@ -283,7 +283,7 @@ def run_ClementsBekkers(
         pars = EventParameters()
     if bigevent:
         pars.bigevent = {"t": 1.0, "I": 20.0}
-    if mpl is None:
+    if mpl is None and plot:
         import matplotlib.pyplot as mpl
     pars.threshold = 4.5
     filters = MEDC.Filtering()
@@ -580,7 +580,7 @@ class MiniTestMethods:
             pars.threshold = 0.5
             pars.mindur = 1e-3
             pars.HPF = None
-            result, figh = run_ZeroCrossing(pars, plot=True, exp_test_set=True)
+            result, figh = run_ZeroCrossing(pars, plot=self.plot, exp_test_set=True)
             print("Events found: ", len(summary.allevents))
             # if self.plot:
             #     zct = np.arange(
@@ -601,7 +601,7 @@ class MiniTestMethods:
             #     mpl.show()
         if self.testmethod in ["AJ", "aj"]:
 
-            aj, figh = run_AndradeJonas(pars, plot=True, exp_test_set=True)
+            aj, figh = run_AndradeJonas(pars, plot=self.plot, exp_test_set=True)
             print("Events found: ", len(aj.summary.allevents))
             summary = aj.summary
             # k = summary.allevents[0]
@@ -612,7 +612,7 @@ class MiniTestMethods:
             #     mpl.show()
         if self.testmethod in ["RS", "rs"]:
             pars.threshold = 2.25
-            result, figh = run_RSDeconvolve(pars, plot=True, exp_test_set=True)
+            result, figh = run_RSDeconvolve(pars, plot=self.plot, exp_test_set=True)
             print("Events found: ", len(summary.allevents))
             # if self.plot:
             #     rst = np.arange(
@@ -637,6 +637,7 @@ class MiniTestMethods:
             "risetenninety": summary.average.risetenninety,
             "decaythirtyseven": summary.average.decaythirtyseven,
         }
+        mpl.close('all')
         return testresult
 
 
@@ -671,6 +672,10 @@ class MinisTester(UserTester):
         finally:
             if self.figure is not None:
                 del self.figure
+                self.figure = None
+        if self.figure is not None:
+            del self.figure
+            self.figure = None
 
 
 def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
@@ -720,7 +725,7 @@ def plot_traces_and_markers(method, dy=20e-12, sf=1.0, mpl=None):
 
 
 if __name__ == "__main__":
-    plot = True
+    plot = False
     ntraces = 1
     methods = [
         "ZC",
@@ -832,10 +837,10 @@ if __name__ == "__main__":
             # #     mpl.plot(rst, rs.allevents[a])
             # mpl.show()
         if testmethod in ["all", "ALL"]:
-            run_ZeroCrossing(pars, plot=True)
-            run_ClementsBekkers(pars, plot=True)
-            run_AndradeJonas(pars, plot=True)
-            run_RSDeconvolve(pars, plot=True)
+            run_ZeroCrossing(pars, plot=plot)
+            run_ClementsBekkers(pars, plot=plot)
+            run_AndradeJonas(pars, plot=plot)
+            run_RSDeconvolve(pars, plot=plot)
 
     #    pg.show()
     # if sys.flags.interactive == 0:
