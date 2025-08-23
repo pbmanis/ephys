@@ -273,17 +273,19 @@ def main():
     win.setLayout(layout)
     win.resize(1024,800)
     Plot = win.addPlot()
+    print("Please be patient - this can take a while")
     IV = make_iv_data()
 
     testpath = Path(__file__).parent
-    print(testpath)
-
+  
+    print(f"Writing HH simulation to {Path(testpath, 'HHData.pkl')}")   
     with open(Path(testpath, "HHData.pkl"), "wb") as fh:
         pickle.dump(dataclasses.asdict(IV), fh)
     IV = None
+    print(f"Condiriming read and plotting HH simulation data")   
     with open(Path(testpath, "HHData.pkl"), "rb") as fh:
         IV = pickle.load(fh)
-    print(IV)
+    # print(IV)
     for i in range(IV['traces'].shape[0]):
         Plot.plot(IV['time_base'], IV['traces'][i,:])
 
