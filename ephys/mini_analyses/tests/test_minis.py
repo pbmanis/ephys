@@ -637,7 +637,6 @@ class MiniTestMethods:
             "risetenninety": summary.average.risetenninety,
             "decaythirtyseven": summary.average.decaythirtyseven,
         }
-        mpl.close('all')
         return testresult
 
 
