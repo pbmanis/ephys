@@ -38,6 +38,7 @@ from numba import jit
 
 from ephys.tools import fitting  # pbm's fitting stuff...
 from ephys.tools import utilities  # pbm's utilities...
+from ephys.tools import spike_finder  # pbm's spike finding stuff...
 import pylibrary.tools.cprint as CP
 
 U = utilities.Utility()
@@ -308,6 +309,7 @@ class SpikeAnalysis:
             if track:
                 CP.cprint("r", f"    AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
             spikes = self.U.findspikes(
+            # spikes = spike_finder.FindSpikesNumba().findspikes(
                 x=self.Clamps.time_base,
                 v=np.array(self.Clamps.traces[trace_number]),
                 t0=self.Clamps.tstart,

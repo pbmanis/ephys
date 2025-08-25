@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools", "setuptools-scm", "cython"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -127,6 +127,9 @@ distribution = false
 
 [tool.setuptools]
 packages = ['ephys', 'ephys.gui', 'ephys.mapanalysistools', 'ephys.tools']
+# ext_modules = [
+#     {module = "ephys.tools.c_deriv", sources = ["ephys/tools/c_deriv.pyx"]},
+# ]   
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"]}
