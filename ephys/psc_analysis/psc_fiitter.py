@@ -3,28 +3,16 @@ Provide fitting functions for PSCs:
     1. decay tau only
     2. PSC full fit (1-exp(tau_rise))^4 * exp(tau_fall)
 
+    ********UNFINISHED ********
+    
 """
-
-import sys
-from collections import OrderedDict
-from pathlib import Path
-from typing import Union
 
 import lmfit
 import MetaArray as EM  # need to use this version for Python 3
 import numpy as np
-import pandas as pd
-from matplotlib import pyplot as mpl
-from pylibrary.plotting import plothelpers as PH
-from pylibrary.tools import cprint
-from pyqtgraph.Qt import QtCore, QtGui
-
-from ..tools import cursor_plot as CP
-from ephys.datareaders import acq4_reader
 
 
 class PSC_Fitter:
-
 
     def __init__(self):
         pass  # nothing to do

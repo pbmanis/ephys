@@ -14,13 +14,11 @@ Note: if the analyzer is called with update_regions set True, then traces will b
 sent to cursor_plot to get start and end times. (this might be broken now - need to test)
 
 """
-import os  # legacy
+
 import sys
-from collections import OrderedDict
 from pathlib import Path
 from typing import List, Tuple, Union
 
-import lmfit
 import MetaArray as EM  # need to use this version for Python 3
 import numpy as np
 import pandas as pd
@@ -42,7 +40,7 @@ class PSCAnalyzer:
     def __init__(
         self,
         datapath: Union[str, Path],
-        df: object=None,
+        df: object = None,
         plot: bool = True,
         update_regions: bool = False,
     ):
@@ -60,8 +58,8 @@ class PSCAnalyzer:
         ----------
         datapath: path to the data protocol (Path or string)
 
-        df: pandas dataframe with information about the cells. 
-        
+        df: pandas dataframe with information about the cells.
+
         plot: boolean (default: True)
             Flag to control plotting of the data
 
@@ -70,16 +68,14 @@ class PSCAnalyzer:
             analysis can be defined and saved.
 
         """
-        self.datapath = Path(datapath) # convert to path object
+        self.datapath = Path(datapath)  # convert to path object
         self.AR = (
             acq4_reader.acq4_reader()
         )  # make our own private version of the analysis and reader
         self.plot = plot
         self.db = None
         self.db_filename = None
-        self.protocol_map = (
-            {}
-        )  # hold the mapping between protocol names and the analysis routine
+        self.protocol_map = {}  # hold the mapping between protocol names and the analysis routine
         self.assign_default_protocol_map()  # set up some defaults for the protocol map
         self.update_regions = update_regions
         self.JunctionPotential = -8.0 * 1e-3  # junction potential for correction
@@ -91,7 +87,7 @@ class PSCAnalyzer:
 
         if df is not None:
             date = str(Path(*self.datapath.parts[:-3]))
-            group = df[df['date'] == date]["Group"]
+            group = df[df["date"] == date]["Group"]
             if len(group) == 0:
                 self.Group = ""
             else:
@@ -155,17 +151,15 @@ class PSCAnalyzer:
         self.stim_dt = None
         self.stikm_V = None
         self.devicedata = self.AR.getDeviceData(
-            device=self.device, devicename="command",
-            allow_partial=allow_partial)
+            device=self.device, devicename="command", allow_partial=allow_partial
+        )
         if self.devicedata is None:
             print("No device data? name command, ", self.device)
             return False
         self.reps = self.AR.sequence[("protocol", "repetitions")]
 
         try:  # get the stimulus amplitude data for an IO functoin
-            self.stim_io = self.AR.sequence[
-                (self.device, "command.PulseTrain_amplitude")
-            ]
+            self.stim_io = self.AR.sequence[(self.device, "command.PulseTrain_amplitude")]
         except:
             self.stim_io = None
         try:  # get the stimulus rate
@@ -173,7 +167,7 @@ class PSCAnalyzer:
             self.stim_dt = self.AR.sequence[(self.device, "command.PulseTrain_period")]
         except:
             self.stim_dt = None
-        
+
         try:  # get the voltage from the multiclamp in vclamp mode
             self.stim_V = self.AR.sequence[("MultiClamp1", "Pulse_amplitude")]
         except:
@@ -237,7 +231,7 @@ class PSCAnalyzer:
 
         self.db_filename = Path(filename)
         if self.db_filename.is_file():
-            with (open(self.db_filename, "rb")) as fh:
+            with open(self.db_filename, "rb") as fh:
                 self.db = pd.read_pickle(fh, compression=None)
         else:
             self.db = pd.DataFrame(columns=["date", "protocol", "T0", "T1"])
@@ -253,8 +247,8 @@ class PSCAnalyzer:
     def measure_PSC(
         self,
         protocolName: str,
-        deadtime:float=0.7e-3,
-        artifact_sign:str='+',
+        deadtime: float = 0.7e-3,
+        artifact_sign: str = "+",
         plot: bool = True,
         savetimes: bool = False,
         ignore_important_flag: bool = True,
@@ -319,7 +313,7 @@ class PSCAnalyzer:
         if 4 elements, it is start and stop of first part of baseline,
         and start and stop of a second part of the baseline
         """
-        if len(baseline) not in [2,4]:
+        if len(baseline) not in [2, 4]:
             raise ValueError("Baseline must be a 2 or 4 -element array")
         if isinstance(baseline, list):
             baseline = np.array(baseline)
@@ -327,15 +321,13 @@ class PSCAnalyzer:
 
     def get_baseline(self):
         """Return the mean values in the data over the baseline region."""
-        bl, result = FN.mean_I_analysis(
-            clamps=self.Clamps, region=self.baseline[0:2], reps=[0]
-        )
+        bl, result = FN.mean_I_analysis(clamps=self.Clamps, region=self.baseline[0:2], reps=[0])
         if len(self.baseline) == 4:
             bl2, result = FN.mean_I_analysis(
                 clamps=self.Clamps, region=self.baseline[2:4], reps=[0]
             )
-            bl = (bl + bl2)/2.0 # average the two baseline values
-            
+            bl = (bl + bl2) / 2.0  # average the two baseline values
+
         return bl
 
     def _clean_array(self, rgn: Union[List, Tuple]):
@@ -345,7 +337,6 @@ class PSCAnalyzer:
         if isinstance(rgn[0], list) or isinstance(rgn[0], np.ndarray):
             rgn = [x[0] for x in rgn]
         return rgn
-
 
     def compute_interval(
         self,
@@ -382,13 +373,11 @@ class PSCAnalyzer:
         """
         num_intervals = len(stim_intvl)
         if index < num_intervals - 1:
-            nxt_intvl = (
-                stim_intvl[index + 1] - stim_intvl[index]
-            )  # check interval sequence
+            nxt_intvl = stim_intvl[index + 1] - stim_intvl[index]  # check interval sequence
             max_w = np.min((nxt_intvl, max_width - pre_time))
             if nxt_intvl > 0:  # still ascending
                 t_stim = [
-                    x0, #+ artifact_duration,
+                    x0,  # + artifact_duration,
                     x0 + max_w - pre_time,
                 ]  # limit width if interval is
                 if pflag:
@@ -435,9 +424,7 @@ class PSCAnalyzer:
 
         for i in range(data1.shape[0]):
             ax[0].plot(tb[:it], data1[i, :ie])
-        ax[0].set_title(
-            str(self.datapath).replace("_", r"\_") + " " + title, fontsize=8
-        )
+        ax[0].set_title(str(self.datapath).replace("_", r"\_") + " " + title, fontsize=8)
         mpl.show()
 
     def set_region(self, region=None, baseline=None, slope=True):
@@ -450,9 +437,7 @@ class PSCAnalyzer:
         if baseline is None:
             baseline = [0.0]
 
-        tb = np.arange(
-            0, data1.shape[1] * self.Clamps.sample_interval, self.Clamps.sample_interval
-        )
+        tb = np.arange(0, data1.shape[1] * self.Clamps.sample_interval, self.Clamps.sample_interval)
         data1 = data1.view(np.ndarray)
         newCP = CP.CursorPlot(str(self.datapath))
         setline = True
@@ -537,9 +522,7 @@ class PSCAnalyzer:
             #     print("Plot Failed on protocol: ", self.datapath, proto)
             P.axdict["C"].set_xlabel("Istim (microAmps)")
             P.axdict["C"].set_ylabel("EPSC I (pA)")
-            PH.talbotTicks(
-                P.axdict["C"], tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0}
-            )
+            PH.talbotTicks(P.axdict["C"], tickPlacesAdd={"x": 0, "y": 0}, floatAdd={"x": 0, "y": 0})
         elif (
             "PSP_VDEP_AMPA" in self.analysis_summary.keys()
             or "PSP_VDEP_NMDA" in self.analysis_summary.keys()
@@ -550,18 +533,14 @@ class PSCAnalyzer:
             for i in range(len(self.analysis_summary["stim_times"])):
                 P.axdict["C"].plot(
                     self.analysis_summary["Vcmd"][:n_voltages] * 1e3,
-                    self.sign
-                    * np.array(self.analysis_summary[f"PSP_VDEP_AMPA"][i])
-                    * 1e12,
+                    self.sign * np.array(self.analysis_summary[f"PSP_VDEP_AMPA"][i]) * 1e12,
                     marker="o",
                     linewidth=1,
                     markersize=4,
                 )
                 P.axdict["C"].plot(
                     self.analysis_summary["Vcmd"][:n_voltages] * 1e3,
-                    self.sign
-                    * np.array(self.analysis_summary[f"PSP_VDEP_NMDA"][i])
-                    * 1e12,
+                    self.sign * np.array(self.analysis_summary[f"PSP_VDEP_NMDA"][i]) * 1e12,
                     marker="s",
                     linewidth=1,
                     markersize=4,
@@ -578,10 +557,7 @@ class PSCAnalyzer:
             xm = []
             ym = []
             for i, sdt in enumerate(self.stim_dt):
-                x = (
-                    np.repeat(np.array(sdt), len(self.analysis_summary["PPF"][sdt]))
-                    * 1e3
-                )
+                x = np.repeat(np.array(sdt), len(self.analysis_summary["PPF"][sdt])) * 1e3
                 y = self.sign * np.array(self.analysis_summary[f"PPF"][sdt])
                 P.axdict["C"].scatter(
                     x,
@@ -604,9 +580,7 @@ class PSCAnalyzer:
 
         P.axdict["B"].set_xlabel("I (nA)")
         P.axdict["B"].set_ylabel("V (mV)")
-        PH.talbotTicks(
-            P.axdict["B"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 2, "y": 0}
-        )
+        PH.talbotTicks(P.axdict["B"], tickPlacesAdd={"x": 1, "y": 0}, floatAdd={"x": 2, "y": 0})
 
         P.axdict["D"].set_xlabel("I (pA)")
         P.axdict["D"].set_ylabel("Latency (ms)")
@@ -616,7 +590,7 @@ class PSCAnalyzer:
         if self.plot:
             mpl.show()
 
-    def file_cell_protocol(self, filename:Union[str, Path]):
+    def file_cell_protocol(self, filename: Union[str, Path]):
         """
         file_cell_protocol breaks the current filename down and returns a
         tuple: (date, cell, protocol)
@@ -639,7 +613,7 @@ class PSCAnalyzer:
         date = fparts[-4]
         p3 = Path(*fparts[:-4])
         # (p0, proto) = os.path.split(filename)
-        
+
         # (p1, cell) = os.path.split(p0)
         # (p2, sliceid) = os.path.split(p1)
         # (p3, date) = os.path.split(p2)
