@@ -10,22 +10,31 @@ authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
 ]
+requires-python = "==3.13.7"
+readme = "README.md"
+license = "MIT"
+classifiers = [
+    "Development Status ::  Beta",
+    "Environment :: Console",
+    "Intended Audience :: Neuroscientists",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10+",
+    "Topic :: Data Processing :: Neuroscience",
+    "Topic :: Scientific Software :: Tools :: Python Modules",
+]
+
 dependencies = [
-    "black>=24.10.0",
     "colorcet>=3.1.0",
     "colormaps==0.4.2",
     "cython==3.0.12",
     "deepdiff>=8.5.0",
     "descartes>=1.1.0",
     "dill==0.3.8",
-
-    "flake8>=7.0.0",
     "gitpython>=3.1.44",
     "hdmf>=4.0.0",
     "imageio>=2.37",
     "imreg-dft>=2.0",
     "isodate==0.6.1",
-    "isort>=5.13.2",
     "jinja2==3.1.6",
     "jupyterlab>=4.4.0",
     "lmfit==1.3.3",
@@ -34,7 +43,6 @@ dependencies = [
     "meegkit==0.1.9",
     "metaarray==2.1.1",
     # "montage",
-    "mypy==1.13.0",
     "nest-asyncio==1.2.0",
     "networkx>=2.0",
     "ngauge",
@@ -88,17 +96,14 @@ dependencies = [
     "pylibrary @ git+https://github.com/pbmanis/pylibrary.git@master#egg=main",
 ]
 
-requires-python = "==3.13.*"
-readme = "README.md"
-license = "MIT"
-classifiers = [
-    "Development Status ::  Beta",
-    "Environment :: Console",
-    "Intended Audience :: Neuroscientists",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.10+",
-    "Topic :: Data Processing :: Neuroscience",
-    "Topic :: Scientific Software :: Tools :: Python Modules",
+[dependency-groups]
+dev = [
+    "black>=24.10.0",
+    "flake8>=7.0.0",
+    "mypy==1.13.0",
+    "ruff>=0.12.2",
+    "typer>=0.4.0",
+    "isort>=5.13.2"
 ]
 
 [project.urls]
