@@ -38,7 +38,7 @@ import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
-from pypdf import PdfMerger, PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 import ephys.datareaders as DR
 import ephys.ephys_analysis as EP
@@ -809,7 +809,7 @@ class Analysis:
         CP.cprint("c", f"    into: {str(self.cell_pdfFilename):s}")
 
         # cell file merged
-        mergeFile = PdfMerger()
+        mergeFile = PdfWriter()
         if overwrite:  # remove existing file
             self.cell_pdfFilename.unlink(missing_ok=True)
         fns.insert(0, str(self.cell_pdfFilename))
