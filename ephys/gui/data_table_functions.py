@@ -136,6 +136,7 @@ datacols = [
     "AHP_trough_T",
     "tauh",
     "Gh",
+    "bovera",
     # "FiringRate",
 ]
 
