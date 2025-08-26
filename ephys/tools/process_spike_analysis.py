@@ -244,7 +244,7 @@ class ProcessSpikeAnalysis:
             args.autoout = True
             args.parallel_mode = "cell"  # try to use parallel processing
             args.nworkers = self.nworkers
-            args.max_spikeshape = 1
+            args.max_spike_shape = 1
             args.downsample = 1
             print("process spike analysis: nworkers, parallel_mode ", args.nworkers, args.parallel_mode)
             IVA = EP.iv_analysis.IVAnalysis(args)
