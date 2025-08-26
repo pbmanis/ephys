@@ -174,13 +174,14 @@ class IVPlotter(object):
         x = -0.08  # label position offsets
         y = 1.02
         sizer = {
-            "A": {"pos": [0.05, 0.50, 0.3, 0.61], "labelpos": (x, y), "noaxes": False},
+            "A": {"pos": [0.05, 0.50, 0.4, 0.51], "labelpos": (x, y), "noaxes": False},
             "A1": {
-                "pos": [0.05, 0.50, 0.21, 0.04],
+                "pos": [0.05, 0.50, 0.32, 0.04],
                 "labelpos": (x, y),
                 "noaxes": False,
             },
-            "A2": {"pos": [0.05, 0.50, 0.05, 0.12], "labelpos": (x, y), "noaxes": False},
+            "A2": {"pos": [0.05, 0.50, 0.19, 0.09], "labelpos": (x, y), "noaxes": False},
+            "A3": {"pos": [0.05, 0.50, 0.05, 0.09], "labelpos": (x, y), "noaxes": False},
             "B": {"pos": [0.62, 0.30, 0.78, 0.13], "labelpos": (x, y), "noaxes": False},
             "C": {"pos": [0.75, 0.17, 0.60, 0.13], "labelpos": (x, y)},
             "D1": {"pos": [0.62, 0.30, 0.40, 0.12], "labelpos": (x, y)},
@@ -425,12 +426,25 @@ class IVPlotter(object):
                 and ("tauh_fitted" in ivs.keys())
             ):
                 for fit_number in ivs["tauh_fitted"].keys():
-                    # CP('r', f"tau fitted keys: {str(k):s}")
-                    P.axdict["A"].plot(
+                    first_fn = fit_number
+                    CP('r', f"tau fitted keys: {str(first_fn):s}")
+                    t0 = np.min(ivs["tauh_fitted"][first_fn][0]) - 0.003
+                    t1 = np.max(ivs["tauh_fitted"][first_fn][0])
+                    for itr in ivs["tauh_fitted"].keys():
+                        it0 = np.argmin(np.abs(self.AR.time_base - t0))
+                        it1 = np.argmin(np.abs(self.AR.time_base - t1))
+                        P.axdict["A3"].plot(
+                            self.AR.time_base[it0:it1] * 1e3,
+                            self.AR.traces[itr, it0:it1].view(np.ndarray) * 1e3,
+                            "-",
+                            color=trace_colors[itr],
+                            linewidth=0.35,
+                        )
+                    P.axdict["A3"].plot(
                         ivs["tauh_fitted"][fit_number][0] * 1e3,
                         ivs["tauh_fitted"][fit_number][1] * 1e3,
-                        "--r",
-                        linewidth=0.75,
+                        "--k",
+                        linewidth=0.5,
                     )
         if pubmode:
             PH.calbar(

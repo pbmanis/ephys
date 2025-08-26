@@ -73,7 +73,7 @@ class RmTauAnalysis:
         bridge_offset: float = 0,
         taum_bounds: list = [0.001, 0.050],
         taum_current_range: list = [0, -200e-12],  # in A
-        tauh_voltage: float = -0.08,
+        tauh_voltage: float = -0.08, # in V
         rin_current_limit: float = np.nan   # no limit, should be in A
     ):
         """
@@ -175,7 +175,7 @@ class RmTauAnalysis:
             self.ivpk_analysis(time_window=r_pk)  # peak region
             try:
                 self.tau_h(
-                    self.tauh_voltage,
+                    v_steadystate=self.tauh_voltage,
                     peak_timewindow=[r_pk[0], r_ss[0]],  # self.Clamps.tstart, r_pk],
                     steadystate_timewindow=[r_ss[0], self.Clamps.tend],
                     printWindow=False,
@@ -1099,9 +1099,9 @@ class RmTauAnalysis:
 
     def tau_h(
         self,
-        v_steadystate,
-        peak_timewindow: list = [],
-        steadystate_timewindow: list = [],
+        v_steadystate: float=-0.080,  # target steady-state voltage, V
+        peak_timewindow: list = [],  # [start, end] time window for peak measurement
+        steadystate_timewindow: list = [],  # [start, end] time window for steady-state measurement
         printWindow=False,
     ):
         """
@@ -1133,7 +1133,7 @@ class RmTauAnalysis:
         assert len(peak_timewindow) == 2
         assert len(steadystate_timewindow) == 2
 
-        # initialize result varibles
+        # initialize result variables
         self.tauh_vpk = np.nan  # peak voltage for the tau h meausure
         self.tauh_neg_pk = np.nan
         self.tauh_vss = np.nan  # ss voltage for trace used for tauh
@@ -1148,9 +1148,10 @@ class RmTauAnalysis:
         self.analysis_summary["tauh_tau"] = self.tauh_meantau
         self.analysis_summary["tauh_bovera"] = self.tauh_bovera
         self.analysis_summary["tauh_Gh"] = self.tauh_Gh
-        self.analysis_summary["tauh_vss"] = self.tauh_vss
-
-        if self.rmp / 1000.0 < v_steadystate:  # rmp is in mV...
+        self.analysis_summary["tauh_vss"] = self.tauh_vss  # actual steady-state voltage
+        self.analysis_summary["tauh_voltage"] = v_steadystate  # target measurement value
+        print(self.rmp/1000., v_steadystate)
+        if self.rmp/1000. < v_steadystate:  # don't measure if rmp is below the target steady-state value
             return
 
         Func = "exp1"  # single exponential fit to the seleccted region
@@ -1163,8 +1164,11 @@ class RmTauAnalysis:
         ss_voltages = ss_voltages.mean(axis=1)
         # find trace closest to test voltage at steady-state
         try:
-            itrace = np.argmin((ss_voltages[self.Spikes.nospk] - v_steadystate) ** 2)
+            itrace = np.argmin((ss_voltages - v_steadystate) ** 2)  # ignore "no spikes?"
         except:
+            return
+        if np.fabs(ss_voltages[itrace] - v_steadystate) > 0.005:
+            print("no trace close enough to target vss for tau_h measurement")
             return
         pk_voltages = self.Clamps.traces["Time" : peak_timewindow[0] : peak_timewindow[1]].view(
             np.ndarray
