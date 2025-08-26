@@ -715,7 +715,7 @@ class IVAnalysis(Analysis):
         else:
             raise ValueError("No taum_bounds (time constant bounds) defined in configuration")
             # taum_bounds = [0.0002, 0.050]
-        if "tauh_voltage" in self.experiment.keys():
+        if "tauh_voltage" in self.experiment.keys():  # should be in V
             tauh_voltage = self.experiment["tauh_voltage"]
         else:
             raise ValueError(
@@ -751,7 +751,7 @@ class IVAnalysis(Analysis):
             refractory=self.refractory,
             bridge_offset=br_offset,
             fit_gap=fit_gap,
-            max_spikeshape=self.max_spikeshape,
+            max_spike_shape=self.max_spike_shape,
             max_spike_look=self.max_spike_look,
             plotiv=True,
             full_spike_analysis=True,
@@ -788,10 +788,10 @@ class IVAnalysis(Analysis):
         plotiv: bool = False,
         full_spike_analysis: bool = True,
         average_flag: bool = False,
-        max_spikeshape: int = 2,
+        max_spike_shape: int = 2,
         max_spike_look: float = 0.010,  # time in seconds to look for AHPs
         to_peak: bool = True,
-        tauh_voltage: float = -80.0,
+        tauh_voltage: float = -0.08,  # in V
         taum_bounds: List = [0.0002, 0.050],
         taum_current_range: List = [-10.0e-12, 200e-12],
         lcs_minimum_current: float = 20e-12,
@@ -899,7 +899,7 @@ class IVAnalysis(Analysis):
         # else:
         #     minimum_current = 20e-12
         #     minimum_postspike_interval = 0.025
-
+        max_spike_shape = self.experiment.get("max_spike_shape", 5)
         self.SP.setup(
             clamps=self.AR,
             threshold=threshold,
@@ -907,6 +907,7 @@ class IVAnalysis(Analysis):
             peakwidth=0.001,
             adaptation_min_rate = adapt_min_rate,
             adaptation_max_rate = adapt_max_rate,
+            max_spike_shape = max_spike_shape,
             adaptation_last_spike_time = adapt_last_spike_time,  # seconds
             lcs_minimum_current = lcs_minimum_current,
             lcs_minimum_postspike_interval = lcs_minimum_postspike_interval,
@@ -923,7 +924,7 @@ class IVAnalysis(Analysis):
         self.SP.analyzeSpikes(track=track)
         if full_spike_analysis:
             print("    Analyzing spike shapes", end=" ")
-            self.SP.analyzeSpikeShape(max_spikeshape=max_spikeshape)
+            self.SP.analyzeSpikeShape(max_spike_shape=max_spike_shape)
             # self.SP.analyzeSpikes_brief(mode="evoked")
             self.SP.analyzeSpikes_brief(mode="baseline")
             self.SP.analyzeSpikes_brief(mode="poststimulus")

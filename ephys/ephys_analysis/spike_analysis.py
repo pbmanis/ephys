@@ -120,13 +120,13 @@ def concurrent_spike_analysis(
     i: int,
     x: int,
     spike_begin_dV: float,
-    max_spikeshape: int,
+    max_spike_shape: int,
     printSpikeInfo: bool,
 ):
     result = spikeanalysis.analyze_one_trace(
         trace_number=i,
         begin_dV=spike_begin_dV,
-        max_spikeshape=max_spikeshape,
+        max_spike_shape=max_spike_shape,
         printSpikeInfo=printSpikeInfo,
     )
     return result
@@ -157,6 +157,7 @@ class SpikeAnalysis:
         adaptation_min_rate: float = 20.0,
         adaptation_max_rate: float = 40.0,
         adaptation_last_spike_time: float = 0.5,  # seconds
+        max_spike_shape: int = 5,
         adaptation_minimum_spike_count: int = 4,  # minimum number of spikes to compute adaptation ratio
         lcs_minimum_current: float = 20e-12,  # minimum current for LCS
         lcs_minimum_postspike_interval: float = 0.025,  # minimum time after the spike
@@ -230,7 +231,7 @@ class SpikeAnalysis:
         )
         self.ar_min_rate = adaptation_min_rate
         self.ar_max_rate = adaptation_max_rate
-
+        self.max_spike_shape = max_spike_shape
         self.min_peaktotrough = 0.010  # change in V on falling phase to be considered a spike
         self.max_spike_look = max_spike_look  # sec over which to measure spike widths
 
@@ -489,7 +490,7 @@ class SpikeAnalysis:
         self,
         trace_number,
         begin_dV=12.0,
-        max_spikeshape: Union[int, None] = 5,
+        max_spike_shape: Union[int, None] = 5,
         printSpikeInfo: bool = False,
     ):
         if len(self.spikes[trace_number]) == 0:
@@ -513,17 +514,17 @@ class SpikeAnalysis:
             self.Clamps.tstart,
         )
         trspikes = OrderedDict()
-        # if max_spikeshape is None:
+        # if max_spike_shape is None:
         #     jmax = len(self.spikes[i])
         # else:
-        #     jmax = max_spikeshape
+        #     jmax = max_spike_shape
         # print("# in train: ", i, len(self.spikes[i]))
         for spike_number in range(len(self.spikes[trace_number])):
             # if spike_number >= len(self.spikeIndices[trace_number]):
             #     continue
             # print("trace, spike, beginDV: ", trace_number, spike_number, begin_dV)
             thisspike = self.analyze_one_spike(
-                trace_number, spike_number, begin_dV, max_spikeshape=max_spikeshape
+                trace_number, spike_number, begin_dV, max_spike_shape=max_spike_shape
             )
             # print("thisspike: ", i, j, thisspike)
             if thisspike is not None:
@@ -535,7 +536,7 @@ class SpikeAnalysis:
         self,
         printSpikeInfo=False,
         spike_begin_dV=12.0,
-        max_spikeshape: Union[int, None] = 5,
+        max_spike_shape: Union[int, None] = 5,
     ):
         """analyze the spike shape.
         Does analysis of ONE protocol, all traces.
@@ -562,7 +563,7 @@ class SpikeAnalysis:
             Slope used to define onset of the spike. The default value
             is from Druckmann et al; change this at your own peril!
 
-        max_spikeshape : int (default 5) or None
+        max_spike_shape : int (default 5) or None
             Maximum number of spikes for detailed analysis of spike shape. Only the first
             maxspikes in a trial (trace) are analyzed. The rest are counted and latency measured,
             but there is no detailed analysis.
@@ -602,7 +603,7 @@ class SpikeAnalysis:
         #             i=i,
         #             x=x,  # trace
         #             spike_begin_dV=spike_begin_dV,
-        #             max_spikeshape=max_spikeshape,
+        #             max_spike_shape=max_spike_shape,
         #             printSpikeInfo=printSpikeInfo
         #         )
         #         for i, x in enumerate(tasks)
@@ -624,7 +625,7 @@ class SpikeAnalysis:
 
         # not parallelized code:
         for i in range(ntraces):
-            self.analyze_one_trace(traces[i], spike_begin_dV, max_spikeshape, printSpikeInfo)
+            self.analyze_one_trace(traces[i], spike_begin_dV, max_spike_shape, printSpikeInfo)
 
         self.iHold = np.mean(self.iHold_i)
         self.analysis_summary["spikes"] = self.spikeShapes  # save in the summary dictionary too
@@ -747,7 +748,7 @@ class SpikeAnalysis:
         trace_number: int,
         spike_number: int,
         spike_begin_dV: float,
-        max_spikeshape: Union[int, None] = None,
+        max_spike_shape: Union[int, None] = None,
     ):
         """analyze_one_spike  Make measurements on a single spike in a trace. To the
         extent possible (and it is not always possible), the measurements include:
@@ -764,7 +765,7 @@ class SpikeAnalysis:
             The spike # within the trace
         spike_begin_dV : float
             dvdt at spike start
-        max_spikeshape : Union[int, None], optional
+        max_spike_shape : Union[int, None], optional
             Maximum number of spikes within a train that will get this
             detaile analysis. Usually the analysis is only useful on the
             first couple of spikes. By default None
@@ -893,7 +894,7 @@ class SpikeAnalysis:
         thisspike.AP_beginIndex = kthresh
         thisspike.AP_begin_V = self.Clamps.traces[trace_number][thisspike.AP_beginIndex]
         if (
-            spike_number > max_spikeshape
+            (spike_number > max_spike_shape) and (max_spike_shape > 0)  # max spike shape of -1 is "All spikes"
         ):  # no shape measurements on the rest of the spikes for speed
             # print("Reached spike # > max_spike shape")
             # print("returning latency: ", thisspike.AP_latency)

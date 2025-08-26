@@ -144,7 +144,7 @@ class cmdargs:
     )
     downsample: int = 1
     ivduration: float = 0.0
-    max_spikeshape: int = 5
+    max_spike_shape: int = 5
     max_spike_look: float = 0.010  # time limit in msec to look for AHP
     threshold: float = 2.5  # cb event detection threshold (x baseline std)
     refractory: float = 0.0007  # absolute refractory period
@@ -249,7 +249,7 @@ class Analysis:
         # analysis parameters
         self.downsample = 1
         self.ivduration = args.ivduration
-        self.max_spikeshape = args.max_spikeshape
+        self.max_spike_shape = args.max_spike_shape
         self.max_spike_look = args.max_spike_look
         self.threshold = args.threshold
         self.refractory = args.refractory
