@@ -74,6 +74,7 @@ class RmTauAnalysis:
         taum_bounds: list = [0.001, 0.050],
         taum_current_range: list = [0, -200e-12],  # in A
         tauh_voltage: float = -0.08, # in V
+        tauh_vss_tolerance: float = 0.005,  # in V
         rin_current_limit: float = np.nan   # no limit, should be in A
     ):
         """
@@ -112,6 +113,7 @@ class RmTauAnalysis:
         self.taum_bounds = taum_bounds
         self.taum_current_range = taum_current_range
         self.tauh_voltage = tauh_voltage
+        self.tauh_vss_tolerance = tauh_vss_tolerance
         self.rin_current_limit = rin_current_limit
         self.analysis_summary["holding"] = self.Clamps.holding
         self.analysis_summary["WCComp"] = self.Clamps.WCComp
@@ -176,6 +178,7 @@ class RmTauAnalysis:
             try:
                 self.tau_h(
                     v_steadystate=self.tauh_voltage,
+                    tauh_vss_tolerance=self.tauh_vss_tolerance,
                     peak_timewindow=[r_pk[0], r_ss[0]],  # self.Clamps.tstart, r_pk],
                     steadystate_timewindow=[r_ss[0], self.Clamps.tend],
                     printWindow=False,
@@ -1100,6 +1103,7 @@ class RmTauAnalysis:
     def tau_h(
         self,
         v_steadystate: float=-0.080,  # target steady-state voltage, V
+        tauh_vss_tolerance: float = 0.005,  # in V
         peak_timewindow: list = [],  # [start, end] time window for peak measurement
         steadystate_timewindow: list = [],  # [start, end] time window for steady-state measurement
         printWindow=False,
@@ -1167,7 +1171,7 @@ class RmTauAnalysis:
             itrace = np.argmin((ss_voltages - v_steadystate) ** 2)  # ignore "no spikes?"
         except:
             return
-        if np.fabs(ss_voltages[itrace] - v_steadystate) > 0.005:
+        if np.fabs(ss_voltages[itrace] - v_steadystate) > tauh_vss_tolerance:
             print("no trace close enough to target vss for tau_h measurement")
             return
         pk_voltages = self.Clamps.traces["Time" : peak_timewindow[0] : peak_timewindow[1]].view(

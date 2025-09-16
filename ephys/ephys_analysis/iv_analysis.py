@@ -721,7 +721,10 @@ class IVAnalysis(Analysis):
             raise ValueError(
                 "No tauh_voltage (steady-state voltage when measuring tauh) defined in configuration"
             )
-
+        if "tauh_vss_tolerance" in self.experiment.keys():
+            tauh_vss_tolerance = self.experiment["tauh_vss_tolerance"]
+        else:
+            raise ValueError("No tauh_vss_tolerance defined in configuration")
         if "fitting_adjustments" in self.experiment.keys() and self.experiment["fitting_adjustments"] is not None:
             cell_id = self.df.at[icell, "cell_id"]
             if cell_id in self.experiment["fitting_adjustments"].keys():
@@ -757,6 +760,7 @@ class IVAnalysis(Analysis):
             full_spike_analysis=True,
             average_flag=average_flag,
             tauh_voltage=tauh_voltage,
+            tauh_vss_tolerance=tauh_vss_tolerance,
             taum_bounds=taum_bounds,
             taum_current_range=taum_current_range,
             lcs_minimum_current=lcs_minimum_current,
@@ -792,6 +796,7 @@ class IVAnalysis(Analysis):
         max_spike_look: float = 0.010,  # time in seconds to look for AHPs
         to_peak: bool = True,
         tauh_voltage: float = -0.08,  # in V
+        tauh_vss_tolerance: float = 0.005,  # in V
         taum_bounds: List = [0.0002, 0.050],
         taum_current_range: List = [-10.0e-12, 200e-12],
         lcs_minimum_current: float = 20e-12,
@@ -882,6 +887,7 @@ class IVAnalysis(Analysis):
             taum_bounds=taum_bounds,
             taum_current_range=taum_current_range,
             tauh_voltage=tauh_voltage,
+            tauh_vss_tolerance=tauh_vss_tolerance,
             rin_current_limit = self.experiment.get("rin_current_limit", np.nan),
         )
         
