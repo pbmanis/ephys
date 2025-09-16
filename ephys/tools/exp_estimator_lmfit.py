@@ -66,6 +66,10 @@ def exp_decay(t, yoffset, yscale, tau, xoffset=0):
         warnings.simplefilter("ignore")
         return yoffset + yscale * np.exp(-(t - xoffset) / tau)
 
+def exp_decay2(t, yoffset, yscale, tau, yscale1, tau1, xoffset=0):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return yoffset + yscale * np.exp(-(t - xoffset) / tau) + yscale1 * np.exp(-(t - xoffset) / tau1)
 
 def estimate_exp_params_CC(data: TSeries):
     """Estimate parameters for an exponential fit to data.
@@ -497,7 +501,7 @@ class LMexpFit:
         #     lmfit.printfuncs.report_ci(ci)
 
         if plot:
-            # Plot the data and the fitted curve
+            app = pg.mkQApp()# Plot the data and the fitted curve
             pw = pg.plot(
                 x_data,
                 y_data,
@@ -568,37 +572,50 @@ class LMexpFit:
 
         return result_lm
 
-    def fit2(self, x_data: np.ndarray, y_data: np.ndarray, plot=False, report=False):
+    def fit2(self, x_data: np.ndarray, y_data: np.ndarray, plot=True, verbose=False):
         assert x_data.ndim == 1
         assert y_data.ndim == 1
 
         exp1fit = self.fit1(x_data, y_data, plot=False)  # first get the single exponential fit
         # Create a model for exponential decay
         model = lmfit.Model(self.exp_decay2)
-
+        if exp1fit.params['A1'].value > 1:
+            return None  # bad fit
         # Set the initial parameters based on the single exponential fit
         params = model.make_params(
             DC=exp1fit.params["DC"].value,
             A1=exp1fit.params["A1"].value,
             R1=exp1fit.params["R1"].value,
-            A2=0.1 * exp1fit.params["A1"].value,
+            A2=0.5 * exp1fit.params["A1"].value,
             R2=0.1 * exp1fit.params["R1"].value,
         )
+        print(params)
         # set bounds on the parameters
         params["DC"].min = 0.98 * params["DC"].value
         params["DC"].max = 1.02 * params["DC"].value
         params["A1"].min = 2 ** params["A1"].value
         params["A1"].max = 0.0  # 1.05*params["A1"].value
+        if params["A1"].min == params['A1'].max:
+            params["A1"].min = -1
+            params["A1"].max = 1
+
         params["R1"].min = 1e-4  # 0.9*params["R1"].value
         params["R1"].max = 1.5  # 1.1*params["R1"].value
+        params["R2"].min = 1e-3
+        params["R2"].max = 1.5
+
         mini = lmfit.Minimizer(self.residual2, params, fcn_args=(x_data, y_data))
         # Fit the model to the data
         result_simplex = mini.minimize(method="nedler")
 
-        print("Simplex Fit 2: ")
-        lmfit.report_fit(result_simplex.params, min_correl=0.5)
+        if verbose:
+            print("Simplex Fit 2: ")
+            lmfit.report_fit(result_simplex.params, min_correl=0.5)
         result_simplex.params["A2"].min = 0.9 * params["A2"].value
         result_simplex.params["A2"].max = 0.0  # 1.5*params["A2"].value
+        if result_simplex.params['A2'].min == result_simplex.params['A2'].max:
+            result_simplex.params["A2"].min = -1
+            result_simplex.params["A2"].max = 1
         result_simplex.params["R2"].min = 1e-4  # 0.8*params["R2"].value
         result_simplex.params["R2"].max = 1.5 * params["R2"].value
 
@@ -612,6 +629,7 @@ class LMexpFit:
         # lmfit.printfuncs.report_ci(ci)
 
         if plot:
+            app = pg.mkQApp()
             # Plot the data and the fitted curve
             pw = pg.plot(
                 x_data,
@@ -651,7 +669,7 @@ class LMexpFit:
                     A2=result_simplex.params["A2"],
                     R2=result_simplex.params["R2"],
                 ),
-                pen=pg.mkPen("g", width=3),
+                pen=pg.mkPen("g", width=1.5),
             )
             app.exec()
         #     # result.plot_fit()
