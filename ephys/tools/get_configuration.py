@@ -141,6 +141,7 @@ def validate_configuration(experiments, datasets):
 
         "stats_filename",
         "statistical_comparisons",
+        "R_statistics_summaries",
         "remove_groups",
         
         "plot_order",
@@ -166,6 +167,8 @@ def validate_configuration(experiments, datasets):
         "taum_current_range",
         "taum_bounds",
         "tauh_voltage",
+        "tauh_voltage",
+        "tauh_vss_tolerance",
         
         "group_by",
         "group_map",
