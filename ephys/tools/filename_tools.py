@@ -425,8 +425,35 @@ def compare_slice_cell(
     else:
         return (True, slicecell3, slicecell2, slicecell1)
 
+re_experiment_date = re.compile(r"(?P<date>([\d]{4}.[\d]{2}.[\d]{2}_[\d]{3}))")
+re_slice = re.compile(r"(?P<slice>slice_[\d]{3})")
+re_cell = re.compile(r"(?P<cell>cell_[\d]{3})")
+re_path = re.compile(r"(?P<path>.*)/(?P<date>([\d]{4}.[\d]{2}.[\d]{2}_[\d]{3}))/((?P<slice>slice_[\d]{3})/)?(?P<cell>cell_[\d]{3})")
 
-def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
+def get_path_date_slice_cell(cell_id):
+    """"From an experiment cell id, which might include a leading path or two,
+    (for example, NF107Ai32-TTX-4AP/2022.02.21_000/slice_000/cell_000),
+    extract the experiment date and slice strings.
+    """
+    m = re_experiment_date.search(cell_id)
+    if m:
+        date = m.group("date")
+    else:
+        date = None
+    m = re_slice.search(cell_id)
+    if m:
+        slice = m.group("slice")
+    else:
+        slice = None
+    m = re_cell.search(cell_id)
+    if m:
+        cell = m.group("cell")
+    else:
+        cell = None
+    datapath = re_path.search(cell_id).group("path") if re_path.search(cell_id) else None
+    return datapath, date, slice, cell
+
+def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype:str = "IVs"):
     """get_cell get the pickled data file for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
@@ -454,6 +481,7 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
+    assert datatype in ["IVs", "maps"]
     df_tmp = df[df.cell_id == cell_id]  # df.copy() # .dropna(subset=["date"])
     # print("get_cell: df_tmp: ", df_tmp.keys())
     # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
@@ -495,32 +523,36 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str):
         cell_parts = cell.split("_")
         cell_day_name = cell_parts[0]
         re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
-        m = re_parse.match(cell_parts[-1])
-        if m is not None:
-            # print("cell_parts: ", cell_parts[-1])
-            snp = re_parse.match(cell_parts[-1]).group(2)
-            cnp = re_parse.match(cell_parts[-1]).group(4)
-            cname2 = f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
-        elif cell_id.find("cell"):  # try to use /slice_000 /cell_000 style
-            cell_parts = Path(cell_id).parts
-            sc = make_slicecell(cell_parts[-2], cell_parts[-1])
-            cell_day_name = cell_parts[-3].replace(".", "_")
-            cname2 = f"{cell_day_name[:-4]:s}_{sc:s}_{celltype:s}_IVs.pkl"
-        else:
+        match datatype:
+            case 'IVs':
+                m = re_parse.match(cell_parts[-1])
+                if m is not None:
+                    # print("cell_parts: ", cell_parts[-1])
+                    snp = re_parse.match(cell_parts[-1]).group(2)
+                    cnp = re_parse.match(cell_parts[-1]).group(4)
+                    cname2 = f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
+                elif cell_id.find("cell"):  # try to use /slice_000 /cell_000 style
+                    cell_parts = Path(cell_id).parts
+                    sc = make_slicecell(cell_parts[-2], cell_parts[-1])
+                    cell_day_name = cell_parts[-3].replace(".", "_")
+                    cname2 = f"{cell_day_name[:-4]:s}_{sc:s}_{celltype:s}_IVs.pkl"
+                else:
+                    raise ValueError(f"Failed to parse cell name for IVs: {cell:s}")
 
-            raise ValueError(f"Failed to parse cell name: {cell:s}")
-
-    datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
-
+                datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
+            case 'maps': # file location and name are different
+                pathstr, datestr, slicestr, cellstr = get_path_date_slice_cell(cell_id)
+                pklame = f"{datestr:s}~{slicestr:s}~{cellstr:s}.pkl"
+                datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], "events", pklame)
     if datapath2.is_file():
-        CP("c", f"...  datapath: {datapath2!s} is OK\r")
+        # CP("c", f"...  datapath: {datapath2!s} is OK\r")
         datapath = datapath2
     else:
         # print("tried datapath: ", datapath2, celltype)
-        print(f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
+        # print(f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
-        raise ValueError
-        return None, None
+        # raise ValueError
+        return None
     return datapath
 
 def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):

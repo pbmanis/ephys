@@ -527,10 +527,11 @@ import concurrent.futures
 
 import numpy
 
-try:
-    import imagecodecs
-except ImportError:
-    imagecodecs = None
+imagecodecs = None
+# try:
+#     import imagecodecs  # optional, speeds up compression and decompression
+# except ImportError:
+#     imagecodecs = None
 
 # delay import of mmap, pprint, fractions, xml, tkinter, lxml, matplotlib,
 #   subprocess, multiprocessing, tempfile, zipfile, fnmatch

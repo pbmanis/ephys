@@ -32,7 +32,7 @@ import ephys.ephys_analysis.poisson_score as EPPS
 import matplotlib.collections as collections
 import matplotlib.pyplot as mpl
 import seaborn as sns
-from ptitprince import PtitPrince as pt
+# from ptitprince import PtitPrince as pt
 import ephys.mini_analyses.mini_event_dataclasses as MEDC
 import ephys.mini_analyses.mini_event_dataclass_reader as MEDR
 
@@ -2605,23 +2605,23 @@ class EventAnalyzer(object):
             if len(hddf) == 0:
                 return
             if rain:
-                pt.RainCloud(
-                    x="Group",
-                    y=whatplot,
-                    data=hddf,
-                    ax=axl[nax],
-                    width_viol=1.5,
-                    width_box=0.35,
-                    orient="h",
-                )
-                axlim = axl[nax].set_xlim
+            #     pt.RainCloud(
+            #         x="Group",
+            #         y=whatplot,
+            #         data=hddf,
+            #         ax=axl[nax],
+            #         width_viol=1.5,
+            #         width_box=0.35,
+            #         orient="h",
+            #     )
+            #     axlim = axl[nax].set_xlim
             # pt.half_violinplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], bw='scott',  linewidth=1, cut=0.,
             #     width=0.8, inner=None, orient='h')
-            # sns.boxplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], color='0.8',
-            #                 showcaps=True, boxprops={'facecolor':'none', "zorder":10},
-            #                showfliers=True, whiskerprops={'linewidth':2, "zorder":10})
-            # sns.stripplot(x='Group', y=whatplot, data=hddf, ax=axl[nax],
-            #     size=2.5, jitter=1, color='0.8', orient='h')
+                sns.boxplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], color='0.8',
+                                showcaps=True, boxprops={'facecolor':'none', "zorder":10},
+                            showfliers=True, whiskerprops={'linewidth':2, "zorder":10})
+                sns.stripplot(x='Group', y=whatplot, data=hddf, ax=axl[nax],
+                    size=2.5, jitter=1, color='0.8', orient='h')
 
             else:
                 print(hddf)

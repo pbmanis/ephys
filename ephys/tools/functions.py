@@ -20,11 +20,11 @@ from scipy import stats
 import scipy.signal, scipy.ndimage, scipy.optimize
 import numpy as np
 
-try:
-    import scipy.weave as weave
-    from scipy.weave import converters
-except:
-    pass    
+# try:
+#     import scipy.weave as weave
+#     from scipy.weave import converters
+# except:
+#     pass    
 
 
 def dirDialog(startDir='', title="Select Directory"):
@@ -2543,7 +2543,7 @@ def getSpikeTemplate(ivc, traces):
 
 
 if __name__ == '__main__':
-    import user
+    pass
     
     
     
