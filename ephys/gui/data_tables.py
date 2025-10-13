@@ -954,12 +954,12 @@ class DataTables:
                                 )
                                 if self.dry_run:
                                     self.status_bar_message(
-                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row_number!s}",
+                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row!s}",
                                         color="yellow",
                                     )
                                 else:
                                     self.status_bar_message(
-                                        f"Analyzing {cell_id!s} from row: {selected_row_number!s}",
+                                        f"Analyzing {cell_id!s} from row: {selected_row!s}",
                                         color="green",
                                     )
                                     self.analyze_maps(
