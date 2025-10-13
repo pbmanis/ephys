@@ -62,10 +62,15 @@ class IVPlotter(object):
             _description_
         """
         if plot_handle is not None:
+            datadir = Path(self.plot_df["cell_id"], Path(protocol_directory).name)
             shortpath = Path(protocol_directory).parts
             shortpath2 = str(Path(*shortpath[5:]))
+            infostr = BIS.build_info_string(experiment=self.experiment, 
+                                            cell_id=self.plot_df['cell_id'], 
+                                            AR=acq4reader, 
+                                           )
             plot_handle.suptitle(
-                f"{str(shortpath2):s}\n{BIS.build_info_string(acq4reader, protocol_directory):s}",
+                f"{str(datadir):s}\n{infostr:s}",
                 fontsize=8,
             )
 
@@ -222,14 +227,14 @@ class IVPlotter(object):
             ha="left",
             transform=P.figure_handle.transFigure,
         )
-
+        datadir = Path(self.experiment["rawdatapath"], self.experiment["directory"])
         self.AR = acq4_reader.acq4_reader(
-            Path(self.plot_df["data_directory"], self.plot_df["cell_id"], protocol)
+            Path(datadir, self.plot_df["cell_id"], Path(protocol).name)
         )
-        infostr = BIS.build_info_string(self.AR, self.AR.protocol)
+        infostr = BIS.build_info_string(self.experiment, self.plot_df["cell_id"], self.AR)
 
         P.figure_handle.suptitle(
-            f"{str(Path(self.plot_df['data_directory'], self.plot_df["cell_id"], protocol)):s}\n{infostr:s}",
+            f"{str(Path(datadir, self.plot_df["cell_id"], protocol)):s}\n{infostr:s}",
             fontsize=8,
         )
         dv = 50.0
@@ -792,10 +797,10 @@ class IVPlotter(object):
         P = PH.Plotter((len(sizer), 1), axmap=axmap, label=True, figsize=(7.0, 5.0))
         # PH.show_figure_grid(P.figure_handle)
         P.resize(sizer)  # perform positioning magic
-        infostr = BIS.build_info_string(self.AR, self.AR.protocol)
+        infostr = BIS.build_info_string(self.experiment, self.plot_df["cell_id"], self.AR)
         protocol = self.AR.protocol.name
         P.figure_handle.suptitle(
-            f"{str(Path(self.plot_df['data_directory'], self.plot_df["cell_id"], protocol)):s}\n{infostr:s}",
+            f"{str(Path(self.plot_df['data_directory'], self.plot_df['cell_id'], protocol)):s}\n{infostr:s}",
             fontsize=8,
         )
         dv = 0.0
