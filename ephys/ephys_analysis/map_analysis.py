@@ -731,7 +731,11 @@ class MAP_Analysis(Analysis):
         print(msg)
         Logger.info(msg)
         self.icell = icell
-        self.mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
+        # self.mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
+        self.mapdir = Path(self.experiment["rawdatapath"], 
+                           self.experiment["directory"],
+                        #    self.df.at[self.icell, "cell_id"],
+                           self.map_name)
         if not self.mapdir.is_dir():
             msg = f"Map name did not resolve to directory: {str(self.mapdir):s}"
             Logger.error(msg)
