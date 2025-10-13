@@ -234,7 +234,9 @@ class IVAnalysis(Analysis):
         Logger.info(msg)
         cell_directory = Path(
             # self.df.iloc[icell].data_directory, self.experiment['directory'], self.df.iloc[icell].cell_id
-            self.df.iloc[icell].data_directory,
+            #self.df.iloc[icell].data_directory,
+            self.experiment["rawdatapath"],
+            self.experiment["directory"],
             self.df.iloc[icell].cell_id,
         )
         cell_id = self.df.iloc[icell].cell_id
