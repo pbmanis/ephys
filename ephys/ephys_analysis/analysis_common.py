@@ -1240,13 +1240,14 @@ class Analysis:
             # check for the protocol paths
             for prottype in self.allprots.keys():
                 for prot in self.allprots[prottype]:
-                    ffile = Path(self.df.iloc[icell].data_directory, prot)
+                    # ffile = Path(self.df.iloc[icell].data_directory, prot)
+                    ffile = Path(fullfile, Path(prot).name)
                     if not ffile.is_dir():
                         msg = f"file/protocol day={icell:d} not found: {str(ffile):s}\n"
                         msg += f"    {str(prottype):s}  {str(prot):s}\n"
                         CP.cprint("r", msg)
                         Logger.error(msg)
-                        exit()
+                        return False
         else:
             msg = f"   Cell OK, with {len(self.allprots['stdIVs'])+len(self.allprots['CCIV_long']):4d} IV protocols"
             msg += f" and {len(self.allprots['maps']):4d} map protocols"
