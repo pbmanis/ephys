@@ -1196,7 +1196,6 @@ class acq4_reader:
             # fake it by getting the data from the stated device
             self.getLaserBlueTimes()
             self.LEDTimes = self.LaserBlueTimes
-            print(self.LaserBlueTimes)
             for i, d in enumerate(dirs):
                 fn = Path(d, f"{light_device_name:s}.ma")
                 if not fn.is_file():
@@ -1204,7 +1203,7 @@ class acq4_reader:
                     return False
                 lbr = EM.MetaArray(file=fn)
                 info = lbr[0].infoCopy()
-                print("LBT daq info: ", info[1]["DAQ"])
+                # print("LBT daq info: ", info[1]["DAQ"])
                 try:
                     sr = info[1]["DAQ"]["Shutter"]["rate"] / info[1]["DAQ"]["Shutter"]["downsampling"]
                 except:
