@@ -540,6 +540,8 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
                     raise ValueError(f"Failed to parse cell name for IVs: {cell:s}")
 
                 datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
+                CP("m", f"get_cell_pkl_filename: Trying IVs datapath2: {datapath2!s}")
+                CP("m", f"get_cell_pkl_filename exists: {datapath2.is_file()}")
             case 'maps': # file location and name are different
                 pathstr, datestr, slicestr, cellstr = get_path_date_slice_cell(cell_id)
                 pklame = f"{datestr:s}~{slicestr:s}~{cellstr:s}.pkl"
@@ -556,7 +558,7 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
     return datapath
 
 def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
-    """get_cell get the pickled data file for this cell - this is an analyzed file,
+    """get_cell: get the pickled data file for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
     Parameters
@@ -586,6 +588,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     CP("r", f"get cell: {cell_id!s}")
 
     datapath = get_cell_pkl_filename(experiment, df, cell_id)
+    CP("m", f"get_cell: datapath: {datapath!s}")
     df_tmp = df[df.cell_id == cell_id]
     try:
         df_cell = pd.read_pickle(datapath, compression="gzip")
