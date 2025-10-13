@@ -1,13 +1,17 @@
 import logging
 from pathlib import Path
 
+import pylibrary.tools.cprint as CP
+
 Logger = logging.getLogger("AnalysisLogger")
 
-def build_info_string(AR, path_to_cell):
+def build_info_string(experiment:dict, cell_id:str, AR: object) -> str:
     infostr = ""
-    info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent.parent)["."]
-    slice_info = AR.readDirIndex(currdir=Path(AR.protocol).parent.parent)["."]
-    cell_info= AR.readDirIndex(currdir=Path(AR.protocol).parent)["."]
+    datadir = Path(experiment["rawdatapath"], experiment["directory"], cell_id)
+    CP.cprint("m", f"Building info string for {str(datadir):s}")
+    info = AR.readDirIndex(currdir=Path(datadir).parent.parent.parent)["."]
+    slice_info = AR.readDirIndex(currdir=Path(datadir).parent.parent)["."]
+    cell_info= AR.readDirIndex(currdir=Path(datadir).parent)["."]
     info_keys = list(info.keys())
     missing = False
 
@@ -60,10 +64,11 @@ def build_info_string(AR, path_to_cell):
 
 def main():
     # test
-    from ephys.datareaders import acq4_reader as AR
-    dn = Path("/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32_Het/2022.06.29_000/slice_001/cell_000/CCIV_1nA_max_1s_pulse_000")
-    areader = AR.acq4_reader(dn)
-    infostr = build_info_string(areader, dn)
-    print(infostr)
+    pass
+    # from ephys.datareaders import acq4_reader as AR
+    # dn = Path("/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32_Het/2022.06.29_000/slice_001/cell_000/CCIV_1nA_max_1s_pulse_000")
+    # areader = AR.acq4_reader(dn)
+    # infostr = build_info_string(areader, dn)
+    # print(infostr)
 if __name__ == "__main__":
     main()
