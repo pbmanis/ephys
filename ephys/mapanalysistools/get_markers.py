@@ -100,6 +100,8 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
         mosaic_file = list(fullfile.glob("*.mosaic"))
     elif fullfile.is_file():
         mosaic_file = [fullfile]
+    else:
+        mosaic_file = []
     if len(mosaic_file) > 0:
         if verbose:
             CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
