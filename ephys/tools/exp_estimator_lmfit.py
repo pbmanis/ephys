@@ -361,7 +361,7 @@ class LMexpFit:
             y21 = sign * 1e-6
         # print(f"Revisited: y32: {y32}, y21: {y21}, d: {d}")
         # print("y32/21: ", y32 / y21)
-        if y21 == 0.0:
+        if y21 == 0.0 or y32 == 0.0:
             R1 = 5.
         else:
             R1 = -np.log(y32 / y21) / d
