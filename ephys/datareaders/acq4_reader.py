@@ -169,7 +169,8 @@ class acq4_reader:
         dirs = [d for d in list(p.glob("*")) if d.is_dir()]
         CP.cprint("c", f"Found {len(dirs):d} directories under {str(p):s}")
         if len(dirs) == 0:
-            raise ValueError(f"No directories found under {str(p):s}")
+            return []
+            # raise ValueError(f"No directories found under {str(p):s}")
         # CP.cprint("c", f"   all dirs: {str(dirs)!s}")
         # dirs = filter(Path.is_dir, list(Path(p).glob("*")))
         dirs = sorted(list(dirs))  # make sure these are in proper order...
