@@ -614,8 +614,8 @@ class MapEventAnalyzer:
         PH.nice_plot(ax)
         print(db[xdat])
         print(db[ydat])
-        if title is not None:
-            f.suptitle(f"{title:s}\n{self.experiment_name:s}", fontsize=10)
+        # if title is not None:
+        #     f.suptitle(f"{title:s}\n{self.experiment_name:s}", fontsize=10)
         timestamp = pd.Timestamp.now()
         f.text(
             x=0.97,
