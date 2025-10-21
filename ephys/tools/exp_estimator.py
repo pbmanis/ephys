@@ -1,6 +1,7 @@
-# from:
-# https://stackoverflow.com/questions/3938042/fitting-exponential-decay-with-no-initial-guessing
-# seems like a heavy lift for a simple problem
+""" from:
+https://stackoverflow.com/questions/3938042/fitting-exponential-decay-with-no-initial-guessing
+seems like a heavy lift for a simple problem
+"""
 import torch
 import torch.nn as nn
 import torch.optim as optim

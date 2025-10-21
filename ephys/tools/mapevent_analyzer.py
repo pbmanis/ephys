@@ -1,3 +1,29 @@
+"""
+mapevent_analyzer.py
+Python 3 only
+This class reads event data from the map analyzer output (in datatables),
+which is stored in a pickled format (pickled files, one for each cell), usually
+in the "events" directory.
+The output is stored in a summary file (also pickled) which has one entry.
+
+The directories and output files are specified in the configuration file for
+the project being analyzed. This means that this package should be called
+from the command line when in the specific project directory (not ephys directory).
+
+It does some statistical evaluation of responses based on time of occurrence and probability.
+
+To update from the events database:
+
+mapevent_analyzer -E nf107 --eventsummary
+If this indicates that some files need updating:
+Do (for example):
+mapevent_analyzer -E nf107 --eventsummary -d 2018.02.09 -s S3C0 --force
+
+To update the entire events database from the files in the events/ directory:
+mapevent_analyzer -E nf107 --eventsummary --force
+
+"""
+
 import sys
 
 if sys.version_info[0] < 3:
@@ -29,37 +55,25 @@ import ephys.datareaders as DR
 import ephys.tools
 import ephys.ephys_analysis as EP
 import ephys.ephys_analysis.poisson_score as EPPS
+import ephys.mapanalysistools.shuffler as shuffler
+
 import matplotlib.collections as collections
 import matplotlib.pyplot as mpl
 import seaborn as sns
+
 # from ptitprince import PtitPrince as pt
 import ephys.mini_analyses.mini_event_dataclasses as MEDC
 import ephys.mini_analyses.mini_event_dataclass_reader as MEDR
+from ephys.tools.get_configuration import get_configuration
 
 AR = DR.acq4_reader.acq4_reader()
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
 
-import shuffler
+import ephys.mapanalysistools.shuffler
 
 cprint = CP.cprint
-"""
-mapevent_analyzer - Python 3 only
 
-Read events from the nf107_ivs map output format (pickled files, one for each cell)
-Do some statistical evaluation of responses based on time of occurrence and prob
-
-To update from the events database:
-
-mapevent_analyzer -E nf107 --eventsummary
-If this indicates that some files need updating:
-Do (for example):
-mapevent_analyzer -E nf107 --eventsummary -d 2018.02.09 -s S3C0 --force
-
-To update the entire events database from the files in the events/ directory:
-mapevent_analyzer -E nf107 --eventsummary --force
-
-"""
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
@@ -75,13 +89,14 @@ class CustomFormatter(logging.Formatter):
         logging.INFO: white + lineformat + reset,
         logging.WARNING: yellow + lineformat + reset,
         logging.ERROR: red + lineformat + reset,
-        logging.CRITICAL: bold_red + lineformat + reset
+        logging.CRITICAL: bold_red + lineformat + reset,
     }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+
 
 logging.getLogger("fontTools.subset").disabled = True
 Logger = logging.getLogger("MapEvent_Analyzer")
@@ -92,60 +107,67 @@ logging_fh = logging.FileHandler(filename="map_analysis.log")
 logging_fh.setLevel(level)
 logging_sh = logging.StreamHandler()
 logging_sh.setLevel(level)
-log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s ")
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s  (%(filename)s:%(lineno)d) - %(message)s "
+)
 logging_fh.setFormatter(log_formatter)
-logging_sh.setFormatter(CustomFormatter()) # log_formatter)
+logging_sh.setFormatter(CustomFormatter())  # log_formatter)
 Logger.addHandler(logging_fh)
 # Logger.addHandler(logging_sh)
 Logger.info("Starting map_analysis")
 
-import set_expt_paths
-
-# set_expt_paths.get_computer()
-# experiments = set_expt_paths.get_experiments()
-exclusions = set_expt_paths.get_exclusions()
-# import new_nf107_maps as NM
 
 np.seterr(divide="raise", invalid="raise")
 
 
 # Cell names vary, so group by base name
-all_neurons = {
-    't-stellate': ["t-stellate", "Tstellate", "T-stellate", "tstellate", ],
-    'd-stellate': ['d-stellate', "Dstellate", "D-stellate", 'dstellate'],
-    'bushy' : ["bushy", "Bushy"],
-    'octopus' : ["octopus", "squid"],
-    'glial' : ["glial", "glial cell", "glia", "GLIAL"],
-    'giant' : ["giant", "Giant", "Giant cell", "GIANT"],
-    'cartwheel' : ["cartwheel", "cw"],
-    'pyramidal' : ["pyramidal", "fusiform", "stellate", "pyr"],
-    'tuberculoventral' : ["tuberculoventral", "tv"],
-    'unknown' : ["unknown", "no morphology", " ", None, "None", ""],
-    'ubc' : ["unipolar brush cell", "UBC"],
-    'mlstellate' : ["ml-stellate"],
-    'chestnut' : ["chestnut"],
-    'horizbipolar' : ["horizontal bipolar"],
-    'granule' : ["granule"],
-    'typeB' : ["Type-B"],
-    }
+# all_neurons = {
+#     "t-stellate": [
+#         "t-stellate",
+#         "Tstellate",
+#         "T-stellate",
+#         "tstellate",
+#     ],
+#     "d-stellate": ["d-stellate", "Dstellate", "D-stellate", "dstellate"],
+#     "bushy": ["bushy", "Bushy"],
+#     "octopus": ["octopus", "squid"],
+#     "glial": ["glial", "glial cell", "glia", "GLIAL"],
+#     "giant": ["giant", "Giant", "Giant cell", "GIANT"],
+#     "cartwheel": ["cartwheel", "cw"],
+#     "pyramidal": ["pyramidal", "fusiform", "stellate", "pyr"],
+#     "tuberculoventral": ["tuberculoventral", "tv"],
+#     "unknown": ["unknown", "no morphology", " ", None, "None", ""],
+#     "ubc": ["unipolar brush cell", "UBC"],
+#     "mlstellate": ["ml-stellate"],
+#     "chestnut": ["chestnut"],
+#     "horizbipolar": ["horizontal bipolar"],
+#     "granule": ["granule"],
+#     "typeB": ["Type-B"],
+# }
 
 DCN_celltypes = ["cartwheel", "tuberculoventral", "pyramidal", "giant"]
 VCN_celltypes = ["bushy", "t-stellate", "d-stellate", "octopus"]
-all_celltypes = VCN_celltypes + DCN_celltypes + ["unknown", "glial", "ubc", "mlstellate", "chestnut", "horizbipolar", "granule", "typeB"]
+all_celltypes = (
+    VCN_celltypes
+    + DCN_celltypes
+    + ["unknown", "glial", "ubc", "mlstellate", "chestnut", "horizbipolar", "granule", "typeB"]
+)
 
 
-def class_cell(cellname):
-    """
-    For a cell with a particular name, get the cannonical name from the list of neuron names
-    """
-    for c in list(all_neurons.keys()):
-        if cellname.lower() in all_neurons[c]:
-            cellname = c
-            if cellname not in all_celltypes:
-                return None
-            return cellname
-    cprint("r", f"Cell name <{cellname:s}> (type: {str(type(cellname)):s}) not found in known neurons")
-    return None
+# def class_cell(cellname):
+#     """
+#     For a cell with a particular name, get the cannonical name from the list of neuron names
+#     """
+#     for c in list(all_neurons.keys()):
+#         if cellname.lower() in all_neurons[c]:
+#             cellname = c
+#             if cellname not in all_celltypes:
+#                 return None
+#             return cellname
+#     cprint(
+#         "r", f"Cell name <{cellname:s}> (type: {str(type(cellname)):s}) not found in known neurons"
+#     )
+#     return None
 
 
 def eng_string(x, format="%s", si=False, suffix="", default_suffix="p"):
@@ -165,7 +187,7 @@ def eng_string(x, format="%s", si=False, suffix="", default_suffix="p"):
       -1230000.0 => -1.23e6
 
     and with si=True:
-          1230.0 => 1.23kd 
+          1230.0 => 1.23kd
       -1230000.0 => -1.23M
     """
     import math
@@ -196,16 +218,15 @@ def eng_string(x, format="%s", si=False, suffix="", default_suffix="p"):
     return ("%s" + format + " %s") % (sign, x3, exp3_text + suffix)
 
 
-
 #########################################################################################
 
 
 class EventAnalyzer(object):
-    def __init__(self, datasetinfo):
+    def __init__(self, experiment_dict):
         self.db = None  # the main database, shared amongst all routines
         self.verbose = False
         self.taudata = None  # from the tau fit data base
-        self.NM = datasetinfo
+        self.expt = experiment_dict
         self.coding = None
         self.coding_file = None
         self.events = None  # event dict, shared
@@ -239,7 +260,7 @@ class EventAnalyzer(object):
         """
 
         basefile = Path(protocols[0])
- 
+
         fp = basefile.parts
         eventfilename = Path("~".join(fp[0:3]) + ".pkl")
         eventfilekey = str(basefile.parent)
@@ -251,9 +272,7 @@ class EventAnalyzer(object):
                 f"    Data for {eventfilekey:s}  was NOT found in Event Summary File",
             )
             return False  # not found...
-        cprint(
-            "green", f"\nFile Data for {eventfilekey:s} was found in Event Summary File"
-        )
+        cprint("green", f"\nFile Data for {eventfilekey:s} was found in Event Summary File")
         cprint(
             "magenta",
             "    Last Analysis Time in event summary file: "
@@ -294,7 +313,7 @@ class EventAnalyzer(object):
                     )
                     print(f" New: {prot_analysistime.strftime('%m.%d.%Y %H:%M:%S')}")
                     return False
-        cprint('green', '   Data analysis is current')
+        cprint("green", "   Data analysis is current")
         return self.events[eventfilekey]  # no changes, just return the data.
 
     def _get_cell_protocol_data(self, fn):
@@ -303,16 +322,16 @@ class EventAnalyzer(object):
         fnx = fnx[-3:]
         fn = "~".join(fnx)
         # cprint("magenta", f"Fn: {str(fn):s}")
-        fn = Path(self.eventspath, fn + ".pkl") # Path(self.NM.experiments[self.database]["analyzeddatapath"], self.NM.experiments[self.database]['directory'], "events", fn + ".pkl")
+        fn = Path(
+            self.eventspath, fn + ".pkl"
+        )  # Path(self.expt["analyzeddatapath"], self.expt['directory'], "events", fn + ".pkl")
         with open(fn, "rb") as fh:
             d = pickle.load(fh)
 
-        protocols = sorted(
-            list(d.keys())
-        )  # keys include date/slice/cell/protocol as pathlib Path
+        protocols = sorted(list(d.keys()))  # keys include date/slice/cell/protocol as pathlib Path
         return (protocols, d)
 
-    def _get_cell_information(self, cell_ID:str, parameter:str):
+    def _get_cell_information(self, cell_ID: str, parameter: str):
         """
         Get one parameter measure from this cell using the cell_ID
         for most parameters, this reads from the main database.
@@ -327,16 +346,16 @@ class EventAnalyzer(object):
         cell_ID_parts = Path(cell_ID).parts
         if not cell_ID_parts[-1].startswith("cell_"):
             cell_ID = str(Path(*cell_ID_parts[:-1]))
-        day_x = self.db.loc[self.db['cell_id'].str.endswith(cell_ID)]
+        day_x = self.db.loc[self.db["cell_id"].str.endswith(cell_ID)]
         if day_x.empty:
             return None
         # print("GCI, day_x: ", cell_ID, "\n", day_x)
         if parameter in ["Group", "ID", "SPL"]:
-            cid = day_x['cell_id'].values[0]
+            cid = day_x["cell_id"].values[0]
             cid = str(Path(*Path(cid).parts[-3:]))
 
-            cell_date = cid.split('_')[0]
-            day_coding = self.coding.loc[self.coding['date'].str.endswith(cell_date)]
+            cell_date = cid.split("_")[0]
+            day_coding = self.coding.loc[self.coding["date"].str.endswith(cell_date)]
             # print("coding dates:]n", self.coding['date'])
             if day_coding is None:
                 msg = f"Bad coding database date query: Day '{cell_date:s}' is not in the coding database"
@@ -396,9 +415,6 @@ class EventAnalyzer(object):
                 value = ephys.tools.parse_ages.age_as_int(agestr)
         return value
 
-
-
-
     def getZ_fromprotocol(
         self,
         protocol,
@@ -414,7 +430,7 @@ class EventAnalyzer(object):
         if protocol not in protocols:
             # print("protocols: ", protocols)
             # return np.nan
-            raise ValueError('Protocol not found: ', protocol)
+            raise ValueError("Protocol not found: ", protocol)
         if param == "area_fraction_Z":
             # area_fraction = float(len([d[protocol]['ZScore'][stimno] > area_z_threshold]))/float(len(d[protocol]['positions']))
             dz = np.where(d[protocol]["ZScore"][stimno] > area_z_threshold)
@@ -441,8 +457,6 @@ class EventAnalyzer(object):
 
         if param == "mean_Z":
             return np.nanmean(d[protocol]["ZScore"][stimno])
-
-
 
     def z2p(self, z):
         """From z-score return p-value."""
@@ -496,22 +510,15 @@ class EventAnalyzer(object):
             return None, False
         file_exists = Path(fn).is_file()
         print("File exists: ", file_exists)
-        with open(
-            fn, "rb"
-        ) as fh:  # get the data from the individual (not summary) file
+        with open(fn, "rb") as fh:  # get the data from the individual (not summary) file
             try:
                 dfn = pickle.load(fh)
             except:
                 print(f"Problem reading on file: {str(fn):s}")
                 return None, False
 
-        protocols = sorted(
-            list(dfn.keys())
-        )  
-        # keys include date/slice/cell/protocol as pathlib Path
-        # d[protocol] will have keys:
-        # ['Qr', 'Qb', 'ZScore', 'I_max', 'positions', 'aj', 'stimtimes', 'events', 'eventtimes',
-        #        'dataset', 'analysisdatetime', 'onsets']
+        protocols = sorted(list(dfn.keys()))
+
         # These come from the "results" in analyzemap...
         if not protocols:
             cprint("red", "    No protocols found")
@@ -565,7 +572,7 @@ class EventAnalyzer(object):
         # every protocol will have the same top name, so just get the first one
         allprotos = [None] * len(protocols)
         shufflescore = [[0.0]] * len(protocols)
-        minprobability = [[1.0]] * len(protocols)
+        minprobability = [[]] * len(protocols)
         meanprobability = [[]] * len(protocols)
         eventp = [[0.0]] * len(protocols)
         event_amp = [[0.0]] * len(protocols)
@@ -579,8 +586,8 @@ class EventAnalyzer(object):
         datamode = [None] * len(protocols)
         area_fraction_Z = [None] * len(protocols)
         positions = [None] * len(protocols)
-        depression_ratio = [None] * len(protocols)
-        paired_pulse_ratio = [None] * len(protocols)
+        depression_ratio = [np.nan] * len(protocols)
+        paired_pulse_ratio = [np.nan] * len(protocols)
         cprint("g", "    initialized result arrays")
         if plotflag:
             rc = PH.getLayoutDimensions(nmaps, pref="width")
@@ -599,38 +606,74 @@ class EventAnalyzer(object):
             binstuff = np.arange(0, 0.6, 0.005)
             axl = P.axarr.ravel()
 
-        for i, dxf in enumerate(protocols):
-            # get cell type from protocol
-            dxp = Path(dxf)
-            dx = str(dxp.parent)
-            dxpl = dxp.parts
-            # print("dpxl: ", dxpl)
-            dxp = Path(*dxpl) # dxpl[-4], dxpl[-3], dxpl[-2], dxpl[-1])
-            print("\nExamining protocol: ", dxp, "   (score_events)")
-            try:
-                sel_celltype = self._get_cell_information(dxp, "cell_type")
-            except:
-                cprint("r", f"{self._get_cell_information(dxp, 'cell_type'):s} celltype identification failed, set to unknown")
-                sel_celltype = "unknown"
-                Logger.error(f"{self._get_cell_information(dxp, 'cell_type'):s} celltype identification failed, set to unknown")
-                raise ValuError("celltype identification failed")
-            print("sel cell type: ", sel_celltype)
-            if sel_celltype == "0":
-                raise ValueError("Sel cell type is 0, this should not happen")
-                exit()
-            print("Celltype1: ", sel_celltype)
-            sel_celltype = class_cell(sel_celltype)
-            print("Celltype2: ", sel_celltype)
-            if sel_celltype is not None and sel_celltype != celltype:
-                cprint("r", f"celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}")
-                Logger.error(f"Protocol {dxf:s}  celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}")
-                # raise()
-                continue
-            if sel_celltype is None:  # skip over this cell
-                Logger.warning(f"Protocol {dxf:s} Skipping over celltype: {sel_celltype:s} because it is None")
-                continue
-            cprint("y", f"    Celltype: {sel_celltype:s}")
-            if sel_celltype in [
+        for i_protocol, dxf in enumerate(protocols):
+            evres, flag = self.score_protocol_events(
+                dxf, evndata, dfn, eventwindow, area_z_threshold, celltype
+            )
+            if evres is not None:
+                evndata = evres
+
+    def get_protocol_scaling(self, protocol_name: str):
+        sign = -1 # EPSC is negative
+        pmode = "0"  # i == 0 clamp mode
+        scale = 1.0
+        if protocol_name.find("_IC_") >= 0:
+            sign = 1
+            scale = 1e3
+            pmode = "I"
+        elif protocol_name.find("_VC_") >= 0:  # includes "increase" protocol
+            sign = -1.0
+            scale = 1e12
+            pmode = "V"
+        elif protocol_name.find("VGAT_5mspulses") >= 0:
+            sign = 1
+            pmode = "V"
+            scale = 1e12
+        elif protocol_name.find("CC_VGAT_5mspulses") >= 0:
+            sign = -1
+            scale = 1e3
+            pmode = "I"
+        else:
+            scale = 1.0
+        return sign, scale, pmode
+
+    def filter_celltypes(self, dxp, celltype):
+        """Filter cell types based on the provided cell type.
+        confirm that this is a cell type that we want to analyze
+
+        Parameters
+        ----------
+        dxp : stro or Path
+            path to protocol
+        celltype : str
+            expected cell tupe
+
+        Returns
+        -------
+        None or str
+            The filtered cell type or None if it doesn't match.
+
+        Raises
+        ------
+        ValuError
+            Unknown cell type
+        ValueError
+            Unknown cell type is 0
+        """
+        sel_celltype = self._get_cell_information(dxp, "cell_type")
+        sel_celltype = ephys.tools.map_cell_types.map_cell_type(sel_celltype)
+        # sel_celltype = class_cell(sel_celltype)
+        if sel_celltype is None:
+            CP.cprint("r", "Celltype identification failed to match with canonical types")
+            Logger.error(
+                f"Protocol {dxf:s}  celltype: {sel_celltype:s} does not match input argument celltype: {celltype:s}"
+            )
+        return
+        CP.cprint("g", f"Successfully Identified cell class: {sel_celltype}")
+
+        if (
+            sel_celltype
+            in [
                 "None",
                 "glial",
                 "unknown",
@@ -638,404 +681,426 @@ class EventAnalyzer(object):
                 "horizontal bipolar",
                 "chestnut",
                 "ml-stellate",
-                "0"
-            ] or len(sel_celltype) == 0:
-                continue
-            cprint("g", f"    Proceeding with celltype:  <{sel_celltype:s}>")
-            sel_celltype = sel_celltype.lower()
-            temperature = self._get_cell_information(dxp, "temperature")
-            protocol, evl = self._get_cell_protocol_data(dxp.parent)
-            if evl is None or evl[str(dxp)] is None:
-                cprint('red', f'    No data in protocol {str(dxp):s}')
-                raise ValueError()
-                continue
+                "0",
+            ]
+            or len(sel_celltype) == 0
+        ):
+            return None
+        return sel_celltype
 
-            this_eventlist = evl[str(dxp)]
+    def score_protocol_events(
+        self,
+        dxf: Union[str, Path],
+        evndata: dict,
+        dfn: dict,
+        eventwindow: tuple,
+        area_z_threshold: float,
+        celltype: str,
+    ):
+        """
+        Score the given protocol.
 
-            protocol_name = str(dxp.parts[-1])
-            sign = -1
-            pmode = "0"
-            if protocol_name.find("_IC_") >= 0:
-                sign = 1
-                scale = 1e3
-                pmode = "I"
-            elif protocol_name.find("_VC_") >= 0:  # includes "increase" protocol
-                scale = 1e12
-                pmode = "V"
-            elif protocol_name.find("VGAT_5mspulses") >= 0:
-                sign = 1
-                pmode = "V"
-                scale = 1e12
-            elif protocol_name.find("CC_VGAT_5mspulses") >= 0:
-                sign = -1
-                scale = 1e3
-                pmode = "I"
-            else:
-                scale = 1.0
 
-            if "stimtimes" not in list(this_eventlist.keys()):
-                cprint(
-                    "red",
-                    f"    Missing 'stimtimes' in event list: " + str(list(this_eventlist.keys())),
-                )
-                continue
-            # area_fraction is the fractional area of the map where the scores exceed 1SD above
-            # the baseline (Z Scored; charge based)
-            ngtthr = (np.array(this_eventlist["ZScore"][0]) > area_z_threshold).sum()
+        """
+        # get cell type from protocol
+        dxp = Path(dxf)
+        dx = str(dxp.parent)
+        dxpl = dxp.parts
+        dxp = Path(*dxpl)  # dxpl[-4], dxpl[-3], dxpl[-2], dxpl[-1])
+        print("\nExamining protocol: ", dxp, "   (score_events)")
+        
+        sel_celltype = self.filter_celltypes(dxp, celltype)
+        if sel_celltype is None:
+            return None, False
+        
+        cprint("g", f"    Proceeding with celltype:  <{sel_celltype:s}>")
+        # sel_celltype = sel_celltype.lower()
+        temperature = self._get_cell_information(dxp, "temperature")
+        protocol, evl = self._get_cell_protocol_data(dxp.parent)
+        if evl is None or evl[str(dxp)] is None:
+            cprint("red", f"    No data in protocol {str(dxp):s}")
+            raise ValueError()
 
-            # get the positions
-            try:
-                posxy = dfn[dxf]["positions"]
-            except:
-                try:
-                    posxy = dfn[str(dxf)]["positions"]
-                except:
-                    raise ValueError()
-            print("stimtimes 0:", this_eventlist["stimtimes"])
-            #
-            # repair missing stim information in "increase" files
-            #
-            fixstim = False
+        this_eventlist = evl[str(dxp)]
+        protocol_name = str(dxp.parts[-1])
 
-            if protocol_name.find("_increase_") >= 0:
-                fixstim = True
-                this_eventlist["stimtimes"] = {
-                    "starts": [0.1, 0.2, 0.3, 0.4, 0.5],
-                    "npulses": 5,
-                    "period": 0.1,
-                }
-            else: # use the original data
-                this_eventlist["stimtimes"]["npulses"] = len(this_eventlist["stimtimes"]['starts'])
-                if this_eventlist["stimtimes"]["npulses"] >= 2:
-                    this_eventlist["stimtimes"]["period"] = this_eventlist["stimtimes"]["starts"][1] - this_eventlist["stimtimes"]["starts"][0]
-                else:
-                    this_eventlist["period"] = 0.0
-            te = 0
-            ts = 0.0  # evl['stimtimes']['start'][0]
-            stimtimes = []
-            for n in range(this_eventlist["stimtimes"]["npulses"]):
-                st0 = this_eventlist["stimtimes"]["starts"][n]
-                stimtimes.append((st0, eventwindow[0], eventwindow[1]))
-                te = st0 + np.sum(eventwindow)
+        sign, scale, pmode = self.get_protocol_scaling(protocol_name)
 
-            # accumulate the event amplitudes and matching times for this protocol, across all trials
-            reader = MEDR.Reader(evl[dxf])
-            events = this_eventlist["events"]
-            evamps = []
-            evtimes = []
-            ntrials = reader.get_ntrials()
-            nspots = len(posxy)/ntrials
-           # area_fraction = float(len([d[dx]['ZScore'][-1] > area_z_threshold]))/float(len(d[dx]['positions']))
-            area_fraction = ngtthr / nspots  # now compute the "area fraction" of the map that has a zscore above threshold
-            cprint("g", f"    Area fraction: {area_fraction:0.3f}")
-            cprint("c", f"    Ntrials: {reader.get_ntrials():d}")
-            for trial in range(reader.get_ntrials()):  # trials
-                trial_events = reader.get_events()[trial]  # trial events is a Mini_Event_Summary dataclass
-                if trial_events is None:
-                    cprint("r", "No trial events found")
-                    continue
-                dt = reader.get_sample_rate(trial)
-                evt = reader.get_trial_event_onset_times(trial, trial_events.onsets)
-                eva = reader.get_trial_event_amplitudes(trial, trial_events.smpkindex)
-                evtimes.append(evt)
-                evamps.append(eva)
-            if len(evtimes) == 0:
-                cprint("r", "Event times list is empty")
-                return None, False
-            evtimes = evtimes[0]
-            evamps = evamps[0]
-            evtimes_flat = [t for j in range(len(evtimes)) for t in evtimes[j]]
-            evamps_flat = [a for j in range(len(evamps)) for a in evamps[j]]
-
-            cprint("c", f"    # of traces in all trials:            {len(evtimes):>6d}")
-            cprint("c", f"    Length of all event times all trials: {len(evtimes_flat):>6d}")
-
-         #   debugging: plot event times and amplitudes to confirm we have the data
-            # f, ax = mpl.subplots(1,2)
-            # for tr in range(len(evtimes)):
-            #     if len(evtimes[tr]) == 0:
-            #         continue
-            #     # exit()
-            #     ax[0].plot(evtimes[tr], evamps[tr], 'o', markersize=2)
-            # ax[0].set_xlabel('Time (s)')
-            # mpl.show()
-            # exit()
-
-            # do poisson or shuffle scoring on evtimes
-            # prepare the event array for PoissonScore
-            # PoissonScore.score expects the events to be a list of data in a record array format
-            evp = (
-                []
-            ) 
-            for trial in range(len(evtimes)):  # across all *trials* in the map
-                evtx = []
-                evax = []
-                ev_tr = evtimes[trial]
-                if len(ev_tr) == 0:
-                    continue
-                for j, ev_lat in enumerate(ev_tr):  # handle individual events
-                    if ev_lat >= ts and ev_lat <= te:
-                        evtx.extend([ev_lat])
-                        evax.extend([evamps[trial][j]])
-                ev = np.empty(len(evtimes[trial]), dtype=[("time", float), ("amp", float)]) # rec array
-                ev["time"] = evtimes[trial]
-                ev["amp"] = np.array(evamps[trial])
-                evp.append(ev)
-                # capture latencies here
-                if ( # limit the protocols that we will use for 
-                # latency measurements
-                    str(dxf).find("_VC_10Hz") > 0  
-                    or str(dxf).find("Single") > 0
-                    or str(dxf).find("single") > 0
-                    or str(dxf).find("_VC_weird") > 0
-                    or str(dxf).find("_VC_2mW") > 0
-                    or str(dxf).find("_VC_1mW") > 0
-                    or str(dxf).find("_VC_00") > 0
-                    or str(dxf).find("_range test")
-                    or str(dxf).find("_VC_increase") > 0
-                ):
-                    for ifsl, st in enumerate(stimtimes):
-                        t0 = st[0] + st[1]
-                        t1 = st[0] + st[2]
-                        # print('t0, t1: ', t0, t1)
-                        evi = np.where(
-                            (evtimes[trial][j] > t0) & (evtimes[trial][j] <= t1)
-                        )
-                        evw = evtimes[trial][evi[0]]
-                        # print('evi, evw: ', evi, evw)
-                        if len(evw) == 0:  # no events in the window
-                            # print('no data in window')
-                            continue
-                        if ifsl == 0 and len(evw) > 0:
-                            if firstevent_latency[i] == None:
-                                firstevent_latency[i] = [evw[0] - st[0]]
-                            else:
-                                firstevent_latency[i].extend([evw[0] - st[0]])
-                        if allevent_latency[i] == None:
-                            allevent_latency[i] = [t - st[0] for t in evw]
-                        else:
-                            allevent_latency[i].extend(
-                                [t - st[0] for t in evw if not pd.isnull(t)]
-                            )
-                else:
-                    cprint("red", f"    Protocol Excluded on type: {str(dxf):s}")
-
-            ev = {}
-            ev['time'] = np.array(evtimes_flat)
-            ev['amp'] = np.array(evamps_flat)
-            if len(evtimes) == 0: # evp:
-                cprint("red", "    No data in protocol?")
-                sr = 0.0
-                continue  # no data in this protocol?
-            # print('evp: ', evp)
-            # compute spont detected event rate, and get average event amplitude for spont events
-            spont_evt_index = [i for i, t in enumerate(ev["time"]) if t < stimtimes[0][0]]
-            spont_evt_amps = ev['amp'][spont_evt_index]
-            if len(spont_evt_amps) > 0:
-                cprint("g", f"    mean spont amp: {np.mean(spont_evt_amps)*scale:.2f} (SD: {np.std(spont_evt_amps)*scale:.2f}, N={len(spont_evt_amps):d}")
-            else:
-                cprint("y", f"    No spont events")
-            ev_evt_index = [i for i, t in enumerate(ev["time"]) if t > stimtimes[0][0] and t < stimtimes[0][0]+0.015]
-            ev_evt_amps = ev['amp'][ev_evt_index]
-            nspont = len(spont_evt_index) 
-            if nspont > 0:
-                sr = len(spont_evt_index) / (
-                    stimtimes[0][0] * nspots
-                )  # count up events and divide by total time examined
-            else:
-                sr = 0.0
-            spontaneous_amplitudes = ev['amp'][spont_evt_index]
-            print("            SpontRate: {0:.3f} [N={1:d}]".format(sr, nspont))
-
-            print(
-                  "            Mean spont amp (all trials): {0:.2f} pA  SD {1:.2f} N={2:4d}".format(
-                    np.nanmean(spont_evt_amps) * scale,
-                    np.nanstd(spont_evt_amps) * scale,
-                    np.shape(spont_evt_amps)[0],
-                )
+        if "stimtimes" not in list(this_eventlist.keys()):
+            cprint(
+                "red",
+                "    Missing 'stimtimes' in event list: " + str(list(this_eventlist.keys()))
             )
+            return None, False
+        
+        # get the positions
+        try:
+            posxy = dfn[str(dxf)]["positions"]
+        except KeyError:
+            cprint("r", f"    No positions found in protocol {str(dxf):s}")
+            return None, False
+        #
+        # repair missing stim information in "increase" files
+        #
+        fixstim = False
 
-            firststimt = this_eventlist["stimtimes"]["starts"][0]
-            # finally, calculate the Poisson Score
-            if evp[0].shape[0] > 0:
-                # mscore_n, mscore, mean_ev_amp = SH.shuffle_score(evp, stimtimes, nshuffle=5000, maxt=0.6)  # spontsonly...
-                mscore_n, prob = EPPS.PoissonScore.score(
-                    evp, rate=sr, tMax=0.6, normalize=True
+        if protocol_name.find("_increase_") >= 0:
+            fixstim = True
+            this_eventlist["stimtimes"] = {
+                "starts": [0.1, 0.2, 0.3, 0.4, 0.5],
+                "npulses": 5,
+                "period": 0.1,
+            }
+        else:  # use the original data
+            this_eventlist["stimtimes"]["npulses"] = len(this_eventlist["stimtimes"]["starts"])
+            if this_eventlist["stimtimes"]["npulses"] >= 2:
+                this_eventlist["stimtimes"]["period"] = (
+                    this_eventlist["stimtimes"]["starts"][1]
+                    - this_eventlist["stimtimes"]["starts"][0]
                 )
             else:
-                mscore_n = np.ones(len(stimtimes))
-                prob = 1.0
-            cprint("g" , f"    Poisson score: {mscore_n:6.4f}")
-            mscore = mscore_n
-            mean_ev_amp = 1.0
-            if not isinstance(mscore, list):
-                mscore = [mscore]
-            m_shc = np.mean(mscore)
-            s_shc = np.std(mscore)
-            # print('mscore, : ', mscore, mean_ev_amp)
+                this_eventlist["period"] = 0.0
+
+        # build list of dicts holding the stimulus times and windows
+        tend = 0.0
+        tstart = 0.0  # evl['stimtimes']['start'][0]
+        stimtimes = []
+
+        for n in range(this_eventlist["stimtimes"]["npulses"]):
+            st0 = this_eventlist["stimtimes"]["starts"][n]
+            stimtimes.append(
+                {"start": st0, "window_start": eventwindow[0], "window_duration": eventwindow[1]}
+            )
+            tend = st0 + np.sum(eventwindow)
+
+        # accumulate the event amplitudes and matching times for this protocol, across all trials
+        reader = MEDR.Reader(evl[dxf])
+        events = this_eventlist["events"]
+        evamps = []
+        evtimes = []
+        ntrials = reader.get_ntrials()
+        nspots = len(posxy) / ntrials
+        # area_fraction is the fractional area of the map where the scores exceed 1SD above
+        # the baseline (Z Scored; charge based)
+        ngtthr = (np.array(this_eventlist["ZScore"][0]) > area_z_threshold).sum()
+        # area_fraction = float(len([d[dx]['ZScore'][-1] > area_z_threshold]))/float(len(d[dx]['positions']))
+        area_fraction = (
+            ngtthr / nspots
+        ) 
+        cprint("g", f"    Area fraction: {area_fraction:0.3f}")
+        cprint("c", f"    Ntrials: {reader.get_ntrials():d}")
+
+        # ==================
+        evp = []
+        for trial in range(reader.get_ntrials()):  # trials
+            trial_events = reader.get_events()[
+                trial
+            ]  # trial events is a Mini_Event_Summary dataclass
+            if trial_events is None:
+                cprint("r", "No trial events found")
+                evtimes.append(np.nan)
+                evamps.append(np.nan)
+                continue
+            dt = reader.get_sample_rate(trial)
+            evt = reader.get_trial_event_onset_times(trial, trial_events.onsets)
+            eva = reader.get_trial_event_amplitudes(trial, trial_events.smpkindex)
+            evtimes.append(evt)
+            evamps.append(eva)
  
-            # find the probability in the response windows
-            probs = np.ones(len(mscore))
-            winlen = 0.010
-            ev_prob_response_events = dict(zip(range(len(stimtimes)), []*len(stimtimes))) # indices into "response" window events, by stim window
-            ev_prob = []  # actual probabilities
-            for ist, st in enumerate(stimtimes):
-                t0 = st[0] + st[1]
-                t1 = t0 + winlen
-                # print('t0, t1: ', t0, t1)
-                response_events = list(np.where(
-                    (np.array(evtimes_flat) > t0) & (np.array(evtimes_flat) <= t1)
-                )[0])
-                # print("response events: ", response_events)
-                if len(response_events) > 0:
-                    ev_prob_response_events[ist] = response_events
-                    ev_prob.extend(prob[response_events])
-                else:
-                    ev_prob.extend([1.0])
-                    ev_prob_response_events[ist] = []
+            # ev = np.empty(len(evt), dtype=[("time", float), ("amp", float)])  # rec array
+            # print("len evt: ", len(evt))
+            # print("evt: ", evt)
+            # ev["time"] = evt # evtimes[trial]
+            # ev["amp"] = eva # np.array(evamps[trial])
+            # evp.append(ev)
+        print(len(evt), [evt[x] for x in range(len(evt)) if x < 10])        
+        if len(evtimes) == 0:
+            cprint("r", "Event times list is empty")
+            return None, False
 
-            for ist in range(len(ev_prob_response_events)):
-                if len(ev_prob_response_events[ist]) > 0:
-                    meanp = np.mean(prob[ev_prob_response_events[ist]])
-                else:
-                    meanp = 1.0
+        evtimes_flat = [t for j in range(len(evtimes)) for t in evtimes[j]]
+        evamps_flat = [a for j in range(len(evamps)) for a in evamps[j]]
 
-            ev_prob_response_events_flat = [x for y in ev_prob_response_events.values() for x in y]
+        cprint("c", f"    # of traces in all trials:            {len(evtimes):>6d}")
+        cprint("c", f"    Length of all event times all trials: {len(evtimes_flat):>6d}")
 
-            if nspont > 10:
-                mean_spont_amp = np.nanmean(spontaneous_amplitudes)
-            else:
-                cprint(
-                    "red",
-                    f"    Using Mean spont from table for : {str(sel_celltype):s}, temp= {str(temperature):s}C",
-                )
-                if (sel_celltype == " ") or ((sel_celltype, temperature) not in list(
-                    set_expt_paths.mean_spont_by_cell.keys())
-                ):
-                    mean_spont_amp = 20e-12  # pA
+        # do poisson or shuffle scoring on evtimes
+        # prepare the event array for PoissonScore
+        # PoissonScore.score expects the events to be a list of data in a record array format
 
-                elif (sel_celltype, temperature) in list(
-                    set_expt_paths.mean_spont_by_cell.keys()):
-                    mean_spont_amp = (
-                        set_expt_paths.mean_spont_by_cell[(sel_celltype, temperature)] * 1e-12
-                    )  # uset the mean value for the cell type
-                
-            detevt_n, detevt, detamp = SH.detect_events(event_times=evtimes, 
-                                    event_amplitudes=evamps, 
-                                    stim_times=stimtimes,
-                                    mean_spont_amp= mean_spont_amp)
-            if detevt_n == 0:
-                CP.cprint("y", f"            No events detected in protocol?")
-                Z = 0.0
+        for trial, ev_tr in enumerate(evtimes):  # across all *trials* in the map
+            evtx = []
+            evax = []
+            if len(ev_tr) == 0:
                 continue
-            det_amp = [a[0] for v in detamp for a in v if len(v) > 0]
-            # print("detamp: ", det_amp)
-            cprint("g", f"    Found {len(det_amp):d} events")
-            if s_shc != 0.0:
-                Z = (detevt_n[0] - m_shc) / s_shc  # mscore[0])
+
+            for j, ev_lat in enumerate(evtimes[trial]):  # handle individual events
+                lat_indices = np.nonzero((ev_lat >= tstart) & (ev_lat <= tend))[0]
+                li = [int(x) for x in lat_indices]
+                if len(lat_indices) > 0:
+                    evtx.extend([x for x in evtimes[trial][j] for x in li])
+                    evax.extend([x for x in evamps[trial][j] for x in li])
+
+            # capture latencies here
+            if (  # limit the protocols that we will use for
+                # latency measurements
+                str(dxf).find("_VC_10Hz") > 0
+                or str(dxf).find("Single") > 0
+                or str(dxf).find("single") > 0
+                or str(dxf).find("_VC_weird") > 0
+                or str(dxf).find("_VC_2mW") > 0
+                or str(dxf).find("_VC_1mW") > 0
+                or str(dxf).find("_VC_00") > 0
+                or str(dxf).find("_range test")
+                or str(dxf).find("_VC_increase") > 0
+            ):
+                for ifsl, st in enumerate(stimtimes):
+                    t0 = st["start"] + st["window_start"]
+                    t1 = st["start"] + st["window_start"] + st["window_duration"]
+                    evi = [(t0 < evtimes[trial]) & (evtimes[trial] <= t1)]
+                    evw = evtimes[trial][evi[0]]
+                    if len(evw) == 0:  # no events in the window
+                        continue
+                    if ifsl == 0 and len(evw) > 0:
+                        if firstevent_latency[i_protocol] is None:
+                            firstevent_latency[i_protocol] = [evw[0] - st["start"]]
+                        else:
+                            firstevent_latency[i_protocol].extend([evw[0] - st["start"]])
+                    if allevent_latency[i_protocol] is None:
+                        allevent_latency[i_protocol] = [t - st["start"] for t in evw]
+                    else:
+                        # print('events in window: ', evw)
+                        allevent_latency[i_protocol].extend([t - st["start"] for t in evw])
             else:
-                Z = 100.0  # arbitrary high value
+                cprint("red", f"    Protocol Excluded on type: {str(dxf):s}")
 
-            detamp = np.array(det_amp)
-
-            # exit()
-            if not any(detamp):
-                detamp = [np.array([0])]
-            print(
-                "            Mean evoked amp (trial 0): {0:.2f} pA  SD {1:.2f} N={2:3d}".format(
-                    np.nanmean(detamp) * scale,
-                    np.std(detamp) * scale,
-                    np.shape(detamp)[0],
-                )
+        event = {}
+        event["time"] = np.array(evtimes_flat)
+        event["amp"] = np.array(evamps_flat)
+        if len(evtimes) == 0:  # evp:
+            cprint("red", "    No data in protocol?")
+            sr = 0.0
+            return None, False  # no data in this protocol?
+        # compute spont detected event rate, and get average event amplitude for spont events
+        spont_evt_index = [i for i, t in enumerate(event["time"]) if t < stimtimes[0]["start"]]
+        spont_evt_amps = event["amp"][spont_evt_index]
+        if len(spont_evt_amps) > 0:
+            cprint(
+                "g",
+                f"    mean spont amp: {np.mean(spont_evt_amps)*scale:.2f} (SD: {np.std(spont_evt_amps)*scale:.2f}, N={len(spont_evt_amps):d}",
             )
-            # print('mscore: ', mscore)
-            event_qcontent = np.zeros(len(mscore))
-            largest_event_qcontent = np.zeros(len(mscore))
+        else:
+            cprint("y", f"    No spont events")
+        event_evt_index = [
+            i
+            for i, t in enumerate(event["time"])
+            if t > stimtimes[0]["start"] and t < stimtimes[0]["start"] + 0.015
+        ]
+        event_evt_amps = event["amp"][event_evt_index]
+        nspont = len(spont_evt_index)
+        if nspont > 0:
+            this_spont_rate = len(spont_evt_index) / (
+                stimtimes[0]["start"] * nspots
+            )  # count up events and divide by total time examined
+        else:
+            this_spont_rate = 0.0
+        spontaneous_amplitudes = event["amp"][spont_evt_index]
+        print("            SpontRate: {0:.3f} [N={1:d}]".format(this_spont_rate, nspont))
 
-            for j, m in enumerate(mscore):
-                if mscore[j] > 100:
-                    mscore[j] = 100. # clip mscore
-                # try:
-                if mean_ev_amp == 0.0:
-                    continue
-                sa = np.nanmean(spontaneous_amplitudes)
-                if j >= len(detamp):
-                    continue
+        print(
+            "            Mean spont amp (all trials): {0:.2f} pA  SD {1:.2f} N={2:4d}".format(
+                np.nanmean(spont_evt_amps) * scale,
+                np.nanstd(spont_evt_amps) * scale,
+                np.shape(spont_evt_amps)[0],
+            )
+        )
 
-                if sign == -1:
-                    det = detamp[j] < sa
-                    if det.any():
-                        event_qcontent[j] = (
-                            np.nanmean(detamp[j][detamp[j] < sa]) / mean_ev_amp
-                        )
-                        largest_event_qcontent[j] = np.min(detamp[j]) / mean_ev_amp
-                else:
-                    det = detamp[j] > sa
-                    if det.any():
-                        event_qcontent[j] = (
-                            np.nanmean(detamp[j][detamp[j] > sa]) / mean_ev_amp
-                        )
-                        largest_event_qcontent[j] = np.max(detamp[j]) / mean_ev_amp
+        # finally, calculate the Poisson Score
+        if evp[0].shape[0] > 0:
+            # mscore_n, mscore, mean_ev_amp = SH.shuffle_score(evp, stimtimes, nshuffle=5000, maxt=0.6)  # spontsonly...
+            CP.cprint("g", "Computing PoissonScore")
+            mscore_n, probabilities = EPPS.PoissonScore.score(
+                evp, rate=this_spont_rate, tMax=0.6, normalize=True
+            )
+        else:
+            mscore_n = np.ones(len(stimtimes))
+            probabilities = 1.0
+        cprint("g", f"    Poisson score: {mscore_n:6.4f}")
+        # print("Probs: ", prob)
+        mscore = mscore_n
+        mean_ev_amp = 1.0
+        if not isinstance(mscore, list):
+            mscore = [mscore]
+        m_shc = np.mean(mscore)
+        s_shc = np.std(mscore)
+        # print('mscore, : ', mscore, mean_ev_amp)
 
-                if mscore[j] > 0:
-                    print("prob: ", prob)
-                    print("probs: ", probs)
-                    print(
-                        f"        Stim/trial {j:2d} ShuffleScore= {mscore[j]:6.4f} Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g} EventP: {detevt[j]:6.3e} Z: {Z:7.4f}, P(Z): {(1.0-self.z2p(Z)):.3e}",
-                        end="",
-                    )
-                    print(
-                        f" Event Amp re Spont: {event_qcontent[j]:g}  Largest re spont: {largest_event_qcontent[j]:7.4f}"
-                    )
+        # find the probability in the response windows for each stimulus
+        winlen = 0.010
 
-                else:
-                    print(
-                        f"        Stim/Trial {j:2d} ShuffleScore= {mscore[j]:6.4f} Lowest Shuffle Prob = {np.min(prob[ev_prob_response_events_flat]):6.3g} EventP: {detevt[j]:6.3e} P(Z): {(1.0-self.z2p(Z)):.3e}"
-                    )
+        # build a dictinary
+        ev_prob_response_events = {k["start"]: [] for k in stimtimes}
+        ev_probabilities = {}  # actual probabilities
+        for ist, stime in enumerate(stimtimes):
+            t0 = stime["start"] + stime["window_start"]
+            t1 = t0 + stime["window_duration"]
+            response_events = np.where(
+                (np.array(evtimes_flat) > t0) & (np.array(evtimes_flat) <= t1)
+            )[0]
+            # print("\nStime: ", stime['start'], "response events: ", response_events)
+            res = [float(evtimes_flat[e]) for e in response_events]
+            pro = [float(probabilities[e]) for e in response_events]
+            if len(response_events) > 0:
+                ev_prob_response_events[stime["start"]] = res
+                ev_probabilities[stime["start"]] = pro
+            else:
+                ev_probabilities[stime["start"]] = [np.nan]
+                ev_prob_response_events[stime["start"]] = []
+        # at this point, we have the event times in a dictionary, by stimulus start time,
+        # and the corresponding probabilities in a second dictionary of matching structure
+        # print("\nev_response_events: ", ev_prob_response_events)
+        # print("\nev_probs: ", ev_probabilities)
+        # for ist, evre in enumerate(ev_prob_response_events):
+        #     if len(evre) > 0:
+        #         meanp = np.mean(probabilities[evre])
+        #     else:
+        #         meanp = 1.0
+        # now we will flatten the list of events across all stimuli
+        ev_prob_response_events_flat = []
+        for istim, stime in enumerate(ev_prob_response_events):
+            ev_prob_response_events_flat.extend(ev_prob_response_events[stime])
 
-            mscore[mscore == 0.0] = 100
-            # build result arrays
-            allprotos[i] = dxp
-            shufflescore[i] = Z
-            minprobability[i] = np.min(prob[ev_prob_response_events_flat])
-            for ist in range(len(stimtimes)):
-                if len(prob[ev_prob_response_events[ist]]) > 0:
-                    meanprobability[i] = np.mean(prob[ev_prob_response_events[ist]])
-                else:
-                    meanprobability[i] = 1.0
-            eventp[i] = detevt
-            event_amp[i] = detamp
-   
-            scores[i] = 1.0 - self.z2p(Z)  # take max score for the stimuli here
-            spont_rate[i] = sr
-            spontevent_amp[i] = spontaneous_amplitudes
+        if nspont > 10:
+            mean_spont_amp = np.nanmean(spontaneous_amplitudes)
+        else:
+            cprint(
+                "red",
+                f"    Using Mean spont from table for : {str(sel_celltype):s}, temp= {str(temperature):s}C",
+            )
+            key = (sel_celltype, temperature)
+            if key not in self.expt["mean_spont_amplitude_by_cell"]:
+                mean_spont_amp = 20e-12  # A: use a default value
 
-            validdata[i] = True
-            event_Q_Content[i] = event_qcontent
-            event_Largest_Q_Content[i] = largest_event_qcontent
-            datamode[i] = pmode
-            area_fraction_Z[i] = area_fraction
-
-            drdata = self.depression_ratio(
-                evfile=dxp, stim_N=4,
-            )  # compute depression ratio
-            depression_ratio[i] = drdata["ratio"]
-
-            positions[i] = posxy
-            if plotflag:
-                evt = np.hstack(np.array(evtimes).ravel())
-                n, bins, patches = axl[i].hist(
-                    evt, bins=binstuff, histtype="stepfilled", color="k", align="right"
+            else:
+                print(
+                    "mean spont amp by cell retrieved: ",
+                    self.expt["mean_spont_amplitude_by_cell"][(sel_celltype, temperature)],
                 )
-                for s in this_eventlist["stimtimes"]["start"]:
-                    axl[i].plot([s, s], [0, 40], "r-", linewidth=0.5)
-                axl[i].set_ylim(0, 40)
-                axl[i].set_title(str(dxp.parts[-1]), fontsize=10) # .replace(r"_", r"\_"), fontsize=10)
+                mean_spont_amp = (
+                    self.expt["mean_spont_amplitude_by_cell"][(sel_celltype, temperature)] * 1e-12
+                )  # use the mean value for the cell type and temp, scale to A
+        # print("stim times: ", stimtimes)
+        detevt_n, detevt, detamp = SH.detect_events(
+            event_times=evtimes,
+            event_amplitudes=evamps,
+            stim_times=stimtimes,
+            mean_spont_amp=mean_spont_amp,
+        )
+        if detevt_n == 0:
+            CP.cprint("y", f"            No events detected in protocol?")
+            Z = 0.0
+            return None, False
+        det_amp = [a[0] for v in detamp for a in v if len(v) > 0]
+        # print("detamp: ", det_amp)
+        cprint("g", f"    Found {len(det_amp):d} events")
+        if s_shc != 0.0:
+            Z = (detevt_n[0] - m_shc) / s_shc  # mscore[0])
+        else:
+            Z = 100.0  # arbitrary high value
 
-        ########
-        # END OF i loop over protocols
-        ########
+        detamp = np.array(det_amp)
 
+        # exit()
+        if not any(detamp):
+            detamp = [np.array([0])]
+        print(f"            Mean evoked amp (trial 0): {np.nanmean(detamp) * scale:.2f} pA", end="")
+        print(f" SD {np.std(detamp) * scale:.2f} N={np.shape(detamp)[0]:3d}")
+        # print('mscore: ', mscore)
+        event_qcontent = np.zeros(len(mscore))
+        largest_event_qcontent = np.zeros(len(mscore))
+
+        for j, m in enumerate(mscore):
+            if mscore[j] > 100:
+                mscore[j] = 100.0  # clip mscore
+            # try:
+            if mean_ev_amp == 0.0:
+                continue
+            spont_evt_amps = np.nanmean(spontaneous_amplitudes)
+            if j >= len(detamp):
+                continue
+
+            if sign == -1:
+                det = detamp[j] < spont_evt_amps
+                if det.any():
+                    event_qcontent[j] = (
+                        np.nanmean(detamp[j][detamp[j] < spont_evt_amps]) / mean_ev_amp
+                    )
+                    largest_event_qcontent[j] = np.min(detamp[j]) / mean_ev_amp
+            else:
+                det = detamp[j] > spont_evt_amps
+                if det.any():
+                    event_qcontent[j] = (
+                        np.nanmean(detamp[j][detamp[j] > spont_evt_amps]) / mean_ev_amp
+                    )
+                    largest_event_qcontent[j] = np.max(detamp[j]) / mean_ev_amp
+
+            if mscore[j] > 0:
+
+                # print("probs: ", probs)
+                print(
+                    f"        Stim/trial {j:2d} ShuffleScore= {mscore[j]:6.4f} Lowest Shuffle Prob = {np.min(ev_prob_response_events_flat):6.3g} EventP: {detevt[j]:6.3e} Z: {Z:7.4f}, P(Z): {(1.0-self.z2p(Z)):.3e}",
+                    end="",
+                )
+                print(
+                    f" Event Amp re Spont: {event_qcontent[j]:g}  Largest re spont: {largest_event_qcontent[j]:7.4f}"
+                )
+            else:
+                print(
+                    f"        Stim/Trial {j:2d} ShuffleScore= {mscore[j]:6.4f} Lowest Shuffle Prob = {np.min(ev_prob_response_events_flat):6.3g} EventP: {detevt[j]:6.3e} P(Z): {(1.0-self.z2p(Z)):.3e}"
+                )
+
+        mscore[mscore == 0.0] = 100
+        # build result arrays
+        allprotos[i_protocol] = dxp
+        shufflescore[i_protocol] = Z
+        for ist, stime in enumerate(stimtimes):
+            sts = stime["start"]
+            if len(ev_probabilities[sts]) > 0:
+                meanprobability[i_protocol].append(np.mean(ev_probabilities[sts]))
+                minprobability[i_protocol].append(np.min(ev_probabilities[sts]))
+
+            else:
+                meanprobability[i_protocol] += 1.0
+                minprobability[i_protocol] += 1.0
+
+        eventp[i_protocol] = detevt
+        event_amp[i_protocol] = detamp
+
+        scores[i_protocol] = 1.0 - self.z2p(Z)  # take max score for the stimuli here
+        spont_rate[i_protocol] = this_spont_rate
+        spontevent_amp[i_protocol] = spontaneous_amplitudes
+
+        validdata[i_protocol] = True
+        event_Q_Content[i_protocol] = event_qcontent
+        event_Largest_Q_Content[i_protocol] = largest_event_qcontent
+        datamode[i_protocol] = pmode
+        area_fraction_Z[i_protocol] = area_fraction
+
+        positions[i_protocol] = posxy
+
+        depression_ratio, paired_pulse_ratio = self.compute_depression_ppr(stimtimes, dxp)
+
+        if plotflag:
+            evt = np.hstack(np.array(evtimes).ravel())
+            n, bins, patches = axl[i_protocol].hist(
+                evt, bins=binstuff, histtype="stepfilled", color="k", align="right"
+            )
+            for s in this_eventlist["stimtimes"]["start"]:
+                axl[i_protocol].plot([s, s], [0, 40], "r-", linewidth=0.5)
+            axl[i_protocol].set_ylim(0, 40)
+            axl[i_protocol].set_title(
+                str(dxp.parts[-1]), fontsize=10
+            )  # .replace(r"_", r"\_"), fontsize=10)
 
         if plotflag:
             fxl = []
@@ -1049,7 +1114,7 @@ class EventAnalyzer(object):
                 if ifl is None:
                     continue
                 afl.extend(ifl)
-            f, ax = mpl.subplots(2, 1)
+            fig, ax = mpl.subplots(2, 1)
             fbins = np.linspace(0, eventwindow[1], int(eventwindow[1] / 0.00010))
             abins = np.linspace(0, eventwindow[1], int(eventwindow[1] / 0.00010))
             if len(fxl) < 20:
@@ -1060,27 +1125,16 @@ class EventAnalyzer(object):
             ax[1].hist(afl, abins, histtype="bar", density=False)
             mpl.show()
 
-        if plotflag:
-            P.figure_handle.suptitle(str(dx.parent)) # .replace(r"_", r"\_"))
+            P.figure_handle.suptitle(str(Path(dx).parent))  # .replace(r"_", r"\_"))
             mpl.show()
 
-        for i, d in enumerate(depression_ratio):
-            if depression_ratio[i] is None:
-                depression_ratio[i] = np.nan
-        for i, d in enumerate(paired_pulse_ratio):
-            if paired_pulse_ratio[i] is None:
-                paired_pulse_ratio[i] = np.nan
-        print("depression ratio: ", depression_ratio)
-        depression_ratio = np.array(depression_ratio)
-        paired_pulse_ratio = np.array(paired_pulse_ratio)
-        print(paired_pulse_ratio)
         result = {
             "scores": scores,
-            "SR": spont_rate,
+            "SR": this_spont_rate,
             "celltype": sel_celltype,
             "shufflescore": shufflescore,
             "minprobability": minprobability,
-            "meanprobability": meanprobability, 
+            "meanprobability": meanprobability,
             "eventp": eventp,
             "event_amps": event_amp,
             "protocols": allprotos,
@@ -1105,9 +1159,36 @@ class EventAnalyzer(object):
         # print('RES: ', result)
         return result, True
 
+    def compute_depression_ppr(self, stim_times, dxp):
+
+        if len(stim_times) > 1:  # need at least 2 stimuli to get depression/pp ratios
+            drdata = self.depression_ratio(
+                evfile=dxp,
+                stim_N=4,
+            )  # compute depression ratio
+            depression_ratio[i_protocol] = drdata["ratio"]
+            paired_pulse_ratio[i_protocol] = drdata["pp_ratio"]
+        else:
+            depression_ratio[i_protocol] = np.nan
+            paired_pulse_ratio[i_protocol] = np.nan
+
+        for i, dr in enumerate(depression_ratio):
+            if dr is None:
+                dr = np.nan
+        paired_pulse_ratio[paired_pulse_ratio == None] = np.nan
+        # for i, ppr in enumerate(paired_pulse_ratio):
+        #     print("i, ppr: ", i, ppr)
+        #     if ppr is None:
+        #         ppr = np.nan
+        depression_ratio = np.array(depression_ratio)
+        paired_pulse_ratio = np.array(paired_pulse_ratio)
+        print("depression_ratio: ", len(depression_ratio), [dr for dr in depression_ratio])
+        print("paired_pulse_ratio: ", len(paired_pulse_ratio), [ppr for ppr in paired_pulse_ratio])
+        return depression_ratio, paired_pulse_ratio
+
     def listcells(
         self,
-        celltype=[],
+        celltype: Union[str, None] = None,
         cmds=None,
         day=None,
         day_after=None,
@@ -1132,9 +1213,7 @@ class EventAnalyzer(object):
         assert self.db is not None
         if not isinstance(celltype, list):
             celltype = [celltype]
-        tw = textwrap.TextWrapper(
-            initial_indent=" " * 3, subsequent_indent=" " * 8, width=80
-        )
+        tw = textwrap.TextWrapper(initial_indent=" " * 3, subsequent_indent=" " * 8, width=80)
 
         sumtab = OrderedDict()
         # print("isting cells")
@@ -1148,11 +1227,13 @@ class EventAnalyzer(object):
             cprint("c", f"Found {len(self.events):d} events in this cell's data")
 
         for cell_id in sorted(list(self.events.keys())):  # list of cells
-            if cell_id in exclusions:  # excluded based on day/slice/cell, not just protocol
+            if (
+                cell_id in self.expt["Excluded_maps"]
+            ):  # excluded based on day/slice/cell, not just protocol
                 cprint("yellow", f"Cell excluded from table: {str(efd):s}")
                 continue
             match = self.check_day_slice_cell(
-                fn = cell_id,
+                fn=cell_id,
                 day=day,
                 day_after=day_after,
                 day_before=day_before,
@@ -1160,7 +1241,6 @@ class EventAnalyzer(object):
             )
             if not match:
                 raise ValueError()
-                continue
             else:
                 cprint("cyan", f"Match : {str(cell_id):s}")
             cellclass = class_cell(str(self.events[cell_id]["celltype"]).lower())
@@ -1192,7 +1272,7 @@ class EventAnalyzer(object):
                 if group is None:
                     cprint("y", f"Base file (date) {basename:s} not in coding database")
                     continue
-        
+
             cprint("cyan", f"\n Cell: {cell_id:42s} {cellclass:18s} Group: {group:s}")
             sign = -1
             if "signflip" in cell_id or "alt1" in cell_id or "alt2" in cell_id:
@@ -1200,9 +1280,7 @@ class EventAnalyzer(object):
                 # sign = 1
             # dblink = Path(efd).parts
             # day_x = self.db.loc[(self.db['date'] == dblink[0]) & (self.db['slice_slice'] == dblink[1]) & (self.db['cell_cell'] == dblink[2])]
-            notestr = "".join(
-                [s for s in self._get_cell_information(cell_id, "cell_notes")]
-            )
+            notestr = "".join([s for s in self._get_cell_information(cell_id, "cell_notes")])
             notes = tw.wrap(f"Notes: {notestr:s}")
             for n in notes:
                 print(n)
@@ -1214,7 +1292,9 @@ class EventAnalyzer(object):
             cell_maxspont = 0.0
             # clean the protocol list first:
 
-            cell_protocols = sorted([str(x) for x in self.events[cell_id]["protocols"] if x not in [None, 'None']])
+            cell_protocols = sorted(
+                [str(x) for x in self.events[cell_id]["protocols"] if x not in [None, "None"]]
+            )
             for i_protoindex, p in enumerate(sorted(cell_protocols)):
                 if self.events[cell_id]["protocols"][i_protoindex] == None or str(
                     self.events[cell_id]["protocols"][i_protoindex]
@@ -1245,8 +1325,8 @@ class EventAnalyzer(object):
                 if not isinstance(score, (np.ndarray, list)) or score.shape == ():
                     print(f"   {0:d}: {score:.3g}")
                 else:
-                    for k in range(len(score)):
-                        print(f"  {k:d}: {score[k]:.3g}", end="")
+                    for k, scr in enumerate(score):
+                        print(f"  {k:d}: {scr:.3g}", end="")
                     print()
                 # print(f"  {:s}'.format(self.events[cell_id]['protocols'][i].stem, str(score))")
                 if "_VC_" in str(
@@ -1257,7 +1337,7 @@ class EventAnalyzer(object):
                         cell_maxscore = cell_mscore
 
                 print("       Event Amplitudes for each stimulus: ")
- 
+
                 if self.events[cell_id]["protocols"][i_protoindex] == None or str(
                     self.events[cell_id]["protocols"][i_protoindex]
                 ) in [None, ""]:
@@ -1266,9 +1346,7 @@ class EventAnalyzer(object):
                 # print(events[cell_id]["event_amps"][i_protoindex])
                 # print(np.mean(events[cell_id]['spont_amps'][i_protoindex]))
                 # print(f"     {self.events[cell_id]['protocols'][i_protoindex].stem:45s}  ")
-                print(
-                    f"           {'Stim N':6s}  {'Ev Amp':^10s}   (N)    {'Sp Amp':^10s}   (N)"
-                )
+                print(f"           {'Stim N':6s}  {'Ev Amp':^10s}   (N)    {'Sp Amp':^10s}   (N)")
                 if self.events[cell_id]["mode"][i_protoindex] == "V":
                     suffix = "A"
                 else:
@@ -1279,9 +1357,7 @@ class EventAnalyzer(object):
                 if len(ev) > 0:
                     an_event = np.max(sign * ev)
 
-                    if (
-                        suffix == "A"
-                    ):  # only voltage clamp data
+                    if suffix == "A":  # only voltage clamp data
                         if an_event > cell_maxev:
                             cell_maxev = an_event
                 if nev > 0:
@@ -1322,18 +1398,16 @@ class EventAnalyzer(object):
 
     def flatten(self, l):
         for el in l:
-            if isinstance(el, collections.Iterable) and not isinstance(
-                el, (str, bytes)
-            ):
+            if isinstance(el, collections.Iterable) and not isinstance(el, (str, bytes)):
                 yield from self.flatten(el)
             else:
                 yield el
 
-    def depression_ratio(self, evfile, measuretype:str="depression_ratio", stim_N=5):
+    def depression_ratio(self, evfile, measuretype: str = "depression_ratio", stim_N=5):
         verbose = False
-        assert measuretype in ["depression_ratio", "paired_pulse_ratio"]
-        if measuretype == "paired_pulse_ratio":
-            stim_N = 2
+        # assert measuretype in ["depression_ratio", "paired_pulse_ratio"]
+        # if measuretype == "paired_pulse_ratio":
+        #     stim_N = 2
         proto = pathlib.PurePosixPath(evfile).name  # make sure of type
         protocol, protodata = self._get_cell_protocol_data(evfile.parent)
         for p in protodata.keys():
@@ -1343,7 +1417,7 @@ class EventAnalyzer(object):
         if proto not in list(protodata.keys()):
             return None, None, None
         envx = protodata[str(proto)]
-        
+
         # print('stimtimes: ', envx['stimtimes'])
         if len(envx["stimtimes"]["starts"]) < stim_N:
             # print('not enough stim times', envx['stimtimes']['start'])
@@ -1386,15 +1460,13 @@ class EventAnalyzer(object):
 
             for jwin in range(stim_N):
                 for iev in range(event_t.shape[0]):
-                    if (event_t[iev] >= stimwins[jwin][0]) and (
-                        event_t[iev] < stimwins[jwin][1]
-                    ):
+                    if (event_t[iev] >= stimwins[jwin][0]) and (event_t[iev] < stimwins[jwin][1]):
                         # print('jwins, iev, event_t, event_a, stimwins: ', jwin, iev, event_t[iev], event_a[iev], stimwins[jwin])
                         amps[jwin].append(event_a[iev])
                         tevs[jwin].append(event_t[iev])
             # evtimes.extend(evt)
             # evamps.extend(eva)
-        
+
         # for trial in range(len(protoevents)):
         #     if trial >= len(envx["ZScore"]):
         #         continue
@@ -1404,7 +1476,7 @@ class EventAnalyzer(object):
         #     for ispot in spots:
         #      # now for all spots in this trial, get the events for each stimulus so we can average them
         #          # handle both orders (old and new...)
-        #         if "smpksindex" in protoevents[trial].keys():  
+        #         if "smpksindex" in protoevents[trial].keys():
         #             event_t = (
         #                 np.array(protoevents[trial]["smpksindex"][ispot]) * 5e-5
         #             )  # time
@@ -1424,23 +1496,22 @@ class EventAnalyzer(object):
         #                     tevs[jwin].append(event_t[iev])
 
         if verbose:
-            print('Tevs: ', tevs)
-            print('amps: ', amps)
-
-        if len(amps[stim_N - 1]) == 0:
-            amps[stim_N - 1] = [np.nan]
-        if len(amps[0]) == 0:
-            ratio = np.nan
-        else:
-            # print(amp1, amp5)
-            ratio = np.nanmean(amps[stim_N - 1]) / np.nanmean(amps[0])
-        # print("ratio: ", stim_N, ratio)
-        if verbose:
-            for i in amps.keys():
-                print(f"amp[{i:d}]: {amps[i]*1e12:.1f}  tev{i:d}: {tevs[i]*1e3:.1f}")
-        # print(f"Ratio: {ratio:.3f}")
-
-        return {"ratio": ratio, "amplitudes": amps, "eventtimes": tevs}
+            print("Tevs: ", tevs)
+            print("amps: ", amps)
+        # check for all edge cases
+        if len(amps[0]) == 0:  # no events from the first stimulus, can't calculate a ratio
+            all_ratios = [np.nan] * stim_N
+        else:  # normal case - ratio of last to first
+            all_ratios = [np.nanmean(amps[i]) / np.nanmean(amps[0]) for i in range(stim_N)]
+        print(f"Ratio:", all_ratios)
+        # also, if possible, compute paired pulse ratio between first two stimuli
+        paired_pulse_ratio = all_ratios[1] if stim_N >= 2 else np.nan
+        return {
+            "ratio": all_ratios,
+            "pp_ratio": paired_pulse_ratio,
+            "amplitudes": amps,
+            "eventtimes": tevs,
+        }
 
     def IO(self, evfile, proto, stim_N=5):
         """
@@ -1450,8 +1521,8 @@ class EventAnalyzer(object):
         proto = pathlib.PurePosixPath(evfile.parent, proto)  # make sure of type
         protocol, protodata = self._get_cell_protocol_data(evfile.parent)
         dpath = Path(
-            self.NM.experiments[self.database]['rawdatapath'],
-                        proto,
+            self.expt["rawdatapath"],
+            proto,
         )
         AR.setProtocol(dpath)
         pd = AR.getPhotodiode()
@@ -1483,7 +1554,11 @@ class EventAnalyzer(object):
         print("spot amps in mW/mm2: ", st_amps)
         # exit()
 
-        celltype = self._get_cell_information(evfile.parent, "cell_type")[0]
+        celltype = ephys.tools.map_cell_types.map_cell_type(self._get_cell_information(evfile.parent, "cell_type")[0])
+        # celltype = self._get_cell_information(evfile.parent, "cell_type")[0]
+        if celltype is None:
+            CP.cprint("r", f"Check cell type: {celltype:s}")
+
         cellcolor = {
             "pyramidal": "red",
             "cartwheel": "orange",
@@ -1528,9 +1603,7 @@ class EventAnalyzer(object):
                 # if (
                 #     "smpksindex" in protoevents[trial].keys()
                 # ):  # handle both orders (old and new...)
-                event_t = (
-                    np.array(protoevents[trial].smpkindex[ispot]) * 5e-5
-                )  # time
+                event_t = np.array(protoevents[trial].smpkindex[ispot]) * 5e-5  # time
                 event_a = np.array(protoevents[trial].smoothed_peaks[ispot])  # amplitude
                 # else:
                 #     event_t = (
@@ -1547,8 +1620,8 @@ class EventAnalyzer(object):
                             tevs[jwin].append(event_t[iev])
 
         if verbose:
-            print('tevs: ', tevs)
-            print('amps: ', amps)
+            print("tevs: ", tevs)
+            print("amps: ", amps)
         ampl = [None] * len(amps)
         for j in amps.keys():
             ampl[j] = np.nanmean(amps[j])
@@ -1560,7 +1633,7 @@ class EventAnalyzer(object):
             print(f"IO: no data to plot? {celltype:s}, {str(proto):s}")
         return (st_amps, -1 * np.array(ampl) * 1e12, tevs, celltype)
 
-    def filter_protocols(self, protocol:str, exclusions, doIO:bool=False) -> bool:
+    def filter_protocols(self, protocol: str, exclusions, doIO: bool = False) -> bool:
         if protocol is None:
             return False
         if (
@@ -1580,7 +1653,7 @@ class EventAnalyzer(object):
             # or (protocol.match("*_VC_pt1mW_*"))
             # or (protocol.match("*_VC_pt2mW_*"))
             # or (protocol.match("*_VC_0*"))
-            ):
+        ):
             if protocol is not None:
                 cprint("yellow", "    * excluded on protocol: " + str(protocol))
                 return False
@@ -1591,8 +1664,18 @@ class EventAnalyzer(object):
         cprint("c", "    * included protocol: " + str(protocol))
         return True
 
-    def summarize_one_protocol(self, protocol:str, cell_events, k:int, thiscell:str, whatplot:str,
-         protocol_SR:float, nspots:int, cmds:object, doIO:bool):
+    def summarize_one_protocol(
+        self,
+        protocol: str,
+        cell_events,
+        k: int,
+        thiscell: str,
+        whatplot: str,
+        protocol_SR: float,
+        nspots: int,
+        cmds: object,
+        doIO: bool,
+    ):
 
         # cprint("m", "cellname, , protocol, whatplot: ")
         # print("     ", cellname, protocol, whatplot)
@@ -1605,20 +1688,20 @@ class EventAnalyzer(object):
             case ["scores"]:
                 v.append(cell_events["scores"])
 
-            case ['SR']:
+            case ["SR"]:
                 v.append(protocol_SR)
- 
+
             case ["event_amps"]:
                 # for m in range(len(cell_events["event_amps"][k])):
                 v.append(cell_events["event_amps"][k])
-            
+
             case ["event_qcontent"]:
                 # for m in range(len(cell_events["event_qcontent"][k])):
                 v.append(cell_events["event_qcontent"][k])
-            
-            case ['spont_amps']:
-                v.append(cell_events['spont_amps'][k])
-            
+
+            case ["spont_amps"]:
+                v.append(cell_events["spont_amps"][k])
+
             case ["amp_ratio"]:  # exception for calculation
                 mean_spamp = np.mean(cell_events["spont_amps"][k])
                 for m in range(len(cell_events["event_amps"][k])):
@@ -1626,7 +1709,7 @@ class EventAnalyzer(object):
                         v.append(cell_events["event_amps"][k][m][0] / mean_spamp)
                     else:
                         v.append(np.nan)  # no spont; no ratio
-            
+
             case ["depression_ratio"]:
                 # need to access the data a bit deeper than from the event_summary file
                 """
@@ -1640,10 +1723,10 @@ class EventAnalyzer(object):
                 dr = self.depression_ratio(protocol, measuretype="depression_ratio")
                 # print("dr: ", dr)
                 if dr["ratio"] is not None:
-                # cprint('yellow', 'Depression ratio: ' + str(dr))
+                    # cprint('yellow', 'Depression ratio: ' + str(dr))
                     # v.append({"ratio": dr, "amps": amps, "tevs": tevs})
                     v.append([dr["ratio"]])
-            
+
             case ["paired_pulse_ratio"]:
                 # need to access the data a bit deeper than from the event_summary file
                 """
@@ -1657,7 +1740,7 @@ class EventAnalyzer(object):
                 dr = self.depression_ratio(protocol, measuretype="paired_pulse_ratio")
                 # print("dr: ", dr)
                 if dr["ratio"] is not None:
-                # cprint('yellow', 'PPR: ' + str(dr))
+                    # cprint('yellow', 'PPR: ' + str(dr))
                     # v.append({"ratio": dr, "amps": amps, "tevs": tevs})
                     v.append([dr["ratio"]])
 
@@ -1684,7 +1767,7 @@ class EventAnalyzer(object):
                 if cell_events["firstevent_latency"][k] is not None:
                     v.append(cell_events["firstevent_latency"][k])
 
-            case["tau1"]:
+            case ["tau1"]:
                 # reader = MEDR.Reader(evl[dxf])
                 # print(d[protocols[0]].  keys())
                 tau1, tau2 = self.get_tau(thiscell)
@@ -1706,7 +1789,7 @@ class EventAnalyzer(object):
                     [areaZ]
                 )  #  = float(len([cell_events['ZScore'] > area_z_threshold]))/float(len(cell_events['positions']))
 
-            case["median_Z_abovethreshold"]:
+            case ["median_Z_abovethreshold"]:
                 # areaZ = self.getZ_fromprotocol(fn=x, db=cmds.database, protocol=p, param='median_Z_abovethreshold',area_z_threshold=cmds.area_z_threshold, stimno=0)
                 areaZ = self.getZ_fromprotocol(
                     protocol=protocol,
@@ -1719,7 +1802,7 @@ class EventAnalyzer(object):
                     [areaZ]
                 )  #  = float(len([cell_events['ZScore'] > area_z_threshold]))/float(len(cell_events['positions']))
 
-            case  ["maximum_Z"]:
+            case ["maximum_Z"]:
                 areaZ = self.getZ_fromprotocol(
                     filename=thiscell,
                     protocol=protocol,
@@ -1744,10 +1827,7 @@ class EventAnalyzer(object):
                 )  #  = float(len([cell_events['ZScore'] > area_z_threshold]))/float(len(cell_events['positions']))
 
             case ["scores"]:
-                if (
-                    protocol_SR < 0.1
-                    and len(cell_events["event_amps"][k]) < 0.05 * nspots
-                ):
+                if protocol_SR < 0.1 and len(cell_events["event_amps"][k]) < 0.05 * nspots:
                     v.append(
                         [0.0]
                     )  # too few events or too low spont to get an accurate measurement
@@ -1766,7 +1846,6 @@ class EventAnalyzer(object):
                 cprint("red", f"    * Unknown whatplot: {whatplot:s}")
                 pass
         return v
-
 
     def summarize_protocols(
         self, cell_events, thiscell=None, whatplot=None, min_spots=None, cmds=None, doIO=False
@@ -1810,21 +1889,36 @@ class EventAnalyzer(object):
                     f"          Protocol {str(protocol):s} has too few spots ({nspots:d} < {min_spots:d} for {whatplot:s} analysis)",
                 )
                 continue
-            
+
             protocol_SR = len(cell_events["spont_amps"][k]) / (dur * nspots)
-            if whatplot == 'SR':  # retrieve SR from event count
-                sr_evs = len(cell_events['spont_amps'])
+            if whatplot == "SR":  # retrieve SR from event count
+                sr_evs = len(cell_events["spont_amps"])
 
             cellname = protocol.parent
-            v =  self.summarize_one_protocol(protocol, cell_events, k=k, thiscell=cellname, whatplot=whatplot,
-                protocol_SR=protocol_SR, nspots=nspots, cmds=cmds, doIO=doIO)
+            v = self.summarize_one_protocol(
+                protocol,
+                cell_events,
+                k=k,
+                thiscell=cellname,
+                whatplot=whatplot,
+                protocol_SR=protocol_SR,
+                nspots=nspots,
+                cmds=cmds,
+                doIO=doIO,
+            )
 
             cellIDs.append(cellname)
             values.append(v)
             protocols.append(protocol)
             temperatures.append(temperature)
 
-        res = {"measure": whatplot, "values": values, "cellID": cellIDs, "protocols": protocols, "temperature": temperatures}
+        res = {
+            "measure": whatplot,
+            "values": values,
+            "cellID": cellIDs,
+            "protocols": protocols,
+            "temperature": temperatures,
+        }
         # print("res: ", res)
         # print(whatplot, len(res["values"]), [np.mean(x) for x in res["values"] if len(x)  > 0])
 
@@ -1865,7 +1959,6 @@ class EventAnalyzer(object):
             whatplot = cmds.summarize
             print("whatplot was None, now is: ", whatplot)
 
-
         sum_data = []
         j = 0
         # if whatplot is None:
@@ -1881,8 +1974,7 @@ class EventAnalyzer(object):
                 continue
             if (
                 thiscell.find("signflip") >= 0
-                or thiscell.find("alt1")  # skip special, non-cannonical analysis files as well
-                >= 0
+                or thiscell.find("alt1") >= 0  # skip special, non-cannonical analysis files as well
                 or thiscell.find("alt2") >= 0
             ):
                 cprint("y", f"Cells is signflip alt1 or alt2 skipping")
@@ -1901,15 +1993,14 @@ class EventAnalyzer(object):
             elif self.coding is not None and group is not None:  # select
                 basename = thiscell.split("_")[0]
                 coding = self.coding.dropna(subset="date")
-                matchday = self.coding[self.coding['date'].str.endswith(basename)]
+                matchday = self.coding[self.coding["date"].str.endswith(basename)]
                 # cprint("g", f"File {str(thiscell):s} matches cell {str(matchday['date']):s} in group {group:s}, ")
                 # print(" with code: matchday.Group.values[0]: ", matchday["Group"].values[0], group)
                 # exit()
-                if matchday['Group'].values[0] != group:  # exists, and does not match group
+                if matchday["Group"].values[0] != group:  # exists, and does not match group
                     # cprint("yellow", f"File {str(thiscell):s} in group {matchday['Group'].values[0]:s} does not match group {group:s}")
                     continue
             # permit restriction to just one cell when spot checking:
-
 
             # if cmds.day != "all":
 
@@ -1923,18 +2014,31 @@ class EventAnalyzer(object):
             #     if not match:  # only do requrested daya/slices/cells
             #         CP.cprint("m", f"Cell did not match day/slice/cell criteria: {str(x):s}")
             #         continue
-            #     sd = self.summarize_one_cell(thiscell=thiscell, cell_events=evn, whatplot=whatplot, 
+            #     sd = self.summarize_one_cell(thiscell=thiscell, cell_events=evn, whatplot=whatplot,
             #         min_spots=min_spots, doIO=ioflag, cmds=cmds)
             # else:
             print("Doing thiscell: ", thiscell)
-            sd = self.summarize_one_cell(thiscell=thiscell, cell_events=evn, whatplot=whatplot, 
-                min_spots=min_spots, doIO=ioflag, cmds=cmds)
+            sd = self.summarize_one_cell(
+                thiscell=thiscell,
+                cell_events=evn,
+                whatplot=whatplot,
+                min_spots=min_spots,
+                doIO=ioflag,
+                cmds=cmds,
+            )
             print(f"\nsum_data for: {thiscell:s}\n{str(sd):s}")
             sum_data.append(sd)
         return {"celltypes": celltype.lower(), "code": group, "data": sum_data}
-    
-    
-    def summarize_one_cell(self, thiscell:str, cell_events:dict, whatplot:str, min_spots:int, doIO:bool=False, cmds:object=None):
+
+    def summarize_one_cell(
+        self,
+        thiscell: str,
+        cell_events: dict,
+        whatplot: str,
+        min_spots: int,
+        doIO: bool = False,
+        cmds: object = None,
+    ):
 
         print("Summariing one cell: ", thiscell)
 
@@ -1965,9 +2069,7 @@ class EventAnalyzer(object):
                 print(f"    {str(protocol.name):>40s}", end="")
                 if isinstance(cdat, list):
                     if isinstance(cdat[0], dict):
-                        v = np.mean(
-                            cdat[0]["ratio"]
-                        )  # only depression ratio has this
+                        v = np.mean(cdat[0]["ratio"])  # only depression ratio has this
                     elif isinstance(cdat[0], float):
                         v = cdat[0]
                         nprotevents += 1
@@ -2005,7 +2107,6 @@ class EventAnalyzer(object):
             #     if k in 'giant':
             #         print(f'{k:<32s} ({len(csum[k]):3d})  {str(csum[k]):s}')
             return sum_data
-        
 
     def extract_data(self, celltype, sum_data, whatplot):
         """
@@ -2019,7 +2120,7 @@ class EventAnalyzer(object):
         ncells = len(sum_data["data"])
         ctitle = ""
         dataok = True
-        print(f'Extracting {whatplot:s} for {celltype:s} cells (N = {ncells:d})')
+        print(f"Extracting {whatplot:s} for {celltype:s} cells (N = {ncells:d})")
         if whatplot in ["event_amps", "spont_amps"]:
             scale = 1e12
             sign = -1.0
@@ -2035,15 +2136,13 @@ class EventAnalyzer(object):
         cellid = [" "] * ncells
         # print('ncells: ', ncells, len(sum_data['data']))
         for nc in range(ncells):  # for all cells in the group
-            cell_maps = sum_data["data"][
-                nc
-            ]  # get data for all of the maps for this cell
+            cell_maps = sum_data["data"][nc]  # get data for all of the maps for this cell
             if cell_maps is None:
                 continue
             print("cell_maps: ", cell_maps)
             nmaps = len(cell_maps["values"])
             prots = cell_maps["protocols"]  #  # all the protocols
-            cprint('yellow', f'prots: {nc:d}, {str(prots):s}, {nmaps:d} maps')
+            cprint("yellow", f"prots: {nc:d}, {str(prots):s}, {nmaps:d} maps")
             # continue
             avgbymap = np.zeros(nmaps)  # to hold results
             depr_ratio = np.zeros(nmaps)
@@ -2062,9 +2161,7 @@ class EventAnalyzer(object):
                 if whatplot in ["firstevent_latency", "allevent_latency"]:
                     d = d[0]
                 # print('d shape: ', d.shape)
-                if isinstance(
-                    d, float
-                ):  # convert single float value to an array with the value
+                if isinstance(d, float):  # convert single float value to an array with the value
                     # cprint('red', f'FLOAT: {d:f}')
                     avgbymap[nm] = d
                     continue
@@ -2080,15 +2177,11 @@ class EventAnalyzer(object):
                     # print('d: ', d)
                     #                   print(np.array(d[0]).shape)
                     #                   print(np.array(d[0]))
-                    if (
-                        np.array(d[0]).shape == () or len(d[0]) == 0
-                    ):  # np.array(d[0]) == [None]:
+                    if np.array(d[0]).shape == () or len(d[0]) == 0:  # np.array(d[0]) == [None]:
                         # cprint('red', '  Empty array')
                         continue
                     try:
-                        avgbymap[nm] = np.nanmean(
-                            [np.nanmean(x) for x in np.array(d[0])]
-                        )
+                        avgbymap[nm] = np.nanmean([np.nanmean(x) for x in np.array(d[0])])
                     except:
                         print("EXTRACT DATA FAILED: \n", np.array(d[0]))
                         exit()
@@ -2192,15 +2285,15 @@ class EventAnalyzer(object):
         if celltypes == "all":
             celltypes = all_celltypes
 
-        for n, celltype in enumerate(
-            celltypes
-        ):  # for each cell type, which is on a separate plot
+        for n, celltype in enumerate(celltypes):  # for each cell type, which is on a separate plot
             groups_found = []  # for this cell type
-            histdata ={}
+            histdata = {}
             cttitle[celltype] = {}
             x_celltype_max = 0
             for ng, group in enumerate(groups_to_do):  # for all groups in this cell type
-                print(f"\nget_data:  Group: {group:s}, Cell type: {celltype:<15s} parameter: {parameter:s}")
+                print(
+                    f"\nget_data:  Group: {group:s}, Cell type: {celltype:<15s} parameter: {parameter:s}"
+                )
                 # get the data for the cells in this group
                 sum_data = self.summarize_cells(
                     cmds=cmds,
@@ -2213,14 +2306,14 @@ class EventAnalyzer(object):
                 #     print(f" summary_data: ", sum_data)
                 #     exit()
 
-                eqs = '='*80
-                cprint("c",f"\n{eqs:s}")
+                eqs = "=" * 80
+                cprint("c", f"\n{eqs:s}")
                 print("    celltype: ", celltype)
                 print("    parameter: ", parameter)
                 print("    whatplot:  ", whatplot)
-                print("    coding: ", sum_data['code'])
+                print("    coding: ", sum_data["code"])
                 print("    group: ", group)
-                print("    summary_data: ", sum_data['data'])
+                print("    summary_data: ", sum_data["data"])
 
                 # print(self.pddata)
 
@@ -2228,19 +2321,26 @@ class EventAnalyzer(object):
                 # exit()
 
                 self.pddata = pd.concat(
-                    [self.pddata, 
-                    pd.DataFrame({
-                        "celltype": celltype,
-                        "parameter": parameter,
-                        "coding": sum_data['code'],
-                        "group": group,
-                        "summary_data": sum_data,
-                    })],
+                    [
+                        self.pddata,
+                        pd.DataFrame(
+                            {
+                                "celltype": celltype,
+                                "parameter": parameter,
+                                "coding": sum_data["code"],
+                                "group": group,
+                                "summary_data": sum_data,
+                            }
+                        ),
+                    ],
                     ignore_index=True,
                 )
                 cprint("c", f"<{eqs:s}>\n")
                 if sum_data is None or len(sum_data["data"]) == 0:
-                    cprint("r", f"summarize_cells: No data from dict for: code={sum_data['code']:s}, celltype={celltype:s}, group={group:s}")
+                    cprint(
+                        "r",
+                        f"summarize_cells: No data from dict for: code={sum_data['code']:s}, celltype={celltype:s}, group={group:s}",
+                    )
                     continue
                 groups_found.append(group)
                 # unpack
@@ -2251,19 +2351,16 @@ class EventAnalyzer(object):
                 cttitle[celltype][group] = ""
             histdata_sum[celltype] = histdata
 
-        Expt = self.NM.experiments[self.database]
         fout = Path(
-            Expt["analyzeddatapath"],
-            Expt['directory'],
+            self.expt["analyzeddatapath"],
+            self.expt["directory"],
             f"{parameter:s}_summary.pkl",
-            )
+        )
         print("get_data:, writing to Output file: ", str(fout))
         self.pddata.to_pickle(fout, compression=None)
         return histdata_sum, cttitle
 
-    def get_all_data(
-        self, cmds=None, celltypes=["bushy"], groups_to_do="B"
-    ):
+    def get_all_data(self, cmds=None, celltypes=["bushy"], groups_to_do="B"):
         """
         A better way to do this is with pandas...
         """
@@ -2317,14 +2414,14 @@ class EventAnalyzer(object):
         all_groups = OrderedDict()
         if celltypes is None:
             celltypes = ["pyramidal", "cartwheel", "tuberculoventral"]
-        for n, celltype in enumerate(
-            celltypes
-        ):  # for each cell type, which is on a separate plot
+        for n, celltype in enumerate(celltypes):  # for each cell type, which is on a separate plot
             groups_found = []  # for this cell type
             x_celltype_max = 0
             # print("pdev.celltype: ", [p for p in pdev.celltype.values])
             # print("celltype: ", celltype)
-            ct_data = pdev[pdev['celltype'] == celltype].reset_index()  # data for this cell type only
+            ct_data = pdev[
+                pdev["celltype"] == celltype
+            ].reset_index()  # data for this cell type only
 
             for ng, group in enumerate(groups_to_do):  # for all specified groups
                 # print(f"\n{celltype:<15s} Group: {group:s}")
@@ -2355,7 +2452,7 @@ class EventAnalyzer(object):
                 bd = {}
                 for j, cell in enumerate(ct_data.index):
                     # print("cell data: ", cell, ct_data.iloc[cell])
-                    cell_id = str(ct_data.iloc[cell]['index'])
+                    cell_id = str(ct_data.iloc[cell]["index"])
                     # print(ct_data.iloc[cell]["event_amps"])
 
                     for whatplot in bigdata.dtype.names:
@@ -2375,7 +2472,7 @@ class EventAnalyzer(object):
                             print("elec_sol: ", elec_sol)
                             print("temp: ", temp)
                             if age is None or age == "None":
-                                age = 56 # placeholder
+                                age = 56  # placeholder
                             bigdata[j].age = age
                             bigdata[j].temperature = int(temp)
                             bigdata[j].internal = elec_sol
@@ -2414,12 +2511,11 @@ class EventAnalyzer(object):
     ):
         assert self.coding is not None
         if cmds.summarize in ["tau1", "tau2"]:
-            Expt = self.NM.experiments[self.database]
             taudb = Path(
-                Expt["analyzeddatapath"],
-                Expt['directory'],
-                "merged_db", 
-                ).with_suffix(".pkl")
+                self.expt["analyzeddatapath"],
+                self.expt["directory"],
+                "merged_db",
+            ).with_suffix(".pkl")
 
             dbtaus = pd.read_pickle(taudb)
         print("starting to Summarize")
@@ -2428,11 +2524,11 @@ class EventAnalyzer(object):
         whatplot = cmds.summarize
 
         area_z_threshold = cmds.area_z_threshold
-        
+
         cprint("c", f"Celltype selection: {str(celltypes):s}")
 
         if celltypes == "all":
-            axis_no =dict(zip(all_celltypes, range(len(all_celltypes))))
+            axis_no = dict(zip(all_celltypes, range(len(all_celltypes))))
             ncelltypes = len(all_celltypes)
         elif cmds.celltypes == "VCN":
             axis_no = dict(zip(VCN_celltypes, range(len(VCN_celltypes))))
@@ -2489,9 +2585,7 @@ class EventAnalyzer(object):
             P.figure_handle.suptitle(toptitle, fontsize=12)
 
             if len(groups_to_do) in [3, 4]:
-                gcolors = OrderedDict(
-                    [("A", "b"), ("AA", "r"), ("B", "g"), ("AAA", "m")]
-                )
+                gcolors = OrderedDict([("A", "b"), ("AA", "r"), ("B", "g"), ("AAA", "m")])
                 gxcolors = [[0, 0, 1, 1], [1, 0, 0, 1], [0, 1, 0, 1], [1, 0, 1, 1]]
             else:
                 gcolors = OrderedDict([("B", "g")])
@@ -2511,7 +2605,7 @@ class EventAnalyzer(object):
                 # print("histdata keys: ", histdata_sum.keys())
                 print("groups to do: ", groups_to_do)
                 for group in groups_to_do:
-                    print('histdata: ', histdata_sum[ct])
+                    print("histdata: ", histdata_sum[ct])
                     if group in list(histdata_sum[ct].keys()):
                         hd = histdata_sum[ct][group]
                         refd = refdata_sum[ct][group]
@@ -2537,15 +2631,11 @@ class EventAnalyzer(object):
                     what_values = []
                     # build numpy rec array from data we are getting, rather than just printing it out
                     for j in range(len(hd["cellID"])):
-                        print('cell id: ', hd['cellID'][j])
-                        temp = self._get_cell_information(
-                            hd["cellID"][j], "temperature"
-                        )
-                        elec_sol = self._get_cell_information(
-                            hd["cellID"][j], "internal"
-                        )
+                        print("cell id: ", hd["cellID"][j])
+                        temp = self._get_cell_information(hd["cellID"][j], "temperature")
+                        elec_sol = self._get_cell_information(hd["cellID"][j], "internal")
                         age = self._get_cell_information(hd["cellID"][j], "age")
-                        if age is None:  # means missing information for cell ID in database.... 
+                        if age is None:  # means missing information for cell ID in database....
                             continue
 
                         print(f"CELL ID:  {hd['cellID'][j]!r}\t", end="")
@@ -2554,8 +2644,7 @@ class EventAnalyzer(object):
                         if whatplot == "scores" and hd["data"][j] >= 1.2:
                             resp += 1
                         elif (
-                            whatplot
-                            in ["maximum_Z", "mean_Z", "median_Z_abovethreshold"]
+                            whatplot in ["maximum_Z", "mean_Z", "median_Z_abovethreshold"]
                             and hd["data"][j] > 2.1
                         ):
                             resp += 1
@@ -2605,23 +2694,39 @@ class EventAnalyzer(object):
             if len(hddf) == 0:
                 return
             if rain:
-            #     pt.RainCloud(
-            #         x="Group",
-            #         y=whatplot,
-            #         data=hddf,
-            #         ax=axl[nax],
-            #         width_viol=1.5,
-            #         width_box=0.35,
-            #         orient="h",
-            #     )
-            #     axlim = axl[nax].set_xlim
-            # pt.half_violinplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], bw='scott',  linewidth=1, cut=0.,
-            #     width=0.8, inner=None, orient='h')
-                sns.boxplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], color='0.8',
-                                showcaps=True, boxprops={'facecolor':'none', "zorder":10},
-                            showfliers=True, whiskerprops={'linewidth':2, "zorder":10})
-                sns.stripplot(x='Group', y=whatplot, data=hddf, ax=axl[nax],
-                    size=2.5, jitter=1, color='0.8', orient='h')
+                #     pt.RainCloud(
+                #         x="Group",
+                #         y=whatplot,
+                #         data=hddf,
+                #         ax=axl[nax],
+                #         width_viol=1.5,
+                #         width_box=0.35,
+                #         orient="h",
+                #     )
+                #     axlim = axl[nax].set_xlim
+                # pt.half_violinplot(x='Group', y=whatplot, data=hddf, ax=axl[nax], bw='scott',  linewidth=1, cut=0.,
+                #     width=0.8, inner=None, orient='h')
+                sns.boxplot(
+                    x="Group",
+                    y=whatplot,
+                    data=hddf,
+                    ax=axl[nax],
+                    color="0.8",
+                    showcaps=True,
+                    boxprops={"facecolor": "none", "zorder": 10},
+                    showfliers=True,
+                    whiskerprops={"linewidth": 2, "zorder": 10},
+                )
+                sns.stripplot(
+                    x="Group",
+                    y=whatplot,
+                    data=hddf,
+                    ax=axl[nax],
+                    size=2.5,
+                    jitter=1,
+                    color="0.8",
+                    orient="h",
+                )
 
             else:
                 print(hddf)
@@ -2648,7 +2753,7 @@ class EventAnalyzer(object):
             if whatplot in ["firstevent_latency", "allevent_latency"]:
                 axlim(0, 10)
             # print(axl[nax].get_ylim())# axl[nax].set_ylim(0, 5)
-            
+
             mpl.show()
 
             ot = f"Obs,Group"
@@ -2673,9 +2778,7 @@ class EventAnalyzer(object):
 
             mpl.show()
 
-    def check_day_slice_cell(
-        self, fn, day=None, day_after=None, day_before=None, slice_cell=None
-    ):
+    def check_day_slice_cell(self, fn, day=None, day_after=None, day_before=None, slice_cell=None):
         """
         Check the filename to see if it falls in the day range or specific day,
         and optionally filter by the slice and cell
@@ -2706,12 +2809,7 @@ class EventAnalyzer(object):
 
         """
 
-        if (
-            day == None
-            and day_after == None
-            and day_before == None
-            and slice_cell == None
-        ):
+        if day == None and day_after == None and day_before == None and slice_cell == None:
             return True  # no selection, fn is always a match
         fnp = Path(fn)  # convert if not already
         if str(fnp).find("~"):
@@ -2751,38 +2849,34 @@ class EventAnalyzer(object):
     def get_tau(self, cellname):
         if self.taudata is None:
             self.read_tau_file()
-        if self.taudata is None: # still - no tau data
+        if self.taudata is None:  # still - no tau data
             return np.nan, np.nan
-        checktau = self.taudata.dropna(subset = ["cell"])
+        checktau = self.taudata.dropna(subset=["cell"])
         cellname = str(cellname).replace("/", "~")
-        davg = checktau.loc[checktau['cell'].str.contains(cellname)]
-        tau1_avg = np.nanmean(davg['tau1'])*1e3
-        tau2_avg = np.nanmean(davg['tau2'])*1e3
+        davg = checktau.loc[checktau["cell"].str.contains(cellname)]
+        tau1_avg = np.nanmean(davg["tau1"]) * 1e3
+        tau2_avg = np.nanmean(davg["tau2"]) * 1e3
         return tau1_avg, tau2_avg
-       
 
     def read_tau_file(self):
-        
-        dbname = list(self.NM.experiments.keys())[0]
-        Expt = self.NM.experiments[dbname]
+
         taudb = Path(
-            Expt["analyzeddatapath"],
-            Expt['directory'],
-            "NF107Ai32_Het_taus", 
-            ).with_suffix(".pkl")
+            self.expt["analyzeddatapath"],
+            self.expt["directory"],
+            "NF107Ai32_Het_taus",
+        ).with_suffix(".pkl")
         try:
             with open(taudb, "rb") as fh:
                 self.taudata = pd.read_pickle(fh, compression=None)
         except:
             self.taudata = None
 
-
-    def _do_annotation(self, eventsummary_file, annotation_file:Union[Path, None] = None):
+    def _do_annotation(self, eventsummary_file, annotation_file: Union[Path, None] = None):
         """
         Given the event summary file, and the annotation file, we update
         the cell type  in the event summary file from the annotation file.
         This may or may not be a good idea...
-        
+
         Parameters
         eventsummary_file : str or path of filename
         annotation_file : str or path of filename
@@ -2811,9 +2905,9 @@ class EventAnalyzer(object):
             print(x)
             exit()
         # self.annotated.set_index("ann_index", inplace=True)
-        self.db.loc[
-            self.db.index.isin(self.annotated.index), "cell_type"
-        ] = self.annotated.loc[:, "cell_type"]
+        self.db.loc[self.db.index.isin(self.annotated.index), "cell_type"] = self.annotated.loc[
+            :, "cell_type"
+        ]
         self.db.loc[self.db.index.isin(self.annotated.index), "annotated"] = True
         if self.verbose:  # check whether it actually took
             for icell in range(len(self.df.index)):
@@ -2835,10 +2929,7 @@ class EventAnalyzer(object):
             ]
             if len(day_x["cell_type"].values) == 0:
                 continue
-            if (
-                str(self.events[efd]["celltype"]).strip()
-                != str(day_x["cell_type"]).strip()
-            ):
+            if str(self.events[efd]["celltype"]).strip() != str(day_x["cell_type"]).strip():
                 # print('efd: ', efd, 'efd celltype: ', self.events[efd]['celltype'], end='')
                 # print( ' dayx: ', day_x['cell_type'])
                 self.events[efd]["celltype"] = day_x["cell_type"].values[0]
@@ -2846,14 +2937,16 @@ class EventAnalyzer(object):
         return self.events
 
     def get_eventsummary_filename(self, database):
-        eventsummary_file = Path(self.NM.experiments[database]["analyzeddatapath"], 
-            self.NM.experiments[database]["directory"], 
-            self.NM.experiments[database]["directory"] + "_event_summary.pkl")
+        eventsummary_file = Path(
+            self.expt["analyzeddatapath"],
+            self.expt["directory"],
+            self.expt["directory"] + "_event_summary.pkl",
+        )
         return eventsummary_file
 
     def get_databases(self, database):
         """
-        given the experiment designation, 
+        given the experiment designation,
         Open the main databases (e.g., NF107Ai32_Het, with all the data for the file)
         Optionally open the annotation file, and update the annotations,
         and get the coding information
@@ -2871,14 +2964,16 @@ class EventAnalyzer(object):
         Returns
         -------
         Nothing
-        
+
         The pandas database is saved in self.db
         The coding information is saved in self.coding
         """
         self.database = database
-        database_file = Path(self.NM.experiments[database]['analyzeddatapath'], 
-            self.NM.experiments[database]['directory'],
-            self.NM.experiments[database]["datasummaryFilename"])
+        database_file = Path(
+            self.expt["analyzeddatapath"],
+            self.expt["directory"],
+            self.expt["datasummaryFilename"],
+        )
         with open(database_file, "rb") as fh:
             self.db = pd.read_pickle(fh)
         self.get_coding(database)
@@ -2886,32 +2981,40 @@ class EventAnalyzer(object):
         eventsummary_file = self.get_eventsummary_filename(database)
 
         if eventsummary_file.is_file():
-            annotation_file = Path(self.NM.experiments[database]["analyzeddatapath"], 
-                self.NM.experiments[database]["directory"], 
-                self.NM.experiments[database]["map_annotationFilename"])
+            annotation_file = Path(
+                self.expt["analyzeddatapath"],
+                self.expt["directory"],
+                self.expt["map_annotationFilename"],
+            )
             if annotation_file.is_file():
                 self.events = self._do_annotation(eventsummary_file, annotation_file)
             else:
-                try: # if file is corrrupted, this will fail
+                try:  # if file is corrrupted, this will fail
                     with open(eventsummary_file, "rb") as fh:
                         self.events = pickle.load(fh)  # get the current file
                     self.eventsummary_file = eventsummary_file
                 except:
-                    cprint("r", f"get_database: eventsummaryfile is corrupted: {str(eventsummary_file):s}")
-                    Logger.error(f"get_database: Event Summary File is corrupted: {str(eventsummary_file):s} ")
+                    cprint(
+                        "r",
+                        f"get_database: eventsummaryfile is corrupted: {str(eventsummary_file):s}",
+                    )
+                    Logger.error(
+                        f"get_database: Event Summary File is corrupted: {str(eventsummary_file):s} "
+                    )
                     self.events = None
                     exit()
             cprint("g", f"get_database: retrieved event summary file: {str(eventsummary_file):s}")
-        
 
-    def get_coding(self, database:str):
+    def get_coding(self, database: str):
         self.coding = None
-        if self.NM.experiments[database]["coding_file"] is None:
+        if self.expt["coding_file"] is None:
             return None
-        coding_file = Path(self.NM.experiments[database]['analyzeddatapath'], 
-            self.NM.experiments[database]['directory'],
-            self.NM.experiments[database]["coding_file"])
-        with open(coding_file, 'rb') as fh:
+        coding_file = Path(
+            self.expt["analyzeddatapath"],
+            self.expt["directory"],
+            self.expt["coding_file"],
+        )
+        with open(coding_file, "rb") as fh:
             coding = pd.read_excel(fh, index_col=0, header=0)
             self.coding = coding
             self.coding_file = coding_file
@@ -2923,9 +3026,7 @@ class EventAnalyzer(object):
         all_entries = []
         for celltype in all_celltypes:
             of_this_celltype = []
-            for cell_ID in list(
-                self.events.keys()
-            ):  # for all of the data in the event files
+            for cell_ID in list(self.events.keys()):  # for all of the data in the event files
                 cc = class_cell(self.events[cell_ID]["celltype"])
                 if cc == celltype:
                     if str(cell_ID).find("_alt") > 0 or str(cell_ID).find("_signflip") > 0:
@@ -2939,20 +3040,25 @@ class EventAnalyzer(object):
                 elec_sol = self._get_cell_information(cell_id, "internal")
                 group = self._get_cell_information(cell_id, "Group")
                 SPL = self._get_cell_information(cell_id, "SPL")
-                print(f"{str(cell_id):42s} {self.events[cell_id]['celltype']:>14s} {age:3d}D {temp:2d}C {elec_sol:>8s} {group:>5s} {SPL:>4s}dB")
+                print(
+                    f"{str(cell_id):42s} {self.events[cell_id]['celltype']:>14s} {age:3d}D {temp:2d}C {elec_sol:>8s} {group:>5s} {SPL:>4s}dB"
+                )
         print("=" * 80)
         for efd in list(self.events.keys()):  # for all of the data in the event files
             if str(efd) not in all_entries:
                 print(f"** {str(efd):42s} {self.events[efd]['celltype']:s}")
 
-#=========================================================
+
+# =========================================================
 # The following code is outside of the EventAnalysis class
-#=========================================================
+# =========================================================
+
 
 def do_big_summary_plot(EA, args):
     cprint("green", "BigSummaryPlot")
     pdevo = pd.DataFrame.from_dict(EA.events, orient="index")
-    groups_to_do = ["A", "AA", "B", "AAA"]
+    groups_to_do = EA.expt["Groups"]
+
     def shape(lst):
         def ishape(lst):
             shapes = [ishape(x) if isinstance(x, list) else [] for x in lst]
@@ -2979,9 +3085,7 @@ def do_big_summary_plot(EA, args):
         pdev.loc[c, "temp"] = int(EA._get_cell_information(c, "temperature"))
         pdev.loc[c, "age"] = int(EA._get_cell_information(c, "age"))
         pdev.loc[c, "internal"] = EA._get_cell_information(c, "internal")
-        scores = np.log10(
-            np.clip(np.max(pdev.loc[c, "scores"]), a_min=1e-1, a_max=1e4)
-        )
+        scores = np.log10(np.clip(np.max(pdev.loc[c, "scores"]), a_min=1e-1, a_max=1e4))
         scores = np.clip(scores, 0, 4)
         # print(scores)
         pdev.loc[c, "scores"] = np.max(scores)
@@ -3117,6 +3221,7 @@ def do_big_summary_plot(EA, args):
     EA.get_all_data(cmds=args, celltypes=all_celltypes, groups_to_do=groups_to_do)
     exit()
 
+
 def main():
     # test_events_shuffle()
     parser = argparse.ArgumentParser(description="Map Event Analyzer")
@@ -3125,16 +3230,16 @@ def main():
         "--database",
         type=str,
         default="",
-        choices = ["NF107Ai32_Het", "NF107Ai32_NIHL"],
+        # choices=["NF107Ai32_Het", "NF107Ai32_NIHL"],
         help="Experimental database for analysis",
     )
     parser.add_argument(
         "-d",
-        "--day", 
-        type=str, 
-        default="all", 
+        "--day",
+        type=str,
+        default="all",
         help="day for analysis",
-        )
+    )
     parser.add_argument(
         "-a",
         "--after",
@@ -3230,9 +3335,7 @@ def main():
     parser.add_argument(
         "-l", "--listsimple", action="store_true", dest="listsimple", help="just list"
     )
-    parser.add_argument(
-        "-L", "--listonly", action="store_true", dest="listonly", help="just list"
-    )
+    parser.add_argument("-L", "--listonly", action="store_true", dest="listonly", help="just list")
     # parser.add_argument('-g', '--getZ', action='store_true', dest='getz',
     #                                         help='get raw z scores')
     parser.add_argument(
@@ -3287,6 +3390,14 @@ def main():
     print("Command args: ", args)
     ############################################
 
+    # get the configuraiton file
+    expt = args.database
+    datasets, experiments = get_configuration("config/experiments.cfg")
+    if args.database not in datasets:
+        print(f"Database {args.database:s} not found in configuration file")
+        print("Available databases are: ", datasets)
+        exit()
+    experiment = experiments[args.database]
     # set up list of cell types to process
     if args.celltypes == "DCN":
         celltypes = ["cartwheel", "tuberculoventral", "pyramidal", "giant"]
@@ -3295,23 +3406,18 @@ def main():
     elif args.celltypes == "all":
         celltypes = all_celltypes
     else:
-        celltypes = [args.celltypes] # must be a single specification
+        celltypes = [args.celltypes]  # must be a single specification
 
-
-    # specify and retrieve database
-    if args.database.endswith("_Het"):
-        import src.CBA_maps as NM
-    elif args.database.endswith("_NIHL"):
-        import nihl_maps as NM
-    if args.database not in list(NM.experiments.keys()):
-        print(f"Invalid database: {args.database:s}")
-        print("Available databases are: ", NM.experiments.keys())
-        exit()
     print("Database in Use: ", args.database)
-    
-    EA = EventAnalyzer(datasetinfo = NM)
-    EA.set_events_Path(Path(NM.experiments[args.database]["analyzeddatapath"],  
-        NM.experiments[args.database]["directory"], "events"))
+
+    EA = EventAnalyzer(experiment_dict=experiment)
+    EA.set_events_Path(
+        Path(
+            EA.expt["analyzeddatapath"],
+            EA.expt["directory"],
+            "events",
+        )
+    )
     EA.get_databases(args.database)
     print("** event path: ", EA.eventspath)
     print("** event summary file: ", EA.eventsummary_file)
@@ -3331,13 +3437,12 @@ def main():
         groups = ["B"]
         coding = None
 
-
     if args.shuffler:
         SH = shuffler.Shuffler()
         SH.test_events_shuffle()
         return
 
-    # Expt = NM.experiments[args.database]
+    # Expt = EA.expt[args.database]
     # database = Path(
     #     Expt["analyzeddatapath"],
     #     Expt['directory'],
@@ -3357,7 +3462,6 @@ def main():
     #     annotationFile = None
     # print(Expt)
 
-
     if args.listsimple:
         print("Listing of data in the main database: ")
         EA.listcells(
@@ -3374,7 +3478,6 @@ def main():
         EA.listdatabase()
         return
 
-
     if args.bigsummaryplot:
         do_big_summary_plot(EA, args)
 
@@ -3386,7 +3489,6 @@ def main():
         else:
             groups = ["B"]
 
-
         EA.get_all_data(cmds=args, celltypes=celltypes, groups_to_do=groups)
         # print("EA.events: ", dir(EA))
         allf = list(EA.events.keys())
@@ -3394,9 +3496,7 @@ def main():
         print("Groups: ", groups)
         # print(cts)
 
-        EA.summarize(
-            cmds=args, groups_to_do=groups, filename=EA.eventsummary_file
-        )
+        EA.summarize(cmds=args, groups_to_do=groups, filename=EA.eventsummary_file)
         return
 
     # if args.getz:
@@ -3455,7 +3555,7 @@ def main():
             )
             if not match:
                 if args.verbose:
-                    cprint("r", f'   Cell does not fit selection criteria: {str(fn):s}')
+                    cprint("r", f"   Cell does not fit selection criteria: {str(fn):s}")
                 continue
             else:
                 cprint("green", f"\nProceeding to summarize: {str(fn):s}")
@@ -3468,13 +3568,19 @@ def main():
                 cprint("r", f"Cell id: {fnk:s} is not in events database")
                 addflag = True
                 cellclass = EA._get_cell_information(fnk, "cell_type")
-                cellclass = class_cell(cellclass.lower())
+                cellclass = ephys.tools.map_cell_types.map_cell_type(cellclass)
+                # cellclass = class_cell(cellclass.lower())
                 # continue
-                cprint("green", f"    Adding scored events on : {fn!s}\n      cell class: {cellclass!s}")
+                cprint(
+                    "green",
+                    f"    Adding scored events on : {fn!s}\n      cell class: {cellclass!s}",
+                )
             else:
-                cellclass = class_cell(str(EA.events[fnk]["celltype"]).lower())
-                if cellclass not in celltypes:  # check cell type if specified
-                    continue
+                cellclass = EA._get_cell_information(fnk, "cell_type")
+                cellclass = ephys.tools.map_cell_types.map_cell_type(cellclass)
+                # cellclass = class_cell(str(EA.events[fnk]["celltype"]))
+                # if cellclass not in celltypes:  # check cell type if specified
+                #     continue
                 cprint("green", f"    Scoring events on : {fn!s}\n      cell class: {cellclass!s}")
             evn, updatedata = EA.score_events(
                 fn,
@@ -3490,7 +3596,7 @@ def main():
                 continue
             # continue
             EA.eventsummary_file = EA.get_eventsummary_filename(args.database)
-            cprint("y",f"Updatedata flag is {updatedata!r}")
+            cprint("y", f"Updatedata flag is {updatedata!r}")
             if updatedata or addflag:
                 if EA.events is None:  # no existing file, so start it up
                     EA.events = {}
@@ -3503,9 +3609,7 @@ def main():
                 if not args.dryrun:
                     with open(EA.eventsummary_file, "wb") as fh:  # write at each pass
                         pickle.dump(EA.events, fh)  # get the current file
-                    cprint(
-                        "cyan", f"Updated EventSummaryFile: {EA.eventsummary_file!s}"
-                    )
+                    cprint("cyan", f"Updated EventSummaryFile: {EA.eventsummary_file!s}")
                 else:
                     cprint(
                         "cyan",
