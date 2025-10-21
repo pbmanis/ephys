@@ -2420,10 +2420,10 @@ def measureResistanceWithExponentialFit(data, debug=False):
 #------------------------------------------
 
 
-def alpha(t, tau):
+def alpha(t: np.ndarray, tau: float) -> np.ndarray:
     """Return the value of an alpha function at time t with width tau."""
-    t = max(t, 0)
-    return (t / tau) * math.exp(1.0 - (t / tau));
+    # t = max(t, 0)
+    return (t / tau) * np.exp(1.0 - (t / tau))
 
 def alphas(t, tau, starts):
     tot = 0.0
