@@ -22,7 +22,6 @@ import scipy.signal
 import seaborn
 
 
-
 UR = pint.UnitRegistry()
 
 # import montager as MT
@@ -267,7 +266,7 @@ class PlotMapData:
             "avgax": [0, None, None],
         }
 
-    def set_Pars_and_Data(self, pars, data:object=None, minianalyzer=None, dt:float=None):
+    def set_Pars_and_Data(self, pars, data: object = None, minianalyzer=None, dt: float = None):
         """
         save parameters passed from analyze Map Data
         Analysis parameters and data are in separate data classes.
@@ -277,13 +276,12 @@ class PlotMapData:
         self.MA = minianalyzer
         self.Data.timebase = None
         self.dt = None
-        if self.MA is not None and hasattr(self.MA, 'timebase'):  # try to get the time base
+        if self.MA is not None and hasattr(self.MA, "timebase"):  # try to get the time base
             self.Data.timebase = self.MA.timebase
             self.dt = np.mean(np.diff(self.Data.timebase))
         else:  # defer, but try to get a dt value if passed.
             if dt is not None:
                 self.dt = dt
-
 
     def set_experiment(self, experiment: dict):
         self.experiment = experiment
@@ -734,7 +732,7 @@ class PlotMapData:
         max_baseline_slope: float = 20.0e-12,
         maxstd: float = 10e-12,
         min_AP_slope: float = -1e-6,  # A/sec (nA/ms)
-        plot:bool=False,  # flag for testing.
+        plot: bool = False,  # flag for testing.
     ):
         """
         Check whether an event is ok to include for plotting and fitting
@@ -747,7 +745,7 @@ class PlotMapData:
         t_bl = np.arange(0, len(ev_bl) * samplerate, samplerate)
         dIdT = np.gradient(ev_dat, samplerate)
         if np.min(dIdT) < min_AP_slope:
-            return False 
+            return False
         if plot:
             mpl.plot(t_dat, ev_dat, "k--", linewidth=0.5)
         b, ev_slope = np.polynomial.polynomial.polyfit(t_bl, ev_bl, 1)
@@ -759,7 +757,7 @@ class PlotMapData:
         if np.std(ev_bl) > maxstd:
             # print("std > maxvar: ", np.std(ev_bl), maxstd)
             return False
-        if ev_slope > max_baseline_slope/base:
+        if ev_slope > max_baseline_slope / base:
             # print("sl > slopethr ", ev_slope, slope/base)
             return False
 
@@ -814,7 +812,7 @@ class PlotMapData:
         ave = []
         npev = 0
         Res = {
-            "nevents": 0, # total number of events. 
+            "nevents": 0,  # total number of events.
             "avedat": None,
             "aved": None,  # averaged events (will likely be less than total number of events)
             "Amplitude": None,
@@ -879,7 +877,7 @@ class PlotMapData:
                 evspont = event_data["events"][trial].spontaneous_event_trace_list[itrace]
                 # evs_ids = [(itrace, j) for j in evspont]
                 evs = evevoked if event_data["event_type"] == "avgevoked" else evspont
-                Res['nevents'] += len(evs)  # count up the number of events, regardless.
+                Res["nevents"] += len(evs)  # count up the number of events, regardless.
                 if (
                     evs is None or len(evs) == 0
                 ):  #  or evs == [[]]:  # skip if there are NO event to plot from this trace
@@ -897,25 +895,37 @@ class PlotMapData:
                         # raise ValueError(f"Event ID {event_id!s} has already been used")
                     used_ids.append(event_id)
                     if event_id not in allevents.keys():
-                        print("   plot_event_traces:: missing event onset id in allevents: ", event_id)
+                        print(
+                            "   plot_event_traces:: missing event onset id in allevents: ", event_id
+                        )
                         continue
                     # print("# events in trace: ", len(evs))
                     evdata = allevents[event_id]
                     if len(evdata) == 0:
                         continue
                     npts = evdata.shape[0]
-                    plot=False
+                    plot = False
                     if plot:
                         mpl.plot(rate * np.arange(npts), evdata)
                         mpl.xlim(0, npts * rate)
-                    if self.celltype is  not None:
-                        min_AP_slope = self.experiment['data_inclusion_criteria'][self.celltype]['dIdT_max']
+                    if (self.celltype is not None) and (
+                        self.celltype in self.experiment["data_inclusion_criteria"].keys()
+                    ):
+                        min_AP_slope = self.experiment["data_inclusion_criteria"][self.celltype][
+                            "dIdT_max"
+                        ]
                     else:
-                        min_AP_slope = 1e-6
+                        min_AP_slope = self.experiment["data_inclusion_criteria"]["default"][
+                            "dIdT_max"
+                        ]
                     evok = self.event_ok(
-                        data=evdata, samplerate=rate, base=1e-3, max_baseline_slope=20.0e-12, maxstd=25e-12,
+                        data=evdata,
+                        samplerate=rate,
+                        base=1e-3,
+                        max_baseline_slope=20.0e-12,
+                        maxstd=25e-12,
                         min_AP_slope=min_AP_slope,
-                        plot=plot
+                        plot=plot,
                     )
                     if plot:
                         mpl.show()
@@ -929,7 +939,7 @@ class PlotMapData:
                     #  THESE are limiting factors in the plots, and can lead to incorrect estimates
                     # of the evoked and spont rates. Nice for plotting and seeing events,
                     # but not for quantitative analysis.
-                    # for that reason, they are commented out. 
+                    # for that reason, they are commented out.
                     ######################################################################
                     #
                     # print("PARAMS: ", params)
@@ -1143,7 +1153,7 @@ class PlotMapData:
             txt += f"(Navg={self.fitting_results['aved'].shape[0]:d} Ntot={self.fitting_results['nevents']:d} "
             txt += f"del={self.fitting_results['bfdelay']:.4f})"
             txt2 = None
-            if not np.isnan(self.fitting_results['tau3']):
+            if not np.isnan(self.fitting_results["tau3"]):
                 txt2 = f"Amp2: {scale*self.fitting_results['Amplitude2']:.1f}pA tau3: {1e3*self.fitting_results['tau3']:.2f}ms "
                 txt2 += f"tau4: {1e3*self.fitting_results['tau4']:.2f} ms"
             if evtype == "avgspont" and events[0] is not None:
@@ -1859,7 +1869,7 @@ class PlotMapData:
         markers: Union[dict, None] = None,
         plot_minmax: Union[list, None] = None,
         cal_height: Union[float, None] = None,
-        celltype: str="",
+        celltype: str = "",
     ) -> bool:
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {dataset.name:s}")
@@ -2078,7 +2088,7 @@ class PlotMapData:
                     nstim = len(results["stimtimes"]["starts"]) - 1
                 else:
                     nstim = 0
-                dt = self.dt # np.mean(np.diff(self.Data.timebase))
+                dt = self.dt  # np.mean(np.diff(self.Data.timebase))
                 ibl_max = int((results["stimtimes"]["starts"][nstim] - self.Pars.time_zero) / dt)
                 first_stim_time = results["stimtimes"]["starts"][nstim] - self.Pars.time_zero
                 bl_dur = 0.010
