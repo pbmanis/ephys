@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ephys"
 version = "0.8.1"
-description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, LSPS maps"
+description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, EPSCs, LSPS maps"
 authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
@@ -122,6 +122,7 @@ ma2tiff = "ephys.tools.ma2tiff:convertfiles"
 matread = "ephys.ephys_analysis.MatdatacRead:main"
 show_assembled = "ephys.tools.show_assembled:main"
 plotmaps = "ephys.tools.plot_maps:main"
+mapevent_analyzer = "ephys.tools.mapevent_analyzer:main"
 make_coding_sheet = "ephys.tools.make_coding_sheet:main"
 
 [project.gui-scripts]
