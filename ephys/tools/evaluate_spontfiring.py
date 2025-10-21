@@ -1,4 +1,6 @@
-# check spont firing VC data sets
+"""
+check spont firing VC data sets
+"""
 
 import ephys
 from typing import Union
