@@ -15,6 +15,9 @@ from . import fitting
 from . import utilities
 from . import get_configuration
 from . import exp_estimator_lmfit
+from . import map_cell_types
+from . import mapevent_analyzer
+from . import functions
 
 
 
