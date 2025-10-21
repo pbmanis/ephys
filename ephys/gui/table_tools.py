@@ -1,6 +1,6 @@
 """ tools for the data_tables
 
-A dataset has the follwing variables and dictionary structure:
+A configuration fiel has the follwing variables and dictionary structure:
 
 rawdatadisk = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/"
 analyzeddatapath = "/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets"
