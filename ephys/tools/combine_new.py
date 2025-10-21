@@ -1,3 +1,7 @@
+"""
+Add a newly analyzed data set to the main database
+"""
+
 import pickle
 import pandas as pd
 import numpy as np
