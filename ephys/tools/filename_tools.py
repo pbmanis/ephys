@@ -1,11 +1,25 @@
-from typing import Union, Tuple
+"""
+This module provides a set of tools for manipulating and handling
+filenames used in the ephys data analysis workflow, and acq4 file
+directory structures.
+
+For example, the intermediate pickled files holding partial data analysis
+use tildes instead of forward slashes, and an abbreviated format for
+the slice/cell designators.
+
+
+"""
+
 import datetime
-import pylibrary.tools.cprint as cprint
-from pathlib import Path
-import pandas as pd
 import re
+from pathlib import Path
+from typing import Tuple, Union
+
+import pandas as pd
+import pylibrary.tools.cprint as cprint
 
 CP = cprint.cprint
+
 
 def check_celltype(celltype: Union[str, None] = None):
     """check_celltype: convert cell type to "unknown" if it is None, empty, or whitespace or '?
@@ -26,7 +40,7 @@ def check_celltype(celltype: Union[str, None] = None):
     # print("celltype: ", celltype, type(celltype))
     celltype = str(celltype)
     if len(celltype) == 0:
-        celltype = 'unknown'
+        celltype = "unknown"
     if celltype in [None, "", "?", " ", "  ", "\t"]:
         # CP("y", f"check_celltype:: Changing Cell type to unknown from <{celltype:s}>")
         celltype = "unknown"
@@ -198,7 +212,14 @@ def change_pickle_filename(original_name, slicecell):
         return None
 
 
-def make_pickle_filename(dpath: Union[str, Path], thisday: str, celltype: str, slicecell: str, analysistype:str="IVs", makedir:bool=False):
+def make_pickle_filename(
+    dpath: Union[str, Path],
+    thisday: str,
+    celltype: str,
+    slicecell: str,
+    analysistype: str = "IVs",
+    makedir: bool = False,
+):
     """make_pickle_filename make a fully qualified path to a pickle file for a cell
 
     Parameters
@@ -219,12 +240,14 @@ def make_pickle_filename(dpath: Union[str, Path], thisday: str, celltype: str, s
     Path
         Path to the pickle file
     """
-    if slicecell.find('/') > 0:
+    if slicecell.find("/") > 0:
         sc = Path(slicecell).parts
         slicecell = make_slicecell(sc[0], sc[1])
     if thisday.find("_000") > 0:
         thisday = thisday.split("_000")[0]
-    pklname = make_cell_filename(thisday, celltype=celltype, slicecell=slicecell, analysistype=analysistype)
+    pklname = make_cell_filename(
+        thisday, celltype=celltype, slicecell=slicecell, analysistype=analysistype
+    )
     pklname = Path(pklname)
     # check to see if we have a sorted directory with this cell type
     pkldir = Path(dpath, celltype)
@@ -268,6 +291,7 @@ def make_slicecell(slicestr: str, cellstr: str):
     else:
         raise ValueError("Failed to parse slice and cell strings")
 
+
 def make_cellid_from_slicecell(slicecell):
     """make_cellid_from_slicecell Convert slicecell string
      of the form 2022.01.01_000_S0C0 into a cell_id string
@@ -294,6 +318,7 @@ def make_cellid_from_slicecell(slicecell):
     else:
         print(m)
         raise ValueError("Failed to parse slicecell string")
+
 
 def make_cell_filename(
     thisday: str,
@@ -343,8 +368,9 @@ def make_cell_filename(
 
     return Path(file_name)
 
+
 def make_event_filename_from_cellid(cell_id: str):
-    """make_event_filename_from_cellid 
+    """make_event_filename_from_cellid
     Make a full event filename string for a cell file
     Parameters
     cell_id: str or Path - cell_id in form dpath/2022.01.01_000/slice_000/cell_000
@@ -356,8 +382,9 @@ def make_event_filename_from_cellid(cell_id: str):
 
     eventname = Path(cell_id)
     eventname = Path(*eventname.parts[-3:])
-    eventfile= str(eventname).replace("/", "~")+".pkl"
+    eventfile = str(eventname).replace("/", "~") + ".pkl"
     return eventfile
+
 
 def compare_slice_cell(
     slicecell: str,
@@ -381,8 +408,8 @@ def compare_slice_cell(
         True if the slice and cell match, False otherwise
 
     """
-    print('compare_slice_cell datestr: ', datestr)
-    print('compare_slice_cell slicestr: ', str)
+    print("compare_slice_cell datestr: ", datestr)
+    print("compare_slice_cell slicestr: ", str)
     dsday, nx = Path(datestr).name.split("_")
     # check dates
     thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
@@ -425,13 +452,17 @@ def compare_slice_cell(
     else:
         return (True, slicecell3, slicecell2, slicecell1)
 
+
 re_experiment_date = re.compile(r"(?P<date>([\d]{4}.[\d]{2}.[\d]{2}_[\d]{3}))")
 re_slice = re.compile(r"(?P<slice>slice_[\d]{3})")
 re_cell = re.compile(r"(?P<cell>cell_[\d]{3})")
-re_path = re.compile(r"(?P<path>.*)/(?P<date>([\d]{4}.[\d]{2}.[\d]{2}_[\d]{3}))/((?P<slice>slice_[\d]{3})/)?(?P<cell>cell_[\d]{3})")
+re_path = re.compile(
+    r"(?P<path>.*)/(?P<date>([\d]{4}.[\d]{2}.[\d]{2}_[\d]{3}))/((?P<slice>slice_[\d]{3})/)?(?P<cell>cell_[\d]{3})"
+)
+
 
 def get_path_date_slice_cell(cell_id):
-    """"From an experiment cell id, which might include a leading path or two,
+    """ "From an experiment cell id, which might include a leading path or two,
     (for example, NF107Ai32-TTX-4AP/2022.02.21_000/slice_000/cell_000),
     extract the experiment date and slice strings.
     """
@@ -453,7 +484,8 @@ def get_path_date_slice_cell(cell_id):
     datapath = re_path.search(cell_id).group("path") if re_path.search(cell_id) else None
     return datapath, date, slice, cell
 
-def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype:str = "IVs"):
+
+def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype: str = "IVs"):
     """get_cell get the pickled data file for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
@@ -487,11 +519,11 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
     # print("\nGet_cell:: df_tmp head: \n", "Groups: ", df_tmp["Group"].unique(), "\n len df_tmp: ", len(df_tmp))
     # print("filename tools: get_cell: cell_id: ", cell_id)
     if len(df_tmp) == 0:
-        CP(
-            "r", f"filename_tools:get_cell:: Cell ID not found in summary dataframe: {cell_id:s}"
-        )
+        CP("r", f"filename_tools:get_cell:: Cell ID not found in summary dataframe: {cell_id:s}")
         print("Cells in df: ", df.cell_id.unique())
-        raise ValueError(f"Filename_tools: get_cell_pkl_filename: Cell ID not found in summary dataframe: {cell_id:s}")
+        raise ValueError(
+            f"Filename_tools: get_cell_pkl_filename: Cell ID not found in summary dataframe: {cell_id:s}"
+        )
         return None, None
     try:
         celltype = df_tmp.cell_type.values[0]
@@ -524,13 +556,15 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
         cell_day_name = cell_parts[0]
         re_parse = re.compile(r"([Ss]{1})(\d{1,3})([Cc]{1})(\d{1,3})")
         match datatype:
-            case 'IVs':
+            case "IVs":
                 m = re_parse.match(cell_parts[-1])
                 if m is not None:
                     # print("cell_parts: ", cell_parts[-1])
                     snp = re_parse.match(cell_parts[-1]).group(2)
                     cnp = re_parse.match(cell_parts[-1]).group(4)
-                    cname2 = f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
+                    cname2 = (
+                        f"{cell_day_name.replace('.', '_'):s}_S{snp:s}C{cnp:s}_{celltype:s}_IVs.pkl"
+                    )
                 elif cell_id.find("cell"):  # try to use /slice_000 /cell_000 style
                     cell_parts = Path(cell_id).parts
                     sc = make_slicecell(cell_parts[-2], cell_parts[-1])
@@ -539,13 +573,17 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
                 else:
                     raise ValueError(f"Failed to parse cell name for IVs: {cell:s}")
 
-                datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], celltype, cname2)
+                datapath2 = Path(
+                    experiment["analyzeddatapath"], experiment["directory"], celltype, cname2
+                )
                 CP("m", f"get_cell_pkl_filename: Trying IVs datapath2: {datapath2!s}")
                 CP("m", f"get_cell_pkl_filename exists: {datapath2.is_file()}")
-            case 'maps': # file location and name are different
+            case "maps":  # file location and name are different
                 pathstr, datestr, slicestr, cellstr = get_path_date_slice_cell(cell_id)
                 pklame = f"{datestr:s}~{slicestr:s}~{cellstr:s}.pkl"
-                datapath2 = Path(experiment["analyzeddatapath"], experiment["directory"], "events", pklame)
+                datapath2 = Path(
+                    experiment["analyzeddatapath"], experiment["directory"], "events", pklame
+                )
     if datapath2.is_file():
         # CP("c", f"...  datapath: {datapath2!s} is OK\r")
         datapath = datapath2
@@ -556,6 +594,7 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
         # raise ValueError
         return None
     return datapath
+
 
 def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     """get_cell: get the pickled data file for this cell - this is an analyzed file,
@@ -598,7 +637,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         except ValueError:
             CP("r", f"Could not read {datapath!s}")
             raise ValueError("Failed to read compressed pickle file")
-        
+
     if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
         CP(
             "y",
@@ -617,9 +656,8 @@ if __name__ == "__main__":
     test_res = change_pickle_filename(test_fn, "S0C2")
     print("converted test fn from ", test_fn, "to ", test_res)
 
-
     cell_id = "2017.03.28_000/slice_000/cell_001"
-    ncf = make_cell_filename( "stellate", "S00C01", "IVs")
+    ncf = make_cell_filename("stellate", "S00C01", "IVs")
     print("make_cell_filename converted 'stellate', 'S00C01', 'IVs' to ", ncf)
 
     sc = "2022.01.01_000_S0C0"
