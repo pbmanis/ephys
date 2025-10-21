@@ -2184,7 +2184,11 @@ class MiniAnalyses:
         Using lmfit is a bit more disciplined approach than just using scipy.optimize
 
         """
-        print("fixed delay in fitting: ", fixed_delay)
+        CP.cprint("c", f"{'+'*60}\nStarting Event Fitter")
+        CP.cprint("c", f"fixed delay in fitting: {fixed_delay}")
+        CP.cprint("c", f"Initial taus: tau1: {tau1}, tau2: {tau2}, tau3: {tau3}, tau4: {tau4}"
+        )
+        event = event - np.mean(event[:3])
         # print("fit starts with tau1, tau2, tau3, tau4: ", tau1, tau2, tau3, tau4)
         evfit, peak_pos, maxev = self.set_fit_delay(event, initdelay=fixed_delay)
         if peak_pos == len(event):
@@ -2232,8 +2236,8 @@ class MiniAnalyses:
             if tau1min < self.dt_seconds / 2.0:
                 tau1min = self.dt_seconds / 2.0
 
-            tau2min = 3.0*self.dt_seconds
-            tau2max = tau2 * 5.0
+            tau2min = 1e-4 #3.0*self.dt_seconds
+            tau2max = 50e-3 # tau2 * 5.0
 
             params["amp"] = lmfit.Parameter(
                 name="amp",
@@ -2295,7 +2299,7 @@ class MiniAnalyses:
         #     name="tau_2",
         #     expr = "tau_1*tau_ratio",
         # )
-        # print("2: tau2min/max: ", tau2min, tau2max)
+        CP.cprint("y", "fitting events with: 2: tau2min/max:  {tau2min}, {tau2max}")
         params["tau_2"] = lmfit.Parameter(
             name="tau_2",
             value=tau2,
@@ -2336,6 +2340,7 @@ class MiniAnalyses:
         )
         params["risepower"] = lmfit.Parameter(name="risepower", value=self.risepower, vary=False)
         # print("params: ", params)
+        CP.cprint('y', f"Params for fit: {params}")
         self.fitresult = dexpmodel.fit(
             data=evfit,
             x=timebase,
@@ -2345,11 +2350,13 @@ class MiniAnalyses:
             method="nelder",
             # compare_data = None,
         )
-        # now repeat with 2 exponentials.
-        dexpmodel = lmfit.Model(self.doubleexp_lm)
+    
+   
         params["tau_1"].value = self.fitresult.best_values["tau_1"]
         params["tau_2"].value = self.fitresult.best_values["tau_2"]
         params["amp"].value = self.fitresult.best_values["amp"]
+        dexpmodel = lmfit.Model(self.doubleexp_lm)
+        CP.cprint("y", f"Fit result: {self.fitresult.fit_report()}")
         # try:
         #     self.fitresult = dexpmodel.fit(
         #         evfit,
