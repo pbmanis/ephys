@@ -1047,7 +1047,7 @@ class acq4_reader:
         scannertargets = ("Scanner", "targets")
         mclamppulses = (self.shortdname, "Pulse_amplitude")
         mclamppulses2 = (self.shortdname, "Pulse2_amplitude")
-
+        valid_seq_keys = set([ protoreps, mclamppulses, mclamppulses2, scannertargets])
         # set some defaults in case there is no .index file
         self.repetitions = 1
         self.tstart = 0.0
@@ -1063,10 +1063,14 @@ class acq4_reader:
                 self.tstart = 0.0
                 self.tend = np.max(self.time_base)
             seqkeys = list(seqparams.keys())
-            if (mclamppulses not in seqkeys) and (mclamppulses2 not in seqkeys) and (protoreps not in seqkeys):
-                print("seqkeys cannot handle the standard mclamppulse names and missing protoreps ", seqkeys)
-                print(mclamppulses, mclamppulses2, protoreps)
-                print("you probably need to add this to acq4_reader near line 1008")
+            if (mclamppulses not in seqkeys) and (mclamppulses2 not in seqkeys) and (protoreps not in seqkeys) and (scannertargets not in seqkeys):
+                print("seqkeys cannot handle the standard mclamppulse names and missing protoreps ")
+                print("Seqkeys is: ", seqkeys)
+                print("This is what I encountered: ")
+                print(f"    mclamppulses: {mclamppulses}")
+                print(f"    mclamppulses2: {mclamppulses2}")
+                print(f"    protoreps: {protoreps}")
+                print("yYu probably need to add this to datareaders/acq4_reader.py near line 1008")
                 raise ValueError("Cannot parse the protocol sequence information")
             if mclamppulses in seqkeys:
                 if protoreps in list(seqparams.keys()):
@@ -1087,10 +1091,7 @@ class acq4_reader:
                 self.repetitions = len(seqparams[protoreps])
                 # WE probably should reshape the data arrays here (traces, cmd_wave, data_array)
                 # data = np.reshape(self.AR.traces, (self.AR.repetitions, int(self.AR.traces.shape[0]/self.AR.repetitions), self.AR.traces.shape[1]))
-            elif (
-                "Scanner",
-                "targets",
-            ) in seqkeys and protoreps not in seqkeys:  # no depth, just one flat rep
+            elif scannertargets in seqkeys and protoreps not in seqkeys:  # no depth, just one flat rep
                 self.repetitions = 1
             else:
                 print("sequence parameter keys: ", seqkeys)
