@@ -3,40 +3,40 @@ Description:
 
     Experiments that characterize the functional synaptic connectivity between
     two neurons often rely on being able to evoke a spike in the presynaptic
-    cell and detect an evoked synaptic response in the postsynaptic cell. 
+    cell and detect an evoked synaptic response in the postsynaptic cell.
     These synaptic responses can be difficult to distinguish from the constant
     background of spontaneous synaptic activity.
 
     The method implemented here assumes that spontaneous activity can be
-    described by a poisson process. For any given series of synaptic events, 
+    described by a poisson process. For any given series of synaptic events,
     we calculate the probability that the event times could have been generated
-    by a poisson process. 
-    
+    by a poisson process.
+
     Here are some scenarios we need to consider:
-    
+
     (1) Obvious, immediate rate change
-    
+
     |___||____|_|_______|____|___|___|_|||||||_|_||__|_||___|____|__|_|___|____|___
                                       ^
     (2) Obvious, delayed rate change
-    
+
     |___||____|_|_______|____|___|___|_|____|__|_|___|___|_||_|_||_|_|__|_|_||_____
                                       ^
-    (3) Non-obvious rate change, but responses have good precision   
-    
+    (3) Non-obvious rate change, but responses have good precision
+
     |______|______|_________|_______|____|______|________|________|_________|______
     _____|___________|_______|___|_______|__________|____|______|______|___________
     ___|________|_________|___|______|___|__|_________|____|_______|___________|___
                                       ^
     (4) Very low spont rate (cannot measure intervals between events)
         with good response precision
-        
+
     ______________________________________|________________________________________
     ________|___________________________________|__________________________________
     _________________________________________|________________________|____________
                                       ^
     (5) Non-obvious rate change, but response amplitudes are very different
-    
+
     __,______.___,_______.___,_______,_____|___,_____._________,_,______.______,___
                                       ^
 """
@@ -87,20 +87,20 @@ def poissonProb(n: int, t: float, l: float, clip: bool = False) -> float:
     For a poisson process, return the probability of seeing at least *n* events in *t* seconds given
     that the process has a mean rate *l*.
     If the mean rate l == 0, then the probability is 1.0 if n==0 and 1e-25 otherwise.
-    
+
     Parameters
     ----------
-    n : int 
+    n : int
         Number of events
     t : float
         Time to test
     l : float
         mean process rate
-    
+
     Returns
     -------
     p : float
-    
+
     """
     if l == 0:
         if np.isscalar(n):
@@ -134,10 +134,10 @@ class PoissonScore:
     """
     Class for computing a statistic that asks "what is the probability that a poisson process
     would generate a set of events like this"
-    
+
     General procedure:
       1. For each event n in a list of events, compute the probability of a poisson
-         process generating at least n-1 events in the time up to event n (this is 
+         process generating at least n-1 events in the time up to event n (this is
          poissonProb() applied individually to each event)
       2. The maximum value over all events is the score. For multiple trials, simply
          mix together all events and assume an accordingly faster poisson process.
@@ -148,23 +148,32 @@ class PoissonScore:
     normalizationTable = None
 
     @classmethod
-    def score(cls, ev, rate:Union[float, np.ndarray], tMax:float=None, normalize:bool=True, **kwds):
+    def score(
+        cls,
+        events: Union[list, np.ndarray],
+        amplitudes: Union[list, np.ndarray],
+        rate: Union[float, np.ndarray] = 2.0,
+        tMax: float = None,
+        normalize: bool = True,
+        **kwds,
+    ):
         """
         Compute poisson score for a set of events.
         ev must be a list of record arrays. Each array describes a set of events; only required field is 'time'
         *rate* may be either a single value or a list (in which case the mean will be used)
         """
-        nSets = len(ev)
-        events = np.concatenate(ev)
+        nSets = len(events)
+        events = np.concatenate(events)
         pi0 = 1.0
-        if isinstance(rate, np.ndarray):            rate = np.mean(rate)
+        if isinstance(rate, np.ndarray):
+            rate = np.mean(rate)
 
         if len(events) == 0:
             score = 1.0
         else:
             # ev = [x['time'] for x in ev]  ## select times from event set
             # ev = np.concatenate(ev)   ## mix events together
-            ev = events["time"]
+            ev = events # events["time"]
 
             nVals = np.array(
                 [(ev <= t).sum() - 1.0 for t in ev]
@@ -209,13 +218,13 @@ class PoissonScore:
         """Computes extra probability information about events based on their amplitude.
         Inputs to this method are:
             events: record array of events; fields include 'time' and 'amp'
-            
+
         By default, no extra score is applied for amplitude (but see also PoissonRepeatAmpScore)
         """
         return np.ones(len(events))
 
     @classmethod
-    def mapScore(cls, x:float, n:int, nEvents=10000):
+    def mapScore(cls, x: float, n: int, nEvents=10000):
         """
         Map score x to probability given we expect n events per set
         """
@@ -244,9 +253,18 @@ class PoissonScore:
                 s = 0.0
             else:
                 s = (x - x1) / float(x2 - x1)
+            if s == np.inf:
+                s = 1e12
             mapped1.append(y1 + s * (y2 - y1))
         mapped1 = sorted(mapped1)
-        mapped = mapped1[0] + (mapped1[1] - mapped1[0]) * (nind - n1) / float(n2 - n1)
+        try:
+            mapped = mapped1[0] + (mapped1[1] - mapped1[0]) * (nind - n1) / float(n2 - n1)
+        except FloatingPointError:
+            print("nind, n1, n2: ", nind, n1, n2)
+            print("x1 x2, y1 y2: ", x1, x2, y1, y2)
+            print("s: ", s)
+            print("mapped1: ", mapped1)
+            return []
 
         ## doesn't handle points outside of the original data.
         # mapped = scipy.interpolate.griddata(poissonScoreNorm[0], poissonScoreNorm[1], [x], method='cubic')[0]
@@ -307,14 +325,11 @@ class PoissonScore:
         if os.path.exists(cacheFile):
             # norm = np.fromstring(
             norm = copy.copy(
-                np.frombuffer(open(cacheFile, "rb").read(), dtype=float).reshape(
-                    tableShape
-                )
+                np.frombuffer(open(cacheFile, "rb").read(), dtype=float).reshape(tableShape)
             )
         else:
             print(
-                "Generating poisson score normalization table (will be cached here: %s)"
-                % cacheFile
+                "Generating poisson score normalization table (will be cached here: %s)" % cacheFile
             )
             cf = Path(cacheFile)
             if not cf.parent.is_dir():
@@ -359,12 +374,10 @@ class PoissonScore:
         for i in range(len(scores)):
             ev.append(cls.generateRandom(rate, tMax, reps))
             scores[i] = cls.score(ev[-1], rate, tMax=tMax, normalize=False)
-            mapped[i] = cls.mapScore(
-                scores[i], np.mean(rate) * tMax * reps, nEvents=10000
-            )
+            mapped[i] = cls.mapScore(scores[i], np.mean(rate) * tMax * reps, nEvents=10000)
 
         for j in [1, 2, 3, 4]:
-            print("  %d: %f" % (10 ** j, (mapped > 10 ** j).sum() / float(n)))
+            print("  %d: %f" % (10**j, (mapped > 10**j).sum() / float(n)))
         return ev, scores, mapped
 
     @classmethod
@@ -425,29 +438,27 @@ class PoissonAmpScore(PoissonScore):
         """
         if ampStdev == 0.0:  ## no stdev information; cannot determine probability.
             return np.ones(len(events))
-        scores = 1.0 / np.clip(
-            gaussProb(events["amp"], ampMean, ampStdev), 1e-100, np.inf
-        )
+        scores = 1.0 / np.clip(gaussProb(events["amp"], ampMean, ampStdev), 1e-100, np.inf)
         assert not np.any(np.isnan(scores) | np.isinf(scores))
         return scores
 
 
 class PoissonRepeatScore:
     """
-    Class for analyzing poisson-process spike trains with evoked events mixed in. 
+    Class for analyzing poisson-process spike trains with evoked events mixed in.
     This computes a statistic that asks "assuming spikes have poisson timing and
     normally-distributed amplitudes, what is the probability of seeing this set
-    of times/amplitudes?". 
-    
-    A single set of events is merely a list of time values; we can also ask a 
-    similar question for multiple trials: "what is the probability that a poisson 
+    of times/amplitudes?".
+
+    A single set of events is merely a list of time values; we can also ask a
+    similar question for multiple trials: "what is the probability that a poisson
     process would produce all of these spike trains"
     The statistic should be able to pick out:
       - Spikes that are very close to the stimulus (assumed to be at t=0)
       - Abnormally high spike rates, particularly soon after the stimulus
       - Spikes that occur with similar post-stimulus latency over multiple trials
       - Spikes that are larger than average, particularly soon after the stimulus
-    
+
     """
 
     normalizationTable = None
@@ -462,7 +473,7 @@ class PoissonRepeatScore:
         [t1, t2, t3, ...],    ## trial 2
         ...
         ]
-        
+
         *rate* must have the same length as *ev*.
         Extra keyword arguments are passed to amplitudeScore
         """
@@ -523,7 +534,7 @@ class PoissonRepeatScore:
             events: record array of events; fields include 'time' and 'amp'
             times:  the time points at which to compute probability values
                     (the output must have the same length)
-            
+
         By default, no extra score is applied for amplitude (but see also PoissonRepeatAmpScore)
         """
         return np.ones(len(times))
@@ -602,14 +613,11 @@ class PoissonRepeatScore:
         path = os.path.dirname(__file__)
         cacheFile = os.path.join(
             path,
-            "%s_normTable_%s_float64.dat"
-            % (cls.__name__, "x".join(map(str, tableShape))),
+            "%s_normTable_%s_float64.dat" % (cls.__name__, "x".join(map(str, tableShape))),
         )
 
         if os.path.exists(cacheFile):
-            norm = np.fromstring(
-                open(cacheFile, "rb").read(), dtype=float
-            ).reshape(tableShape)
+            norm = np.fromstring(open(cacheFile, "rb").read(), dtype=float).reshape(tableShape)
         else:
             print("Generating %s ..." % cacheFile)
             norm = np.empty(tableShape)
@@ -680,7 +688,7 @@ class PoissonRepeatScore:
             mapped[i] = cls.mapScore(scores[i], rate * tMax * reps)
 
         for j in [1, 2, 3, 4]:
-            print("  %d: %f" % (10 ** j, (mapped > 10 ** j).sum() / float(n)))
+            print("  %d: %f" % (10**j, (mapped > 10**j).sum() / float(n)))
         return ev, scores, mapped
 
     @classmethod
@@ -710,10 +718,7 @@ class PoissonRepeatAmpScore(PoissonRepeatScore):
                     (the output must have the same length)
             ampMean, ampStdev: population statistics of spontaneous events
         """
-        return [
-            gaussProb(events["amp"][events["time"] <= t], ampMean, ampStdev)
-            for t in times
-        ]
+        return [gaussProb(events["amp"][events["time"] <= t], ampMean, ampStdev) for t in times]
 
 
 if __name__ == "__main__":
@@ -827,7 +832,7 @@ if __name__ == "__main__":
         I try to understand how this works.
         best is the 'threshold' when this is called,
         bestn is the 'error' when this is called.
-        
+
         So...
         """
         best = None
@@ -840,9 +845,7 @@ if __name__ == "__main__":
                 fn = (scores[0] < x).sum()  # how many sponts are less than spont
                 fp = (scores[1] >= x).sum()  # how many evokeds are greater than
                 diff = abs(fp - fn)  # find the largest difference
-                if (
-                    bestval is None or diff < bestval
-                ):  # find the smallest difference over trials
+                if bestval is None or diff < bestval:  # find the smallest difference over trials
                     bestval = diff  # save the smallest difference
                     best = x  # save the score for this difference
                     bestn = (fp + fn) / 2.0  # ?
@@ -914,9 +917,11 @@ if __name__ == "__main__":
                 allSpont = np.concatenate(spont)
 
                 colors = [
-                    pg.mkBrush(0, 255, 0, 50)
-                    if source == "spont"
-                    else pg.mkBrush(255, 255, 255, 150)
+                    (
+                        pg.mkBrush(0, 255, 0, 50)
+                        if source == "spont"
+                        else pg.mkBrush(255, 255, 255, 150)
+                    )
                     for source in allEv["source"]
                 ]
                 evPlt.plot(
@@ -931,12 +936,8 @@ if __name__ == "__main__":
 
                 for k, opts in enumerate(algorithms):
                     title, fn = opts
-                    score1 = fn(
-                        ev, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev
-                    )
-                    score2 = fn(
-                        spont, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev
-                    )
+                    score1 = fn(ev, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev)
+                    score2 = fn(spont, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev)
 
                     scores[k, :, j] = score1[0], score2[0]
                     plots[k].plot(
