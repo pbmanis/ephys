@@ -158,8 +158,10 @@ class PoissonScore:
         **kwds,
     ):
         """
-        Compute poisson score for a set of events.
-        ev must be a list of record arrays. Each array describes a set of events; only required field is 'time'
+        Compute poisson score for a set of events. This is the main routine to call to make
+        the calculation.
+        evvents is a numpy array of event times.
+        Each array describes a set of events; multiple sets can be provided as a list of arrays.
         *rate* may be either a single value or a list (in which case the mean will be used)
         """
         nSets = len(events)
@@ -167,7 +169,6 @@ class PoissonScore:
         pi0 = 1.0
         if isinstance(rate, np.ndarray):
             rate = np.mean(rate)
-
         if len(events) == 0:
             score = 1.0
         else:
@@ -177,15 +178,19 @@ class PoissonScore:
 
             nVals = np.array(
                 [(ev <= t).sum() - 1.0 for t in ev]
+
             )  ## looks like arange, but consider what happens if two events occur at the same time.
+            
+
             pi0 = poissonProb(
                 nVals, ev, rate * nSets
             )  ## note that by using n=0 to len(ev)-1, we correct for the fact that the time window always ends at the last event
 
+            
             try:
                 pi = 1.0 / pi0
             except:
-                print("poisson_score:score: pi0: ", pi0)
+                print("poisson_score:score: pi0: ", pi0*1e6)
                 pi = 1
             ## apply extra score for uncommonly large amplitudes
             ## (note: by default this has no effect; see amplitudeScore)
@@ -202,7 +207,7 @@ class PoissonScore:
 
         # n = len(ev)
         if normalize and rate > 0:
-            # print("rate, tmax, nsets: ", rate, tMax, nSets)
+            print("rate, tmax, nsets: ", rate, tMax, nSets)
             ret = cls.mapScore(x=score, n=rate * tMax * nSets)
         else:
             ret = score
@@ -859,9 +864,15 @@ if __name__ == "__main__":
     ]
     app = pg.mkQApp()
 
-    win = pg.GraphicsWindow(border=0.3)
+    view = pg.GraphicsView() #border=0.3)
+    l = pg.GraphicsLayout(border=0.3)
+    view.setCentralItem(l)
+    view.show()
+    view.setWindowTitle("Poisson Score Tests")
+    win = l
+    tMax = 0.5
     with pg.ProgressDialog("processing..", maximum=len(tests)) as dlg:
-        for i in range(len(tests)):
+        for i, _ in enumerate(tests):
             first = i == 0
             last = i == len(tests) - 1
 
@@ -936,8 +947,9 @@ if __name__ == "__main__":
 
                 for k, opts in enumerate(algorithms):
                     title, fn = opts
-                    score1 = fn(ev, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev)
-                    score2 = fn(spont, spontRate, tMax, ampMean=miniAmp, ampStdev=miniStdev)
+
+                    score1 = fn(ev["time"], amplitudes=None, rate=np.mean(spontRate), tMax=tMax, ampMean=miniAmp, ampStdev=miniStdev)
+                    score2 = fn(spont["time"], amplitudes=None, rate=np.mean(spontRate), tMax=tMax, ampMean=miniAmp, ampStdev=miniStdev)
 
                     scores[k, :, j] = score1[0], score2[0]
                     plots[k].plot(
@@ -981,4 +993,4 @@ if __name__ == "__main__":
 
             win.nextRow()
     if sys.flags.interactive == 0:
-        app.exec_()
+        app.exec()
