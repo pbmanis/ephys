@@ -204,6 +204,7 @@ class MapData:
         ax_histy.tick_params(axis="y", labelleft=False)
 
 
+
 def generate_2d_grid_points(x_min, x_max, y_min, y_max, num_x_points, num_y_points):
     """
     Generates a set of evenly spaced 2D points within a rectangular region.
@@ -1115,6 +1116,7 @@ class Shuffler(object):
         n_sig_zscores = np.zeros(self.nmaps)  # number of significant zscores per map
         print("spont rate: ", self.srate)
         print("Probs: ", self.probs)
+        print("maps: ", self.nmaps)
         range_probs = np.linspace(0.0, 1.0, self.nmaps)
         n_active_sites = [0] * self.nmaps
         evp = [None] * self.nmaps
@@ -1128,6 +1130,7 @@ class Shuffler(object):
                 maxt=self.maxt,
                 seed=i_map,
             )
+
             # get scores for this map
             plot_flag = False
             # if i_map == 99:
@@ -1142,6 +1145,11 @@ class Shuffler(object):
             if len(sig_zscores) > 0:
                 zscores[i_map] = np.mean(sig_zscores)  # only average significant Z
             tMax = self.maxt  # self.stimtimes[0][0] + self.stimtimes[0][2]
+            xt=evp[i_map].get_array_of_times()
+            print(xt)
+            print(len(xt))
+            # print(evp[i_map].get_array_of_times())
+            exit()
             mscores_map, map_probs[i_map] = EPPS.PoissonScore.score(
                 evp[i_map].get_array_of_times(),
                 evp[i_map].get_array_of_amplitudes(),
@@ -1335,13 +1343,13 @@ def main(quanta=1):
 
     S = Shuffler()
     S.set_pars(probtype="single")
-    srates = [1, 5, 10, 20, 50]
+    srates = [20]
     pn = 0
     k = 0
     S.quanta = quanta
     with PdfPages(f"test_detect_SR_Q.pdf") as pdf:
         for k in range(len(srates)):
-            for q in [1, 2, 3, 5, 10]:
+            for q in [1]:
                 S.srate = srates[k]
                 S.quanta = q
                 fig = S.test_events_poisson(rate=srates[k])
@@ -1386,5 +1394,5 @@ def main_gen_traces(quanta=2):
 
 
 if __name__ == "__main__":
-    # main(quanta=2)
-    main_gen_traces(quanta=2)
+    main(quanta=2)
+    # main_gen_traces(quanta=2)
