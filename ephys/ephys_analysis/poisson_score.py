@@ -181,7 +181,6 @@ class PoissonScore:
 
             )  ## looks like arange, but consider what happens if two events occur at the same time.
             
-
             pi0 = poissonProb(
                 nVals, ev, rate * nSets
             )  ## note that by using n=0 to len(ev)-1, we correct for the fact that the time window always ends at the last event
