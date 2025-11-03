@@ -98,6 +98,9 @@ dependencies = [
     "streamlit>=1.50.0",
     "pyautogui>=0.9.54",
     "imagecodecs>=2025.8.2",
+    "awkward>=2.8.10",
+    "prettyprinter>=0.18.0",
+    "numdifftools>=0.9.41",
 ]
 
 [dependency-groups]
