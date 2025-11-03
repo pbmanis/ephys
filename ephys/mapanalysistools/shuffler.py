@@ -850,7 +850,7 @@ class Shuffler(object):
                     stim_times=self.stimtimes,
                     maxt=self.maxt,
                     seed=i_map,
-                    plot_flag=False,
+                    plot_map=False,
                 )
                 if i_map > 2:
                     mpl.show()
@@ -1132,7 +1132,7 @@ class Shuffler(object):
             )
 
             # get scores for this map
-            plot_flag = False
+            plot_flag = True
             # if i_map == 99:
             #     plot_flag = True
 
@@ -1145,11 +1145,11 @@ class Shuffler(object):
             if len(sig_zscores) > 0:
                 zscores[i_map] = np.mean(sig_zscores)  # only average significant Z
             tMax = self.maxt  # self.stimtimes[0][0] + self.stimtimes[0][2]
-            xt=evp[i_map].get_array_of_times()
-            print(xt)
-            print(len(xt))
+
+            # print(xt)
+            # print(len(xt))
             # print(evp[i_map].get_array_of_times())
-            exit()
+            # exit()
             mscores_map, map_probs[i_map] = EPPS.PoissonScore.score(
                 evp[i_map].get_array_of_times(),
                 evp[i_map].get_array_of_amplitudes(),
@@ -1318,7 +1318,7 @@ class Shuffler(object):
             transform=axl[-1].get_xaxis_transform(),
         )
         axl[-1].set_ylabel("Log10 Min p-value", fontsize=8)
-        # mpl.tight_layout()
+
         return P.figure_handle
 
     def set_pars(self, probtype="single"):
