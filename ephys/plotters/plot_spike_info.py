@@ -8,7 +8,6 @@ import re
 import textwrap
 from pathlib import Path
 from string import ascii_letters
-from turtle import color
 from typing import Literal, Optional, Union
 
 import dateutil.parser as DUP
@@ -355,6 +354,7 @@ def set_ylims(experiment):
         # CP("r", "setting ylims for cell types")
         for limit_group, values in experiment["ylims"].items():
             for ct in experiment["ylims"][limit_group]["celltypes"]:
+                print("ct: ", ct)
                 if ct not in ylims.keys():
                     ylims[ct] = values
                 else:
@@ -363,10 +363,10 @@ def set_ylims(experiment):
                     )
         return ylims
     else:
-        # get some defaults - these are cochlear nucleus specific
-        import ephys.plotters.default_ylims as DY
-
-        ylims = DY.get_default_ylims()
+        # get the table defaults
+        # import ephys.plotters.default_ylims as DY
+        ylims = experiment['ylims']["default"]
+        # ylims = DY.get_default_ylims()
         return ylims
 
 
@@ -1835,13 +1835,14 @@ class PlotSpikeInfo(QObject):
         self.relabel_yaxes(ax, measure=yname)
         self.relabel_xaxes(ax)
         if ylims is not None:  # make sure we have some limits
-            ax.set_ylim(ylims)
+            ax.set_ylim(ylims[celltype][yname])
             # for lim in ylims.keys():  # may be "limits1", etc.
             #     if (
             #         celltype in ylims[lim]["celltypes"]
             #     ):  # check the list of cell types in the limit group
             #         if yname in ylims[lim].keys():  # check the list of measures in the limit group
             #             ax.set_ylim(ylims[lim][yname])  # finally...
+        print("xlims: ", xlims)
         if xlims is not None:
             ax.set_xlim(xlims)
         else:
