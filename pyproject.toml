@@ -101,6 +101,7 @@ dependencies = [
     "awkward>=2.8.10",
     "prettyprinter>=0.18.0",
     "numdifftools>=0.9.41",
+    "efel>=5.7.20",
 ]
 
 [dependency-groups]
