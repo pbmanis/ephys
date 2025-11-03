@@ -3001,7 +3001,7 @@ class EventAnalyzer(object):
                 },
             )
             axl = P.axarr.ravel().flatten()
-            esc_underscore = "\_"
+            esc_underscore = r"\_"
             toptitle = f"{whatplot:s}"
 
             if whatplot == "area_fraction_Z":
