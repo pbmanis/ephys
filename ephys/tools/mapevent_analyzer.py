@@ -799,7 +799,7 @@ class EventAnalyzer(object):
             A list where each element corresponds to a trace and contains a list of
             tuples (time, amplitude, sweep#).
         """
- 
+
         event_trace = [[i] * len(event_times[i]) for i in range(len(event_times))]
         event_trace = AK.flatten(event_trace, axis=None)
         evt = AK.flatten(event_times, axis=None)
@@ -809,17 +809,38 @@ class EventAnalyzer(object):
         combined_events = np.array(list(zip(evt, eva, event_trace)))
         return combined_events
 
-    def compute_spontaneous_rate(
-        self,
-        combined_events: list,
-        stim_times: list,
-        tmax: float=1.0
-    ) -> float:
+    def compute_spont_windows(self, stim_times, tmax: float = 1.0):
+        nstim = len(stim_times)
+        wins = np.zeros((nstim + 1, 2))
+        t0 = 0
+        for ist, st in enumerate(stim_times):
+            t1 = st["start"]
+            wins[ist] = [t0, t1]
+            # compute the start of the next spont window from the end of the current response window
+            t0 = st["start"] + st["window_start"] + st["window_duration"]
+        # include the final window from end of last stim to tmax
+        wins[nstim] = [t0, tmax]
+        return wins
+
+    def compute_spontaneous_rate(self, combined_events: list, stim_times: list, tmax: float = 1.0):
         """
         Compute the spontaneous event rate from combined trial events.
         SR is measured from events occurring outside of stimulus / response windows.
         These are defined in the stim_times dictionary.
         Amplitudes are measured from all spontaneous events.
+
+        ==================================================================
+        We compute the SR for each trace in the current map,
+        Then, accumulate the events across trials for summary statistics
+        NOTE: The SR value here may differ from what was computed on the plots because
+        we are using intervals rather tnan fitted event counts across the
+        spont window duration. In addition, the whole of each trace is taken into
+        consideration, with events in the response window removed (so as to not
+        force the rate to be too high or based on too few intervals).
+        The values are similar, but not exact.
+        A better approach would be to take blank (no stim) traces alternating
+        with the stim traces, and compute SR from those. Here, we work with the
+        data that we have.
 
         Parameters
         ----------
@@ -827,14 +848,15 @@ class EventAnalyzer(object):
             List of tuples (time, amplitude, sweep#) for all events in a trial.
         stim_times : list of float
             List of stimulus start times.
+        tmax: float (default 1.0)
+            Maximum time of the recording trace.
+
+        Returns
+        -------
+        this_spont_rate (float), in Hz
+        spontevent_times: a dict of event times. Each key is a tuple (trace, stim_index)
+        spontevent_amps: a list of spontaneous event amplitudes (not keyed by trace)
         """
-        # ==================================================================
-        # In the following, we compute the SR for each trace in the current map,
-        # Then, accumulate the events across trials for summary statistics
-        # NOTE: The SR value here may differ from what was computed on the plots because
-        # we are using intervals rather tnan fitted event counts across the
-        # spont window duration. The values are similar, but not exact. This
-        # approach is the correct one statistically.
 
         spont_isis = []
         n_spont_amps = 0
@@ -842,45 +864,53 @@ class EventAnalyzer(object):
         spontevent_amps = []
         spontevent_times = {}
 
-        for ist, st in enumerate(stim_times):
-            if ist == 0:
-                t0 = 0.
-                t1 = st["start"]
-            else:
-                if ist < len(stim_times) - 1:
-                    t1 = stim_times[ist]["start"] + stim_times[ist]["window_start"] + stim_times[ist]["window_duration"]
-                else:
-                    t1 = tmax  # to end of trace
-                t0 = st['start'] + st['window_start'] + st['window_duration']
-            spwin = np.nonzero((np.array(combined_events)[:, 0] > t0) &
-                               (np.array(combined_events)[:, 0] < t1))
-            spontevent_amps.extend(np.array(combined_events)[spwin, 1].astype(float))
-            # to be useful, the times must be broken up into blocks, so
-            # that we can compute ISIs within each block, thus
-            # excluding periods immediately after stimulation.
-            # The ISIs are then computed from all spontaneous events, but
-            # there are fewer ISIs than amplitudes
-            for ev in np.array(combined_events)[spwin]:
-                trace = int(ev[2])
-                spkey = (trace, ist)
-                if spkey not in spontevent_times.keys():
-                    spontevent_times[spkey] = [float(ev[0])]
-                else:
-                    spontevent_times[spkey].append(float(ev[0]))
+        wins = self.compute_spont_windows(stim_times)
+        # remove events in the evoked windows...
+        spont_events = []
+        spwin = []
+        for iw, win in enumerate(wins):
+            t0, t1 = win
+            spwin_iw = np.argwhere(
+                (np.array(combined_events)[:, 0] >= t0) & (np.array(combined_events)[:, 0] < t1)
+            )
+            spwin_iw = [int(iw[0]) for iw in spwin_iw]
+            spont_events.extend(combined_events[spwin_iw])
+        spont_events = np.array(spont_events)
 
+        # verify spont_event detection procedure
+        # f, ax = mpl.subplots(1,1)
+        # ax.scatter(spont_events[:,0], np.ones_like(spont_events[:,0]),  color='blue',
+        #            s=6)
+        # ax.scatter(combined_events[:,0], 1.1*np.ones_like(combined_events[:,0]), color='red',
+        #            s=6)
+        # ax.set_ylim(0, 10)
+        # mpl.show()
+        # exit()
+        # print("spwin: ", spwin)
+
+        # reorganize spont_events by trace
+        ntraces = int(np.max(combined_events[:, 2])) + 1
+        spont_list = [None] * ntraces
+        for tr in range(ntraces):
+            tr_events = spont_events[spont_events[:, 2] == tr]
+            if len(tr_events) > 0:
+                spont_list[tr] = tr_events[:, 0]
+            else:
+                spont_list[tr] = []
+        # assemble inter-event intervals per trace
+        tr_isis = np.zeros(ntraces) * np.nan
+        for tr in range(ntraces):
+            se_in_trace = spont_events[spont_events[:, 2] == tr][:, 0]
+            spontevent_amps.extend(spont_events[spont_events[:, 2] == tr][:, 1])
+            if len(se_in_trace) > 1:
+                tr_isis[tr] = np.mean(np.diff(se_in_trace))
         # compute summary statistics
-        for k in spontevent_times.keys():
-            if len(spontevent_times[k]) > 1:
-                isis = np.diff(spontevent_times[k])
-                spont_isis.extend(isis)
-        mean_spont_isi = np.nanmean(spont_isis)
-        std_spont_isi = np.nanstd(spont_isis)
-        n_spont_isis = len(spont_isis)
-        n_spont_amps = len(spontevent_amps[0])
-        print("n_spont_amps: ", n_spont_amps)
-        print("spontevent_amps: ", spontevent_amps)
-        mean_spont_amp = np.nanmean(AK.flatten(spontevent_amps))
-        std_spont_amp = np.nanstd(AK.flatten(spontevent_amps))
+        mean_spont_isi = np.nanmean(tr_isis)
+        std_spont_isi = np.nanstd(tr_isis)
+        n_spont_isis = len(tr_isis)
+        n_spont_amps = len(spontevent_amps)
+        mean_spont_amp = np.nanmean(spontevent_amps)
+        std_spont_amp = np.nanstd(spontevent_amps)
 
         if n_spont_amps > 0:
             cprint(
@@ -892,11 +922,26 @@ class EventAnalyzer(object):
             cprint("y", f"    No spont events")
         this_spont_rate = 1.0 / mean_spont_isi if mean_spont_isi > 0 else 0.0
         cprint("g", f"    Spontaneous rate: {this_spont_rate:.3f} Hz")
-        return this_spont_rate, spontevent_times, spontevent_amps 
+        return this_spont_rate, spont_events, spont_list
 
-    def analyze_events_one_trial(
-        self, combined: np.ndarray, stimtimes: list, ntrials: int, scale: float, rate: float
-    ):
+    def analyze_events_one_trial(self, combined: np.ndarray, stimtimes: list):
+        """analyze_events_one_trial
+        Extract spontaneous rates and event data
+        for one map (one "trial" or repeat)
+
+        Parameters
+        ----------
+        combined : np.ndarray
+            an nx3 array of event times, amplitudes, and sweep numbers  for ONE trial
+        stimtimes : list
+            list of stimulus times and windows, each elemnt of list is for one stimulus
+
+        Returns
+        -------
+        tuple
+            (firstevent_latency, allevent_latency, sr, spontevent_amps, spontevent_times), True
+            or None, False if no data
+        """
         # arrays for the current trial/map
         print("analyze_events_one_trial: combined shape: ", combined.shape)
 
@@ -921,10 +966,144 @@ class EventAnalyzer(object):
                 continue
             firstevent_latency.append(combined[inwin, 0] - st["start"])
             allevent_latency.extend([t - st["start"] for t in combined[inwin, 0]])
+        sr, spontevents, spont_list = self.compute_spontaneous_rate(combined, stimtimes)
+        return (firstevent_latency, allevent_latency, sr, spontevents, spont_list), True
 
-        sr, spontevent_times, spontevent_amps = self.compute_spontaneous_rate(combined, stimtimes)
+    def plot_probs(
+        self,
+        evtimes: list,
+        probabilities: list,
+        spont_list_all_trials: list,
+        pvalues: dict,
+        posxy: np.ndarray,
+        dxp: Path,
+        sel_celltype: str,
+        ntrials: int,
+    ):
+        """plot_probs Graph some of the results for verification
 
-        return (firstevent_latency, allevent_latency, sr, spontevent_amps, spontevent_times), True
+        Parameters
+        ----------
+        evtimes : list
+            list of event times pert trial
+        spont_list_all_trials : list
+            list of spontaneous event times per trial
+        pvalues : dict
+            dictionary of p-values for each event
+        posxy : np.ndarray
+            array of x, y positions for each event
+        dxp : Path
+            data path
+        sel_celltype : str
+            the cell type
+        ntrials : int
+            number of trials
+        """
+
+        f, ax = mpl.subplots(1, 5, figsize=(12, 4))
+        f.suptitle(f"Protocol: {str(dxp):s}  Celltype: {sel_celltype:s}")
+        ev_flat = AK.flatten(evtimes, axis=None).to_list()
+
+        # plot histogram of event times
+        # two overlapping plots: spont events in black, evoked events on top in red
+        spx = AK.flatten(spont_list_all_trials, axis=None).to_list()
+        evx = [et for et in ev_flat if et not in spx]
+        bins = np.arange(0, 0.6, 0.005)  # 5 ms bins up to 600 ms
+        ax[0].hist(
+            spx,
+            bins=bins,
+            color="grey",
+            alpha=0.5,
+            histtype="stepfilled",
+            align="right",
+        )
+        ax[0].hist(evx, bins=bins, color="red", alpha=1, histtype="stepfilled", align="right")
+        ax[0].set_title("Event Times Histogram")
+        ax[0].set_xlabel("Time (s)")
+        ax[0].set_ylabel("Count")
+        # plot hisotgram of pvalues
+        pval = [1 - pvalues[k] for k in pvalues.keys()]
+        ax[3].hist(pval, bins=50, color="blue", alpha=0.7)
+        ax[3].set_title("Event Probabilities Histogram")
+        ax[3].set_xlabel("Probability")
+        ax[3].set_ylabel("Count")
+
+        # plot spot raster
+        for trial in range(ntrials):
+            for trnum in range(len(evtimes[trial])):
+                ax[2].scatter(
+                    evtimes[trial][trnum],
+                    [trnum] * len(evtimes[trial][trnum]),
+                    s=5,
+                    c="red",
+                    alpha=1,
+                    marker="o",
+                )
+            for trnum in range(len(spont_list_all_trials[trial])):
+                ax[2].scatter(
+                    spont_list_all_trials[trial][trnum],
+                    [trnum] * len(spont_list_all_trials[trial][trnum]),
+                    s=3,
+                    c="black",
+                    alpha=0.75,
+                    marker="o",
+                )
+        # Combine the X and Y coordinates into a list of (x, y) pairs
+        points = np.vstack([posxy[:, 0].ravel(), posxy[:, 1].ravel()]).T
+        pvals = []
+        spot_patches = []
+        prob_colors = []
+        # now assign colors based on pvalues to spots
+
+        for i in range(len(evtimes[0])):
+            if (i, 0) in pvalues.keys():
+                pvals.append(pvalues[(i, 0)])
+            else:
+                pvals.append(1)
+            # if pvals[-1] == 1.0:
+            #     col = "grey"
+            # elif pvals[-1] > 0.1 and pvals[-1] <= 1.0:
+            #     col = "blue"
+            # elif pvals[-1] > 0.01 and pvals[-1] <= 0.1:
+            #     col = "cyan"
+            # elif pvals[-1] > 0.001 and pvals[-1] <= 0.01:
+            #     col = "green"
+            # elif pvals[-1] > 0.0001 and pvals[-1] <= 0.001:
+            #     col = "yellow"
+            # elif pvals[-1] < 0.0001:
+            #     col = "orange"
+            # else:
+            #     col = "red"
+            spot_patch = matplotlib.patches.Circle(
+                (posxy[i, 0], posxy[i, 1]),
+                radius=21e-6,
+                fill=True,
+                edgecolor="k",
+                lw=0.5,
+                # facecolor=col,
+                alpha=0.8,
+            )
+            spot_patches.append(spot_patch)
+        print(f"Pvals: {np.min(pvals):.3e}, {np.max(pvals):.3e}")
+        log_p = [-np.log10(p) if p > 0 else 1.0 for p in pvals]
+        print(f"-log(p): {np.min(log_p):.3e}, {np.max(log_p):.3e}")
+        cmap = mpl.cm.CMRmap
+        norm = mpl.Normalize(vmin=np.min(log_p), vmax=1.0 ) # np.max(log_p))
+        pc = matplotlib.collections.PatchCollection(spot_patches, cmap=cmap, 
+                                                    norm=norm, match_original=True)
+        ax[1].add_collection(pc)
+        pc.set_array(log_p)
+        ax[1].autoscale_view()
+        cbar = mpl.colorbar(pc)
+
+        # lspsmap = ax[1].scatter(points[:, 0], points[:, 1], c=pvals, s=50, cmap="viridis", #vmin=0.0, vmax=1.0,
+        # mpl.colorbar(lspsmap, label="Log10(Probability)")
+
+        ax[1].set_aspect("equal")
+        ax[1].set_title("Event Probabilities Map")
+
+        # ax[1].scatter(points[:,0], points[:,1], c=probabilities, s=50)
+        mpl.show()
 
     def score_protocol_events(
         self,
@@ -935,12 +1114,33 @@ class EventAnalyzer(object):
         area_z_threshold: float,
         celltype: Union[str, None] = None,
         i_protocol: int = 0,
+        plotflag: bool = True,
     ):
         """
-        Score the given protocol.
+        Score the given protocol according to whether there are "significant" evoked events.
         1. Check that the protocol is valid for the analysis we need to do
-        2. Get the protocol data
+        2. Get the protocol data, and adjust the event list. Find
+        events in a respons window after each stimulus.
+        3. Accumulate event amplitudes and times across all trials
+        4. Calculate spontaneous rate from events outside of stimulus windows
+        5. Compute scores (calculate p expectancy based on spont rate)
+        6. opionally plot the event histogram, map with p values. raster, and histogram of p values
 
+        Parameters
+        ----------
+        dxf : str or Path
+            path to protocol file
+        evndata : dict of event-related data
+            accumulated event data
+        dfn : dict of file information, used to extract positions.
+        eventwindow : tuple
+            (start time, duration) of the event detection window after each stimulus
+        area_z_threshold : float
+            threshold for area fraction calculation
+        celltype : str or None
+            if set, only analyze for a particular cell type
+        i_protocol : int
+            index of the protocol in the list
 
         """
         assert celltype is not None
@@ -979,7 +1179,8 @@ class EventAnalyzer(object):
         #     return None, False
         if str(dxp) not in [
             # "2017.02.14_000/slice_000/cell_001/Map_NewBlueLaser_VC_single_MAX_003"
-            "2018.09.26_000/slice_001/cell_002/Map_NewBlueLaser_VC_10Hz_003"
+            # "2018.09.26_000/slice_001/cell_002/Map_NewBlueLaser_VC_10Hz_003"
+            "2017.05.01_000/slice_000/cell_000/Map_NewBlueLaser_VC_10Hz_000"
         ]:
             return None, False
         sel_celltype = self.filter_celltypes(dxp, celltype)
@@ -1040,6 +1241,9 @@ class EventAnalyzer(object):
         allevent_latency_all_trials = []
         spontevent_amps_all_trials = []
         spontevent_times_all_trials = []
+        spont_list_all_trials = []
+        tpr = []
+        tevt = []
         for trial in range(ntrials):  # trials
             trial_events = reader.get_events()[
                 trial
@@ -1061,18 +1265,23 @@ class EventAnalyzer(object):
             combined_trial.append(combined)
 
             # now analyze one trial
-            res, resflag = self.analyze_events_one_trial(
-                combined=combined, stimtimes=stimtimes, ntrials=ntrials, scale=scale, rate=dt
-            )
+            res, resflag = self.analyze_events_one_trial(combined=combined, stimtimes=stimtimes)
             if not resflag:
                 cprint("r", f"    No valid events found in trial {trial:d}")
                 continue
             else:  # unpack results
-                (firstevent_latency, allevent_latency, this_spont_rate, spontevent_amps, spontevent_times) = res
+                (
+                    firstevent_latency,
+                    allevent_latency,
+                    this_spont_rate,
+                    spontevents,
+                    spont_list,
+                ) = res
                 firstevent_latency_all_trials.extend(firstevent_latency)
                 allevent_latency_all_trials.extend(allevent_latency)
-                spontevent_amps_all_trials.extend(spontevent_amps)
-                spontevent_times_all_trials.extend(spontevent_times)
+                spontevent_amps_all_trials.extend(spontevents[:, 1])
+                spontevent_times_all_trials.extend(spontevents[:, 0])
+                spont_list_all_trials.append(spont_list)  # keep list of spont events by trace
 
             if len(evtimes) > 0:
                 # mscore_n, mscore, mean_ev_amp = SH.shuffle_score(evp, stimtimes, nshuffle=5000, maxt=0.6)  # spontsonly...
@@ -1083,15 +1292,28 @@ class EventAnalyzer(object):
             else:
                 mscore_n = np.ones(len(stimtimes))
                 probabilities = 1.0
+            evt_flat = []
+            for j, p in enumerate(evt):
+                evt_flat.extend(p)
+            evt_flat = np.array(evt_flat)
+            ievt = np.argsort(evt_flat)
+            tpr.append(probabilities[ievt])
+            tevt.append(evt_flat[ievt])
 
-            cprint("g", f"    Poisson score: {mscore_n:6.4f}, spontrate: {this_spont_rate:.3f} Hz")
-            print(
-                "Probs: ",
-                probabilities,
-                len(probabilities),
-                np.min(probabilities),
-                np.max(probabilities),
-            )
+            print(f"Probabilities len: {len(probabilities)}, len(evt): {len(evt_flat)}")
+            print(evt_flat)
+            print("Probabilities: ", tpr)
+            # mpl.plot(tevt[0], tpr[0], '-')
+            # mpl.show()
+            # exit()
+            cprint("g", f"    m score: {mscore_n:6.4f}, spontrate: {this_spont_rate:.3f} Hz")
+            # print(
+            #     "Probs: ",
+            #     probabilities,
+            #     len(probabilities),
+            #     np.min(probabilities),
+            #     np.max(probabilities),
+            # )
 
             # get the probabilities for the responses after the first stimulus:
             pvalues = {}  # dict, keys are trace numbers, stim numbers
@@ -1103,81 +1325,30 @@ class EventAnalyzer(object):
                         (t0 < np.array(combined_trial[trial][:, 0]))
                         & (np.array(combined_trial[trial][:, 0]) <= t1)
                     )[0]
-                    if len(inwin) > 0:
-                        spots = combined_trial[trial][inwin][:,2]
+                    if len(combined_trial[trial][inwin]) > 0:
+                        spots = combined_trial[trial][inwin][:, 2]
                         for spot in spots:
                             pvalues[(int(spot), ifsl)] = float(probabilities[int(spot)])
                     else:
-                        spot = combined_trial[trial][inwin][2]
-                        print("spot2: ", spot)
-                        pvalues[(int(spot[2]), ifsl)] = 1.0
-
-        f, ax = mpl.subplots(1, 4, figsize=(12, 4))
-        f.suptitle(f"Protocol: {str(dxp):s}  Celltype: {sel_celltype:s}")
-        ev_flat = AK.flatten(evtimes, axis=None)
-        ax[0].hist(ev_flat, bins=300, color="black", alpha=0.7)
-        ax[0].set_title("Event Times Histogram")
-        ax[0].set_xlabel("Time (s)")
-        ax[0].set_ylabel("Count")
-        # plot hisotgram of pvalues
-        pval = [1-pvalues[k] for k in pvalues.keys()]
-        ax[3].hist(pval, bins=50, color="blue", alpha=0.7)
-        ax[3].set_title("Event Probabilities Histogram")
-        ax[3].set_xlabel("Probability")
-        ax[3].set_ylabel("Count")
-
-        # plot spot raster
-        for trial in range(ntrials):
-            for trnum in range(len(evtimes[trial])):
-                ax[2].scatter(
-                    evtimes[trial][trnum],
-                    [trnum] * len(evtimes[trial][trnum]),
-                    s=10,
-                    c="black",
-                    alpha=0.5,
-                    marker="o",
-                )
-        # ax[2].set_aspect("equal")
-        # Combine the X and Y coordinates into a list of (x, y) pairs
-        points = np.vstack([posxy[:, 0].ravel(), posxy[:, 1].ravel()]).T
-        pvals = []
-        spot_patches = []
-        for i in range(len(evtimes[0])):
-            if (i,0) in pvalues.keys():
-                pvals.append(1-pvalues[(i, 0)])
-            else:
-                pvals.append(1)
-            if pvals[-1] == 1.0:
-                col = 'grey'
-            elif pvals[-1] > 0.1 and pvals[-1] <= 1.0:
-                col = 'blue'
-            elif pvals[-1] > 0.01 and pvals[-1] <= 0.1:
-                col = 'cyan'
-            elif pvals[-1] > 0.001 and pvals[-1] <= 0.01:
-                col = 'green'
-            elif pvals[-1] > 0.0001 and pvals[-1] <= 0.001:
-                col = 'yellow'
-            elif pvals[-1] < 0.0001:
-                col = 'orange'
-            else:
-                col = 'red'
-            spot_patch = matplotlib.patches.Circle(
-                (posxy[i, 0], posxy[i, 1]), radius=21e-6, fill=True, edgecolor="k", lw=0.5,
-                facecolor=col, alpha=0.8)
-            spot_patches.append(spot_patch)
-        pc = matplotlib.collections.PatchCollection(spot_patches, match_original=True)
-        ax[1].add_collection(pc)
-        ax[1].autoscale_view()
-
-        # lspsmap = ax[1].scatter(points[:, 0], points[:, 1], c=pvals, s=50, cmap="viridis", #vmin=0.0, vmax=1.0,
-        # mpl.colorbar(lspsmap, label="Log10(Probability)")
-                                                            
-        ax[1].set_aspect("equal")
-        ax[1].set_title("Event Probabilities Map")
-
-        # ax[1].scatter(points[:,0], points[:,1], c=probabilities, s=50)
-        mpl.show()
+                        print("?? spot: ", combined_trial[trial][inwin], len(combined_trial[trial][inwin]))
+                        continue  # missing spot information
+                        # spot = combined_trial[trial][inwin][2]
+                        # # print("spot2: ", spot)
+                        # pvalues[(int(spot[2]), ifsl)] = 1.0
+        if plotflag:
+            self.plot_probs(
+                evtimes=evtimes,
+                spont_list_all_trials=spont_list_all_trials,
+                probabilities=probabilities,
+                pvalues=pvalues,
+                posxy=posxy,
+                dxp=dxp,
+                sel_celltype=sel_celltype,
+                ntrials=ntrials,
+            )
+        print(f"Mscore: {mscore_n:.3f}")
         exit()
+
         mscore = mscore_n
         mean_ev_amp = 1.0
         if not isinstance(mscore, list):
