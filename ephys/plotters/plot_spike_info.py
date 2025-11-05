@@ -365,7 +365,10 @@ def set_ylims(experiment):
     else:
         # get the table defaults
         # import ephys.plotters.default_ylims as DY
-        ylims = experiment['ylims']["default"]
+        if experiment is None:  # may happen on startup
+            ylims = [0, 1]
+        else:
+            ylims = experiment['ylims']["default"]
         # ylims = DY.get_default_ylims()
         return ylims
 
