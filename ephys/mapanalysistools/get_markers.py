@@ -3,12 +3,18 @@ from typing import Tuple, Dict
 import json
 import numpy as np
 from pylibrary.tools import cprint as CP
+import ephys.tools.configfile as CF
 import sympy.geometry
 import shapely
 import scipy.interpolate
 import numpy as np
 import pint
 import re
+import nf107.markers as MARKS
+
+
+
+
 re_slice = re.compile(r"slice_(\d+)")
 re_cell = re.compile(r"cell_(\d+)")
 re_day = re.compile(r"^(\d{4})\.(\d{2})\.(\d{2})_00") 
@@ -279,9 +285,10 @@ def find_min_max_axes(boundary):
 
 
 def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
+    if len(coord_pairs) == 0:
+        return None, None
     coordinates_x = np.array([x[0] for x in coord_pairs])
     coordinates_y = np.array([x[1] for x in coord_pairs])
-
     dist = np.sqrt(
         (coordinates_x[:-1] - coordinates_x[1:]) ** 2
         + (coordinates_y[:-1] - coordinates_y[1:]) ** 2
@@ -308,6 +315,60 @@ def compute_measures(poly: sympy.geometry.polygon.Polygon) -> dict:
         measures["medial_lateral_distance"] = np.nan
     return measures
 
+def find_marker_type(markers: dict):
+    """find_marker_type finds the type of mosaic from the markers present.
+
+    Parameters
+    ----------
+    markers : dict
+        Dictionary of markers.
+
+    Returns
+    -------
+    str
+        The type of mosaic.
+    """
+    MARKS.identify_marker(markers)
+    raise ValueError("Not implemented yet.")
+    for mclass in MARKS.defined_markers.keys():
+        defined_marks = MARKS.defined_markers[mclass]
+        found_all = True
+        for dmark in defined_marks.keys():
+            if dmark not in markers.keys():
+                found_all = False
+        if found_all:
+            return mclass
+    else:
+        return "Unknown"
+
+def find_markers_of_a_type(markers: dict, marker_types: list) -> list:
+    """find_markers_of_a_type finds the markers of a specific type in the markers dictionary.
+
+    Parameters
+    ----------
+    markers : dict
+        Dictionary of markers.
+
+    Returns
+    -------
+    list
+        List of surface marker coordinates.
+    """
+    # print("Markers: ", markers)
+    marker_name, marker_group = MARKS.identify_marker(markers)
+    surface_coordinates: list = []
+    # print("Marker Group: \n", marker_group)
+    for marker in markers.keys():
+        if marker == 'soma':
+            continue
+        # print("marker group: ", marker, marker_group.markers[marker].group)
+        if marker_group.markers[marker].group in marker_types:
+            # print("surface marker position: ", markers[marker])
+            surface_coordinates.append(tuple(markers[marker]))
+    # print("surface_coordinates: ", surface_coordinates)
+    return surface_coordinates
+
+
 def plot_mosaic_markers(
     markers: dict,
     axp,
@@ -315,10 +376,15 @@ def plot_mosaic_markers(
     mark_symbols: dict,
     mark_alpha: dict,
 ) -> tuple():
-    measures = {}
+    measures = {"area": np.nan, "medial_lateral_distance": np.nan, 
+                'short_axis': np.nan, 'long_axis': np.nan, 'eccentricty': np.nan, 
+                'cir_circle': np.nan, 'perimeter': np.nan, 'shape_index': np.nan, 'fractal_dimension': np.nan,
+                'shortest_line': None, 'longest_line': None,
+                'rostral_caudal_distance': np.nan}
     smoothed_poly = None
+    smoothed_poly_list = []
     markers_complete = True
-    # print(mark_alpha.keys())
+    # find_markers_of_a_type(markers, ["surface", "border"])
     if markers is not None and len(markers.keys()) > 0:
         for marktype in markers.keys():
             if marktype not in mark_colors.keys():
@@ -347,80 +413,57 @@ def plot_mosaic_markers(
                     markersize=markersize,
                     alpha=mark_alpha[marktype],
                 )
-        surface_coordinates: list = []
-        for marker in [
-            "rostralborder",
-            "rostralsurface",
-            "surface",
-            "caudalsurface",
-            "caudalborder",
-        ]:
-
-            surface_coordinates.append(tuple(markers[marker]))
-            # marker_poly = sympy.geometry.polygon.Polygon(*pcoors)
-            # patch = descartes.PolygonPatch(self.marker_poly, fc=None, ec='red', alpha=0.5, zorder=2)
-
+        surface_coordinates: list = find_markers_of_a_type(markers, ["surface", "border"])       
         xx, yy = compute_splines(surface_coordinates, npoints=20)
-
-        if axp is not None:
+        if axp is not None and xx is not None:
             axp.plot(xx, yy, "g-", lw=0.75, zorder=2)
             axp.plot(xx[0], yy[0], "ro", markersize=6, alpha=0.5)
             axp.plot(xx[-2], yy[-2], "rX", markersize=6, alpha=0.5)
-        deep_boundary_coordinates: list = []
-        # we use a wrap-around here to mesh with the surface points, but then will limit the data
-        # to the end points for the caudal border and rostral border.
-        for marker in [
-            "caudalsurface",
-            "caudalborder",
-            "AN_Notch1",
-            "AN_Notch2",
-            "medialborder",
-            "rostralborder",
-            "rostralsurface",
-        ]:
-            if marker in markers.keys():
-                deep_boundary_coordinates.append(tuple(markers.get(marker, {})))
-        # print("deep_boundary_coordinates: ", deep_boundary_coordinates)
-        # b_spline, u_par = scipy.interpolate.make_splprep([deep_boundary_coordinates_x, deep_boundary_coordinates_y], s=0)
+        
+        deep_boundary_coordinates: list = find_markers_of_a_type(markers, ["interior", "deep"])
         deep_xx, deep_yy = compute_splines(deep_boundary_coordinates, npoints=20, remove_ends=True)
-
-        if axp is not None:
+        if axp is not None and deep_xx is not None:
             axp.plot(deep_xx, deep_yy, "b-", lw=0.75, zorder=2)
             axp.plot(deep_xx[0], deep_yy[0], "bo", markersize=4, alpha=0.5)
             axp.plot(deep_xx[-1], deep_yy[-1], "bX", markersize=4, alpha=0.5)
-
-        smoothed_poly_list = [(xx[i], yy[i]) for i in range(len(xx) - 1)]
-        surface_poly_list = smoothed_poly_list.copy()
-        smoothed_poly_list.extend([(deep_xx[i], deep_yy[i]) for i in range(len(deep_xx) - 1)])
-        # smoothed_poly.append(smoothed_poly[0])  # close the loop
-        # print("smoothed_poly: ", smoothed_poly)
-        smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly_list)
-        shapely_smoothed_poly = shapely.geometry.Polygon(smoothed_poly_list)
-        medialpt = sympy.geometry.point.Point(markers["medialborder"], dim=2)
-        lateralpt = sympy.geometry.point.Point(markers["surface"], dim=2)
-        measures["medial_lateral_distance"] = float(medialpt.distance(lateralpt))
-        measures["area"] = np.abs(float(smoothed_poly.area))
-        measures["cir_circle"] = float(1.0 - (measures['area'] / shapely.minimum_bounding_circle(shapely_smoothed_poly).area))
-        measures['perimeter'] = float(smoothed_poly.perimeter)
-        measures['shape_index'] = float(0.25*measures['perimeter'] / np.sqrt(float(measures['area'])))  # shape index, see https://en.wikipedia.org/wiki/Shape_index
-        measures['fractal_dimension'] = float(2.0*np.log(float(measures['perimeter'])/4.0) / np.log(float(measures['area']))) # fractal dimension, see https://en.wikipedia.org/wiki/Fractal_dimension
         
-        shortest_line, longest_line = find_min_max_axes(smoothed_poly)
-        measures["short_axis"] = shortest_line.length
-        measures["long_axis"] = longest_line.length if longest_line is not None else 0.0
-        measures["eccentricty"] = (
-            longest_line.length / shortest_line.length if shortest_line.length > 0 else 0.0
-        )
-        measures["shortest_line"] = np.array(shortest_line.coords)
-        measures["longest_line"] = np.array(longest_line.coords)
-        rostralpt = sympy.geometry.point.Point(markers["rostralborder"], dim=2)
-        caudalpt = sympy.geometry.point.Point(markers["caudalborder"], dim=2)
-        measures["rostral_caudal_distance"] = float(rostralpt.distance(caudalpt))
+        if 'medialborder' in markers.keys() and 'lateralborder' in markers.keys():
+            medialpt = sympy.geometry.point.Point(markers["medialborder"], dim=2)
+            lateralpt = sympy.geometry.point.Point(markers["lateralborder"], dim=2)
+        else:
+            medialpt = sympy.geometry.point.Point((0,0), dim=2)
+            lateralpt = sympy.geometry.point.Point((0,0), dim=2)
+        if deep_xx is not None and xx is not None:
+            smoothed_poly_list.extend([(deep_xx[i], deep_yy[i]) for i in range(len(deep_xx) - 1)])
+            # smoothed_poly.append(smoothed_poly[0])  # close the loop
+            # print("smoothed_poly: ", smoothed_poly)
+            smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly_list)
+            shapely_smoothed_poly = shapely.geometry.Polygon(smoothed_poly_list)
+
+            measures["medial_lateral_distance"] = float(medialpt.distance(lateralpt))
+            measures["area"] = np.abs(float(smoothed_poly.area))
+            measures["cir_circle"] = float(1.0 - (measures['area'] / shapely.minimum_bounding_circle(shapely_smoothed_poly).area))
+            measures['perimeter'] = float(smoothed_poly.perimeter)
+            measures['shape_index'] = float(0.25*measures['perimeter'] / np.sqrt(float(measures['area'])))  # shape index, see https://en.wikipedia.org/wiki/Shape_index
+            measures['fractal_dimension'] = float(2.0*np.log(float(measures['perimeter'])/4.0) / np.log(float(measures['area']))) # fractal dimension, see https://en.wikipedia.org/wiki/Fractal_dimension
+            
+            shortest_line, longest_line = find_min_max_axes(smoothed_poly)
+            measures["short_axis"] = shortest_line.length
+            measures["long_axis"] = longest_line.length if longest_line is not None else 0.0
+            measures["eccentricty"] = (
+                longest_line.length / shortest_line.length if shortest_line.length > 0 else 0.0
+            )
+            measures["shortest_line"] = np.array(shortest_line.coords)
+            measures["longest_line"] = np.array(longest_line.coords)
+        if 'rostralborder' in markers.keys() and 'caudalborder' in markers.keys():
+            rostralpt = sympy.geometry.point.Point(markers["rostralborder"], dim=2)
+            caudalpt = sympy.geometry.point.Point(markers["caudalborder"], dim=2)
+            measures["rostral_caudal_distance"] = float(rostralpt.distance(caudalpt))
         # print(markers.keys())
         somas = markers.get('somas', {})
         soma_depth = {}
         soma_radius = {}
-        # print("somas: ", somas)
+        # Locate somas and draw perpendiculars... 
         for i_soma, cellname in enumerate(somas):
             print("cellname: ", cellname)
 
@@ -455,8 +498,10 @@ def plot_mosaic_markers(
             # print('intersect with surface: ', intersect[0].evalf())
 
             axp.plot([cell_pt.x, intersect[0].x], [cell_pt.y, intersect[0].y], "c-", lw=1.0, alpha=0.5)
-        axp.plot(measures["shortest_line"][:, 0], measures["shortest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
-        axp.plot(measures["longest_line"][:, 0], measures["longest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
+        if measures["shortest_line"] is not None:
+            axp.plot(measures["shortest_line"][:, 0], measures["shortest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
+        if measures["longest_line"] is not None:
+            axp.plot(measures["longest_line"][:, 0], measures["longest_line"][:, 1], "k-", lw=0.5, alpha=0.2)
         # print("soma_depth: ", soma_depth)
         # if cell_pt is not None:
         #     cell_pt = sympy.geometry.point.Point(cell_pt)
