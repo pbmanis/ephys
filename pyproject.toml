@@ -41,8 +41,9 @@ dependencies = [
     "matplotlib>=3.10.0",
     "matplotlib-scalebar>=0.8.1",
     "meegkit==0.1.9",
-    "metaarray==2.1.1",
-    # "montage",
+    # "metaarray==2.1.1",  # should use this version, but has a bug
+    "metaarray @ git+https://github.com/pbmanis/metaarray.git@nparray-fix#egg=metaarray",  # forked from Martin Chase directly
+    "montage",
     "nest-asyncio==1.2.0",
     "networkx>=2.0",
     "ngauge",
@@ -102,6 +103,7 @@ dependencies = [
     "prettyprinter>=0.18.0",
     "numdifftools>=0.9.41",
     "efel>=5.7.20",
+    "metaarray",
 ]
 
 [dependency-groups]
@@ -151,6 +153,7 @@ dependencies = { file = ["requirements.txt"]}
 [tool.uv.sources]
 montage = { path = "../montage" }
 pylibrary = { git = "https://github.com/pbmanis/pylibrary" }
+metaarray = { path = "../metaarray", editable = true }
 
 [tool.ruff.format]
 indent-style = "space"
