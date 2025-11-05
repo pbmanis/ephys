@@ -72,7 +72,7 @@ def map_cell_type(variant):
             # # print("     r=", r)
             # print("m is not none, returning: ", m.group(), exp[1])
             return exp[1]
-    return None
+    return 'None'
 
 
 def test():
