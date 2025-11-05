@@ -15,6 +15,7 @@ import pyqtgraph.console as console
 import pyqtgraph.multiprocess as mp
 from matplotlib.backends.backend_pdf import PdfPages
 from pypdf import PdfReader, PdfWriter
+from ephys.tools import get_computer
 
 import ephys.mapanalysistools as mapanalysistools
 import ephys.tools.filename_tools as filename_tools
@@ -118,29 +119,41 @@ class MAP_Analysis(Analysis):
         #         raise ValueError("Error in MAP_Analysis.analyze_maps: find_cell returned empty dataframe")
 
         validmaps = []
-        print("original list of maps: ", allprots["Maps"])
+        print("Original list of maps: ", allprots["Maps"])
         for p in allprots["Maps"]:  # first remove excluded protocols
             cell_df = self.find_cell(self.map_annotations, datestr, slicestr, cellstr, Path(p))
-            print(p, cell_df)
+            print(f"Checking map: {p} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
             if (
                 cell_df is None or len(cell_df) == 0 or len(cell_df["Usable"].values) == 0
             ):  # nothing set
                 CP.cprint("y", f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
                 continue
             if self.map_annotations is not None:  # determine from the map annotation table
+                CP.cprint("g", "Checking map_annotation file")
                 if cell_df["Usable"].values[0] in ["Y", "y"]:
                     validmaps.append(p)
-                if cell_df["Usable"].values[0] not in ["Y", "y", "N", "n"]:
-                    print(f"Usable = <{str(cell_df['Usable'].values[0]):s}>")
+                    CP.cprint("g", f"    Including map: {str(p):s}  Usable={str(cell_df['Usable'].values[0]):s}")
+                elif cell_df["Usable"].values[0] not in ["Y", "y", "N", "n"]:
+                    CP.cprint("r", f"Usable = <{str(cell_df['Usable'].values[0]):s}>")
                     raise ValueError(
                         "Please fill the map annotation table with Y or N for 'Usable'"
                     )
-            else:  # determine from the exclusions dictionary
+                else:
+                    CP.cprint("r", f"Map is marked NOT Usable = <{str(cell_df['Usable'].values[0]):s}>")
                 if self.exclusions is None or (str(p) not in self.exclusions):
+                    CP.cprint("g", f"Adding map {str(p):s} as not excluded")
                     validmaps.append(p)
+                else:
+                    CP.cprint("r", f"Excluding map as in exclusions list: {str(p):s}")
+            else:
+                CP.cprint("y", "No valid map annotation file found, so adding all maps. THIS MAY NOT BE WHAT YOU WANT!")
+                validmaps.append(p)  # no map annotation file, so include all
         allprots["Maps"] = validmaps
-        print("allprots[Maps]: ", allprots["Maps"])
-        from ephys.tools import get_computer
+        CP.cprint("g", f"{'-'*80:s}\nThe following maps will be analyzed for this cell:")
+        for m in allprots["Maps"]:
+            CP.cprint("g", f"    {str(m):s}")
+        CP.cprint("g", f"{'-'*80:s}")
+
         computername = get_computer.get_computer()
         nworkers = self.experiment["NWORKERS"][computername]  # number of cores/threads to use
         tasks = range(len(allprots["Maps"]))  # number of tasks that will be needed
@@ -202,7 +215,7 @@ class MAP_Analysis(Analysis):
                 dill.dump(results, fh)
 
         if self.celltype_changed:
-            CP.cprint("yellow", f"    cell annotated celltype: {self.this_celltype:s})")
+            CP.cprint("yellow", f"    cell annotated celltype: <{self.this_celltype:s}>")
         else:
             txt = self.this_celltype.strip()
             print("celltype: ", self.this_celltype)
@@ -213,6 +226,7 @@ class MAP_Analysis(Analysis):
             else:
                 CP.cprint("g", f"    Database celltype: {txt:s}")
 
+        CP.cprint("g", "merging pdfs")
         self.merge_pdfs(celltype=celltype, thiscell=self.df.iloc[icell].cell_id, slicecell=slicecellstr, pdf=pdf)
 
     def set_vc_taus(self, icell: int, path: Union[Path, str]):
