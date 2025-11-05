@@ -721,7 +721,7 @@ class Analysis:
             )
             self.map_annotations = pd.read_excel(
                 Path(self.map_annotationFilename).with_suffix(".xlsx"),
-                sheet_name="Sheet1",
+                sheet_name="Maps",  # changed from "Sheet1 to "Maps" on 2025.11.04
             )
             CP.cprint(
                 "c",
@@ -985,7 +985,7 @@ class Analysis:
         To be confident of the assignment for cell types, we check the cell type in the original data against
         both tables.
         To do this, we get the type listed in each of the 3 sources.
-        Test 5 conditions:
+        Test 4 conditions:
         1. If the map annotation table and the annotation table have different types (and neither of them
             is empty), it is an error, as we will raise an exception.
 
@@ -1099,6 +1099,23 @@ class Analysis:
                 )
                 Logger.info(msg)
                 return original_celltype, False
+        else:
+            # Not this:
+            # pd.isnull(map_annotated_celltype)
+            # and not pd.isnull(annotated_celltype)
+            # and isinstance(annotated_celltype, str)
+            print("map annotated: ", map_annotated_celltype)
+            print("annotated: ", annotated_celltype)
+            print("original: ", original_celltype)
+
+            msg = f"   Cell type was re-annotated in annotation file from: <{original_celltype:s}> to: {annotated_celltype:s})"
+            CP.cprint(
+                "red",
+                msg,
+            )
+            if self.parallel_mode not in ["day"]:
+                Logger.info(msg)
+            return annotated_celltype, True
 
     def do_cell(self, icell: int, pdf=None, mode: str = "IV") -> bool:
         """
