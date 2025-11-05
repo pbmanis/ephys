@@ -428,18 +428,18 @@ class DataSummary:
             mindayx = (dt.year, dt.month, dt.day)
             maxdayx = (dt.year, dt.month, dt.day)
 
-        print(
-            "after, before, mindayx, maxdayx: ",
-            self.after,
-            self.before,
-            mindayx,
-            maxdayx,
-        )
-        print("daylistfile: ", self.daylistfile)
+        # print(
+        #     "after, before, mindayx, maxdayx: ",
+        #     self.after,
+        #     self.before,
+        #     mindayx,
+        #     maxdayx,
+        # )
+        # print("daylistfile: ", self.daylistfile)
         if self.daylistfile is None:  # get from command line
             self.minday = mindayx[0] * 1e4 + mindayx[1] * 1e2 + mindayx[2]
             self.maxday = maxdayx[0] * 1e4 + maxdayx[1] * 1e2 + maxdayx[2]
-            print("Min, max day: ", self.minday, self.maxday)
+            # print("Min, max day: ", self.minday, self.maxday)
         else:
             self.daylist = []
             with open(self.daylistfile, "r") as f:
@@ -949,6 +949,7 @@ class DataSummary:
                 ]  # get mode from top of protocol information
             else:
                 print(prsp + "? no clamp devices... ")
+                raise ValueError("No clamp devices found in protocol info")
             if data_mode not in modes:
                 modes.append(data_mode)
         return modes
@@ -961,7 +962,7 @@ class DataSummary:
                 break
             if os[i] == " ":
                 os[i] = "--"
-            print("{0:3d}: {1:>20s} : {2:<s}".format(i, ps[i], os[i]))
+            # print("{0:3d}: {1:>20s} : {2:<s}".format(i, ps[i], os[i]))
 
     def outputString(self, ostring):
         day_string = ""
@@ -1021,7 +1022,7 @@ class DataSummary:
         if self.outputMode == "pandas":
             if self.verbose:
                 self.colprint(phdr, ostring)
-                print("\n******* building Pandas string", "ostring: \n", ostring)
+                # print("\n******* building Pandas string", "ostring: \n", ostring)
             self.panda_string += ("{0:d}\t{1:s}").format(
                 self.index, ostring
             )  # -1 needed to remove last tab...
@@ -1044,9 +1045,9 @@ class DataSummary:
             df = pd.read_csv(StringIO(self.panda_string), delimiter="\t")
             if outfile.suffix != ".pkl":
                 outfile = outfile.with_suffix(".pkl")
-            print("outfile: ", outfile)
-            print("is file: ", Path(outfile).is_file())
-            print("is parent path: ", Path(outfile).parent.is_dir())
+            # print("outfile: ", outfile)
+            # print("is file: ", Path(outfile).is_file())
+            # print("is parent path: ", Path(outfile).parent.is_dir())
             df.to_pickle(outfile)
             print(f"Wrote NEW pandas dataframe to pickled file: {str(outfile):s}")
             df.to_excel(excelfile, index=False)
