@@ -1,4 +1,5 @@
 import datetime
+import gc
 import logging
 import re
 from pathlib import Path
@@ -45,12 +46,33 @@ logging_ch.setFormatter(log_formatter)
 
 
 class MAP_Analysis(Analysis):
-    def __init__(self, args):
+    def __init__(self, args: Union[None, object] = None):
+        # if args is not None:
         super().__init__(args)
-        # print(self._testing_counter)
-        Logger.info("Instantiating map_analysis class")
+        # else:
+        #     super().__init__()
+        self.reset_analysis()
+        Logger.info("Instantiating MAP_Analysis class")
 
-    def analyze_maps(self, icell: int, celltype: str, allprots: dict, plotmap:bool=True, pdf=None):
+    def __enter__(self):
+        self.reset_analysis()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        del self.SP # these are instantiated in analysis_common
+        del self.RM
+        del self.AR
+        del self.MA  # the mini analysis methods object
+        del self.AM  # the map analysis tools object
+        gc.collect()
+
+    def reset_analysis(self):
+        self.markers = None
+        self.update_annotations()
+
+    def analyze_maps(
+        self, icell: int, celltype: str, allprots: dict, plotmap: bool = True, pdf=None
+    ):
         # print("icell: ", icell)
 
         if self.celltype != "all":
@@ -59,7 +81,7 @@ class MAP_Analysis(Analysis):
                 "cartwheel",
                 "tuberculoventral",
                 "giant",
-                "giant_maybe"
+                "giant_maybe",
             ]:
                 oktype = True
             elif self.celltype == "VCN" and celltype in [
@@ -126,27 +148,38 @@ class MAP_Analysis(Analysis):
             if (
                 cell_df is None or len(cell_df) == 0 or len(cell_df["Usable"].values) == 0
             ):  # nothing set
-                CP.cprint("y", f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}")
+                CP.cprint(
+                    "y",
+                    f"Cannot find protocol in map annotation file: {str(p):s} for cell: {datestr:s}/{slicestr:s}/{cellstr:s}",
+                )
                 continue
             if self.map_annotations is not None:  # determine from the map annotation table
                 CP.cprint("g", "Checking map_annotation file")
                 if cell_df["Usable"].values[0] in ["Y", "y"]:
                     validmaps.append(p)
-                    CP.cprint("g", f"    Including map: {str(p):s}  Usable={str(cell_df['Usable'].values[0]):s}")
+                    CP.cprint(
+                        "g",
+                        f"    Including map: {str(p):s}  Usable={str(cell_df['Usable'].values[0]):s}",
+                    )
                 elif cell_df["Usable"].values[0] not in ["Y", "y", "N", "n"]:
                     CP.cprint("r", f"Usable = <{str(cell_df['Usable'].values[0]):s}>")
                     raise ValueError(
                         "Please fill the map annotation table with Y or N for 'Usable'"
                     )
                 else:
-                    CP.cprint("r", f"Map is marked NOT Usable = <{str(cell_df['Usable'].values[0]):s}>")
+                    CP.cprint(
+                        "r", f"Map is marked NOT Usable = <{str(cell_df['Usable'].values[0]):s}>"
+                    )
                 if self.exclusions is None or (str(p) not in self.exclusions):
                     CP.cprint("g", f"Adding map {str(p):s} as not excluded")
                     validmaps.append(p)
                 else:
                     CP.cprint("r", f"Excluding map as in exclusions list: {str(p):s}")
             else:
-                CP.cprint("y", "No valid map annotation file found, so adding all maps. THIS MAY NOT BE WHAT YOU WANT!")
+                CP.cprint(
+                    "y",
+                    "No valid map annotation file found, so adding all maps. THIS MAY NOT BE WHAT YOU WANT!",
+                )
                 validmaps.append(p)  # no map annotation file, so include all
         allprots["Maps"] = validmaps
         CP.cprint("g", f"{'-'*80:s}\nThe following maps will be analyzed for this cell:")
@@ -227,7 +260,9 @@ class MAP_Analysis(Analysis):
                 CP.cprint("g", f"    Database celltype: {txt:s}")
 
         CP.cprint("g", "merging pdfs")
-        self.merge_pdfs(celltype=celltype, thiscell=self.df.iloc[icell].cell_id, slicecell=slicecellstr, pdf=pdf)
+        self.merge_pdfs(
+            celltype=celltype, thiscell=self.df.iloc[icell].cell_id, slicecell=slicecellstr, pdf=pdf
+        )
 
     def set_vc_taus(self, icell: int, path: Union[Path, str]):
         """ """
@@ -746,10 +781,12 @@ class MAP_Analysis(Analysis):
         Logger.info(msg)
         self.icell = icell
         # self.mapdir = Path(self.df.iloc[icell].data_directory, self.map_name)
-        self.mapdir = Path(self.experiment["rawdatapath"], 
-                           self.experiment["directory"],
-                        #    self.df.at[self.icell, "cell_id"],
-                           self.map_name)
+        self.mapdir = Path(
+            self.experiment["rawdatapath"],
+            self.experiment["directory"],
+            #    self.df.at[self.icell, "cell_id"],
+            self.map_name,
+        )
         if not self.mapdir.is_dir():
             msg = f"Map name did not resolve to directory: {str(self.mapdir):s}"
             Logger.error(msg)
@@ -844,13 +881,13 @@ class MAP_Analysis(Analysis):
         self.result = result
         if plotmap:
             self.plot_map_data()
-           
+
         # print("result: ", result.keys())
         # print(dir(result['events'][0].average.fitted_tau1))
         # print(result['events'][0].average.fitted_tau1, result['events'][0].average.fitted_tau2, result['events'][0].average.amplitude)
         # exit()
         return result
-    
+
     def plot_map_data(self):
         if self.celltype_changed:
             celltype_text = f"{self.this_celltype:s}* "
@@ -886,11 +923,11 @@ class MAP_Analysis(Analysis):
                 average=False,
                 rasterized=False,
                 datatype=self.AM.Pars.datatype,
-                celltype = self.this_celltype,
+                celltype=self.this_celltype,
             )  # self.AM.rasterized, firstonly=True, average=False)
 
         msg = f"Map analysis done: {str(self.map_name):s}"
-        print(msg)
+        CP.cprint("g", msg)
         Logger.info(msg)
 
         if mapok:
@@ -966,9 +1003,7 @@ class MAP_Analysis(Analysis):
             # try:
             try:
                 print("        ***** Temp file to : ", t_path)
-                mpl.savefig(
-                    pp, format="pdf"
-                )  # use the map filename, as we will sort by this later
+                mpl.savefig(pp, format="pdf")  # use the map filename, as we will sort by this later
                 pp.close()
                 # except ValueError:
                 #       print('Error in saving map %s, file %s' % (t_path, str(mapdir)))
@@ -976,4 +1011,3 @@ class MAP_Analysis(Analysis):
             except:
                 Logger.error("map_analysis savefig failed")
                 return
-                
