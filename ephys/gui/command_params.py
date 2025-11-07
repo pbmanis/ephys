@@ -59,6 +59,7 @@ class CommandParams:
             {"name": "Reload Configuration", "type": "action"},  # probably not needed...
             {"name": "Update DataSummary", "type": "action"},
             {"name": "Load DataSummary", "type": "action"},
+            {'name': "Reload Annotation Files", "type": "action"},
             {"name": "Load Assembled Data", "type": "action"},
             {"name": "Save Assembled Data", "type": "action"},
             {

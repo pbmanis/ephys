@@ -210,6 +210,7 @@ class DataTables:
         self.experimentname = None
         self.datasets = datasets
         self.experiments = experiments
+
         self.assembleddata = None
         self.doing_reload = False
         self.picker_active = False
@@ -225,6 +226,8 @@ class DataTables:
         # PSI = plot_spike_info.PlotSpikeInfo(dataset=None, experiment=None)
         self.PSA = process_spike_analysis.ProcessSpikeAnalysis(dataset=None, experiment=None)
         self.IVAnalysis = iv_analysis.IVAnalysis()
+        self.MAPAnalysis = map_analysis.MAP_Analysis()
+
         self.PSI = plot_spike_info.PlotSpikeInfo(
             dataset=None,
             experiment=None,
@@ -593,6 +596,7 @@ class DataTables:
             f"QStatusBar {pl:s}:8px; background:rgba(0,0,0,255); color:{color:s}; font-weight:{weight:s};{closure:s}"
         )
         self.win.statusBar().showMessage(message)
+        self.win.statusBar().repaint()
 
     def handleSortIndicatorChanged(self, index, order):
         """
@@ -721,6 +725,19 @@ class DataTables:
                     FUNCS.set_current_table_selection(
                         table_manager=self.DS_table_manager, cell_ids=self.current_cell_ids
                     )
+                
+                case "Reload Annotation Files":
+
+                    success = self.MAPAnalysis.reread_annotation_files()
+                    if not success:
+                        self.status_bar_message("Failed to update map annotation files", color="red")
+                    else:
+                        self.status_bar_message("Annotation files reloaded", color="green")
+                    success = self.IVAnalysis.reread_annotation_files()
+                    if not success:
+                        self.status_bar_message("Failed to update IV annotation files", color="red")
+                    else:
+                        self.status_bar_message("Annotation files reloaded", color="green")
 
                 case "Load Assembled Data":
                     self.load_assembled_data()
@@ -954,12 +971,12 @@ class DataTables:
                                 )
                                 if self.dry_run:
                                     self.status_bar_message(
-                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row!s}",
+                                        f"(DRY RUN) Analyzing {cell_id!s} from row: {selected_row.row()!s}",
                                         color="yellow",
                                     )
                                 else:
                                     self.status_bar_message(
-                                        f"Analyzing {cell_id!s} from row: {selected_row!s}",
+                                        f"Analyzing {cell_id!s} from row: {selected_row.row()!s}",
                                         color="green",
                                     )
                                     self.analyze_maps(
@@ -1520,6 +1537,7 @@ class DataTables:
         args.dry_run = self.dry_run
         args.merge_flag = True
         args.experiment = self.experiment
+        args.status_bar = self.status_bar_message
         args.iv_flag = True
         args.map_flag = False
         args.autoout = True
@@ -1555,7 +1573,6 @@ class DataTables:
         )
         print("\n" * 2)
         CP.cprint("g", "=" * 80)
-        # IV = iv_analysis.IVAnalysis(args)  # all args are passed
         self.IVAnalysis.reset(args)
         self.IVAnalysis.set_experiment(self.experiment)
         CP.cprint("c", " datatables: experiment set")
@@ -1663,7 +1680,9 @@ class DataTables:
         args.autoout = True
         args.merge_flag = True
         args.experiment = self.experiment
+        args.status_bar = self.status_bar_message
         args.iv_flag = False
+        args.vc_flag = False
         args.map_flag = True
         args.mapsZQA_plot = False
         args.zscore_threshold = 1.96  # p = 0.05 for charge relative to baseline
@@ -1720,21 +1739,21 @@ class DataTables:
         print("\n" * 3)
         CP.cprint("r", "=" * 80)
 
-        MAP = map_analysis.MAP_Analysis(args)
-        MAP.set_experiment(self.experiment)
-        # MAP.set_exclusions(self.experiment.exclusions)
-        MAP.AM.set_artifact_suppression(args.artifact_suppression)
-        MAP.AM.set_artifact_path(self.experiment["artifactPath"])
-        MAP.AM.set_artifact_filename(self.experiment["artifactFilename"])
-        MAP.AM.set_post_analysis_artifact_rejection(args.post_analysis_artifact_rejection)
-        MAP.AM.set_template_parameters(tmax=0.009, pre_time=0.001)
-        MAP.AM.set_shutter_artifact_time(0.050)
+        self.MAPAnalysis.reset(args)
+        self.MAPAnalysis.set_experiment(self.experiment)
+        # self.MAPAnalysis.set_exclusions(self.experiment.exclusions)
+        self.MAPAnalysis.AM.set_artifact_suppression(args.artifact_suppression)
+        self.MAPAnalysis.AM.set_artifact_path(self.experiment["artifactPath"])
+        self.MAPAnalysis.AM.set_artifact_filename(self.experiment["artifactFilename"])
+        self.MAPAnalysis.AM.set_post_analysis_artifact_rejection(args.post_analysis_artifact_rejection)
+        self.MAPAnalysis.AM.set_template_parameters(tmax=0.009, pre_time=0.001)
+        self.MAPAnalysis.AM.set_shutter_artifact_time(0.050)
 
         CP.cprint("b", "=" * 80)
-        MAP.setup()
+        self.MAPAnalysis.setup()
 
         CP.cprint("c", "=" * 80)
-        MAP.run(mode="MAP")
+        self.MAPAnalysis.run(mode="MAP")
 
         # allp = sorted(list(set(NF.allprots)))
         # print('All protocols in this dataset:')
