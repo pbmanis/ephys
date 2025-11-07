@@ -354,7 +354,7 @@ def set_ylims(experiment):
         # CP("r", "setting ylims for cell types")
         for limit_group, values in experiment["ylims"].items():
             for ct in experiment["ylims"][limit_group]["celltypes"]:
-                print("ct: ", ct)
+                # print("ct: ", ct)
                 if ct not in ylims.keys():
                     ylims[ct] = values
                 else:
