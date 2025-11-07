@@ -263,7 +263,7 @@ def make_cell(icell: int, df: pd.DataFrame = None):
     except ValueError:
         CP("r", f"Failed to get date string from dataframe with icell={icell:d}")
         return None, None, None
-    print("make_cell: datestr = ", datestr, "icell: ", icell)
+    # print("make_cell: datestr = ", datestr, "icell: ", icell)
     slicestr = str(Path(df.iloc[icell]["slice_slice"]).parts[-1])
     cellstr = str(Path(df.iloc[icell]["cell_cell"]).parts[-1])
     return (datestr, slicestr, cellstr)
