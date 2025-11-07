@@ -20,11 +20,11 @@ re_golgi = re.compile(r"^golgi[ _]*[cell]*", re.IGNORECASE)
 re_horizontal = re.compile(r"^horizontal[ _]*[cell]*", re.IGNORECASE)
 re_fusiform = re.compile(r"^fusiform[ _]*[cell]*", re.IGNORECASE)
 re_vertical = re.compile(r"^vertical[ _]*[cell]*", re.IGNORECASE)
-re_typeB = re.compile(r"^type[ _]*B[ _]*[cell]*", re.IGNORECASE)
+re_typeB = re.compile(r"^type[ _-]*B[ _]*[cell]*", re.IGNORECASE)
 re_chestnut = re.compile(r"^chestnut[ _]*[cell]*", re.IGNORECASE)
 
 re_cartwheel = re.compile(r"^cartwheel[ _]*[cell]*", re.IGNORECASE)
-re_unipolar_brush = re.compile(r"^unipolar[ _]*brush[ _]*[cell]*", re.IGNORECASE)
+re_unipolar_brush = re.compile(r"^UBC$|^unipolar[ _]*brush[ _]*[cell]*", re.IGNORECASE)
 re_multipolar = re.compile(r"^multipolar[ _]*[cell]*", re.IGNORECASE)
 re_giant = re.compile(r"^giant[ _]*[cell]*", re.IGNORECASE)
 re_giant_maybe = re.compile(r"^giant[ _]{1}maybe", re.IGNORECASE)
@@ -168,6 +168,7 @@ def test():
         "glial": ["Glial", "glial cell", "Glial cell", "Glia"],
         "horizontal": ["Horizontal bipolar", "horizontal bipolar cell", "Horizontal bipolar cell",  "horizontal"],
         "chestnut": ["Chestnut", "chestnut cell", "Chestnut cell"],
+        "type B": ["Type B", "type-B cell", "Type-B cell", "type_B", "type B cell"],
     }
     for ct in variants.keys():
         for v in variants[ct]:
@@ -180,6 +181,8 @@ def test():
         print("\n")
     print(map_cell_type("fusiform"))
     print(map_cell_type("glial cell"))
+    print(map_cell_type("UBC"))
+    print(map_cell_type("unipolar brush cell"))
 
 if __name__ == "__main__":
     test()
