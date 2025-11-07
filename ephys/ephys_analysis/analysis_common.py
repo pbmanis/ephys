@@ -14,6 +14,7 @@ import pickle
 import sys
 from collections.abc import Iterable
 from pyqtgraph import multiprocess as MP
+from PyQt6.QtWidgets import QMessageBox
 
 # from multiprocessing import set_start_method
 import ephys.tools.build_info_string as BIS
@@ -87,6 +88,7 @@ class cmdargs:
         2. Analysis flags and experiment selection
         3. Graphics controls
         4. Specific analysis parameters
+        5. a few miscellaneous items from the main program (statusbar)
 
     These may be set either by IV_Analysis_params from the commandline,
     or by specifying them programatically.
@@ -102,6 +104,7 @@ class cmdargs:
     inputFilename: Union[str, Path, None] = None
     pdfFilename: Union[str, Path, None] = None
     cell_annotationFilename: Union[str, Path, None] = None
+    annotated_dataframe: Union[str, Path, None] = None
     artifact_filename: Union[str, Path, None] = None
     map_annotationFilename: Union[str, Path, None] = None
     map_pdfs: bool = False
@@ -137,7 +140,7 @@ class cmdargs:
     update: bool = False
     mapsZQA_plot: bool = False
     recalculate_events: bool = True
-
+    status_bar: Union[None, object] = None  # a PyQt status bar object
     # analysis parameters
     parallel_mode: str = (
         "cell"  # parallel mode: cell means over protocols in one cell; day means over all cells in one day, etc
@@ -157,6 +160,7 @@ class cmdargs:
     spike_threshold: float = -0.035
     zscore_threshold: float = 1.96
     artifact_suppression: bool = False
+    artifact_path: Union[str, Path, None] = None
     artifact_derivative: bool = False
     post_analysis_artifact_rejection: bool = False
     whichstim: int = -1
@@ -183,10 +187,13 @@ class Analysis:
         like a good idea, but the PDFs get large (approaching 1 GB).
     """
 
-    def __init__(self, args: argparse.Namespace):
-        # args = vars(in_args)  # convert to dict
+    def __init__(self, args: Union[argparse.Namespace, None]=None):
         self.cmdargs = cmdargs()
-        self.reset(args)
+        if args is None:  # set defaults
+            self.reset(self.cmdargs)
+        else:
+            self.reset(args) # set incoming... 
+
     
     def reset(self, args):
         self._testing_counter = 0  # useful to run small tests
@@ -198,6 +205,7 @@ class Analysis:
         self.inputFilename = None
         self.cell_annotationFilename = None
         self.map_annotationFilename = None
+        self.annotated_dataframe = None
         self.extra_subdirectories = None
         self.skip_subdirectories = None
         self.artifactFilename = None
@@ -207,6 +215,7 @@ class Analysis:
             None  # this will be the map_annotationsFilename DATA (pandas from excel)
         )
         self.experiment = args.experiment
+        self.status_bar = args.status_bar
 
         # selection of data for analysis
         self.update_results = args.update_results
@@ -243,26 +252,28 @@ class Analysis:
         self.update = args.update
         self.parallel_mode = args.parallel_mode
 
-        self.mapsZQA_plot = args.mapsZQA_plot
-        self.recalculate_events = args.recalculate_events
-
-        # analysis parameters
+        # analysis parameters for IV analysis
         self.downsample = 1
         self.ivduration = args.ivduration
         self.max_spike_shape = args.max_spike_shape
         self.max_spike_look = args.max_spike_look
         self.threshold = args.threshold
         self.refractory = args.refractory
+        self.fit_gap = args.fit_gap  # gap in fit for time constants
+        self.spike_detector = args.spike_detector  # see Utilities find_spikes for method
+        self.spike_threshold = args.spike_threshold
+
+        # analysis parameters for MAP analysis
         self.signflip = args.signflip
         self.alternate_fit1 = (
             args.alternate_fit1
         )  # use alterate time constants in template for event
         self.alternate_fit2 = args.alternate_fit2  # second alternate
         self.measuretype = args.measuretype  # display measure for spot plot in maps
-        self.fit_gap = args.fit_gap  # gap in fit for time constants
-        self.spike_detector = args.spike_detector  # see Utilities find_spikes for method
-        self.spike_threshold = args.spike_threshold
         self.zscore_threshold = args.zscore_threshold
+        self.mapsZQA_plot = args.mapsZQA_plot
+        self.recalculate_events = args.recalculate_events
+        self.artifact_path = args.artifact_path
         self.artifactFilename = args.artifact_filename
         self.artifactData = None
         self.artifact_suppression = args.artifact_suppression
@@ -293,7 +304,6 @@ class Analysis:
         self.RM = EP.rm_tau_analysis.RmTauAnalysis()
         self.AR = DR.acq4_reader.acq4_reader()
         self.MA = MINIS.minis_methods.MiniAnalyses()
-
         self.AM = mapanalysistools.analyze_map_data.AnalyzeMap(rasterize=self.rasterize)
         self.AM.configure(
             reader=self.AR,
@@ -310,15 +320,15 @@ class Analysis:
         else:
             raise ValueError(f"Detector {self.detector:s} is not one of [cb, aj, zc]")
         # print("args: ", args)
-        try:
-            super().__init__()
-        except:
-            print("Failed first super init")
-            try:
-                super().__init__(args)
-                print("passed second")
-            except:
-                raise RuntimeError("Failed second super init")
+        # try:
+        #     super().__init__()
+        # except:
+        #     print("Failed first super init")
+        #     try:
+        #         super().__init__(args)
+        #         print("passed second")
+        #     except:
+        #         raise RuntimeError("Failed second super init")
 
     def set_exclusions(self, exclusions: dict):
         """Set the datasets that will be excluded
@@ -466,9 +476,9 @@ class Analysis:
 
         if self.excel:  # just re-write as an excel and we are done
             excel_file = Path(self.analyzeddatapath, self.inputFilename.stem + ".xlsx")
-            print(f"Writing to {str(excel_file):s}")
+            # print(f"Writing to {str(excel_file):s}")
             self.df.to_excel(excel_file)
-            exit(0)
+            self.status_bar(f"Wrote excel file: {str(excel_file):s}", "g")
 
         self.iv_select = {"duration": self.ivduration}  # dictionary of selection flags for IV data
 
@@ -479,24 +489,85 @@ class Analysis:
 
         # pull in the annotated data (if present) and update the cell type in the main dataframe
         self.df["annotated"] = False  # clear annotations
-        if self.cell_annotationFilename is not None:
-            CP.cprint(
-                "yellow",
-                f"Reading annotation file: {str(self.cell_annotationFilename):s}",
-            )
-            ext = self.cell_annotationFilename.suffix
-            if ext in [".p", ".pkl", ".pkl3"]:
-                self.annotated_dataframe = pd.read_pickle(self.cell_annotationFilename)
-            elif ext in [".xls", ".xlsx"]:
-                self.annotated_dataframe = pd.read_excel(self.cell_annotationFilename)
-            else:
-                raise ValueError(
-                    f"Do not know how to read annotation file: {str(self.cell_annotationFilename):s}, Valid extensions are for pickle and excel"
-                )
-        self.update_annotations()
-
+        self.reread_annotation_files()
+   
         if self.pdfFilename is not None:
             self.pdfFilename.unlink(missing_ok=True)
+
+    def reread_annotation_files(self):
+        """reread_annotation_files
+        Just read the annotation files and check the annotations to make sure everything is
+        up to date.
+        """
+        self.read_map_annotations()
+        self.read_annotated_dataframe()
+        self.update_annotations()
+        return True
+
+    def read_map_annotations(self):
+        """read_map_annotations 
+        Get the map annotation data from the file in the configuration,
+        assuming that one exists. 
+
+        Raises
+        ------
+        ValueError
+            If the map annotation file cannot be read.
+        """
+        if self.map_annotationFilename is None:
+            return False
+        CP.cprint(
+            "cyan",
+            f"Reading map annotation file: {str(self.map_annotationFilename):s}",
+        )
+        ext = self.map_annotationFilename.suffix
+        if ext in [".xls", ".xlsx"]:
+            self.map_annotations = pd.read_excel(self.map_annotationFilename, index_col=0)
+            self.df['annotated'] = True
+            return True
+        else:
+            raise ValueError(
+                f"Do not know how to read map annotation file: {str(self.map_annotationFilename):s}, Valid extensions are for excel"
+            )
+        
+    def read_annotated_dataframe(self):
+        """read_annotated_dataframe 
+        Get the cell annotation file, if it exists. 
+        This file is not recommended for future use, but was used
+        in early analysis workflows to allow the cell type and some other metadata
+        to be respecified after acquisition. 
+
+        The current recommendation is to make the corrections to cell types
+        and other information using acq4 to modify the information in the
+        original data file, then re-run dataSummary to update the main table.
+        This also allows you to annotate why the changes were made in the original
+        file (I usually state: "Original cell type x, but upon inspection this
+        should be classified as y")
+
+        Raises
+        ------
+        ValueError
+            If the cell annotation file cannot be read.
+        """
+        if self.cell_annotationFilename is None:
+            return False
+        CP.cprint(
+            "cyan",
+            f"Reading annotation file: {str(self.cell_annotationFilename):s}",
+        )
+        ext = self.cell_annotationFilename.suffix
+        if ext in [".p", ".pkl", ".pkl3"]:
+            self.annotated_dataframe = pd.read_pickle(self.cell_annotationFilename)
+            self.df['annotated'] = True
+            return True
+        elif ext in [".xls", ".xlsx"]:
+            self.annotated_dataframe = pd.read_excel(self.cell_annotationFilename)
+            self.df['annotated'] = True
+            return True
+        else:
+            raise ValueError(
+                f"Do not know how to read annotation file: {str(self.cell_annotationFilename):s}, Valid extensions are for pickle and excel"
+            )
 
     def _show_paths(self):
         allpaths = {
@@ -695,13 +766,15 @@ class Analysis:
         self.IVplotter.plot_IVs(df_selected=self.df.iloc[icell], types="IV", allprots=self.allprots)
 
     def update_annotations(self):
+        """Update cell annotations based on the annotated dataframe.
+        
+        """
         if self.annotated_dataframe is not None:
             self.annotated_dataframe.set_index("ann_index", inplace=True)
             x = self.annotated_dataframe[self.annotated_dataframe.index.duplicated()]
             if len(x) > 0:
-                print("watch it - duplicated index in annotated file")
-                print(x)
-                exit()
+                CP.cprint("r", f"Watch it - duplicated index in annotated file: {x!s}")
+                
             # self.annotated_dataframe.set_index("ann_index", inplace=True)
             self.df.loc[self.df.index.isin(self.annotated_dataframe.index), "cell_type"] = (
                 self.annotated_dataframe.loc[:, "cell_type"]
@@ -1011,9 +1084,10 @@ class Analysis:
         """
 
         original_celltype = self.df.at[icell, "cell_type"]
+        print("Original cell type: ", original_celltype, " for index: ", icell)
         original_celltype = filenametools.check_celltype(original_celltype)
         datestr, slicestr, cellstr = filenametools.make_cell(icell, df=self.df)
-        msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.annotated_dataframe!s}, cell id: {'/'.join([datestr, slicestr, cellstr])!s}"
+        msg = f"\n      Original cell type: {original_celltype:s}, annotated_dataframe: {self.cell_annotationFilename!s}, cell id: {'/'.join([datestr, slicestr, cellstr])!s}"
         CP.cprint("c", msg)
         if self.parallel_mode not in ["day"]:
             Logger.info(msg)
@@ -1046,8 +1120,15 @@ class Analysis:
 
         # mismatch in annotated types:
         if not pd.isnull(map_annotated_celltype) and not pd.isnull(annotated_celltype):
-            if map_annotated_celltype != annotated_celltype:
-                msg = "Cell type mismatch between annotated and map_annotated cell types, Please resolve in the tables"
+            if map_annotated_celltype != annotated_celltype :
+                msg = f"Cell type mismatch between annotated ({annotated_celltype}) and map_annotated ({map_annotated_celltype}) cell types, Please resolve in the tables"
+                # self.status_bar(msg, "r")
+                qmsg = QMessageBox()
+                qmsg.setIcon(QMessageBox.Icon.Critical) 
+                qmsg.setText(msg)
+                qmsg.setWindowTitle("Cell Type Annotation Mismatch")
+                qmsg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                qmsg.exec()
                 if self.parallel_mode not in ["day"]:
                     Logger.critical(msg)
                 raise ValueError(msg)
@@ -1209,8 +1290,11 @@ class Analysis:
                     day = Path(*pathparts[i:])
                     break
             if day is None:
-                CP.cprint("r", f"do_cell: Day <None> found in fileparts: {str(pathparts):s}")
-                exit()
+                msg = f"do_cell: Day <None> found in fileparts: {str(pathparts):s}"
+                CP.cprint("r", msg)
+                Logger.error(msg)
+                self.status_bar(msg, "r")
+                return False
 
             for (
                 subdir
