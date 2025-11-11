@@ -1,17 +1,19 @@
 import logging
 from pathlib import Path
-
+from ephys.tools.filename_tools import find_sub_directories
 import pylibrary.tools.cprint as CP
 
 Logger = logging.getLogger("AnalysisLogger")
 
+
 def build_info_string(experiment:dict, cell_id:str, AR: object) -> str:
     infostr = ""
     datadir = Path(experiment["rawdatapath"], experiment["directory"], cell_id)
+    day_dir, slice_dir, cell_dir = find_sub_directories(datadir)
     CP.cprint("m", f"Building info string for {str(datadir):s}")
-    info = AR.readDirIndex(currdir=Path(datadir).parent.parent.parent)["."]
-    slice_info = AR.readDirIndex(currdir=Path(datadir).parent.parent)["."]
-    cell_info= AR.readDirIndex(currdir=Path(datadir).parent)["."]
+    info = AR.readDirIndex(currdir=day_dir)["."] 
+    slice_info = AR.readDirIndex(currdir=slice_dir)["."]
+    cell_info= AR.readDirIndex(currdir=cell_dir)["."]
     info_keys = list(info.keys())
     missing = False
 
