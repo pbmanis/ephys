@@ -47,6 +47,44 @@ def check_celltype(celltype: Union[str, None] = None):
     return celltype
 
 
+
+def find_sub_directories(cell_path: Path) -> Path:
+    """Given a cell path, find the day directory,
+    slice directory, and cell directory.
+    Parameters
+    ----------
+    cell_path : Path
+        Path to the cell directory, full path
+
+    Returns
+    -------
+    day_dir : Path
+        Path to the day directory
+    slice_dir : Path
+        Path to the slice directory
+    cell_dir : Path
+        Path to the cell directory
+    """
+
+    re_day = re.compile(r"(\d{4}).(\d{2}).(\d{2})_(\d{3})")
+    re_slice = re.compile(r"slice_(\d{3})")
+    re_cell = re.compile(r"cell_(\d{3})")
+
+    dataparts = cell_path.parts
+    day_dir = None
+    slice_dir = None
+    cell_dir = None
+
+    for i in range(len(dataparts)):
+        if re_day.match(dataparts[i]):
+            day_dir = Path(*dataparts[0:i+1])
+        if re_slice.match(dataparts[i]):
+            slice_dir = Path(*dataparts[0:i+1])
+        if re_cell.match(dataparts[i]):
+            cell_dir = Path(*dataparts[0:i+1])
+
+    return day_dir, slice_dir, cell_dir
+
 def make_cellstr(df: pd.DataFrame, icell: int, shortpath: bool = False):
     """
     Make a day string including slice and cell from the icell index in the pandas dataframe df
