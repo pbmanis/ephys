@@ -1489,11 +1489,7 @@ class DataTables:
         pkl_file = filename_tools.get_cell_pkl_filename(
             self.experiment, self.datasummary, cell_id=cell_id
         )
-        # pkl_file = filename_tools.get_pickle_filename_from_row(selected, dspath)
-
-        # print("Reading from pkl_file: ", pkl_file)
         FUNCS.textappend(f"    Reading and plotting from: {pkl_file!s}")
-
         tempdir = Path(dspath, "temppdfs")
         decorate = True
         self.pdfFilename = Path(dspath, self.experiment["pdfFilename"]).with_suffix(".pdf")
@@ -2083,9 +2079,9 @@ class DataTables:
         directory = self.experiment["directory"]
 
         filename = filename_tools.get_pickle_filename_from_row(
-            selected, Path(datapath, directory), mode=modename
+            selected, mode=modename
         )
-        filename = Path(filename).with_suffix(".pdf")
+        filename = Path(datapath, directory, cell_type, filename).with_suffix(".pdf")
         url = "file://" + str(filename)
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
         print(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")

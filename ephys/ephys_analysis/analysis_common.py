@@ -1390,10 +1390,11 @@ class Analysis:
             # print("do_cell: self.directory: ", self.directory)
             # store pandas db analysis of this cell in a pickled file:
             self.cell_pklFilename = filenametools.get_pickle_filename_from_row(
-                self.df.iloc[icell], Path(self.analyzeddatapath, celltype="")
+                self.df.iloc[icell]
             )
-            # self.cell_pklFilename = filenametools.make_pickle_filename(self.analyzeddatapath, thisday, celltype, slicecell2)
-            msg = f"do_cell: Writing cell IV analysis results to PKL file: {str(self.cell_pklFilename):s}"
+            # This is the fully qualified path to the file
+            self.cell_pklPath = Path(self.analyzeddatapath, celltype, self.cell_pklFilename)
+            msg = f"do_cell: Preparing to write cell IV analysis results to PKL file: {str(self.cell_pklPath):s}"
             CP.cprint("c", msg)
             if "Spikes" not in self.df.iloc[icell].keys() or self.df.iloc[icell]["Spikes"] is None:
                 msg2 = f"   @@@ Spikes array is empty @@@"
@@ -1411,25 +1412,25 @@ class Analysis:
                 #     pass
 
             # be sure that we have a directory to write to - test for presence
-            # and create if needed
-            fo = Path(self.cell_pklFilename)
+            # and create if needed. Assumes that the analyzeddatapath exists.
+            fo = Path(self.cell_pklPath)
             if not fo.parent.is_dir():
                 fo.parent.mkdir(parents=True, exist_ok=True)
             with open(fo, "wb") as fh:
                 self.df.iloc[icell].to_pickle(
                     fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
                 )
-                CP.cprint("c", f"    Wrote cell analysis to: {str(self.cell_pklFilename):s}")
+                CP.cprint("c", f"    Wrote cell analysis to: {str(self.cell_pklPath):s}")
             # if they exist, remove the slicecell1 and slicecell3 files to avoid confusion
-            pk1 = filenametools.change_pickle_filename(self.cell_pklFilename.name, slicecell1)
+            pk1 = filenametools.change_pickle_filename(self.cell_pklPath.name, slicecell1)
             if pk1 is not None:
-                Path(self.cell_pklFilename.parent, pk1).unlink(missing_ok=True)
-            pk3 = filenametools.change_pickle_filename(self.cell_pklFilename.name, slicecell3)
+                Path(self.cell_pklPath.parent, pk1).unlink(missing_ok=True)
+            pk3 = filenametools.change_pickle_filename(self.cell_pklPath.name, slicecell3)
             if pk3 is not None:
-                Path(self.cell_pklFilename.parent, pk3).unlink(missing_ok=True)
+                Path(self.cell_pklPath.parent, pk3).unlink(missing_ok=True)
 
             # re-read the pickled file and make sure it is correct
-            # with open(self.cell_pklFilename, "rb") as fh:
+            # with open(self.cell_pklPath, "rb") as fh:
             #     the_pkl = pd.read_pickle(fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}).to_dict()
             #     original = self.df.iloc[icell].to_dict()
             #     if the_pkl is not None:
