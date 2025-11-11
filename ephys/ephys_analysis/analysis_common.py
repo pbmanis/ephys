@@ -12,12 +12,9 @@ import json
 import logging
 import pickle
 import sys
-from collections.abc import Iterable
 from pyqtgraph import multiprocess as MP
 from PyQt6.QtWidgets import QMessageBox
 
-# from multiprocessing import set_start_method
-import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filenametools
 
 if sys.version_info[0] < 3:
@@ -45,8 +42,6 @@ import ephys.datareaders as DR
 import ephys.ephys_analysis as EP
 import ephys.mapanalysistools as mapanalysistools
 import ephys.mini_analyses as MINIS
-import ephys.tools.build_info_string as BIS
-import ephys.tools.filename_tools as filename_tools
 
 from . import analysis_parameters as AnalysisParams
 
