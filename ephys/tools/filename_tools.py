@@ -122,23 +122,20 @@ def make_pdf_filename(
     return Path(pdfdir, pdfname.stem).with_suffix(".pdf")
 
 
-def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path], mode="IVs"):
+def get_pickle_filename_from_row(selected: pd.Series, mode="IVs"):
     """get_pickle_filename_from_row given the selected row in a table / dataframe,
-    return the full path to the pickle file.
+    return the name of the pickle file (but not the full path)
 
     Parameters
     ----------
     selected : pd.Series
         Panda Series of the selected row
-    dspath : Union[str, Path]
-        Path to the dataset
     mode : str, optional (default "IVs")
         Type of analysis held in the file (IVs, maps, etc)
 
     Returns
     -------
-    Path
-        Full file path to the pickle file
+        Filename of the pickled map or iv file, with no leading path
 
     Raises
     ------
@@ -165,16 +162,15 @@ def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path], 
         raise ValueError(f"Failed to find formatted date in cell_id: {selected.cell_id:s}")
 
     day = f"{m.group(1):s}_{m.group(2):s}_{m.group(3):s}"
-
     re_sliceno = re.compile(r"slice_(\d{3})")
     re_cellno = re.compile(r"cell_(\d{3})")
-    m = re_sliceno.match(slicen)
+    slice_m = re_sliceno.match(slicen)
     slicecell = ""
-    if m is not None:
-        slicecell = f"S{int(m.group(1)):d}"
-        m = re_cellno.match(celln)
-        if m is not None:
-            slicecell += f"C{int(m.group(1)):d}"
+    if slice_m is not None:
+        slicecell = f"S{int(slice_m.group(1)):d}"
+        cell_m = re_cellno.match(celln)
+        if cell_m is not None:
+            slicecell += f"C{int(cell_m.group(1)):d}"
     else:
         re_sc = re.compile(r"S(\d{1,3})C(\d{1,3})")
         sc = selected.cell_id.split("_")[-1]
@@ -183,9 +179,8 @@ def get_pickle_filename_from_row(selected: pd.Series, dspath: Union[str, Path], 
             slicecell = f"S{int(m.group(1)):d}C{int(m.group(2)):d}"
         else:
             raise ValueError(f"Failed to find slice and cell in cell_id: {selected.cell_id:s}")
-
-    day = f"{day:s}_{slicecell:s}_{cell_type:s}_{mode:s}.pkl"
-    pkl_file = Path(dspath, cell_type, day)
+    pkl_file = f"{day:s}_{slicecell:s}_{cell_type:s}_{mode:s}.pkl"
+    pkl_file = Path(pkl_file)
     return pkl_file
 
 
@@ -408,8 +403,6 @@ def compare_slice_cell(
         True if the slice and cell match, False otherwise
 
     """
-    print("compare_slice_cell datestr: ", datestr)
-    print("compare_slice_cell slicestr: ", str)
     dsday, nx = Path(datestr).name.split("_")
     # check dates
     thisday = datetime.datetime.strptime(dsday, "%Y.%m.%d")
@@ -426,7 +419,6 @@ def compare_slice_cell(
     slicecell2 = f"S{int(slicestr[-3:]):01d}C{int(cellstr[-3:]):01d}"  # recognize that slices and cells may be more than 10 (# 9)
     slicecell1 = f"{int(slicestr[-3:]):1d}{int(cellstr[-3:]):1d}"  # only for 0-9
     compareslice = ""
-    print(slicecell, slicecell3, slicecell2, slicecell1)
     if slicecell is not None:  # limiting to a particular cell?
         match = False
         if len(slicecell) == 2:  # 01
@@ -486,7 +478,7 @@ def get_path_date_slice_cell(cell_id):
 
 
 def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype: str = "IVs"):
-    """get_cell get the pickled data file for this cell - this is an analyzed file,
+    """get_cell get the pickled data filename for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
     Parameters
@@ -532,7 +524,6 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
     celltype = str(celltype).replace("\n", "")
     if celltype == " ":  # no cell type
         celltype = "unknown"
-    # CP("m", f"get cell: df_tmp cell type: {celltype:s}")
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
@@ -624,16 +615,17 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     ValueError
         failed to read the compressed pickle file
     """
-    CP("r", f"get cell: {cell_id!s}")
 
     datapath = get_cell_pkl_filename(experiment, df, cell_id)
-    CP("m", f"get_cell: datapath: {datapath!s}")
-    df_tmp = df[df.cell_id == cell_id]
+    df_tmp = df[df.cell_id == cell_id]  # get the row (series) for this cell
     try:
-        df_cell = pd.read_pickle(datapath, compression="gzip")
+        # get the pickled pandas dataframe for this cell.
+        with open(datapath, "rb") as dfile:
+            df_cell = pd.read_pickle(dfile, compression={"method": "gzip", "compresslevel": 5, "mtime": 1})
     except ValueError:
         try:
-            df_cell = pd.read_pickle(datapath)  # try with no compression
+            with open(datapath, "rb") as dfile:
+                df_cell = pd.read_pickle(dfile)  # try with no compression
         except ValueError:
             CP("r", f"Could not read {datapath!s}")
             raise ValueError("Failed to read compressed pickle file")
@@ -641,7 +633,7 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
     if "Spikes" not in df_cell.keys() or df_cell.Spikes is None:
         CP(
             "y",
-            f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protos:",
+            f"df_cell: {df_cell.age!s}, {df_cell.cell_type!s}, No spike protocols found.",
         )
         return None, None
 
