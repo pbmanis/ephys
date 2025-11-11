@@ -737,7 +737,6 @@ class IVAnalysis(Analysis):
                     "taum_current_range"
                 ]
         cell_type = self.df.at[icell, "cell_type"].lower()
-        print(sorted(self.experiment.keys()))
         if cell_type in self.experiment["Lowest_current_spike_parameters"].keys():
             lcs_minimum_current = self.experiment["Lowest_current_spike_parameters"][
                 cell_type
