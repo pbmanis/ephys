@@ -43,7 +43,7 @@ all_types = [
     [re_stellate, "stellate"],
     [re_octopus, "octopus"],
     [re_pyramidal, "pyramidal"],
-    [re_fusiform, "pyramidal"],
+    [re_fusiform, "fusiform"],
     [re_granule, "granule"],
     [re_basket, "basket"],
     [re_golgi, "golgi"],
