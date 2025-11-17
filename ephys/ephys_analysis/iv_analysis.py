@@ -228,7 +228,7 @@ class IVAnalysis(Analysis):
 
         Logger.info("Starting iv_analysis")
         msg = f"    Analyzing IVs for index: {icell: d} dir: {str(self.df.iloc[icell].data_directory):s}"
-        msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} )"
+        msg += f"cell: ({str(self.df.iloc[icell].cell_id):s} , type: {str(self.df.iloc[icell].cell_type):s})"
         CP.cprint("c", msg)
         Logger.info(msg)
         cell_directory = Path(
