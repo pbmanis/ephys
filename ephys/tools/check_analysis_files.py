@@ -93,7 +93,7 @@ for cell_type in major_types:
         else:
             mod_time = map_path.stat().st_mtime
             ts = datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
-            CP.cprint("c", f"Cell id {cell_id:>56s} of type {cell_type:<16s} has map file {map_file} analyzed on {ts:s} {u'\u2713':s}")
+            CP.cprint("c", f"Cell id {cell_id:>56s} of type {mapped_cell_type:<16s} (from cell_type:{cell_type:<16s}) has map file {map_file} analyzed on {ts:s} {u'\u2713':s}")
 exit()
 
     # print out the cells that have no assigned cell type - may have no data.
