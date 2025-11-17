@@ -3515,13 +3515,13 @@ class Functions:
                     )
                     if have_LCS_data:
                         CP(
-                            "y",
+                            "c",
                             f"    have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}",
                         )
                     else:
                         CP(
-                            "r",
-                            f"    DO NOT have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}:  {df_cell.Spikes[protocol]['LowestCurrentSpike']!s} ",
+                            "y",
+                            f"    DO NOT have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}",
                         )
                     # if have_LCS_data:
                     #     print("LCS Data: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
@@ -3617,11 +3617,12 @@ class Functions:
                             )
                             try:
                                 AHP_trough_V = (
-                                    df_cell.Spikes[protocol]["LowestCurrentSpike"]["AHP_trough_V"]
+                                    df_cell.Spikes[protocol]["LowestCurrentSpike"].get("AHP_trough_V", np.nan)
                                     * 1e-3
                                 )
                             except:
                                 print("AHP_trough_V not found in LCS data")
+                                print("LCS has: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
                                 AHP_trough_V = np.nan
                                 raise ValueError(
                                     f"AHP_trough_V not found in LCS data: {cell_id_full:s}  {df_cell.Spikes[protocol]['LowestCurrentSpike'].keys()!s}"
@@ -3641,9 +3642,9 @@ class Functions:
 
                     elif measure in ["AHP_relative_depth_V"]:
                         if have_LCS_data:
-                            AHP_relative_depth = df_cell.Spikes[protocol]["LowestCurrentSpike"][
-                                "AHP_relative_depth_V"
-                            ]  # convert back to V *like AP_thr_V*
+                            AHP_relative_depth = df_cell.Spikes[protocol]["LowestCurrentSpike"].get(
+                                "AHP_relative_depth_V", np.nan
+                            )  # convert back to V *like AP_thr_V*
                         else:
                             AHP_relative_depth = np.nan
                         self.add_measure(protocol, measure, value=AHP_relative_depth)
