@@ -1,10 +1,11 @@
 import datetime
+import importlib
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Union
 
-import ephys.mapanalysistools.define_markers as define_markers
+# import ephys.mapanalysistools.define_markers as define_markers
 import ephys.mapanalysistools.get_markers as get_markers
 import matplotlib
 import matplotlib.cm
@@ -33,9 +34,11 @@ color_sequence = ["k", "r", "b"]
 colormapname = "parula"
 
 # get the marker types and colors from a dictionary
-definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = (
-    define_markers.define_markers()
-)
+# this is now done by reading the experiment configuration file,
+# looking for the marker_code_path entry.
+# definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = (
+#     define_markers.define_markers()
+# )
 
 
 def setMapColors(colormapname: str, reverse: bool = False) -> object:
@@ -256,6 +259,8 @@ class PlotMapData:
         self.rasterized = False
         self.verbose = verbose
         self.experiment = None
+        self.marker_template = None
+
         self.reset_flags()
 
     def reset_flags(self):
@@ -285,6 +290,13 @@ class PlotMapData:
 
     def set_experiment(self, experiment: dict):
         self.experiment = experiment
+        if "marker_code_path" in self.experiment.keys():
+            # print("path is: ", self.experiment["marker_code_path"])
+            # print("cwd is: ", Path.cwd())
+            markpath = Path(self.experiment["marker_code_path"]).with_suffix("")
+            # print("importing marker module: ", markpath)
+            self.marker_template = importlib.import_module(markpath.as_posix().replace("/", "."))
+        
 
     def gamma_correction(self, image, gamma=2.2, imagescale=np.power(2, 16)):
         if gamma == 0.0:
@@ -1491,6 +1503,12 @@ class PlotMapData:
 
         xlim = [np.min(pos[:, 0]) - spotsize, np.max(pos[:, 0]) + spotsize]
         ylim = [np.min(pos[:, 1]) - spotsize, np.max(pos[:, 1]) + spotsize]
+
+        # print(f"\n{'%'*80}")
+        # print("xlim: ", np.array(xlim)*1e3)
+        # print("ylim: ", np.array(ylim)*1e3)
+        # print(f"\n{'%'*80}")
+    
         # raise ValueError()
 
         # make sure the keys are on the plot
@@ -1559,7 +1577,7 @@ class PlotMapData:
         nev_spots = 0
 
         # print("event measures: ", events[0][0]["measures"])
-        print("ntrials: ", measure["ntrials"])
+        # print("ntrials: ", measure["ntrials"])
         for trial in range(measure["ntrials"]):
             skips = False
             for spot in range(nspots):  # for each spot
@@ -1715,7 +1733,7 @@ class PlotMapData:
                         ri += rs
 
         measures, poly = get_markers.plot_mosaic_markers(
-            markers, axp, mark_colors=mark_colors, mark_symbols=mark_symbols, mark_alpha=mark_alpha
+            markers, axp
         )
 
         tickspace = scaler.tickSpacing

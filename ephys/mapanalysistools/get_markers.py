@@ -101,7 +101,7 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
     #     "AN": [],
     #     "dist": dist,
     # }
-
+    # print("EPHYS: get_markers: Looking for mosaic file in: ", fullfile)
     if fullfile.is_dir():
         mosaic_file = list(fullfile.glob("*.mosaic"))
     elif fullfile.is_file():
@@ -174,6 +174,7 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
 
             # now compute distance from soma to surface marker for each soma
             # this may not be appropriate for all datasets.
+
             if 'somas' in list(marker_dict.keys()):
                 for i_soma, cellname in enumerate(marker_dict["somas"]):
                     soma_xy = marker_dict["somas"][cellname]
@@ -359,7 +360,7 @@ def find_markers_of_a_type(markers: dict, marker_types: list) -> list:
     surface_coordinates: list = []
     # print("Marker Group: \n", marker_group)
     for marker in markers.keys():
-        if marker == 'soma':
+        if marker in ['soma', 'somas']:
             continue
         # print("marker group: ", marker, marker_group.markers[marker].group)
         if marker_group.markers[marker].group in marker_types:
@@ -368,13 +369,33 @@ def find_markers_of_a_type(markers: dict, marker_types: list) -> list:
     # print("surface_coordinates: ", surface_coordinates)
     return surface_coordinates
 
+def get_markers_of_a_type(markers: dict, marker_types: list) -> list:
+    """find_markers_of_a_type finds the markers of a specific type in the markers dictionary.
+
+    Parameters
+    ----------
+    markers : dict
+        Dictionary of markers.
+
+    Returns
+    -------
+    list
+        List of surface marker coordinates.
+    """
+    marker_name, marker_group = MARKS.identify_marker(markers)
+    for marker in markers.keys():
+        if marker in ['soma', 'somas']:
+            return markers[marker], marker_group
+    # print("surface_coordinates: ", surface_coordinates)
+    return None, None
+
 
 def plot_mosaic_markers(
     markers: dict,
     axp,
-    mark_colors: dict,
-    mark_symbols: dict,
-    mark_alpha: dict,
+    # mark_colors: dict,
+    # mark_symbols: dict,
+    # mark_alpha: dict,
 ) -> tuple():
     measures = {"area": np.nan, "medial_lateral_distance": np.nan, 
                 'short_axis': np.nan, 'long_axis': np.nan, 'eccentricty': np.nan, 
@@ -384,15 +405,38 @@ def plot_mosaic_markers(
     smoothed_poly = None
     smoothed_poly_list = []
     markers_complete = True
-    # find_markers_of_a_type(markers, ["surface", "border"])
+
     if markers is not None and len(markers.keys()) > 0:
         for marktype in markers.keys():
-            if marktype not in mark_colors.keys():
-                markers_complete = False
-                continue
+            print("marktype: ", marktype, markers[marktype])
+            marker, marker_group = get_markers_of_a_type(markers, marktype)
+            print("marker, marker_tgroup: ", marker, marker_group)
             position = markers[marktype]
-            if marktype in ["soma"]:
-                markersize = 8
+            if marktype in ["soma", "somas"]:
+                markersize = marker_group.markers['soma'].markersize
+                marksymbol = marker_group.markers['soma'].symbol
+                markcolor = marker_group.markers['soma'].color
+                markalpha = marker_group.markers['soma'].alpha
+                for cellname in markers[marktype]:
+                    cellpos = markers[marktype][cellname]
+                    if axp is not None:
+                        axp.plot(
+                            cellpos[0],
+                            cellpos[1],
+                            marker=marksymbol,
+                            color=markcolor,
+                            markersize=markersize,
+                            alpha=markalpha,
+                            zorder=10000,
+                        )
+                        axp.text(
+                            cellpos[0],
+                            cellpos[1],
+                            cellname,
+                            fontsize=6,
+                            color=markcolor,
+                            zorder=10001,
+                        )
             elif marktype.startswith(
                 ("dorsal", "rostral", "caudal", "ventral", "medial", "lateral")
             ):
@@ -408,10 +452,10 @@ def plot_mosaic_markers(
                 axp.plot(
                     [position[0], position[0]],
                     [position[1], position[1]],
-                    marker=mark_symbols[marktype],
-                    color=mark_colors[marktype],
-                    markersize=markersize,
-                    alpha=mark_alpha[marktype],
+                    marker=marker_group.markers[marktype].symbol,
+                    color=marker_group.markers[marktype].color,
+                    markersize=marker_group.markers[marktype].markersize,
+                    alpha=marker_group.markers[marktype].alpha,
                 )
         surface_coordinates: list = find_markers_of_a_type(markers, ["surface", "border"])       
         xx, yy = compute_splines(surface_coordinates, npoints=20)
@@ -461,15 +505,20 @@ def plot_mosaic_markers(
             measures["rostral_caudal_distance"] = float(rostralpt.distance(caudalpt))
         # print(markers.keys())
         somas = markers.get('somas', {})
+        # if len(somas) == 0:
+        #     somas = markers.get('soma', {})
         soma_depth = {}
         soma_radius = {}
+        # print("Marker keys: ", markers.keys(), somas)
         # Locate somas and draw perpendiculars... 
         for i_soma, cellname in enumerate(somas):
-            print("cellname: ", cellname)
+            # print("cellname: ", cellname)
 
             cellpos = somas[cellname]  # z coordinate seems to be in microns...
-            axp.plot(cellpos[0], cellpos[1], "y*", markersize=4, alpha=0.33)
-            axp.text(cellpos[0], cellpos[1], cellname, fontsize=6)
+            axp.plot(cellpos[0], cellpos[1], "y*", markersize=7, alpha=1.0, zorder=10000)
+            axp.text(cellpos[0], cellpos[1], cellname, fontsize=6, color="y", zorder=10001)
+            if smoothed_poly is None:
+                continue
             cell_pt = sympy.geometry.point.Point(cellpos[:2], dim=2)  # keep 2d anyway
             cell_from_medial = medialpt.distance(cell_pt)
             cell_line = sympy.geometry.Line(medialpt, cell_pt)
@@ -493,7 +542,7 @@ def plot_mosaic_markers(
                 frac_depth = soma_depth[cellname][n].evalf() / soma_radius[cellname]
 
                 print(f"      {st:>12s} {1e6*soma_depth[cellname][n].evalf()!s} radius: {soma_radius[cellname]*1e6:.4f},  frac_depth: {frac_depth:5.2f}")
-            axp.plot([medialpt.x, intersect[1].x], [medialpt.y, intersect[1].y], "y-", lw=0.5, alpha=0.7)
+            axp.plot([medialpt.x, intersect[1].x], [medialpt.y, intersect[1].y], "y-", lw=0.5, alpha=-.8)
             # print('medialpt: ', medialpt.evalf())
             # print('intersect with surface: ', intersect[0].evalf())
 

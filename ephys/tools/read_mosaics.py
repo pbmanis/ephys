@@ -65,7 +65,7 @@ def define_markers():
     for k in all_markernames:
         mark_alpha[k] = 1.0
     for k in ["cell", "soma"]:
-        mark_alpha[k] = 0.33
+        mark_alpha[k] = 0.8
     for k in all_markernames:
         if k.startswith(("surface")):
             mark_colors[k] = "c"
@@ -88,7 +88,7 @@ def define_markers():
         elif k.startswith(("soma", "cell")):
             mark_colors[k] = "y"
             mark_symbols[k] = "*"
-            mark_alpha[k] = 0.33
+            mark_alpha[k] = 0.8
         else:
             # CP.cprint("r", f"Did not tag marker type {k:s}, using default")
             mark_colors[k] = "m"
@@ -98,7 +98,7 @@ def define_markers():
         if c not in mark_colors.keys():
             mark_colors[c] = "y"
             mark_symbols[c] = "*"
-            mark_alpha[k] = 0.33
+            mark_alpha[c] = 0.8
 
     return definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames
 
