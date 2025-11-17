@@ -295,12 +295,15 @@ def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
         + (coordinates_y[:-1] - coordinates_y[1:]) ** 2
     )
     cumul_dist = np.concatenate(([0], dist.cumsum()))
-    b_spline, u = scipy.interpolate.splprep([coordinates_x, coordinates_y], u=cumul_dist, s=0)
+    # print([coordinates_x, coordinates_y])
+    # print("cumul_dist: ", cumul_dist)
+    b_spline = scipy.interpolate.make_interp_spline(cumul_dist, np.c_[coordinates_x, coordinates_y],
+                                                    bc_type='clamped')
     if remove_ends:
         cumul_dist = cumul_dist[1:-1]
 
-    xx = np.linspace(cumul_dist[0], cumul_dist[-1], npoints)
-    xx, yy = scipy.interpolate.splev(xx, b_spline)
+    u_pts = np.linspace(cumul_dist[0], cumul_dist[-1], npoints)  # parameterized points
+    xx, yy =  b_spline(u_pts).T  # scipy.interpolate.BSpline.__call__(u_pts, b_spline)
     return xx, yy
 
 def compute_measures(poly: sympy.geometry.polygon.Polygon) -> dict:
@@ -412,7 +415,7 @@ def plot_mosaic_markers(
             marker, marker_group = get_markers_of_a_type(markers, marktype)
             print("marker, marker_tgroup: ", marker, marker_group)
             position = markers[marktype]
-            if marktype in ["soma", "somas"]:
+            if marktype in ["soma"]:
                 markersize = marker_group.markers['soma'].markersize
                 marksymbol = marker_group.markers['soma'].symbol
                 markcolor = marker_group.markers['soma'].color
@@ -437,17 +440,17 @@ def plot_mosaic_markers(
                             color=markcolor,
                             zorder=10001,
                         )
+                continue
             elif marktype.startswith(
                 ("dorsal", "rostral", "caudal", "ventral", "medial", "lateral")
             ):
-                markersize = 3
+                markersize = marker_group.markers[marktype].markersize
             else:
                 markersize = 4
             if (
                 axp is not None
                 and position is not None
                 and len(position) >= 2
-                and marktype in mark_alpha.keys()
             ):
                 axp.plot(
                     [position[0], position[0]],
@@ -458,14 +461,15 @@ def plot_mosaic_markers(
                     alpha=marker_group.markers[marktype].alpha,
                 )
         surface_coordinates: list = find_markers_of_a_type(markers, ["surface", "border"])       
-        xx, yy = compute_splines(surface_coordinates, npoints=20)
+        xx, yy = compute_splines(surface_coordinates, npoints=100)
         if axp is not None and xx is not None:
             axp.plot(xx, yy, "g-", lw=0.75, zorder=2)
             axp.plot(xx[0], yy[0], "ro", markersize=6, alpha=0.5)
             axp.plot(xx[-2], yy[-2], "rX", markersize=6, alpha=0.5)
         
         deep_boundary_coordinates: list = find_markers_of_a_type(markers, ["interior", "deep"])
-        deep_xx, deep_yy = compute_splines(deep_boundary_coordinates, npoints=20, remove_ends=True)
+        print("deep_boundary_coordinates: ", deep_boundary_coordinates)
+        deep_xx, deep_yy = compute_splines(deep_boundary_coordinates, npoints=100, remove_ends=False)
         if axp is not None and deep_xx is not None:
             axp.plot(deep_xx, deep_yy, "b-", lw=0.75, zorder=2)
             axp.plot(deep_xx[0], deep_yy[0], "bo", markersize=4, alpha=0.5)
@@ -542,7 +546,7 @@ def plot_mosaic_markers(
                 frac_depth = soma_depth[cellname][n].evalf() / soma_radius[cellname]
 
                 print(f"      {st:>12s} {1e6*soma_depth[cellname][n].evalf()!s} radius: {soma_radius[cellname]*1e6:.4f},  frac_depth: {frac_depth:5.2f}")
-            axp.plot([medialpt.x, intersect[1].x], [medialpt.y, intersect[1].y], "y-", lw=0.5, alpha=-.8)
+            axp.plot([medialpt.x, intersect[1].x], [medialpt.y, intersect[1].y], "y-", lw=0.5, alpha=0.8)
             # print('medialpt: ', medialpt.evalf())
             # print('intersect with surface: ', intersect[0].evalf())
 
