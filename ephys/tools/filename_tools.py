@@ -17,6 +17,7 @@ from typing import Tuple, Union
 
 import pandas as pd
 import pylibrary.tools.cprint as cprint
+import ephys.tools.map_cell_types as map_cell_types
 
 CP = cprint.cprint
 
@@ -35,10 +36,14 @@ def check_celltype(celltype: Union[str, None] = None):
         updated cell type. Specifically
     """
 
+    print("incoming cell type: ", celltype)
     if isinstance(celltype, str):
         celltype = celltype.strip()
     # print("celltype: ", celltype, type(celltype))
     celltype = str(celltype)
+    
+    celltype = map_cell_types.map_cell_type(celltype)
+    CP("r", f"mapped cell type to: {celltype}")
     if len(celltype) == 0:
         celltype = "unknown"
     if celltype in [None, "", "?", " ", "  ", "\t"]:
@@ -160,7 +165,7 @@ def make_pdf_filename(
     return Path(pdfdir, pdfname.stem).with_suffix(".pdf")
 
 
-def get_pickle_filename_from_row(selected: pd.Series, mode="IVs"):
+def get_pickle_filename_from_row(selected: pd.Series, mode="IVs", map_cell_name:bool=False) ->(Path, str):
     """get_pickle_filename_from_row given the selected row in a table / dataframe,
     return the name of the pickle file (but not the full path)
 
@@ -187,6 +192,10 @@ def get_pickle_filename_from_row(selected: pd.Series, mode="IVs"):
         cell_type = "unknown"
     else:
         cell_type = selected.cell_type
+    print("cell type prioer to map: ", cell_type)
+    if map_cell_name:
+        cell_type = map_cell_types.map_cell_type(cell_type)
+    print("cell type after map: ", cell_type, map_cell_name)
     slicen = selected.slice_slice
     pathparts = Path(selected.cell_id).parts
     re_day = re.compile(r"(\d{4}).(\d{2}).(\d{2})_(\d{3})")
@@ -219,7 +228,7 @@ def get_pickle_filename_from_row(selected: pd.Series, mode="IVs"):
             raise ValueError(f"Failed to find slice and cell in cell_id: {selected.cell_id:s}")
     pkl_file = f"{day:s}_{slicecell:s}_{cell_type:s}_{mode:s}.pkl"
     pkl_file = Path(pkl_file)
-    return pkl_file
+    return pkl_file, cell_type
 
 
 def change_pickle_filename(original_name, slicecell):
@@ -515,7 +524,7 @@ def get_path_date_slice_cell(cell_id):
     return datapath, date, slice, cell
 
 
-def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype: str = "IVs"):
+def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, datatype: str = "IVs", map_cell_names:bool=False):
     """get_cell get the pickled data filename for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
@@ -562,6 +571,12 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
     celltype = str(celltype).replace("\n", "")
     if celltype == " ":  # no cell type
         celltype = "unknown"
+    if map_cell_names:
+        print("cell type going in: ", celltype)
+        celltype = map_cell_types.map_cell_type(celltype)
+        if celltype == "no data":
+            celltype = "unknown"
+    print("get_cell_pkl_filename: determined celltype: ", celltype)
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
@@ -617,15 +632,13 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
         # CP("c", f"...  datapath: {datapath2!s} is OK\r")
         datapath = datapath2
     else:
-        # print("tried datapath: ", datapath2, celltype)
-        # print(f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         CP("r", f"no file: matching: {datapath2!s} with celltype: {celltype:s}")
         # raise ValueError
         return None
     return datapath
 
 
-def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
+def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str, map_cell_names:bool=False):
     """get_cell: get the pickled data file for this cell - this is an analyzed file,
     usually in the "dataset/experimentname" directory, likely in a celltype subdirectory
 
@@ -654,10 +667,16 @@ def get_cell(experiment: dict, df: pd.DataFrame, cell_id: str):
         failed to read the compressed pickle file
     """
 
-    datapath = get_cell_pkl_filename(experiment, df, cell_id)
+    datapath = get_cell_pkl_filename(experiment, df, cell_id, map_cell_names=map_cell_names)
+    print("**** Get_cell: datapath: ", datapath)
+    if datapath is None:
+        CP("r", f"get_cell: No datapath found for cell_id: {cell_id!s}")
     df_tmp = df[df.cell_id == cell_id]  # get the row (series) for this cell
     try:
-        # get the pickled pandas dataframe for this cell.
+        if datapath is None:
+            print(f"***** ***** datapath is none, cell id  = {cell_id:s}")
+            return None, None
+            # get the pickled pandas dataframe for this cell.
         with open(datapath, "rb") as dfile:
             df_cell = pd.read_pickle(dfile, compression={"method": "gzip", "compresslevel": 5, "mtime": 1})
     except ValueError:

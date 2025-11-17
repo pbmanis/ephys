@@ -614,20 +614,22 @@ class Analysis:
         print("self.cellid: ", self.cell_id)
 
         print(f"Looking for {self.cell_id!s} in database from {str(self.inputFilename)!s}")
-        cell_entry = self.df.loc[(self.df.cell_id == self.cell_id)]
+        cell_entry = self.df[self.df.cell_id == self.cell_id]
         if cell_entry.empty:
             CP.cprint("r", f"Date not found: {day!s} {self.cell_id!s}")
             # for dx in self.df.date.values:
             #     CP.cprint("r", f"    day: {dx:s}")
             raise FileNotFoundError(f"Cell: {self.cell_id!s} was not found in database")
-
-        CP.cprint("c", f"  ... [Analysis:run] Retrieved cell:\n       {self.cell_id:s}")
+        print("Cell Entry: \n", cell_entry)
+        CP.cprint("c", f"  ... [Analysis:run] Retrieved cell:\n       {self.cell_id:s}, cell_entry['cell_type']: {cell_entry['cell_type'].values[0]:s}")
         icell = cell_entry.index
         print(
-            "Cell in day: ",
+            "Confirming information: \n   Cell in day: ",
             icell,
             "which is: ",
-            self.df.iloc[icell].cell_id,
+            self.df.iloc[icell].cell_id.values[0],
+            "of type: ",
+            self.df.iloc[icell].cell_type.values[0],
             " with: self.pdffilename",
             self.pdfFilename,
         )
@@ -720,18 +722,19 @@ class Analysis:
         # Otherwise, it is like a series or dict
 
         if self.iv_analysisFilename is None:
-            msg = f"No analysis data to write : {self.iv_analysisFilename} is None"
+            msg = f"No analysis data to write"
             Logger.warning(msg)
-        else:
-            if not self.dry_run:
-                CP.cprint(
-                    "c",
-                    f"Writing ALL analysis results to PKL file: {str(self.iv_analysisFilename):s}",
-                )
-                with open(self.iv_analysisFilename, "wb") as fh:
-                    self.df.to_pickle(
-                        fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
-                    )
+        # else:
+        #     if not self.dry_run and self.IVplotter.IV_pdf_file is not None:
+        #         CP.cprint(
+        #             "c",
+        #             f"Wrote IV analysis results to pkl file: {self.cell_pklPath!s}",
+        #         )
+        #         CP.cprint("c", f"    and PDF file to {self.IVplotter.IV_pdf_file!s}")
+        #         # with open(self.iv_analysisFilename, "wb") as fh:
+        #         #     self.df.to_pickle(
+        #         #         fh, compression={"method": "gzip", "compresslevel": 5, "mtime": 1}
+        #         #     )
 
         if self.update:
             n = datetime.datetime.now()  # get current time
@@ -1216,6 +1219,7 @@ class Analysis:
             "c",
             f"Entering do_cell with icell = {icell} (dataframe index, not table index), cell_id: {self.df.iloc[icell].cell_id}",
         )
+        self.cell_pklPath = None
         self.allprots = []  # initialize the list of all protocols for this cell
         if len(icell.values) > 0:
             icell = icell.values[0]
@@ -1378,15 +1382,23 @@ class Analysis:
             if self.cell_tempdir is not None:
                 self.make_tempdir()  # clean up temporary directory
             # analyze_ivs uses multiprocessing, so avoid inserting calls to matplotlib in it
+            print("Analyze IVS cel tpe: ", celltype, icell)
             self.analyze_ivs(icell=icell, allprots=self.allprots, celltype=celltype, pdf=pdf)
             if self.dry_run:
                 return True
             # print("do_cell: self.analyzeddatapath: ", self.analyzeddatapath)
             # print("do_cell: self.directory: ", self.directory)
             # store pandas db analysis of this cell in a pickled file:
-            self.cell_pklFilename = filenametools.get_pickle_filename_from_row(
-                self.df.iloc[icell]
+
+            self.cell_pklFilename, celltype = filenametools.get_pickle_filename_from_row(
+                self.df.iloc[icell], map_cell_name=True
             )
+            # celltype = map_cell_types.map_cell_type(celltype)
+            if celltype == "no data":
+                celltype = "unknown"
+                self.cell_pklFilename = Path(str(self.cell_pklFilename).replace("no data", "unknown"))
+            print("do_cell: cell type: ", celltype)
+            print("do_cell: cell pkl filename: ", self.cell_pklFilename)
             # This is the fully qualified path to the file
             self.cell_pklPath = Path(self.analyzeddatapath, celltype, self.cell_pklFilename)
             msg = f"do_cell: Preparing to write cell IV analysis results to PKL file: {str(self.cell_pklPath):s}"

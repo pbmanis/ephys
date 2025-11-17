@@ -69,11 +69,11 @@ for icell, row in df.iterrows():
     event_file = filename_tools.make_event_filename_from_cellid(cell_id)
     event_path = Path(event_dir, event_file)
     if not event_path.exists():
-        CP.cprint("r", f"Cell id {cell_id} of type {cell_type} missing event file {event_file} in directory {event_dir.name!s}")
+        CP.cprint("r", f"Cell id {cell_id} of type {cell_type} missing event file {event_file} in directory {event_dir.name!s}  *****")
     else:
         mod_time = event_path.stat().st_mtime
         ts = datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
-        CP.cprint("g", f"Cell id {cell_id} of type {cell_type} has event file {event_file} analyzed on {ts:s}")
+        CP.cprint("g", f"Cell id {cell_id} of type {cell_type} has event file {event_file} analyzed on {ts:s} {u'\u2713':s}")
 
 CP.cprint("y", "\nNow checking MAP analysis files:\n")
 # for each major cell type directory, check for map analysis files
@@ -84,16 +84,16 @@ for cell_type in major_types:
         cell_id = row['cell_id']
         if cell_id in excluded_maps.keys():
             continue
-        map_file = filename_tools.get_pickle_filename_from_row(row, mode="maps")
+        map_file, mapped_cell_type = filename_tools.get_pickle_filename_from_row(row, mode="maps", map_cell_name=True)
         map_file = str(map_file).replace(".pkl", ".pdf")
-        map_dir = Path(analyzed_dir, cell_type)
+        map_dir = Path(analyzed_dir, mapped_cell_type)
         map_path = Path(map_dir, map_file)
         if not map_path.exists():
-            CP.cprint("r", f"Cell id {cell_id:>56s} of type {cell_type:<16s} missing map file {map_file} in directory {map_dir.name!s}")
+            CP.cprint("r", f"Cell id {cell_id:>56s} of type {mapped_cell_type:<16s} (from cell_type:{cell_type:<16s}) missing map file {map_file} in directory {map_dir.name!s}  *****")
         else:
             mod_time = map_path.stat().st_mtime
             ts = datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
-            CP.cprint("c", f"Cell id {cell_id:>56s} of type {cell_type:<16s} has map file {map_file} analyzed on {ts:s}")
+            CP.cprint("c", f"Cell id {cell_id:>56s} of type {cell_type:<16s} has map file {map_file} analyzed on {ts:s} {u'\u2713':s}")
 exit()
 
     # print out the cells that have no assigned cell type - may have no data.
