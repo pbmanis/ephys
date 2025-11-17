@@ -10,6 +10,7 @@ import ephys.datareaders.acq4_reader as acq4_reader
 from ephys.ephys_analysis.analysis_common import Analysis
 import ephys.tools.build_info_string as BIS
 import ephys.tools.filename_tools as filename_tools
+import ephys.tools.map_cell_types as map_cell_types
 from ephys.tools import check_inclusions_exclusions as CIE
 import ephys.gui.data_table_functions as data_table_functions
 from matplotlib.backends.backend_pdf import PdfPages
@@ -19,7 +20,7 @@ FUNCS = data_table_functions.Functions()
 
 
 def concurrent_iv_plotting(pkl_file, experiment, df_summary, file_out_path, decorate):
-    # print("pkl_file: ", pkl_file)
+    print("concurrent iv plotting: pkl_file: ", pkl_file)
     with open(pkl_file, "rb") as fh:
         df_selected = pd.read_pickle(fh, compression="gzip")
         plotter = IVPlotter(
@@ -47,6 +48,7 @@ class IVPlotter(object):
         self.file_out_path = file_out_path
         self.decorate = decorate
         self.IVFigure = None
+        self.IV_pdf_file = None
         self.plotting_alternation = 1
         self.downsample = 1
         self.nfiles = 0
@@ -81,8 +83,11 @@ class IVPlotter(object):
             self.nfiles += 1
 
     def plot_IVs(self, df_selected=None, types: str = "IV", allprots: list = None):
+        self.IV_pdf_file = None
         if df_selected is None or df_selected[types] is None:
             return
+        print("IV Plotter: plot_IVs for cell id: ", df_selected.cell_id)
+        print("    cell type: ", df_selected["cell_type"])
         assert types in ["IV", "MAP"], f"types must be IV or MAP, not {types!s}"
         celltype = df_selected["cell_type"]
         celltype = filename_tools.check_celltype(celltype)
@@ -124,8 +129,17 @@ class IVPlotter(object):
             return False
         thisday = datestr.replace(".", "_").split("_")
         thisday = "_".join(thisday[:-1])
+        # print("IV Plotter calling get_cell: ")
+        # print("    cell type: ", celltype)
+        # print("    cell id: ", cell_id)
+        # match to standard cell names
+        cell_matched_type = map_cell_types.map_cell_type(self.df_summary.at[index, "cell_type"])
+        # print("plot_IVs: Adjusted cell type: ", cell_matched_type)
+        self.df_summary.at[index, "cell_type"] = cell_matched_type
+        # print("\n******** df_summary row: ********\n", self.df_summary[self.df_summary["cell_id"] == cell_id])
         self.plot_df, _tmp = filename_tools.get_cell(
-            experiment=self.experiment, df=self.df_summary, cell_id=cell_id
+            experiment=self.experiment, df=self.df_summary, cell_id=cell_id,
+            map_cell_names=True
         )
         if self.plot_df is None:  # likely no spike or IV protocols for this cell
             CP("r", f"Cell had no spike or IV protocol cell: {cell_id!s}")
@@ -135,8 +149,13 @@ class IVPlotter(object):
             celltype = df_selected["cell_type"]
         else:
             celltype = df_selected["cell_type"].values[0]
+        celltype = map_cell_types.map_cell_type(celltype)
+        # print("    Mapped cell type: ", celltype)
+        if celltype == "no data":
+            celltype = "unknown"
+        print(" === adusted cell type: ", celltype)
         self.nfiles = 0
-        pdffile = filename_tools.make_pdf_filename(
+        self.IV_pdf_file = filename_tools.make_pdf_filename(
             self.file_out_path,
             thisday=thisday,
             celltype=celltype,
@@ -145,14 +164,14 @@ class IVPlotter(object):
         )
         # print("IV plotter: ", self.plot_df.keys())
 
-        with PdfPages(Path(pdffile)) as pdf:
+        with PdfPages(Path(self.IV_pdf_file)) as pdf:
             for iv in self.plot_df["IV"].keys():
                 protodir = Path(self.file_out_path, self.plot_df["cell_id"], iv)
                 plot_handle, acq4 = self.plot_one_iv(iv, allprots=allprots)
                 self.finalize_plot(
                     plot_handle, protocol_directory=protodir, pdf=pdf, acq4reader=acq4
                 )
-
+        
     def plot_one_iv(self, protocol, pubmode=False, allprots: list = None) -> Union[None, object]:
 
         git_hash = (
