@@ -181,7 +181,7 @@ class MAP_Analysis(Analysis):
                     "No valid map annotation file found, so adding all maps. THIS MAY NOT BE WHAT YOU WANT!",
                 )
                 validmaps.append(p)  # no map annotation file, so include all
-        allprots["Maps"] = validmaps
+        allprots["Maps"] = sorted(list(set(validmaps)))
         CP.cprint("g", f"{'-'*80:s}\nThe following maps will be analyzed for this cell:")
         for m in allprots["Maps"]:
             CP.cprint("g", f"    {str(m):s}")
