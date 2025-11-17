@@ -113,6 +113,7 @@ import ephys.plotters.psi_functions as plot_spike_funcs
 from ephys.tools import assemble_datasets
 from ephys.tools.get_computer import get_computer
 import ephys.tools.get_configuration as GETCONFIG
+import ephys.tools.map_cell_types as map_cell_types
 
 from ephys.ephys_analysis import (
     analysis_common,
@@ -2074,14 +2075,14 @@ class DataTables:
         cell_type = selected.cell_type
         if cell_type == " " or len(cell_type) == 0:
             cell_type = "unknown"
-
         datapath = self.experiment["databasepath"]
         directory = self.experiment["directory"]
 
-        filename = filename_tools.get_pickle_filename_from_row(
-            selected, mode=modename
+        filename, mapped_cell_type = filename_tools.get_pickle_filename_from_row(
+            selected, mode=modename, map_cell_name=True,
         )
-        filename = Path(datapath, directory, cell_type, filename).with_suffix(".pdf")
+        print("mapped cell type: ", mapped_cell_type, "vs: ", cell_type)
+        filename = Path(datapath, directory, mapped_cell_type, filename).with_suffix(".pdf")
         url = "file://" + str(filename)
         FUNCS.textappend(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
         print(f"File exists:  {filename!s}, {Path(filename).is_file()!s}")
