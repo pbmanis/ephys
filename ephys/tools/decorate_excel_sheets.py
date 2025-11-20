@@ -1,6 +1,32 @@
+""" decorate_excel_sheets
+This set of scripts reorganizes and colors an excel sheet
+produced by ephys/tools/make_xls_map.py
+to make it more readable.
+
+The module should be imported into a script, 
+and the cleanup() function called with the appropriate file.
+Returns
+-------
+_type_
+    _description_
+"""
 import pandas as pd
 
-def highlight_by_cell_type(row):
+def _highlight_by_cell_type(row):
+    """_highlight_by_cell_type: get the color to assign to a row according
+    to the cell type
+    Typically, this will be called by an apply function on a dataframe.
+
+    Parameters
+    ----------
+    row : pd.Series
+        a specific row
+
+    Returns
+    -------
+    list    
+        of the background colors.
+    """
     colors = {"pyramidal": "#c5d7a5", #"darkseagreen",
               "cartwheel": "skyblue",
               "tuberculoventral": "lightpink",
@@ -23,7 +49,7 @@ def highlight_by_cell_type(row):
 
 
 def organize_columns(df):
-    """organize_columns _summary_
+    """organize_columns __: reorganize the order of the columns in the dataframe
 
     Parameters
     ----------
@@ -87,8 +113,8 @@ def cleanup(excelsheet, outfile:str="test.xlsx"):
         else:
             writer.sheets['Sheet1'].set_column(first_col=i+1, last_col=i+1, width=column_width) # column_dimensions[str(column.title())].width = column_width
         
-
-    df_new = df_new.style.apply(highlight_by_cell_type, axis=1)
+    # Now set the row colors by cell type
+    df_new = df_new.style.apply(_highlight_by_cell_type, axis=1)
     # print(df_new.columns)
     df_new.to_excel(writer, sheet_name = "Sheet1")
     writer.close()
