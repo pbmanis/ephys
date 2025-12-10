@@ -10,7 +10,7 @@ import scipy.interpolate
 import numpy as np
 import pint
 import re
-import nf107.markers as MARKS
+import ephys.mapanalysistools.markers as MARKS
 
 
 re_slice = re.compile(r"slice_(\d+)")
