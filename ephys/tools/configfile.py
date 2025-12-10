@@ -9,6 +9,7 @@ as it can be converted to/from a string using repr and eval.
 """
 
 import datetime
+from pathlib import Path
 import os
 import re
 import sys
@@ -73,7 +74,9 @@ def readConfigFile(fname, **scope):
         local[dtype] = getattr(numpy, dtype)
         
     try:
-        #os.chdir(newDir)  ## bad.
+        fname = Path(fname)
+        if not fname.exists():
+            return None
         with open(fname, "rt") as fd:
             s = fd.read()
         s = s.replace("\r\n", "\n")
