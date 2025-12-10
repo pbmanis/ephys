@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ephys"
-version = "0.8.2"
+version = "0.8.3.01"
 description = "Methods for analysis of elecrophysiology data: IV and FI curves, minis, EPSCs, LSPS maps"
 authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
@@ -25,19 +25,19 @@ classifiers = [
 
 dependencies = [
     "colorcet>=3.1.0",
-    "colormaps==0.4.2",
-    "cython==3.0.12",
+    "colormaps>=0.4.2",
+    "cython>=3.0.12",
     "deepdiff>=8.5.0",
     "descartes>=1.1.0",
-    "dill==0.3.8",
+    "dill>=0.3.8",
     "gitpython>=3.1.44",
     "hdmf>=4.0.0",
     "imageio>=2.37",
     "imreg-dft>=2.0",
-    "isodate==0.6.1",
-    "jinja2==3.1.6",
+    "isodate>=0.6.1",
+    "jinja2>=3.1.6",
     "jupyterlab>=4.4.0",
-    "lmfit==1.3.3",
+    "lmfit>=1.3.3",
     "matplotlib>=3.10.0",
     "matplotlib-scalebar>=0.8.1",
     "meegkit==0.1.9",
@@ -48,7 +48,7 @@ dependencies = [
     "networkx>=2.0",
     "ngauge",
     "nose==1.3.7",
-    "numba==0.61.2",
+    "numba>=0.63.0",
     "numpy>=2.2",
     "nwbinspector>=0.6.3",
     "obspy==1.4.2",
@@ -94,7 +94,7 @@ dependencies = [
     "ty>=0.0.1a14",
     "xlrd>=1.0.0",
     "xlsxwriter>=3.0",
-    "pylibrary @ git+https://github.com/pbmanis/pylibrary.git@master#egg=main",
+    "pylibrary @ git+https://github.com/pbmanis/pylibrary.git@main#egg=main",
     "pyqt5>=5.15.11",
     "streamlit>=1.50.0",
     "pyautogui>=0.9.54",
