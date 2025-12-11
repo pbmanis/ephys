@@ -10,7 +10,7 @@ import ephys.tools.configfile as CF
 PP = pprint.PrettyPrinter(indent=4)
 
 
-def get_configuration(configfile: Union[str, Path, None] = None):
+def get_configuration(configfile: Union[str, Path, None] = None, check_completeness: bool = True):
     """get_configuration : retrieve the configuration file from the current
     working directory, and return the datasets and experiments
     Note: if some keys are missing, we will attempt to get them from the
@@ -56,13 +56,16 @@ def get_configuration(configfile: Union[str, Path, None] = None):
         #     ) from exc
     else:
         print("configfile: ", configfile)
+        if not Path(configfile).is_file():
+            raise FileNotFoundError(
+                f"Configuration file '{configfile!s}' not found" )
         config = CF.readConfigFile(configfile)
         experiments = config["experiments"]
     
     datasets = list(experiments.keys())
-    retrieve_standard_values(experiments, datasets)
-
-    validate_configuration(experiments, datasets)
+    if check_completeness:
+        retrieve_standard_values(experiments, datasets)
+        validate_configuration(experiments, datasets)
     # print("Datasets: ", datasets)  # pretty print this later
     return datasets, experiments
 
