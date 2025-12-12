@@ -121,7 +121,7 @@ class MAP_Analysis(Analysis):
             f"    {str(file):s}\n          at: {datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S'):s}",
         )
 
-        print(f"    Celltype: {celltype:s}  with {len(allprots['Maps']):4d} protocols")
+        print(f"    analyze_maps:: Celltype: {celltype:s}  with {len(allprots['Maps']):4d} protocols")
         self.markers = mapanalysistools.get_markers.get_markers(fullfile=file, verbose=False)
 
         # print(allprots["Maps"])
