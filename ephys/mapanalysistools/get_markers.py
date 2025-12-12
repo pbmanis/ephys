@@ -24,7 +24,7 @@ UR = pint.UnitRegistry()
 def look_for_mosaic_file(protodir: Path) -> [Union[Path, None]]:
     """look_for_mosaic_file find the mosaic file associated with this cell.
     Working up from the CELL directory, we look for a suitable .mosaic file
-    in either the slice or day directory.
+    in either the cell, the slice or day directory.
     This will be a .mosaic file that matches .SN.mosaic for the slice,
     or .SN.CM.mosiaic for the cell.
     The presumed file name is one of:
@@ -40,46 +40,60 @@ def look_for_mosaic_file(protodir: Path) -> [Union[Path, None]]:
     Tuple[Path, bool]
         _description_
     """
-    # print(protodir)
+    re_mosaic = re.compile(r"^(?P<date>(\d{4})\.(\d{2})\.(\d{2}))[\._]{1}(?P<slice>S(\d+))[\.]{0,1}(?P<cell>C(\d+))\.mosaic$", re.IGNORECASE)
+        # print(protodir)
     if not protodir.name.startswith("cell_"):
         raise ValueError(
             f"Looking for mosaic file: need to start with cell. Got invalid cell path name: {protodir.name}"
         )
     celldir = Path(
         protodir
-    )  # generally, mosaics should NOT be in cell directory, which is above the prrotocol dir.
-    slicedir = Path(celldir).parent  # may be in slice directory however
+    )  
+
+    slicedir = Path(celldir).parent 
     daydir = Path(slicedir).parent
     daystr = str(daydir.name)[:-4]
-    # print("slicedir: ", slicedir)
-    # print("daydir: ", daydir)
-    slicen = int(slicedir.name.split("_")[-1])  # get the slice number
-    # print("slicen: ", slicen, "daystr: ", daystr)
-    day_mosaic = list(daydir.glob("*.mosaic"))
-    retval = None
-    # print("day_mosaic: ", day_mosaic)
-    if len(day_mosaic) > 0:
-        mosaic_filename = str(daydir) + f"/{daystr:s}.S{slicen:d}.mosaic"
-        # print("expected filename: ", mosaic_filename)
-        for dm in day_mosaic:
+    
+    cell_mosaics = list(celldir.glob("*.mosaic"))
+
+    if len(cell_mosaics) > 0:
+        for cm in cell_mosaics:
+            # print("cell mosaics: ", cm)
+            matchm = re_mosaic.match(cm.name)
+            if matchm:
+                # datepart = matchm.group("date")
+                # slicepart = matchm.group("slice")
+                cellpart = matchm.group("cell")
+                if len(cellpart) > 0: 
+                    return cm   # return the first matching cell mosaic file in the directory
+    slice_mosaics = list(slicedir.glob("*.mosaic"))
+    if len(slice_mosaics) > 0:
+        for sm in slice_mosaics:
+            matchm = re_mosaic.match(sm.name)
+            if matchm:
+                # datepart = matchm.group("date")
+                slicepart = matchm.group("slice")
+                cellpart = matchm.group("cell")
+                if len(slicepart) >= 0: # cell part is optional.
+                    return sm   # return the first matching slice mosaic file in the directory
+
+    day_mosaics = list(daydir.glob("*.mosaic"))
+    if len(day_mosaics) > 0:
+        for dm in day_mosaics:
             # print("day mosaics: ", dm)
-            if str(dm).casefold() == mosaic_filename.casefold():
-                print("get_markers: Found day mosaic: ", dm)
-                retval =  dm
-    # check for slice directory next
-    slice_mosaic = list(slicedir.glob("*.mosaic"))
-    if len(slice_mosaic) > 0:
-        mosaic_filename = str(slicedir) + f"/{daystr:s}.S{slicen:d}.mosaic"
-        # print("expected filename: ", mosaic_filename)
-        for sm in slice_mosaic:
-            # print("slice mosaics: ", sm)
-            if str(sm).casefold() == mosaic_filename.casefold():
-                # print("Found slice mosaic: ", sm)
-                retval = sm
+            matchm = re_mosaic.match(dm.name)
+            if matchm:
+                datepart = matchm.group("date")
+                slicepart = matchm.group("slice")
+                # cellpart = matchm.group("cell")
+                if len(datepart) >= 0 and len(slicepart) >= 0:
+                    return dm   # return the first matching day mosaic file in the directory
+  
     else:
         print("didn't find markers for: ", protodir)
-        print("looked for day mosaic: ", day_mosaic)
-    return retval
+        print("looked for day mosaic: ", day_mosaics)
+
+    return None
 
 def markers_to_dict(markers: MARKS.MarkerGroup) -> dict:
     marker_dict = markers.to_dict()
@@ -106,16 +120,11 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
     #     "dist": dist,
     # }
     # print("EPHYS: get_markers: Looking for mosaic file in: ", fullfile)
-    if fullfile.is_dir():
-        mosaic_file = list(fullfile.glob("*.mosaic"))
-    elif fullfile.is_file():
-        mosaic_file = [fullfile]
-    else:
-        mosaic_file = []
-    if len(mosaic_file) > 0:
-        if verbose:
-            CP.cprint("c", f"    Have mosaic_file: {mosaic_file[0].name:s}")
-        state = json.load(open(mosaic_file[0], "r"))
+    mosaic_file = look_for_mosaic_file(fullfile)
+    if mosaic_file is not None :
+        # if verbose:
+        CP.cprint("c", f"    Have mosaic_file: {mosaic_file.name:s}")
+        state = json.load(open(mosaic_file, "r"))
         cellmarks = {}
         # pick up the individual items and parse the data from them
         for item in state["items"]:
@@ -204,8 +213,8 @@ def get_markers(fullfile: Path, verbose: bool = True) -> dict:
         #         CP.cprint("r", "    No soma or surface markers found")
     else:
         if verbose:
-            pass
-            # CP.cprint("r", "No mosaic file found")
+            # pass
+            CP.cprint("m", "*** No mosaic file found")
     return marker_dict
 
 
@@ -478,7 +487,7 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
 
     smoothed_poly_list = []
     surface_poly_list = []
-
+    # print("markers: ", markers)
     marker_type_info = marker_template.defined_markers[markers["name"]]
     # print("\n   marker_type_info: ", marker_type_info)
     if markers is None: #  or len(markers.keys()) == 0:
@@ -562,9 +571,8 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
         deep_pt = sympy.geometry.point.Point(markers["deep_reference"], dim=2)
         surface_pt = sympy.geometry.point.Point(markers["surface_reference"], dim=2)
     else:
-        raise ValueError(
-            "Need deep_reference and surface_reference markers to compute cell depth distance."
-        )
+        deep_pt = None
+        surface_pt = None
     if surface_xx is not None:
         CP.cprint("c", "   ...computing surface_xx")
         surface_poly_list = [(surface_xx[i], surface_yy[i]) for i in range(len(surface_xx) - 1)]
@@ -578,7 +586,10 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
         sympy_smoothed_poly = sympy.geometry.polygon.Polygon(*smoothed_poly_list)
         shapely_smoothed_poly = shapely.geometry.Polygon(smoothed_poly_list)
 
-        measures["medial_lateral_distance"] = float(deep_pt.distance(surface_pt))
+        if deep_pt is not None:
+            measures["medial_lateral_distance"] = float(deep_pt.distance(surface_pt))
+        else:
+            measures["medial_lateral_distance"] = np.nan
         measures["area"] = np.abs(float(sympy_smoothed_poly.area))
         measures["cir_circle"] = float(
             1.0 - (measures["area"] / shapely.minimum_bounding_circle(shapely_smoothed_poly).area)
@@ -621,22 +632,26 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
             continue
         # compute the "reference" line, from the surface_reference marker to the deep_reference marker.
         cell_pt = sympy.geometry.point.Point(cellpos[:2], dim=2)  # keep 2d anyway
-        reference_line = sympy.geometry.Line(deep_pt, surface_pt)
-        # compute the shortest line surface to the cell.
-        cell_line = reference_line.perpendicular_line(cell_pt)
-        # and get the intersection with the surface polygon.
-        intersect = sympy_smoothed_poly.intersection(cell_line)
-        soma_depth[cellname] = []
         soma_depth_ref_surface_marker = None
-        if len(intersect) > 0:  # save the distances
-            for n in range(len(intersect)):
-                soma_depth[cellname].append(intersect[n].distance(cell_pt))
-                soma_depth_ref_surface_marker = surface_pt.distance(cell_pt)
-                # CP.cprint("c", f"  Soma depth: {cellname:s} depth pt {n:d}: {soma_depth[cellname][0]*1e6:.3f} um")
-                CP.cprint("c", f"  Soma depth {cellname:s} re surface marker: {soma_depth_ref_surface_marker*1e6:.3f} um")
+        if deep_pt is not None and surface_pt is not None:
+            reference_line = sympy.geometry.Line(deep_pt, surface_pt)
+            # compute the shortest line surface to the cell.
+            cell_line = reference_line.perpendicular_line(cell_pt)
+            # and get the intersection with the surface polygon.
+            intersect = sympy_smoothed_poly.intersection(cell_line)
+            soma_depth[cellname] = []
+            if len(intersect) > 0:  # save the distances
+                for n in range(len(intersect)):
+                    soma_depth[cellname].append(intersect[n].distance(cell_pt))
+                    soma_depth_ref_surface_marker = surface_pt.distance(cell_pt)
+                    # CP.cprint("c", f"  Soma depth: {cellname:s} depth pt {n:d}: {soma_depth[cellname][0]*1e6:.3f} um")
+                    CP.cprint("c", f"  Soma depth {cellname:s} re surface marker: {soma_depth_ref_surface_marker*1e6:.3f} um")
         else:
             soma_depth[cellname] = []  # the logic did not work, so no depth found
-        soma_radius[cellname] = deep_pt.distance(intersect[1])  # cell_from_medial
+        if deep_pt is not None:
+            soma_radius[cellname] = deep_pt.distance(intersect[1])  # cell_from_medial
+        else:
+            soma_radius[cellname] = np.nan
         # for n in range(len(soma_depth[cellname])):
         #     if n == 0:
         #         st = "from deep marker:"
@@ -647,8 +662,10 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
         #     print(
         #         f"      {st:>12s} {1e6*soma_depth[cellname][n].evalf():.3f} radius: {soma_radius[cellname]*1e6:.3f},  frac_depth: {frac_depth:5.2f}"
         #     )
-        axp.plot([cell_pt.x, surface_pt.x], [cell_pt.y, surface_pt.y], "y-", lw=0.65, alpha=0.8)
-        axp.plot([cell_pt.x, deep_pt.x], [cell_pt.y, deep_pt.y], "c-", lw=0.6, alpha=0.8)
+        if surface_pt is not None:
+            axp.plot([cell_pt.x, surface_pt.x], [cell_pt.y, surface_pt.y], "y-", lw=0.65, alpha=0.8)
+        if deep_pt is not None:
+            axp.plot([cell_pt.x, deep_pt.x], [cell_pt.y, deep_pt.y], "c-", lw=0.6, alpha=0.8)
     if measures["shortest_line"] is not None:
         axp.plot(
             measures["shortest_line"][:, 0],
