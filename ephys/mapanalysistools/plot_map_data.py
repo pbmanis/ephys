@@ -7,6 +7,7 @@ from typing import Dict, List, Union
 
 # import ephys.mapanalysistools.define_markers as define_markers
 import ephys.mapanalysistools.get_markers as get_markers
+import ephys.mapanalysistools.markers
 import matplotlib
 import matplotlib.cm
 import matplotlib.collections as collections
@@ -296,6 +297,8 @@ class PlotMapData:
             markpath = Path(self.experiment["marker_code_path"]).with_suffix("")
             # print("importing marker module: ", markpath)
             self.marker_template = importlib.import_module(markpath.as_posix().replace("/", "."))
+        else:
+            self.marker_template = importlib.import_module(Path("ephys","mapanalysistools","markers").as_posix().replace("/", "."))
         
 
     def gamma_correction(self, image, gamma=2.2, imagescale=np.power(2, 16)):
