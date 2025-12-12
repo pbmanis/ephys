@@ -10,7 +10,7 @@ authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
 ]
-requires-python = "==3.13.7"
+requires-python = ">=3.13.7"
 readme = "README.md"
 license = "MIT"
 classifiers = [
@@ -159,6 +159,7 @@ metaarray = { path = "../metaarray", editable = true }
 indent-style = "space"
 line-length = 120
 
+
 # [tool.ty]
 # respect-ignore-files = true
 
@@ -170,3 +171,6 @@ invalid-return-type = "error"
 invalid-argument-type = "error"
 division-by-zero = "error"
 redundant-cast = "warn"
+
+[tool.setuptools_scm]
+# nothing to do
