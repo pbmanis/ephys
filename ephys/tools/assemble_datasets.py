@@ -357,10 +357,10 @@ class AssembleDatasets:
             self.experiment["directory"],
             self.experiment["assembled_filename"],
         )
-        # first be sure that we even have a combined file!
-        self.previous_date = combined_file.stat().st_mtime
-        CP("c", f"Combined file: {combined_file}, last modified: {datetime.datetime.fromtimestamp(self.previous_date).strftime('%Y-%m-%d %H:%M:%S'):s}")
         if combined_file.is_file():
+            # first be sure that we even have a combined file!
+            self.previous_date = combined_file.stat().st_mtime
+            CP("c", f"Combined file: {combined_file}, last modified: {datetime.datetime.fromtimestamp(self.previous_date).strftime('%Y-%m-%d %H:%M:%S'):s}")
             print("Combined File exists: ", combined_file)
             try:
                 already_done = pd.read_pickle(
