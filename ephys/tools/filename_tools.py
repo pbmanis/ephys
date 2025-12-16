@@ -39,12 +39,12 @@ def check_celltype(celltype: Union[str, None] = None):
     print("incoming cell type: ", celltype)
     if isinstance(celltype, str):
         celltype = celltype.strip()
-    # print("celltype: ", celltype, type(celltype))
+    print("celltype: ", celltype, type(celltype))
     celltype = str(celltype)
     
     celltype = map_cell_types.map_cell_type(celltype)
     CP("r", f"mapped cell type to: {celltype}")
-    if len(celltype) == 0:
+    if celltype is None or len(celltype) == 0:
         celltype = "unknown"
     if celltype in [None, "", "?", " ", "  ", "\t"]:
         # CP("y", f"check_celltype:: Changing Cell type to unknown from <{celltype:s}>")
@@ -569,14 +569,16 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
     except ValueError:
         celltype = df_tmp.cell_type
     celltype = str(celltype).replace("\n", "")
-    if celltype == " ":  # no cell type
+    # print("get pkl celltype: ", celltype, type(celltype))
+    if celltype in [" ", "None", None] or len(celltype) == 0 or celltype is None:  # no cell type
         celltype = "unknown"
+        # print("get_cell_pkl_filename: cell type was empty, set to unknown")
     if map_cell_names:
-        print("cell type going in: ", celltype)
+        # print("cell type going in: ", celltype)
         celltype = map_cell_types.map_cell_type(celltype)
         if celltype == "no data":
             celltype = "unknown"
-    print("get_cell_pkl_filename: determined celltype: ", celltype)
+    # print("get_cell_pkl_filename: determined celltype: ", celltype)
     # look for original PKL file for cell in the dataset
     # if it exists, use it to get the FI curve
     # base_cellname = str(Path(cell)).split("_")
