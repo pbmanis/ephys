@@ -89,7 +89,7 @@ class IVPlotter(object):
         print("IV Plotter: plot_IVs for cell id: ", df_selected.cell_id)
         print("    cell type: ", df_selected["cell_type"])
         assert types in ["IV", "MAP"], f"types must be IV or MAP, not {types!s}"
-        celltype = df_selected["cell_type"]
+        celltype = df_selected["cell_type"].values[0]
         celltype = filename_tools.check_celltype(celltype)
         # check to see if this one is in the exclusion list:
         # print(df_selected.cell_id, self.experiment["excludeIVs"])
@@ -151,7 +151,7 @@ class IVPlotter(object):
             celltype = df_selected["cell_type"].values[0]
         celltype = map_cell_types.map_cell_type(celltype)
         # print("    Mapped cell type: ", celltype)
-        if celltype == "no data":
+        if celltype in ["no data", None, "None", " ", ""]:
             celltype = "unknown"
         print(" === adusted cell type: ", celltype)
         self.nfiles = 0
