@@ -1736,9 +1736,10 @@ class PlotMapData:
                         ri += rs
 
         # print("markers i plot_map: ", markers)
-        measures, poly = get_markers.plot_mosaic_markers(
-            markers, axp, self.marker_template
-        )
+        if len(markers) > 0:
+            measures, poly = get_markers.plot_mosaic_markers(
+                markers, axp, self.marker_template
+            )
 
         tickspace = scaler.tickSpacing
         try:
