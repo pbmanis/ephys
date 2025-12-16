@@ -367,9 +367,10 @@ def populate_columns(
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
     excludes = []
-    for cellid in configuration["excludeIVs"]:
-        for protos in configuration["excludeIVs"][cellid]["protocols"]:
-            excludes.append(str(Path(cellid, protos)))
+    if configuration["excludeIVs"] is not None:
+        for cellid in configuration["excludeIVs"]:
+            for protos in configuration["excludeIVs"][cellid]["protocols"]:
+                excludes.append(str(Path(cellid, protos)))
    
     datap = datap.apply(
         filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
