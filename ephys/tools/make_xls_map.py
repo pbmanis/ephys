@@ -1,23 +1,6 @@
-import argparse
-import dataclasses
-from typing import Union, Tuple, List
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Union
-
-import ephys.ephys_analysis as EP
-import ephys.datareaders as DR
-import ephys.tools.write_excel_sheet as write_excel_sheet
-import numpy as np
-import pandas as pd
-from pylibrary.tools import cprint as CP
-
-import nihl_maps
-
-cprint = CP.cprint
 """
 This script makes an excel file from the .pkl file.
-The excel file is a "temporary" file with some efeault values
+The excel file is a "temporary" file with some default values
 for analysis parameters. Typically this file will be used to seed
 the main excel file for that is used to gather parameters for
 the map analysis (and event deetection). The main excel file
@@ -42,7 +25,53 @@ last revision 8/28/2023
 
 """
 
-experiments = nihl_maps.experiments
+import argparse
+import dataclasses
+from typing import Union, Tuple, List
+from dataclasses import dataclass
+from pathlib import Path
+import re
+from typing import Union
+
+import ephys.datareaders as DR
+import ephys.tools.write_excel_sheet as write_excel_sheet
+import ephys.tools.get_configuration as get_configuration
+import numpy as np
+import pandas as pd
+from pylibrary.tools import cprint as CP
+
+re_protocol = re.compile(r"^(?P<protocol>[a-z_0-9]+)_[0-9]{0,3}[\_0-9]{0,4}[\_a-z]*[a-z0-9\_]*$", re.IGNORECASE)
+
+
+datasets, experiments = get_configuration.get_configuration("config/experiments.cfg")
+print("known datasets:  ", datasets)
+
+def strip_protocol(smap:str)->str:
+    m1= re_protocol.match(smap)
+    if m1 is None:
+        raise ValueError(f"Could not parse protocol from map name: {smap:s}")    
+    m2 = re_protocol.match(m1.group("protocol"))
+    if m2 is not None:
+        return m2.group("protocol") 
+    elif m1 is not None:
+        return m1.group("protocol")
+    else:
+        return None
+
+# testp = "VGAT_5mspulses_5Hz_pt045_to_pt1_000_001"
+# print(testp, strip_protocol(testp))
+# testp = "Map_VGAT_5mspulses_5Hz_pt045_to_pt1_000"
+# print(testp, strip_protocol(testp))
+# exit()
+
+def test_maps(smap, maps):
+    for m in maps:
+        if smap.startswith(m):
+            return True
+    return False
+
+cprint = CP.cprint
+
 
 # This class holds the column values for one row.
 @dataclass
@@ -126,7 +155,8 @@ def get_best_image(AR, supindex, dpath):
     return bestimage
 
 
-def do_one_disk(d, disk:Union[Path, str, None] = None, db:object=None, args:object=None)->object:
+def do_one_disk(d, disk:Union[Path, str, None] = None, directory:Union[Path, str, None] = None, 
+                experiment:dict=None, db:object=None, args:object=None)->object:
     # now read through the data itself
     AR = DR.acq4_reader.acq4_reader()
     for index in range(d.shape[0]):
@@ -145,6 +175,7 @@ def do_one_disk(d, disk:Union[Path, str, None] = None, db:object=None, args:obje
 
         dpath = Path(
             disk,
+            directory,
             thisrow["date"],
             thisrow["slice_slice"],
             thisrow["cell_cell"],
@@ -152,7 +183,7 @@ def do_one_disk(d, disk:Union[Path, str, None] = None, db:object=None, args:obje
         if not dpath.is_dir():
             dpath = Path(
                 disk,
-                'Parasagittal',
+                directory,
                 thisrow["date"],
                 thisrow["slice_slice"],
                 thisrow["cell_cell"],
@@ -170,74 +201,80 @@ def do_one_disk(d, disk:Union[Path, str, None] = None, db:object=None, args:obje
         # build new rows in the dataframe for each map protocol
         # of a known type 
         for smapP in maps:
-            smap = Path(smapP).parts[-1]
-            # print('smap: ', smap)
-            if (
-                smap.startswith("Map_")
-                or smap.startswith("VGAT_")
-                or smap.startswith("CC_VGAT_")
-                or smap.startswith("VGAT_CC")
-            ) and len(smap) > 1:
-                print("   Map added: <%s>" % smap)
-                cell_type =d.iloc[index]["cell_type"].lower()
-                newrow = NewRow()
-                newrow.date = Path(d.iloc[index]["date"]).name
-                newrow.slice_slice = Path(d.iloc[index]["slice_slice"]).parts[-1]
-                newrow.cell_cell = Path(d.iloc[index]["cell_cell"]).parts[-1]
-                newrow.mapname = smap
-                newrow.data_directory = Path(d.iloc[index]["date"]).parent
-                newrow.reference_image = bestimage
-                values = get_initial_values(celltype=cell_type)
-                newrow.tau1 = values['tau1']
-                newrow.tau2 =  values['tau2']
-                newrow.threshold = values['threshold']
-                newrow.cc_tau1 = 1.5
-                newrow.cc_tau2 = 3.5
-                newrow.cc_threshold = 2.0
-                newrow.cell_type = cell_type
-                newrow.Notch= "np.arange(60,4000,60)"
-                newrow.NotchQ= "90"
-                newrow.Detrend= ""
+            smap = Path(smapP).parts[-1]  # get just the protocol
+            if len(smap) <= 1 or smap.startswith("CCIV_") or smap.startswith("VCIV_") or "test" in smap or "IC_single" in smap:
+                continue
 
-                newrow.Notes = ""
-                newrow.artifact_epoch = ""
-                newrow.use_artifact_file = ""
-                newrow.artScale = ""
+            cell_type =d.iloc[index]["cell_type"].lower()
+            newrow = NewRow()
+            newrow.date = Path(d.iloc[index]["date"]).name
+            newrow.slice_slice = Path(d.iloc[index]["slice_slice"]).parts[-1]
+            newrow.cell_cell = Path(d.iloc[index]["cell_cell"]).parts[-1]
+            newrow.mapname = smap
+            newrow.data_directory = Path(d.iloc[index]["date"]).parent
+            newrow.reference_image = bestimage
+            values = get_initial_values(celltype=cell_type)
+            newrow.tau1 = values['tau1']
+            newrow.tau2 =  values['tau2']
+            newrow.threshold = values['threshold']
+            newrow.cc_tau1 = 1.5
+            newrow.cc_tau2 = 3.5
+            newrow.cc_threshold = 2.0
+            newrow.cell_type = cell_type
+            newrow.Notch= "np.arange(60,4000,60)"
+            newrow.NotchQ= "90"
+            newrow.Detrend= ""
 
-                if smap.find("_VC_")>0:
-                    newrow.Usable = "y"
-                else:
-                    newrow.Usable = "n"  # # only VC for analysis of maps on this pass
-                newrow.notes2 = ""
-                newrow.stimdur = ""
-                newrow.fl_tau1 = ""  # flipped sign tau
-                newrow.fl_tau2 = ""  # flipped sign tau
-                newrow.fl_threshold = ""  # flipped sign tau
-                newrow.alt1_tau1 = ""  # flipped sign tau
-                newrow.alt1_tau2 = ""  # flipped sign tau
-                newrow.alt1_threshold = ""  # flipped sign tau
-                newrow.alt2_tau1 = ""  # flipped sign tau
-                newrow.alt2_tau2 = ""  # flipped sign tau
-                newrow.alt2_threshold = ""  # flipped sign tau
-                # db = pd.concat([db, pd.from_dict(dataclasses.asdict(newrow))], ignore_index=True)
-                db = pd.concat([db, pd.DataFrame([newrow])], ignore_index=True)
+            newrow.Notes = ""
+            newrow.artifact_epoch = ""
+            newrow.use_artifact_file = ""
+            newrow.artScale = ""
+            newrow.notes2 = ""
+            newrow.stimdur = ""
+            newrow.fl_tau1 = ""  # flipped sign tau
+            newrow.fl_tau2 = ""  # flipped sign tau
+            newrow.fl_threshold = ""  # flipped sign tau
+            newrow.alt1_tau1 = ""  # flipped sign tau
+            newrow.alt1_tau2 = ""  # flipped sign tau
+            newrow.alt1_threshold = ""  # flipped sign tau
+            newrow.alt2_tau1 = ""  # flipped sign tau
+            newrow.alt2_tau2 = ""  # flipped sign tau
+            newrow.alt2_threshold = ""  # flipped sign tau
+
+            newrow.Usable = 'n'
+            if test_maps(smap, experiment['protocols']["Maps"]):
+                newrow.Usable = "y"
+                # print("   Marking map as usable\n")
+            else:
+                cprint("yellow", f"   Map <{smap:s}> not in known map protocols for this experiment")
+                cprint("yellow", "   Add protocol to the experiment configuration file if appropriate")
+                cprint("yellow", "   Otherwise, edit the exclusion criteria above in the code")
+
+                raise ValueError(f"Map {smap:s} not in known map protocols for this experiment")
+
+            # db = pd.concat([db, pd.from_dict(dataclasses.asdict(newrow))], ignore_index=True)
+            db = pd.concat([db, pd.DataFrame([newrow])], ignore_index=True)
     return db
 
 def parse_database(args):
     experimentname = args.experiment
-    
+    print("datasets: ", datasets)
+    print("experimentname: ", experimentname)
     # make filenames
-    print(experiments.keys())
+    if experimentname not in datasets:
+        cprint('r', f"Experiment name {experimentname:s} not found in configuration")
+        return
+    experiment = experiments[experimentname]
     input_fn = Path(
-        experiments[experimentname]['analyzeddatapath'],
-        experiments[experimentname]['directory'],
-        experiments[experimentname]["datasummaryFilename"],
+        experiment['analyzeddatapath'],
+        experiment['directory'],
+        experiment["datasummaryFilename"],
     ).with_suffix(".pkl")
-    print(experiments[experimentname])
+    print(experiment)
     output_fn = Path(
-        experiments[experimentname]['analyzeddatapath'],
-        experiments[experimentname]['directory'],
-        experiments[experimentname]["map_annotationFilename"],
+        experiment['analyzeddatapath'],
+        experiment['directory'],
+        experiment["map_annotationFilename"],
     ).with_suffix(".xlsx")
     # output_fn2 = Path(
     #     resultdisk,
@@ -259,7 +296,8 @@ def parse_database(args):
     d2keys = list(dataclasses.asdict(newd).keys())
     for k in d2.keys():
         d2[k] = newd[k]
-    d2 = do_one_disk(d, disk=experiments[experimentname]["rawdatapath"], db=d2, args=args)
+    d2 = do_one_disk(d, disk=experiment["rawdatapath"], directory=experiment["directory"], 
+                     experiment = experiment, db=d2, args=args)
 
     print("Writing: ", output_fn)
     EXC = write_excel_sheet.ColorExcel()
