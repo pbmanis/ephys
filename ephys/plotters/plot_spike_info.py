@@ -2933,7 +2933,7 @@ class PlotSpikeInfo(QObject):
         # as they will have partial data that is being "rescued" and should NOT be excluded.
         # for the same cell and protocol!
 
-        if len(self.experiment["excludeIVs"]) == 0:
+        if self.experiment["excludeIVs"] is None or len(self.experiment["excludeIVs"]) == 0:
             return df
         re_check_all = re.compile(r"All", re.IGNORECASE)
         re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
