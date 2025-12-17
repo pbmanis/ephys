@@ -1187,35 +1187,35 @@ class acq4_reader:
         self.LED_sample_rate = []
         light_device_name = "LED-Blue"
         if "LED-Blue" not in list(supindex["."]["devices"].keys()):
-            # try substitute with Laser-Blue-raw (was sometimes used when LED was being used instead)
-            if "Laser-Blue-raw" in list(supindex["."]["devices"].keys()):
-                print("LED-Blue not in device list, but Laser-Blue-raw is")
-                light_device_name = "Laser-Blue-raw"
-            else:
-                # print(f"LED-BLue not in device list: {list(supindex['.']['devices'].keys())!s}")
-                return False
-        if light_device_name == "Laser-Blue-raw":
-            # fake it by getting the data from the stated device
-            self.getLaserBlueTimes()
-            self.LEDTimes = self.LaserBlueTimes
-            for i, d in enumerate(dirs):
-                fn = Path(d, f"{light_device_name:s}.ma")
-                if not fn.is_file():
-                    print(" acq4_reader.getLEDCommand, File not found: ", fn)
-                    return False
-                lbr = EM.MetaArray(file=fn)
-                info = lbr[0].infoCopy()
-                # print("LBT daq info: ", info[1]["DAQ"])
-                try:
-                    sr = info[1]["DAQ"]["Shutter"]["rate"] / info[1]["DAQ"]["Shutter"]["downsampling"]
-                except:
-                    raise ValueError(
-                        f"Info keys for LED/laser is missing requested DAQ.samplerate: {info[1]['DAQ'].keys()!s}"
-                    )
-                self.LED_sample_rate.append(sr)
-                self.LED_Raw.append(lbr.view(np.ndarray)[0])  # shutter
-                self.LED_time_base.append(lbr.xvals("Time"))
-            return True
+            # # try substitute with Laser-Blue-raw (was sometimes used when LED was being used instead)
+            # if "Laser-Blue-raw" in list(supindex["."]["devices"].keys()):
+            #     print("LED-Blue not in device list, but Laser-Blue-raw is")
+            #     light_device_name = "Laser-Blue-raw"
+            # else:
+            #     # print(f"LED-BLue not in device list: {list(supindex['.']['devices'].keys())!s}")
+               return False
+        # if light_device_name == "Laser-Blue-raw":
+        #     # fake it by getting the data from the stated device
+        #     self.getLaserBlueTimes()
+        #     self.LEDTimes = self.LaserBlueTimes
+        #     for i, d in enumerate(dirs):
+        #         fn = Path(d, f"{light_device_name:s}.ma")
+        #         if not fn.is_file():
+        #             print(" acq4_reader.getLEDCommand, File not found: ", fn)
+        #             return False
+        #         lbr = EM.MetaArray(file=fn)
+        #         info = lbr[0].infoCopy()
+        #         # print("LBT daq info: ", info[1]["DAQ"])
+        #         try:
+        #             sr = info[1]["DAQ"]["Shutter"]["rate"] / info[1]["DAQ"]["Shutter"]["downsampling"]
+        #         except:
+        #             raise ValueError(
+        #                 f"Info keys for LED/laser is missing requested DAQ.samplerate: {info[1]['DAQ'].keys()!s}"
+        #             )
+        #         self.LED_sample_rate.append(sr)
+        #         self.LED_Raw.append(lbr.view(np.ndarray)[0])  # shutter
+        #         self.LED_time_base.append(lbr.xvals("Time"))
+        #     return True
     
 
         stimuli = supindex["."]["devices"][light_device_name]["channels"]["Command"]
