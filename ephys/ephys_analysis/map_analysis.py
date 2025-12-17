@@ -243,6 +243,9 @@ class MAP_Analysis(Analysis):
         #                         tasker.results[allprots["Maps"][x]] = result
         # then dive right in .
         if self.recalculate_events:  # save the recalculated events to the events file
+            eventdir = Path(picklefilename).parent
+            if not eventdir.is_dir():
+                eventdir.mkdir(parents=True, exist_ok=True)
             CP.cprint("g", f"    Recalculated Events written to :  {str(picklefilename):s}")
             with open(picklefilename, "wb") as fh:
                 dill.dump(results, fh)
