@@ -261,18 +261,16 @@ class AnalyzeMap(object):
 
         # get the laser pulse times
         print("Getting laser or LED from: ", Path(protocolFilename).name)
-
-        if "laser" in str(protocolFilename) or "Laser" in str(protocolFilename):
-            self.AR.getLaserBlueTimes()
+        if self.AR.getLaserBlueTimes():
             self.Pars.LaserBlueTimes = self.AR.LaserBlueTimes
             self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
             self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
-        elif "LED" in str(protocolFilename):
-            if not self.AR.getLEDCommand():
-                return None # raise ValueError("No LED times found in protocol")
+            print("laser blue times: ", self.AR.LaserBlueTimes)
+        if self.AR.getLEDCommand():
             self.Pars.LEDTimes = self.AR.LEDTimes
             self.Pars.stimtimes['starts'] = self.AR.LEDTimes['start']
             self.Pars.stimtimes['durations'] = self.AR.LEDTimes['duration']
+            print("led times: ", self.AR.LEDTimes)
         else:
             pass
 
@@ -312,6 +310,8 @@ class AnalyzeMap(object):
         ]
 
         if self.Pars.stimtimes is not None:
+            # print(self.Pars.stimtimes)
+            # raise ValueError("stimtimes for your examination")
             self.Pars.twin_base = [
                 0.0,
                 self.Pars.stimtimes["starts"][0] - self.Pars.time_zero,
