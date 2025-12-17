@@ -131,6 +131,7 @@ make_map_annotations = "ephys.tools.make_xls_map:main"
 plotmaps = "ephys.tools.plot_maps:main"
 mapevent_analyzer = "ephys.tools.mapevent_analyzer:main"
 make_coding_sheet = "ephys.tools.make_coding_sheet:main"
+find_pharmacology = "ephys.tools.find_pharmacology:main"
 
 [project.gui-scripts]
 bridge = "ephys.tools.bridge:main_gui"
