@@ -259,7 +259,7 @@ class MiniAnalyses:
                 LPF=self.filters.LPF_frequency,
                 samplefreq=1.0 / self.dt_seconds,
                 NPole=4,
-                filtertype="low",
+                filtertype="lowpass",
             )
         elif self.filters.LPF_type == "sos":
             fdata = dfilt.SignalFilterLPF_SOS(
