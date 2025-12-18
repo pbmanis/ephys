@@ -105,7 +105,7 @@ def SignalFilter_LPFBessel(signal, LPF, samplefreq, NPole=8, filtertype="low", r
             Filtered version of the input signal
     """
     assert NOTRAP
-    assert filtertype in ["low", "high"]
+    assert filtertype in ["lowpass", "highpass"]
     flpf = float(LPF)
     sf = float(samplefreq)
     wn = flpf/(sf/2.0)
