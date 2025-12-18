@@ -42,7 +42,10 @@ def look_for_mosaic_file(protodir: Path) -> [Union[Path, None]]:
     """
     re_mosaic = re.compile(r"^(?P<date>(\d{4})\.(\d{2})\.(\d{2}))[\._]{1}(?P<slice>S(\d+))[\.]{0,1}(?P<cell>C(\d+))\.mosaic$", re.IGNORECASE)
         # print(protodir)
-    if not protodir.name.startswith("cell_"):
+    pdir = protodir
+    while not pdir.name.startswith("cell_"):
+        pdir = pdir.parent
+    if not pdir.name.startswith("cell_"):
         raise ValueError(
             f"Looking for mosaic file: need to start with cell. Got invalid cell path name: {protodir.name}"
         )
