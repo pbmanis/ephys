@@ -280,7 +280,6 @@ class PlotMapData:
         self.Pars = pars
         self.Data = data
         self.MA = minianalyzer
-        self.Data.timebase = None
         self.dt = None
         if self.MA is not None and hasattr(self.MA, "timebase"):  # try to get the time base
             self.Data.timebase = self.MA.timebase
@@ -288,6 +287,7 @@ class PlotMapData:
         else:  # defer, but try to get a dt value if passed.
             if dt is not None:
                 self.dt = dt
+        assert self.Data.timebase is not None
 
     def set_experiment(self, experiment: dict):
         self.experiment = experiment
@@ -1066,12 +1066,54 @@ class PlotMapData:
         tpre: float = 0.0,
         n_taus: int = 1,
         zscore_threshold: Union[float, None] = None,
+        prior_fits: Union[dict, None] = None,
         plot_minmax: Union[list, None] = None,  # put bounds on amplitude of events that are plotted
         ax: Union[mpl.axes, None] = None,
         scale: float = 1.0,
         label: str = "pA",
         rasterized: bool = False,
     ) -> tuple:
+        """plot_event_traces _summary_
+
+        Parameters
+        ----------
+        evtype : str
+            _description_
+        mdata : np.ndarray
+            _description_
+        trace_tb : np.ndarray
+            _description_
+        datatype : str
+            _description_
+        results : dict
+            _description_
+        tpre : float, optional
+            _description_, by default 0.0
+        n_taus : int, optional
+            _description_, by default 1
+        zscore_threshold : Union[float, None], optional
+            _description_, by default None
+        prior_fits : Union[dict, None], optional
+            _description_, by default None
+        plot_minmax : Union[list, None], optional
+            _description_, by default None
+        scale : float, optional
+            _description_, by default 1.0
+        label : str, optional
+            _description_, by default "pA"
+        rasterized : bool, optional
+            _description_, by default False
+
+        Returns
+        -------
+        tuple
+            _description_
+
+        Raises
+        ------
+        ValueError
+            _description_
+        """
         # ensure we don't plot more than once...
         # modified so that events that are "positive" (meaning the detection picked uip
         # an event that was on a + baseline...) are removed from the plot.
@@ -1081,6 +1123,7 @@ class PlotMapData:
         # CP.cprint('y', f"start avgevent plot for  {evtype:s}, ax={str(ax):s}")
         # assert not self.plotted_em['avgevents']
         # print("results: ", results)
+        assert trace_tb is not None
 
         events = results["events"]
         if self.plotted_em["avgax"][0] == 0:
@@ -1099,6 +1142,8 @@ class PlotMapData:
                 "r",
                 f"[plot_avgevent_traces]:: evtype: {evtype:s}. No events, no axis, or no time base",
             )
+
+            print("trace_tb: ", trace_tb)
             return
         nevtimes = 0
         linetypes = {
@@ -1130,36 +1175,44 @@ class PlotMapData:
             plot_minmax,
             " zscore_threshold= ",
             zscore_threshold,
+            "prior_fits = ", prior_fits is not None
         )
 
-        self.fitting_results = self.compute_event_fits(
-            event_data={
-                "event_type": evtype,
-                "datatype": datatype,
-                "mdata": mdata,
-                "events": events,
-            },
-            params={
-                "zscore_threshold": zscore_threshold,
-                "scale": scale,
-                "linetypes": linetypes,
-                "plot_minmax": plot_minmax,
-                "tpre": tpre,
-                "n_taus": n_taus,
-                "max_absolute_baseline_slope": 20.0,  # pA/msec
-            },
-            results=results,
-            datahist=datahist,
-            Pars=self.Pars,
-            MA=self.MA,
-            ax=ax,
-        )
+        if prior_fits is None:
+            self.fitting_results = self.compute_event_fits(
+                event_data={
+                    "event_type": evtype,
+                    "datatype": datatype,
+                    "mdata": mdata,
+                    "events": events,
+                },
+                params={
+                    "zscore_threshold": zscore_threshold,
+                    "scale": scale,
+                    "linetypes": linetypes,
+                    "plot_minmax": plot_minmax,
+                    "tpre": tpre,
+                    "n_taus": n_taus,
+                    "max_absolute_baseline_slope": 20.0,  # pA/msec
+                },
+                results=results,
+                datahist=datahist,
+                Pars=self.Pars,
+                MA=self.MA,
+                ax=ax,
+            )
+        else:
+            print("evtype: ", evtype)
+            if evtype in ['avgevoked']:
+                self.fitting_results = prior_fits["Evoked"]
+            elif evtype in ['avgspont']:
+                self.fitting_results = prior_fits["Spont"]
 
         # if self.Pars.sign == -1:
         #     amp = np.min(bfit)
         # else:
         #     amp = np.max(bfit)
-
+        print(self.fitting_results.keys())
         if self.fitting_results is not None:
             if self.fitting_results["bestfit"] is None or self.fitting_results["avedat"] is None:
                 return None
@@ -1266,6 +1319,7 @@ class PlotMapData:
                 weight="normal",
                 font="Arial",
             )
+        return
 
     def plot_average_traces(
         self,
@@ -1873,6 +1927,8 @@ class PlotMapData:
             )
         return True
 
+
+
     def display_one_map(
         self,
         dataset: str,  # typically is the map directory
@@ -1881,6 +1937,7 @@ class PlotMapData:
         rotation: float = 0.0,
         measuretype: str = None,
         zscore_threshold: Union[float, None] = None,
+        prior_fits: Union[dict, None] = None,
         plotevents=True,
         rasterized: bool = False,
         whichstim: int = -1,
@@ -1894,6 +1951,7 @@ class PlotMapData:
         cal_height: Union[float, None] = None,
         celltype: str = "",
     ) -> bool:
+        assert self.Data.timebase is not None, "No time base in data for plotting map data"
         if results is None or self.Pars.datatype is None:
             CP.cprint("r", f"NO Results in the call, from {dataset.name:s}")
             return
@@ -1910,6 +1968,7 @@ class PlotMapData:
             ("_VC" in str(dataset.name))
             or ("_Vc" in str(dataset.name))
             or ("VGAT_5ms" in str(dataset.name))
+            or ("VGAT_20ms" in str(dataset.name))
             or ("_WCChR2" in str(dataset.name))
             or (self.Pars.datatype in ("V", "VC"))
         ):
@@ -2264,18 +2323,20 @@ class PlotMapData:
             if zscore_threshold is not None:
                 zs = np.max(np.array(results["ZScore"]), axis=0)
                 i_zscore = np.where(zs > zscore_threshold)[0]
-                plotable = self.Data.data_clean.squeeze()[i_zscore, :]
-                plotable = plotable[:, :itmax]
-                if plot_minmax is not None:
-                    iplot = np.where(
-                        (np.min(plotable, axis=1) > plot_minmax[0])
-                        & (np.max(plotable, axis=1) < plot_minmax[1])
-                    )[0]
-                    plotable = plotable[iplot, :]
-                    print(
-                        f"plotMapData:DisplayOneMap:publication mode: Averaging {len(iplot):d} traces, min/max = ",
-                        plot_minmax,
-                    )
+                plotable = []
+                if self.Data.data_clean is not None:
+                    plotable = self.Data.data_clean.squeeze()[i_zscore, :]
+                    plotable = plotable[:, :itmax]
+                    if plot_minmax is not None:
+                        iplot = np.where(
+                            (np.min(plotable, axis=1) > plot_minmax[0])
+                            & (np.max(plotable, axis=1) < plot_minmax[1])
+                        )[0]
+                        plotable = plotable[iplot, :]
+                        print(
+                            f"plotMapData:DisplayOneMap:publication mode: Averaging {len(iplot):d} traces, min/max = ",
+                            plot_minmax,
+                        )
                 if len(plotable) > 0:
                     d = np.mean(plotable, axis=0)
                     self.P.axdict[trace_panel].plot(
@@ -2323,13 +2384,25 @@ class PlotMapData:
         #     scale=[1e-3, 1e-12],
         #     unitNames={"x": 'pA', "y": 'ms'})
 
+        # print(self.Data)
+        mdata = self.Data.data_clean
+        tb = self.Data.timebase
+        if prior_fits is not None:
+            mdata = prior_fits['Evoked']['aved']
+            # print('data shape: ', mdata.shape)
+            # print('or : ', prior_fits['Evoked']['aved'].shape)
+            tb = prior_fits['Evoked']['tb']
+            # print(prior_fits['Evoked'].keys())
+            # print(mdata)
+
         self.plot_event_traces(
             evtype="avgevoked",
-            mdata=self.Data.data_clean,
-            trace_tb=self.Data.timebase,
+            mdata=mdata,
+            trace_tb=tb,
             datatype=datatype,
             ax=self.P.axdict[evoked_panel],
             results=results,
+            prior_fits=prior_fits,
             tpre=self.Pars.template_pre_time,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
@@ -2337,16 +2410,24 @@ class PlotMapData:
             label=label,
             rasterized=rasterized,
         )
-        # now grab the fit results and save them to the events file.
+        # now grab the fit results
         self.evoked_events = self.fitting_results
+        print("evoked fitting results: ", self.evoked_events.keys())
+
+        if prior_fits is not None:
+            mdata = prior_fits['Spont']['aved']
+            tb = prior_fits['Spont']['tb']
+            print(prior_fits['Spont'].keys())
+            print(mdata)
 
         self.plot_event_traces(
             evtype="avgspont",
-            mdata=self.Data.data_clean,
-            trace_tb=self.Data.timebase,
+            mdata=mdata,
+            trace_tb=tb,
             datatype=datatype,
             ax=self.P.axdict[spont_panel],
             results=results,
+            prior_fits=prior_fits,
             tpre=self.Pars.template_pre_time,
             zscore_threshold=zscore_threshold,
             plot_minmax=plot_minmax,
