@@ -1,25 +1,126 @@
 EPHYS: Acq4 Data Processing GUI and Pipeline
-=====================================
+============================================
 
 
 Installation
 ------------
+Ephys is meant to be used as an imported module from other scripts, or through the GUI interface. To this end,
+it is best to install ephys into a separate Python environment.
 
-Ephys requires Python 3 (currently, 3.11) and is best run in a separate Python environment. All of the requirements are listed in the 'requirements_local.txt' file,
+Ephys requires Python 3 (currently, 3.13.7)All of the requirements are listed in the 'pyproject.toml' file,
 and the environment can be built using the 'make_env.sh' script. This script will create a new environment called 'ephys_venv' and install all of the required packages.
 
+WE use uv to mange the environment for ephys.
+
 Mac OS or Linux:
+    uv .venv python=3.13.7
+    source .venv/bin/activate
+    uv sync  # populate the .venv based on the pyproject.toml file.
+    uv build  # build a wheel - you can just import this instead of importing the source directory in editable mode.
 
-To build the enviromnent:
-
-./make_env.sh
 
 To make the environment active, use the command:
 
-    source ephys_venv/bin/activate
+    source .venv/bin/activate
 
 or make an alias on the commandline to activate the environment.
 
+
+Building an analysis project
+=============================
+
+Building an analysis project involves creating a separate python project directory that holds specific scripts,
+data files, and output files. These directories can be created as follows:
+
+In the parent directory of where you want the project:
+
+  uv init projectname python=3.13.7
+  cd projectname
+  source .venv/bin/activate
+
+  Edit the pyroject.toml file to include ephys as a dependency. For example,
+  fill out the project file as follows (example for a project called 'vgat'),
+  changing the directories as needed.
+
+
+```
+[build-system]
+requires = ["setuptools>=70", "setuptools-scm", "wheel", "hatchling", "numpy>=2.3.0", "Cython>=3.0"]
+build-backend = "hatchling.build" #"setuptools.build_meta"
+
+
+[project]
+name = "vgat"
+version = "0.1.0"
+description = "Analysis of the VGAT mapping data"
+readme = "README.md"
+requires-python = ">=3.13.7"
+url='http://github.com/pbmanis/mrk_nf107'
+author='Paul B. Manis'
+author_email='pmanis@med.unc.edu'
+license='MIT'
+
+
+dependencies = [
+    "ephys",
+    "pylibrary",
+]
+classifiers = [
+"Programming Language :: Python :: 3.13",
+"Development Status :: 4 - Beta",
+"Environment :: Console",
+"Intended Audience :: Science/Research",
+"Operating System :: OS Independent",
+"Topic :: Scientific/Engineering",
+
+]
+
+[project.scripts]
+# mapevent_analyzer='src.mapevent_analyzer:main'
+
+[project.gui-scripts]
+
+
+[tool.uv.sources]
+# cnmodel = {path = "/Users/pbmanis/Desktop/Python/cnmodel", editable=true} # dist/cnmodel-0.58.22-py3-none-any.whl"}
+ephys = {path = "/Users/pbmanis/Desktop/Python/ephys", editable = true}
+# ephys = {path = "/Users/pbmanis/Desktop/Python/ephys/dist/ephys-0.8.3.1-py3-none-any.whl"}
+# vcnmodel = {path = "/Users/pbmanis/Desktop/Python/vcnmodel", editable = true}
+# neuronvis = {path = "/Users/pbmanis/Desktop/Python/neuronvis", editable = true}
+# montage = {path = "/Users/pbmanis/Desktop/Python/montage", editable = false}
+# neuronvis = {path = "/Users/pbmanis/Desktop/Python/neuronvis", editable = false}
+
+
+  
+[tool.setuptools.packages.find]
+include = ['src*']
+exclude = ['tests*', 'docs*', 'nb*', 'R_statistics_summaries*', 'scripts*', 
+            'src_old_code*', 'src-old_codd*', 'toml*', 'build*', 'dist*', "logs*",
+             "data_for_testing*" ]
+
+[tool.hatch.build.targets.wheel]
+      packages = ["src/*"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src*", 
+]
+[tool.setuptools.scm]
+```
+
+Then in your new project, run:
+```
+    uv sync
+```
+
+You also need a configuration file for your specific experiments. An example configuration file is provided in the ephys package
+as 'ephys/config/example_config.yaml'. Copy this file into your project directory under a "config" subdirectory,
+and edit the paths and filenames as needed. The configuration file tells ephys where to find the data, where to store output files, and various
+parameters for analysis and plotting. The file is a text file, in a specific format that uses spaces for indentation. 
+Be very careful to maintain the indentation structure when editing the file. Long lines CANNOT be broken into multiple lines.
+
+At this point, you should be able to run some of the ephys commandline scripts and gui tools. The main tool you will use at first is
+datatables, which allows you to create summary tables of your data, and then run several different analyses on specific data sets.
 
 
 Deprecated:
