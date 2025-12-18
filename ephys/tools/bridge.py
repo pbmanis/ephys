@@ -43,23 +43,6 @@ from .. import datareaders as DR
 
 cprint = CP.cprint
 
-experiments = None
-# known data dirs by experiment:
-try:
-    print("Current Directory: ", os.getcwd())
-    cpath = Path("./config", "experiments.cfg")
-    datasets, experiments = get_config.get_configuration(cpath)
-    print("Datasets in current experiment configuration: ", experiments.keys())
-
-
-except FileNotFoundError:
-    # no valid configuration file found
-    raise FileNotFoundError(
-        "No valid configuration file found. Please check the path to the configuration file, which should be config/experiments.cfg"
-    )
-
-
-pg.setConfigOption("antialias", True)
 
 # To make slider handle bigger:
 sliderStyle = """ 
@@ -102,7 +85,7 @@ class Bridge:
     Writes out to the database
     """
 
-    def __init__(self, args, *kwargs):
+    def __init__(self, experiments,  args, *kwargs):
         if args.experiment in experiments.keys():
             self.experiment = experiments[args.experiment]
         else:
@@ -767,6 +750,7 @@ class Slider(pg.Qt.QtWidgets.QWidget):
         )
 
 
+
 def main_gui():
     parser = argparse.ArgumentParser(
         description="""Bridge balance correction tool.
@@ -806,8 +790,25 @@ def main_gui():
     )
 
     args = parser.parse_args()
+    experiments = None
+    # known data dirs by experiment:
+    try:
+        print("Current Directory: ", os.getcwd())
+        cpath = Path("./config", "experiments.cfg")
+        datasets, experiments = get_config.get_configuration(cpath)
+        print("Datasets in current experiment configuration: ", experiments.keys())
 
-    BR = Bridge(args)
+
+    except FileNotFoundError:
+        # no valid configuration file found
+        raise FileNotFoundError(
+            "No valid configuration file found. Please check the path to the configuration file, which should be config/experiments.cfg"
+        )
+
+
+    pg.setConfigOption("antialias", True)
+
+    BR = Bridge(experiments=experiments, args=args)
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
 
