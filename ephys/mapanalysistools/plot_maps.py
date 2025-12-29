@@ -50,8 +50,6 @@ class ScannerInfo(object):
         self.AR = AR  # save the acq4_reader instance for access to the data
         self.AR.getScannerPositions()
         self.scanner_positions = np.array(self.AR.scanner_positions)
-        print("camera data: self.AR.scanner_camera.keys(): ", self.AR.scanner_camera.keys())
-        print("scanner positions shape: ", self.scanner_positions.shape)
         if len(self.AR.scanner_camera.keys()) > 0:
             pos = self.AR.scanner_camera['frames.ma']['transform']['pos']
             scale = self.AR.scanner_camera['frames.ma']['transform']['scale']
@@ -133,11 +131,11 @@ class PlotMaps(object):
         self.cell = Path(cell)
         if not self.cell.is_dir():
             print(f"Did not find directory: {str(cell):s}")
-            raise ValueError
+            raise FileNotFoundError(f"Did not find directory: {str(cell):s}")
         if image is not None:
             self.image = Path(self.cell, image)
-            print(self.image)
-            print(self.cell)
+            # print(self.image)
+            # print(self.cell)
             self.image_data = self.AR.getImage(self.image)
         else:
             self.image = None
@@ -152,8 +150,7 @@ class PlotMaps(object):
          self.ylim = (y0, y1)
          if not pd.isnull(x0):
              self.window = True
-            #  print('window set!!!!!')
-         else:
+        else:
             self.window = False
     
     def setOutputFile(self, filename):
@@ -188,19 +185,15 @@ class PlotMaps(object):
         """
         Plot map or superimposed maps...
         """
-        print('plot_maps')
         if figure is None:
             self.figure = mpl.figure()
-            # print(dir(self.figure))
             self.figure.set_size_inches(14., 8.)
             if traces is None:
                 self.ax = self.figure.add_subplot('111')
-                print('set ax')
             else:
                 self.ax = self.figure.add_subplot('121')
                 self.ax2 = self.figure.add_subplot('122')
                 sns.despine(ax=self.ax2, left=True, bottom=True, right=True, top=True)
-                print('set ax and ax2')
         else:
             self.ax = ax
             self.ax2 = ax2
@@ -227,7 +220,6 @@ class PlotMaps(object):
         xmax = np.max(scp[:,0])
         ymin = np.min(scp[:,1])
         ymax = np.max(scp[:,1])
-        # print(xmin, ymin, xmax, ymax)
         ax.scatter(scp[:,0], scp[:,1], s=size, c=color, marker=marker, alpha=alpha, picker=5)
 
     def mapplot_traces(self, ax: object, protocols:list, linethickness:float=1.0):
@@ -305,13 +297,11 @@ class PlotMaps(object):
             extent=[np.min(self.SI.boxw[0]), np.max(self.SI.boxw[0]), np.min(self.SI.boxw[1]), np.max(self.SI.boxw[1])])
             self.cmin = SND.minimum(self.image_data)
             self.cmax = SND.maximum(self.image_data)
-        print('self.window: ', self.window)
         if self.window:
             ax.set_xlim(self.xlim)
             ax.set_ylim(self.ylim)
         self.plot_scanner_spots(ax=ax, scpos = self.SI.scanner_positions)
 
-        print('getdata: ', name, self.datasets)
         d = self.AR.getData()
         if name is not None:
             self.datasets[name] = self.AR.data_array
@@ -322,7 +312,6 @@ class PlotMaps(object):
         else:
             self.vscale = 1e-3
             self.off = self.ioff
-        # print(len(self.AR.traces))
         tb = self.AR.time_base
         im0 = np.argmin(np.fabs(tb - self.twin[0]))
         im1 = np.argmin(np.fabs(tb - self.twin[1]))
@@ -334,7 +323,6 @@ class PlotMaps(object):
         for p in range(dshape[0]): # scp.shape[0]):
             self._plot_one(ax, p, pcolor, name=name, ythick=linethickness)
         # self.plot_calbar(ax, xmin, ymin)
-        # print(dir(self.imageax))
         
     def plot_calbar(self, ax, x0, y0):
         xcal = self.xscale*3.5e-5*self.calbar[0]*1.25
@@ -358,29 +346,22 @@ class PlotMaps(object):
             calydata = self.caly_zero
             self.mx = 0
             self.my = 0
-        # print('xdata: ', calxdata)
-        # print('ydata: ', calydata)
         xd = calxdata[2] - calxdata[1]
         yd = calydata[0] - calydata[1]
         xl = sorted(self.ax.get_xlim())
         yl = sorted(self.ax.get_ylim())
-        # print(xl, yl)
         x0 = xl[0] + (movex+self.mx)*0.001*xl[1]
         y0 = yl[0] + (movey+self.my)*0.001*yl[1]
         self.calbarobj[0].set_xdata([x0, x0, x0+xd])
         self.calbarobj[0].set_ydata([y0+yd, y0, y0])
-        # print([x0, x0, x0+xd])
-       #  print([y0+yd, y0, y0])
         self.mx += movex
         self.my += movey
         
-        # print(dir(PMap.calbartext))
         # calxy = PMap.calbartext.get_position()
         calxy = [0, 0]
         calxy[0] = x0 + xl[1]*(movex+self.mx)*0.001
         calxy[1] = y0 + yl[1]*(movey+self.my)*0.001 - yl[1]*0.015
         self.calbartext.set_position(calxy)
-        print('reposition : ', movex, movey)
         
     def _plot_one(self, ax, p, pcolor, name=None, yscaleflag=True, tscale=True, offflag=True, ystep = 0., ythick=0.3):
         zero = 0.
@@ -409,8 +390,6 @@ class PlotMaps(object):
                 ax.plot(ts*np.array([t, t])+xoff,  y_scale*np.array([-20e-12, 20e-12])+yoff, color='k',  linewidth=0.8)
 
     def handle_event(self, index):
-        # print('handle event index: ', index)
-        # print(self.SI.scanner_positions[index,:])
         if self.ax2 is None:
             return
         if index in self.indicesplotted:
@@ -518,8 +497,8 @@ def main():
         if eclick.button == MBB.MouseButton.LEFT == erelease.button:
             x1, y1 = eclick.xdata, eclick.ydata
             x2, y2 = erelease.xdata, erelease.ydata
-            print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
-            print(" The button you used were: %s %s" % (eclick.button, erelease.button))
+            # print(f"Corners: {x1:.6f}, {x2:.6f}) --> {y1:.6f}, {y2:.6f})")
+            # print(" The button you used was: %s %s" % (eclick.button, erelease.button))
             PMap.XY.append([x1, y1, x2, y2])
         elif eclick.button == MBB.MouseButton.RIGHT:
             if len(PMap.XY) == 0:
@@ -537,7 +516,6 @@ def main():
         
 
     def toggle_selector(event):
-        # print(event.key, event.key in ['\x1b[A', '\x1b[B','\x1b[C','\x1b[C',])
         if event.key.lower() == 'q' and toggle_selector.RS.active:
             print(' RectangleSelector deactivated.')
             toggle_selector.RS.set_active(False)
@@ -596,13 +574,11 @@ def main():
             
 
     def plot_a_cell(cellname, cellno):
-        print(cellname, cellno)
+        print("Plotting a cell with: ", cellname, cellno)
         dc = table.loc[(table['cellname'] == cellname) & (table['cellno'] == cellno)]
         if len(dc) == 0:
-            print(cellno, isinstance(cellno, int), isinstance(cellno, str))
             print(f"Did not find cellname: {cellname:s}  with no: {cellno:d}")
             return
-        # print('cellname: ', cellname)
         cell = Path(basepath, str(dc['cellID'].values[0]), str(dc['map'].values[0]))
         image = '../' + str(dc['image'].values[0]) + '.tif'
         pars = makepars(dc)
@@ -612,7 +588,6 @@ def main():
         prots = {'ctl': cell}
 
         PMap.setProtocol(cell, image=image)
-        print('calling plot_maps')
         PMap.plot_maps(prots, linethickness=1.0)
 
     for cellname in docell:
@@ -620,10 +595,7 @@ def main():
             continue
         if args.number == '*':  # all of a type
             cs = table.loc[table['cellname'] == cellname]
-            print (cs)
             for i, indx in enumerate(cs.index):
-                print(i)
-                print(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
                 plot_a_cell(cs.iloc[i]['cellname'], cs.iloc[i]['cellno'])
                 mpl.close()
         else:
