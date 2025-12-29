@@ -1,60 +1,51 @@
 # type: ignore
 # ignore because this is incomplete code/stub
-""" Read the mosaic files, and find the markers.
+"""Read the mosaic files, and find the markers.
 DCN Mosaics.
 
 Then for each cell, compute the depth based on a line orthogonal to that reference line.
-This "standardizes" the depth measurements. 
+This "standardizes" the depth measurements.
 
 """
-import os
+import datetime
 import json
-from typing import Union
-import re
+import os
 from pathlib import Path
-import ephys.datareaders.acq4_reader as AR
-import ephys.tools.tools_plot_maps as TPM
-import ephys.mapanalysistools.get_markers as get_markers
-import pyqtgraph.configfile
+from typing import List, Union
+
 # import ephys.mapanalysistools.define_markers as define_markers
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
-import seaborn as sns
-import scipy
-import sympy
 import pint
 
-from ephys.datareaders import acq4_reader
-from ephys.ephys_analysis.analysis_common import Analysis
-from ephys.mapanalysistools import analyze_map_data
-from ephys.mini_analyses import mini_event_dataclasses as MEDC
-from ephys.tools.get_configuration import get_configuration
-import ephys.tools.configfile as CF
-from ephys.tools import data_summary
-from ephys.gui import data_table_functions as functions
-import ephys.tools.show_paraview_csv as show_paraview_csv
+import seaborn as sns
 from pylibrary.plotting import plothelpers as PH
 from pylibrary.tools import cprint as CP
+from sympy import Line, Point
 
-from sympy import Point, Line, Segment
+import ephys.datareaders.acq4_reader as AR
+import ephys.mapanalysistools.get_markers as get_markers
+import ephys.tools.configfile as CF
+import ephys.tools.show_paraview_csv as show_paraview_csv
+import ephys.tools.tools_plot_maps as TPM
+from ephys.datareaders import acq4_reader
+from ephys.ephys_analysis.analysis_common import Analysis
+from ephys.gui import data_table_functions as functions
+from ephys.mapanalysistools import analyze_map_data
+from ephys.mini_analyses import mini_event_dataclasses as MEDC
+from ephys.tools import data_summary
+from ephys.tools.get_configuration import get_configuration
 
 FUNCS = functions.Functions()
 # PP = PrettyPrinter(indent=4)
 DSUM = data_summary.DataSummary()
 UR = pint.UnitRegistry()
 
-Expt = "CBA_Age"
-datasets, experiments = get_configuration("config/experiments.cfg")
-experiment = experiments[Expt]
-# print(experiment.keys())
-# mosaic_dir = "mosaics"
-# mosaic_paths = Path(experiment["analyzeddatapath"], Expt, mosaic_dir)
-# assert mosaic_paths.exists(), f"Path {mosaic_paths} does not exist"
 
 def define_markers():
     print(os.getcwd())
-    definedMarkers = CF.readConfigFile("config/MosaicEditor.cfg")['definedMarkers']
+    definedMarkers = CF.readConfigFile("config/MosaicEditor.cfg")["definedMarkers"]
     all_markernames: list = []
     for k in definedMarkers.keys():
         all_markernames.extend([tkey for tkey in definedMarkers[k].keys()])
@@ -83,7 +74,7 @@ def define_markers():
             mark_colors[k] = "magenta"
             mark_symbols[k] = "X"
         elif k == "AN":
-            mark_colors[k] = 'r'
+            mark_colors[k] = "r"
             mark_symbols[k] = "D"
         elif k.startswith(("soma", "cell")):
             mark_colors[k] = "y"
@@ -93,7 +84,7 @@ def define_markers():
             # CP.cprint("r", f"Did not tag marker type {k:s}, using default")
             mark_colors[k] = "m"
             mark_symbols[k] = "o"
-    
+
     for c in ["soma", "cell"]:  # may not be in the list above
         if c not in mark_colors.keys():
             mark_colors[c] = "y"
@@ -116,16 +107,20 @@ class MosaicData:
         mosaic_paths = Path(self.experiment["analyzeddatapath"], self.experiment_name, mosaic_dir)
         assert mosaic_paths.exists(), f"Path {mosaic_paths} does not exist"
 
-    def get_from_original_data(self, experiment_name: str):
+    def get_from_original_data(self, experiment_name: str, level: int = 3) -> List[Path]:
         mosaic_ext = ".mosaic"
         datadir = Path(self.experiment["rawdatapath"], self.experiment["directory"])
-        print("datadir: ", datadir)
-        mosaic_files = list(datadir.rglob(f"*{mosaic_ext}"))
-        # for mf in mosaic_files:
-        #     print(str(mf.name))
-        # print(len(mosaic_files))
+        mosaic_files = list(self.get_subitems(datadir, extension=mosaic_ext, level=level))
         return mosaic_files
 
+    def get_subitems(self, folder: Path, extension: str, level: int) -> List[Path]:
+        """get_subitems Get all files with extension in subfolders
+        up to 'level' deep.
+        """
+        if level == 0:
+            return [folder]
+        pattern = "/".join(["*"] * level) + f"/*{extension}"
+        return sorted(folder.glob(pattern))
 
     def read_mosaic(self, mosaic_file):
         """read_mosaic Just get the markers and cells from the mosaic
@@ -157,27 +152,28 @@ class MosaicData:
                     rulers.append(item)
                 else:
                     pass
-                 # print("item type: ", item["type"])
+                # print("item type: ", item["type"])
         return markers, cells
 
-    def parse_transstrial(self, fullfile, ax = None):
+    def parse_transstrial(self, fullfile, ax=None):
         marker_dict = get_markers.get_markers(fullfile)
         # get the marker types and colors from a dictionary
-        definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = (
-            define_markers()
-        )
+        definedMarkers, mark_colors, mark_symbols, mark_alpha, all_markernames = define_markers()
 
         if ax is None:
-           f, ax = mpl.subplots(1, 1)
-        measures, smoothed_poly = get_markers.plot_mosaic_markers(marker_dict, axp=ax,
-                                                                  mark_colors=mark_colors,
-                                                                  mark_alpha=mark_alpha,
-                                                                  mark_symbols=mark_symbols)
+            f, ax = mpl.subplots(1, 1)
+        measures, smoothed_poly = get_markers.plot_mosaic_markers(
+            marker_dict,
+            axp=ax,
+            mark_colors=mark_colors,
+            mark_alpha=mark_alpha,
+            mark_symbols=mark_symbols,
+        )
         ax.set_aspect("equal")
         # if ax is None:
         #     mpl.show()
         return measures
-    
+
     def parse_coronal(self, markers):
         """parse_coronal _summary_
         Note we reduce to 2D as the z values are always 0.
@@ -297,7 +293,7 @@ class MosaicData:
         S = None
         if markers is None:
             return None, depths
-        
+
         if markers["name"] == "Cortex Coronal":
             refline, S, L6 = self.parse_coronal(markers["markers"])
             l6c = self.convert_line(L6)
@@ -380,7 +376,7 @@ class MosaicData:
 
         if markers is None:
             return None, depths
-     
+
         if markers["name"] == "DCN Transstrial":
             self.parse_transstrial(markers["markers"])
         depths["type"] = markers["name"]
@@ -415,7 +411,6 @@ class MosaicData:
                 print(cell["name"], "No intersection")
                 # depths.append(np.nan)
         return "OK", depths
-
 
     def plot_references_and_cells(self, ax, depths, date=None):
         ax.axis("equal")
@@ -526,12 +521,12 @@ class MosaicData:
                     continue
                 if cell_cell not in self.mosaic_data[mosaic_file]["depths"]["depths"].keys():
                     continue
-                datasummary.loc[index, "cell_depth"] = float(self.mosaic_data[mosaic_file]["depths"][
-                    "depths"
-                ][cell_cell])
-                datasummary.loc[index, "normalized_depth"] = float(self.mosaic_data[mosaic_file][
-                    "depths"
-                ]["normalized_depths"][cell_cell])
+                datasummary.loc[index, "cell_depth"] = float(
+                    self.mosaic_data[mosaic_file]["depths"]["depths"][cell_cell]
+                )
+                datasummary.loc[index, "normalized_depth"] = float(
+                    self.mosaic_data[mosaic_file]["depths"]["normalized_depths"][cell_cell]
+                )
                 datasummary.loc[index, "mosaic_file"] = Path(mosaic_file).name
 
                 coding = coding._append(
@@ -586,10 +581,65 @@ class MosaicData:
         mpl.show()
 
 
-if __name__ == "__main__":
+def find_mosiaic_files(
+    experiment_name: str, level: int = 2, mosaic_file: Path = None
+) -> pd.DataFrame:
+    assert level in [1, 2, 3, 4]
+    if experiment_name is None:
+        experiment_name = "NF107Ai32_Het"
+    if mosaic_file is None:
+        mosaic_file = Path(
+            "/Volumes/Pegasus_002/ManisLab_Data3/NF107Ai32_Het/2012.12.21_000/slice_000/cell_000/2017.12.21.S0C0.mosaic"
+        )
+    MOS = MosaicData(experiment_name)
+    print("MOS.experiment_name: ", MOS.experiment_name)
+    levelname = {
+        1: "Day Level Mosaics",
+        2: "Slice Level Mosaics",
+        3: "Cell Level Mosaics",
+        4: "Protocol level mosaics",
+    }
+
+    print(f"{levelname[level]}")
+    fn = []
+    ct = []
+    ts = []
+    mfiles = MOS.get_from_original_data(experiment_name, level=level)
+    for i, mfile in enumerate(mfiles):
+        ctime = mfile.stat().st_ctime
+        time_str = datetime.datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+        fn.append("/".join(mfile.parts[-4:]))
+        ct.append(ctime)
+        ts.append(time_str)
+    df = pd.DataFrame({"filename": fn, "ctime": ct, "time_str": ts})
+    df = df.sort_values(by="ctime")
+
+    return df
+
+
+def get_markers_from_file(experiment_name: str = None, levels:list = [2,3], mosaic_file: Path = None):
+    if experiment_name is None:
+        experiment_name = "NF107Ai32_Het"
+    if mosaic_file is None:
+        mosaic_file = Path(
+            "/Volumes/Pegasus_002/ManisLab_Data3/NF107Ai32_Het/2012.12.21_000/slice_000/cell_000/2017.12.21.S0C0.mosaic"
+        )
+    MOS = MosaicData(experiment_name)
+    print("MOS.experiment_name: ", MOS.experiment_name)
+    for level in levels:
+        df = find_mosiaic_files(experiment_name, level=level, mosaic_file=mosaic_file)
+        for i, row in df.iterrows():
+            print(f"#{i:3d}: {row['filename']} {row['time_str']}")
+
+
+def main():
 
     need_update = False
     experiment_name = "CBA_Age"
+    Expt = "CBA_Age"
+    datasets, experiments = get_configuration("config/experiments.cfg")
+    experiment = experiments[Expt]
+
     # experiment_name = "GlyT2_NIHL"
     MOS = MosaicData(experiment_name)
     print("MOS.experiment_name: ", MOS.experiment_name)
@@ -598,13 +648,19 @@ if __name__ == "__main__":
     # for f in mfiles:
     #     print(f.name)
 
-
-    relevant_files = ["2023.11.10.S0.mosaic", "2023.11.10.S1.mosaic", "2024.01.12.s2.mosaic",
-                      "2024.05.07.s0.mosaic", "2024.05.07.s2.mosaic", "2024.05.16.S2.mosaic",
-                      "2024.07.29.S2.mosaic", "2024.08.21.S1.mosaic", ]
+    relevant_files = [
+        "2023.11.10.S0.mosaic",
+        "2023.11.10.S1.mosaic",
+        "2024.01.12.s2.mosaic",
+        "2024.05.07.s0.mosaic",
+        "2024.05.07.s2.mosaic",
+        "2024.05.16.S2.mosaic",
+        "2024.07.29.S2.mosaic",
+        "2024.08.21.S1.mosaic",
+    ]
     # relevant_files = ["2024.12.17.s0.mosaic"]
     mfiles = set(mfiles)
-    fig, ax = mpl.subplots(3,3, figsize=(12, 12))
+    fig, ax = mpl.subplots(3, 3, figsize=(12, 12))
     ax = np.ravel(ax)
     n = 0
     measures = []
@@ -626,10 +682,20 @@ if __name__ == "__main__":
     mpl.tight_layout()
     ms = f"{measures!s}"
     print(ms)
-    
+
     mpl.show()
 
 
+if __name__ == "__main__":
+
+    d = get_markers_from_file(
+        "NF107Ai32_Het",
+        levels=[2,3],
+        mosaic_file=Path(
+            "/Volumes/Pegasus_002/ManisLab_Data3/NF107Ai32_Het/2012.12.21_000/slice_000/cell_000/2017.12.21.S0C0.mosaic"
+        ),
+    )
+    # main()
 
     # for m in markers['markers']:
     #     print(m)
@@ -640,8 +706,8 @@ if __name__ == "__main__":
     #     print("updating mosaic information to datasummary")
     #     df, datasummary = MOS.evaluate_depths(MOS.experiment)
     #     need_update = True
-    # outpath = Path(MOS.experiment['analyzeddatapath'], 
-    #                                   experiment_name, 
+    # outpath = Path(MOS.experiment['analyzeddatapath'],
+    #                                   experiment_name,
     #                                   MOS.experiment['datasummaryFilename'])
     # if need_update:
     #     datasummary.to_pickle(outpath)
@@ -665,7 +731,7 @@ if __name__ == "__main__":
     # df.dropna(subset=['normalized_depth', 'cell_layer', 'strain'], ignore_index=True, inplace=True)
 
     # print(df['normalized_depth'])
-    # sns.displot(data=df, 
+    # sns.displot(data=df,
     #             x="normalized_depth", hue="cell_layer", multiple="stack")
 
     # f, ax = mpl.subplots(1, 1)
