@@ -70,6 +70,10 @@ defined_markers = {}
 defined_markers["soma"] = MarkerGroup(name="soma", markers=[
     Marker(name="soma", short_name="Soma", coordinates=[(0, 0)], group="point", connections=(None, None)),
 ])
+defined_markers["Markers"] = MarkerGroup(name="Markers", markers=[
+    Marker(name="surface", short_name="S", coordinates=[(0, 0)], group="point", connections=(None, None)),
+    Marker(name="medialboundary", short_name="D", coordinates=[(0, -100e-6)], group="point", connections=(None, None)),
+])
 defined_markers['DCN_Transstrial'] = MarkerGroup(name="DCN_Transstrial", markers=[
     Marker(name="caudalborder", short_name="CB", coordinates=[(-120e-6, -200e-6)], group="border", order=0, connections=("AN_Notch2", "caudalborder")),
     Marker(name="caudalsurface", short_name="CS", coordinates=[(75e-6, -75e-6)], group="surface", order=1, connections=("caudalborder", "caudalsurface")),
