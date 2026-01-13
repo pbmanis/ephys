@@ -33,6 +33,10 @@ from ephys.tools import get_configuration
 from lmfit import Model
 from matplotlib.backends.backend_pdf import PdfPages
 from pylibrary.plotting import plothelpers as PH
+from pylibrary.tools import cprint
+
+CP = cprint.cprint
+
 
 @dataclass
 class fitResults:
@@ -42,6 +46,7 @@ class fitResults:
     amp2: float = np.nan
     dc: float = np.nan
     fits: list[object] = field(default_factory=list)
+
 
 @dataclass
 class CellData:
@@ -172,6 +177,7 @@ def get_spikedata(
     latencies = []
     values = []
     ss_values = []
+    ss_latency = []
     for j, sn in enumerate(spike_trace):  # for each spike in the trace
         if spike_trace[sn].__getattribute__(measure) is None:  # no spikes
             continue
@@ -187,22 +193,20 @@ def get_spikedata(
         latencies.append(latency)
         if latency >= window[0] and latency <= window[1]:  # only accumulate in the ss window
             ss_values.append(value)
-    ss_mean = np.nanmean(ss_values)
+            ss_latency.append(latency)
     values = np.array(values)
     latencies = np.array(latencies)
-    return latencies, values, ss_mean
+    ss_values = np.array(ss_values)
+    ss_latency = np.array(ss_latency)
+    return latencies, values, ss_values, ss_latency
 
 
 def fit_spike_measures(
     d,
     measure: str,
-    rate_limits: list,
-    protocol_start_times: dict,
-    durations: dict,
-    junction_potential: float,
     experiment: dict,
     window: list = [0.4, 0.5],
-) -> tuple[list, list, dataclass, list, float]:
+) -> dict:
     """fit_spike_measures Fit the time course of the spike measure changes through
         the stimulus duration.
         Plots the time course of the halfwidths, dv/dt rise and fall, and AP threshold
@@ -231,7 +235,7 @@ def fit_spike_measures(
 
         Returns
         -------
-        tr_latency, tr_values, fit_values, ss_values, sign 
+        dictionary with : tr_latency, tr_values, fit_values, ss_values, sign
     """
     verbose = False
 
@@ -242,7 +246,9 @@ def fit_spike_measures(
         "dvdt_falling",
         "AP_begin_V",
     ], f"Invalid measure name: {measure}"
-    assert d['Spikes'] is not None, "No spike data found in the data structure" 
+    if d["Spikes"] is None:
+        print("No spike data found in the data structure")
+        return None
     sign = 1.0
     if measure in ["dvdt_falling", "AP_begin_V"]:
         sign = -1.0
@@ -260,19 +266,33 @@ def fit_spike_measures(
         exclusions=experiment["excludeIVs"],
         allivs=ivs,
     )
+    if len(validivs) == 0:
+        print("No valid IV protocols found for fitting.")
+        return None
+    # get parameters from the experiment dict
+    protocol_start_times = experiment["Protocol_start_times"]
+    durations = experiment["protocol_durations"]
+    rate_limits = experiment["spike_rate_limits"]  # firing rate limits for inclusion, Hz.
+    junction_potential = experiment["junction_potential"] * 1e-3  # convert to Volts
 
     ss_values = {}
+    ss_latency = {}
+    ss_latency_array = {}
+    ss_values_array = {}
     fit_values = {}
     tr_latency = {}
     tr_latency_array = {}
     tr_values = {}
     tr_values_array = {}
     # first run through the protocols (top level)
+    validivs = [iv for iv in ivs if iv in validivs if iv not in experiment.get("exclude_steady_state_spike_shapeIVs", [])]
+    print("        Valid IV protocols for fitting: ", validivs)
     for ip, pn in enumerate(validivs):
         ivs = d["IV"][prots[ip]]
         spike_traces = d["Spikes"][prots[ip]]["spikes"]
         pname = str(Path(pn).name)
-        ss_values[pname] = np.nan
+        ss_values[pname] = []
+        ss_latency[pname] = []
         fit_values[pname] = []
         tr_latency[pname] = []
         tr_values[pname] = []
@@ -281,58 +301,75 @@ def fit_spike_measures(
         else:
             start_time = 0
 
+
         if pname[:-4] in durations:
             dur = durations[pname[:-4]]
         else:
             dur = None
+
             continue
 
         # within each protocol, go through the traces with spikes
         # and get the values
-        ss_trace = []
         for i, spike_trace in enumerate(spike_traces):
-            latencies, values, ssvalues = get_spikedata(
+            latencies, values, ssvalues, sslatency = get_spikedata(
                 spike_traces[spike_trace], measure, start_time, window, junction_potential
             )
-            if len(latencies) < 2:  # need at least 2 spikes to compute rate
+            if len(sslatency) < 2:  # need at least 2 spikes to compute rate
                 continue
-            mean_spike_rate = (1 / np.diff(latencies)).mean()  # firing rate in Hz
+            mean_spike_rate = (1 / np.diff(sslatency)).mean()  # firing rate in Hz
             if mean_spike_rate < rate_limits[0] or mean_spike_rate > rate_limits[1]:
                 continue  # skip traces outside the rate limits
             tr_latency[pname].append(latencies)
             tr_values[pname].append(values)
-            ss_trace.append(ssvalues)  # get the mean steady-state values for this protocol
+            ss_values[pname].append(ssvalues)  # get the mean steady-state values for this protocol
+            ss_latency[pname].append(sslatency)
             # and get fits to rising exponential
         #  prepare fitting with double-exponential : ONE for each protocol (average spike data across traces)
         try:
             tr_latency_array[pname] = np.concatenate(tr_latency[pname])
+            ss_latency_array[pname] = np.concatenate(ss_latency[pname])
+            ss_values_array[pname] = np.concatenate(ss_values[pname])
         except ValueError:
-            print("No valid spikes found for protocol ", pname)
-            print("tr_latency[pname]: ", tr_latency[pname])
+            CP("m", f"        No valid spikes found for protocol {pname}")
+            CP("m", f"        tr_latency[pname]: {tr_latency[pname]}")
             continue
-        mean_ss_rate = np.mean(1.0 / np.diff(tr_latency_array[pname]))
+        mean_ss_rate = np.mean(1.0 / np.diff(ss_latency_array[pname]))
         tr_values_array[pname] = np.concatenate(tr_values[pname]) * sign
         if verbose:
             print("Mean firing rate at steady-state: ", mean_ss_rate)
             print("\nFitting function: ", fit_func[measure])
         a_init = 100.0
         if fit_func[measure] == double_exp_rise:
-            a_init = tr_values_array[pname][0] + np.max(tr_values_array[pname])
+            # estimate the rise as the difference from the first value to the mean of the last 5 values
             dc_init = tr_values_array[pname][0]
+            a_init = np.mean(tr_values_array[pname][-5:])- dc_init
         elif fit_func[measure] == double_exp_fall:
-            a_init = tr_values_array[pname][0] - np.min(tr_values_array[pname])
-            dc_init = np.min(tr_values_array[pname])
+            # estimate the fall as the difference from the first value to the mean of the last 5 values
+            dc_init = np.mean(tr_values_array[pname][:-5])
+            a_init = tr_values_array[pname][0] - dc_init
         if verbose:
-            print(f"initial value2 of measure {measure}: ", "dc: ", dc_init, "a1, a2: ", a_init)
+            print(f"Initial values of measure {measure}: ", "dc: ", dc_init, "a1, a2: ", a_init)
         d2model = Model(fit_func[measure])
         if a_init == 0:
-            a_init = 1.0
+            a_init = 1e-6
+        limits = {
+            "dc": (0.0, 1000.0),
+            "a1": (0.0, a_init),
+            "r1": (0.0, 0.5),
+            "a2": (0.0, a_init),
+            "r2": (0.4, 2.0),
+            }
+        if measure == 'halfwidth':
+            amax = 100e-6
+        else:
+            amax = 1000.
         params = d2model.make_params(
-            dc={"value": dc_init, "min": 0, "max": 1000.0},
-            a1={"value": a_init, "min": 0, "max": a_init},
-            r1={"value": 0.1, "min": 0, "max": 20},
-            a2={"value": 0, "min": 0, "max": a_init},
-            r2={"value": 0.01, "min": 0, "max": 1},
+            dc={"value": dc_init, "min": 0., "max": 1000},
+            a1={"value": a_init, "min": 0., "max": amax},
+            r1={"value": 0.02, "min": 0., "max": 0.5},
+            a2={"value": 0, "min": 0., "max": amax/2.0},
+            r2={"value": 0.5, "min": 0.4, "max": 2.0},
         )
         x = np.linspace(0, dur, 500)
         y = fit_func[measure](x, **params.valuesdict())
@@ -348,17 +385,22 @@ def fit_spike_measures(
 
         fit_tr = d2model.fit(tr_values_array[pname], params, x=tr_latency_array[pname])
         fit_values[pname] = fit_tr
-        ss_values[pname] = np.mean(ss_trace)  # mean across traces in protocol
+        # ss_values[pname] = np.mean(ss_trace)  # mean across traces in protocol
         xf = np.linspace(0, dur, 500)
         yf = fit_tr.eval(x=xf)
         if verbose:
             mpl.plot(xf, sign * yf, "r--")
-
             mpl.show()
             print(fit_values[pname].fit_report())
             exit()
 
-    return tr_latency, tr_values, fit_values, ss_values, sign  # return the fits for each protocol
+    return {
+        "tr_latency": tr_latency,
+        "tr_values": tr_values,
+        "fit_values": fit_values,
+        "ss_values": ss_values,
+        "sign": sign,
+    }  # return the fits for each protocol
 
 
 def average_fits(fits: dict):
@@ -382,8 +424,11 @@ def average_fits(fits: dict):
     amp2 = []
     dc = []
     for f in fits.keys():
-        print("Fit for protocol ", f, ": ",
-         )
+        print(
+            "        Fit for protocol ",
+            f,
+            ": ",
+        )
         if isinstance(fits[f], list) and len(fits[f]) == 0:
             continue
         tau_1 = fits[f].best_values.get("r1", np.nan)
@@ -391,7 +436,7 @@ def average_fits(fits: dict):
         tau_2 = fits[f].best_values.get("r2", np.nan)
         amp_2 = fits[f].best_values.get("a2", np.nan)
         dc0 = fits[f].best_values.get("dc", np.nan)
-        # force order of the values
+        # force order of the values so that tau_1 is always the smaller time constant
         # note that the values are inverted.
         if tau_2 < tau_1:
             tau_1, tau_2 = tau_2, tau_1  # swap
@@ -418,7 +463,7 @@ def average_fits(fits: dict):
 def _make_label(pn, ivs, measure):
     Rs = ivs["CCComp"]["CCBridgeResistance"] * 1e-6
     Cp = ivs["CCComp"]["CCNeutralizationCap"] * 1e12
-    label = f"{pn}: Rs={Rs:.1f}, Cp={Cp:.1f}"
+    Rs_Cp_label = f"{pn}: Rs={Rs:.1f}, Cp={Cp:.1f}"
     ylabel = "unknown"
     if measure == "hw":
         ylabel = "AP Halfwidth (us)"
@@ -428,21 +473,17 @@ def _make_label(pn, ivs, measure):
         ylabel = "AP dV/dt fall (V/s)"
     elif measure == "ap_thr":
         ylabel = "AP Threshold (V)"
-    return label, ylabel
+    return Rs_Cp_label, ylabel
 
 
 def plot_spike_measure(
     d,
-    protocol_start_times,
-    durations,
     experiment: dict,
-    rate_limits: list,
     filename: Path,
     measure="halfwidth",
     plot_fits: bool = True,
     ax: mpl.Axes = None,
-    junction_potential: float = 0.0,
-):
+) -> Union[dict, None]:
     """plot_spike_measure Plot the time course of the spike measure changes through
     the stimulus duration.
     Plots the time course of a specific measure for EACH spike detected during
@@ -453,18 +494,12 @@ def plot_spike_measure(
     ----------
     d : dictionary of analyzed values from pickle file
         includes 'IV', and 'Spikes' entries.
-    protocol_start_times : dict
-        _description_
-    durations : dict
-        _description_
     filename : Path
         _description_
     measure : str, optional
         name of the measure to plot ('halfwidth', 'dvdt_rising', 'dvdt_falling', 'AP_begin_V'), by default "halfwidth"
     ax : mpl.Axes, optional
         Axes to plot on, by default None
-    junction_potential : float, optional
-        junction potential to adjust AP threshold values, by default 0.0
 
     Returns
     -------
@@ -478,7 +513,6 @@ def plot_spike_measure(
         "dvdt_falling",
         "AP_begin_V",
     ], "Invalid measure name"
-    print("PSM: ", measure)
     scales = {"halfwidth": 1e6, "dvdt_rising": 1.0, "dvdt_falling": -1.0, "AP_begin_V": 1.0e3}
     ylimits = {
         "halfwidth": (0, 400),
@@ -486,10 +520,18 @@ def plot_spike_measure(
         "dvdt_falling": (800, 0),
         "AP_begin_V": (-0.060 * scales["AP_begin_V"], -0.040 * scales["AP_begin_V"]),
     }
+    musec = r"$\mu$ s"
+    ylabels = {
+        "halfwidth": f"AP Halfwidth ({musec})",
+        "dvdt_rising": "AP dV/dt rise (V/s)",
+        "dvdt_falling": "AP dV/dt fall (V/s)",
+        "AP_begin_V": "AP Threshold (mV)",
+    }
     if ax is None:
         f, ax = mpl.subplots(1, 1)
-        f.text(0.95, 0.02, datetime.datetime.now(), fontsize=6, transform=f.transFigure, ha="right")
-    ax.set_title(f"{str(Path(*filename.parts[-3:])):s}")
+        f.text(0.95, 0.02, datetime.datetime.now(), fontsize=6, transform=f.transFigure, ha="right", va="bottom")
+    if measure == 'halfwidth':
+        ax.set_title(f"{str(Path(*filename.parts[-3:])):s}")
     if d["Spikes"] is None:
         ax.text(
             0.5,
@@ -499,23 +541,84 @@ def plot_spike_measure(
             va="center",
             fontdict={"color": "red", "size": 20},
         )
-        return
+        return None
     prots = list(d["Spikes"].keys())
     ivs = list(d["IV"].keys())
-    labels = []
+    any_protocols = False
+    protocol_start_times = experiment["Protocol_start_times"]
+    durations = experiment["protocol_durations"]
+
+    # Select the protocol with the lowest Rs value for analysis.
+    # Secondarily, if there are 2 protocols with the same Rs, select the one with the most
+    # traces in the required firing range.
+    skip_file_text = ""
+    use_protocols = []
+    best_Rs = 100.0 # initialize
     for ip, protoname in enumerate(prots):
-        if d['Spikes'][protoname] is None:
+        if d["Spikes"][protoname] is None:
+            continue
+
+        pname = str(Path(protoname).name)[:-4]
+        skip_flag = False
+        # print("Checking protocol for exclusion: ", d['cell_id'], protoname)
+        if d['cell_id'] in experiment["exclude_steady_state_spike_shapeIVs"]:
+            ex = experiment["exclude_steady_state_spike_shapeIVs"][d['cell_id']]
+            protocol = str(Path(protoname).name)
+            if protocol in ex['protocols'] or 'all' in ex['protocols'] or 'All' in ex['protocols']:
+                CP("r", f"\n***** SKIPPING protocol  ***** {d['cell_id']} {protoname}")
+                skip_file_text += f"***** SKIPPING protocol ***** {d['cell_id']} {protoname}\n"
+                skip_flag = True
+        if skip_flag:
+            continue
+        # exit()
+        if pname not in experiment["FI_spike_shape_protocols"]:
             continue
         ivs = d["IV"][prots[ip]]
-        if protoname[:-4] in protocol_start_times:
-            start_time = protocol_start_times[protoname[:-4]]
+        if pname in protocol_start_times:
+            start_time = protocol_start_times[pname]
         else:
-            start_time = 0
-        if protoname[:-4] in durations:
-            dur = durations[protoname[:-4]]
+            start_time = 0.0
+        if pname in durations:
+            dur = durations[pname]
         else:
             dur = None
-  
+        Rs = ivs["CCComp"]["CCBridgeResistance"] * 1e-6
+        CP("c", f"    Protocol: {protoname:s}, Rs: {Rs:.2f} MOhm")
+        if Rs > experiment["maximum_access_resistance"]:  # limit to lower access.
+            continue
+        if Rs < best_Rs:
+            best_Rs = Rs
+            use_protocols = [protoname]
+        elif Rs == best_Rs:
+            use_protocols.append(protoname)
+    if len(skip_file_text) > 0:
+        with open("spike_shape_timecourse_skipped.txt", "a") as f:
+            f.write(f"Skipping: \n")
+            f.write(skip_file_text)
+            # f.write(f"\nUsing Protocols: ")
+            # f.write(f"{use_protocols}\n\n")
+
+    
+    print("\n**** Cell: ", ivs)
+    print("       Using protocol(s) with best Rs for plotting: ", use_protocols, best_Rs)
+    # return None
+    prots = use_protocols
+    for ip, protoname in enumerate(prots):
+        pname = str(Path(protoname).name)[:-4]
+        if d["Spikes"][protoname] is None:
+            continue
+        if pname not in experiment["FI_spike_shape_protocols"]:
+            continue
+        ivs = d["IV"][prots[ip]]
+        if pname in protocol_start_times:
+            start_time = protocol_start_times[pname]
+        else:
+            start_time = 0.0
+        if pname in durations:
+            dur = durations[pname]
+        else:
+            dur = None
+
         colors = sns.color_palette("husl", max(len(prots), 3))
         if protoname.find("1nA") > 0:
             color = colors[1]
@@ -524,40 +627,63 @@ def plot_spike_measure(
         else:
             color = colors[0]
 
-        label, labely = _make_label(protoname, ivs, measure)
+        Rs_Cp_label, labely = _make_label(protoname, ivs, measure)
 
-        latencies, values, fit_values, ss_mean, sign = fit_spike_measures(
+        fit_result = fit_spike_measures(
             d,
             measure=measure,
-            rate_limits=rate_limits,  # firing rate limits for inclusion, Hz.
             experiment=experiment,
-            protocol_start_times=protocol_start_times,
-            durations=durations,
-            junction_potential=junction_potential,
+            window=[0.4, 0.5],
         )
-        if len(latencies) == 0:
+        if fit_result is None:
             continue
-        # print("\nProtoname: ", protoname)
-        # print(latencies.keys())
-        # print(latencies)
+        latencies, values, fit_values, ss_values, sign = [x for k, x in fit_result.items()]
+        print("    Latencies from protocols: ", latencies.keys())
         if len(latencies[protoname]) == 0:
             continue
+        any_protocols = True
         lats = np.concatenate(latencies[protoname])
         vals = sign * np.concatenate(values[protoname]) * scales[measure]
-        # print("measure: ", measure, np.max(lats))
         ax.plot(lats, sign * vals, "o", color=color, markersize=1, label=labely, linewidth=0.35)
         if plot_fits:
             fit_tr = fit_values[protoname]
             xf = np.linspace(0, dur, 500)
             yf = sign * fit_tr.eval(x=xf) * scales[measure]
             ax.plot(xf, yf, "r-", linewidth=0.5)
+    if not any_protocols:
+        ax.text(
+            0.5,
+            0.5,
+            s="No valid spike data found for protocols",
+            ha="center",
+            va="center",
+            fontdict={"color": "red", "size": 12},
+        )
+        return None
     ax.set_ylim(ylimits[measure])
     ax.set_xlim(-0.020, 1.0)
     ax.set_xlabel("AP Latency (s)")
-    ax.set_ylabel(measure)
-    ax.text(0.98, 0.02, f"{ ', '.join(prots):s}", ha='right', va='top', transform=ax.transAxes, fontsize=6)
-    ax.legend(fontsize=5)
-    return latencies, values, fit_values, ss_mean, sign 
+    ax.set_ylabel(ylabels[measure])
+    if measure == 'halfwidth':
+        ax.text(
+            0.98,
+            0.02,
+            f"Rs: {best_Rs:.2f} MOhm\nProtocols: {', '.join(use_protocols)}",
+            ha="right",
+            va="bottom",
+            transform=ax.transAxes,
+            fontsize=6,
+        )
+    # ax.legend(fontsize=5)
+    return {
+        "latencies": latencies,
+        "values": values,
+        "fit_values": fit_values,
+        "ss_values": ss_values,
+        "sign": sign,
+        "Rs": best_Rs,
+        "protocols": use_protocols,
+    }
 
 
 def post_stimulus_spikes(d):
@@ -694,47 +820,38 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
     }
     dlist = []
     # prepare for PDF output if needed
+    with open("spike_shape_timecourse_skipped.txt", 'w') as f:
+        f.write(f"Spike shape timecourse analysis skipped files log\n")
+        f.write(f"Date: {datetime.datetime.now()}\n\n")
+
     with PdfPages("spk_hwidths.pdf") as pdf:
         for nf, f in enumerate(files):
             print(f"#{nf:d} {f}")
             d = read_pkl_file(f)
             # if nf > 20:
             #     break
-            # print(d.keys())
-            # print(dir(CA))
-            if d['Spikes'] is None:
-                print("No spike data found, skipping file.")
+
+            if d["Spikes"] is None:
+                CP('m', f"        No spike data found, skipping file.")
                 continue
+            
             fig, ax = mpl.subplots(4, 1, figsize=(6, 8))
             spf = build_figure_framework()
             cell_data = {}
             fits = {}
             avdict = {}
             d["age_category"] = CA.get_age_category(d["age"], age_cats)
-            protoname = str(Path(f).stem)
-            if protoname[:-4] in experiment["Protocol_start_times"]:
-                start_time = experiment["Protocol_start_times"][protoname[:-4]]
-            else:
-                start_time = 0
-            if protoname[:-4] in experiment["protocol_durations"]:
-                dur = experiment["protocol_durations"][protoname[:-4]]
-            else:
-                dur = None
             for factor in ["cell_id", "age_category", "age", "sex"]:
                 cell_data[factor] = d[factor]
             for axn, measure in zip(ax, ["halfwidth", "dvdt_rising", "dvdt_falling", "AP_begin_V"]):
-                tr_latency, tr_values, fit_values, ss_values, sign  = plot_spike_measure( # fit_spike_measures(
+                sp_measures = plot_spike_measure(  # fit_spike_measures(
                     d,
                     filename=f,
-                    measure = measure,
+                    measure=measure,
                     experiment=experiment,
-                    protocol_start_times=experiment["Protocol_start_times"],
-                    durations=experiment["protocol_durations"],
-                    rate_limits=experiment["spike_rate_limits"],
-                    junction_potential=experiment["junction_potential"] * 1e-3,
-                    ax = axn,
+                    ax=axn,
                 )
-                if tr_latency is None:
+                if sp_measures is None:
                     fits[measure] = fitResults(
                         tau1=np.nan,
                         amp1=np.nan,
@@ -743,19 +860,29 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
                         dc=np.nan,
                         fits=[],
                     )
+                    continue
                 else:
+                    tr_latency, tr_values, fit_values, ss_values, sign, best_Rs, used_protocols = [
+                        v for k, v in sp_measures.items()
+                    ]
                     # print("fit values for measure ", measure, ": ", fit_values)
                     avfits = average_fits(fit_values)
+                    # print("ss_values: ", measure, ss_values)
+                    y= [x for k, x in ss_values.items() if len(x) > 0][0]
+                    # print(y)
+                    y = np.concatenate(y)
+                    ss_mean = np.mean(y)
+                    # print("Mean steady-state value for measure ", measure, ": ", ss_mean)
+                    # exit()
                     # print("Average fits for measure ", measure, ": ", avfits)
                     avdict[measure] = avfits
                     fits[measure] = fitResults(
                         tau1=avfits["tau1"],
                         amp1=avfits["amp1"],
-                        tau2=avfits['tau2'],
-                        amp2=avfits['amp2'],
-                        dc=avfits['dc']
+                        tau2=avfits["tau2"],
+                        amp2=avfits["amp2"],
                     )
-                for x in ['dc', 'tau1', 'amp1', 'tau2', 'amp2']:
+                for x in ["dc", "tau1", "amp1", "tau2", "amp2"]:
                     colname = measure + "_" + x
                     cell_data[colname] = avfits[x]
                 col2 = measure + "_steadystate"
@@ -764,7 +891,9 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
                 if len(ss_values) == 0:
                     cell_data[col2] = np.nan
                 else:
-                    cell_data[col2] = np.mean([x for x in ss_values.values()])
+                    cell_data[col2] = ss_mean # np.mean([x for x in ss_values.values()])
+                cell_data['Rs_MOhm'] = best_Rs
+                cell_data['Protocols'] = ','.join(used_protocols)
             dlist.append(cell_data)
             # if fig.do_fig and fig.fig_initiated:
             mpl.suptitle(f.stem)
@@ -772,7 +901,7 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
 
     # if fig.do_fig and fig.fig_initiated:
     mpl.close()
-    
+
     pprint.pprint(dlist)
     df = pd.DataFrame(dlist)
     print(df.head(20))
@@ -789,8 +918,9 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
         )
 
 
-def bar_and_scatter(df: pd.DataFrame, x: str, y: str, hue: str, experiment: dict, ax: mpl.Axes,
-                    scf:float = 1.0):
+def bar_and_scatter(
+    df: pd.DataFrame, x: str, y: str, hue: str, experiment: dict, ax: mpl.Axes, scf: float = 1.0
+):
     hue_category = "age_category"
     plot_order = experiment["plot_order"]["age_category"]
     plot_colors = experiment.get("plot_colors", {})
@@ -829,7 +959,7 @@ def bar_and_scatter(df: pd.DataFrame, x: str, y: str, hue: str, experiment: dict
         palette=plot_colors["symbol_colors"],
         edgecolor=edgecolor,
         linewidth=linewidth,
-        size=plot_colors["symbol_size"] * 2,
+        size=plot_colors["symbol_size"] * 1.5,
         alpha=1.0,
         ax=ax,
         zorder=100,
@@ -837,7 +967,7 @@ def bar_and_scatter(df: pd.DataFrame, x: str, y: str, hue: str, experiment: dict
     )
 
 
-def plot_amp_tau(experiment:dict, measure:str, ax1, ax2):
+def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     stats_dir = experiment.get("R_statistics_summaries", None)
     local_dir = Path(experiment.get("localdatapath", "."), stats_dir)
 
@@ -854,35 +984,57 @@ def plot_amp_tau(experiment:dict, measure:str, ax1, ax2):
     # )
     # hw_ax[0].set_ylim(0, 0.5)
     # hw_ax[0].set_ylabel("AP Halfwidth (s)")
-    if measure in ['AP_begin_V']:
-       ylims = (0, 10)
-       scf = 1.0
-       ylabel = "AP Threshold change (mV)"
+    delta = r"$\Delta$"
+    usec = r"$\mu$s"
 
-    elif measure in ['dvdt_falling']:
-       ylims = (0, 400)
-       scf = 1.0e-3
-       ylabel = "Falling dV/dt change, (V/s)"
-    elif measure in ['dvdt_rising']: 
-        ylims = (0, 400)
-        scf = 1.0e-3
-        ylabel = "Rising dV/dt change, (V/s)"
-    else:
-       ylims = (0, 250)
-       scf = 1e3
-       ylabel = "AP Halfwidth change, (us)"
+    if measure in ["AP_begin_V"]:
+        ylims = (0, 20)
+        taulims = (0, 0.25)
+        scf = 1.0
+        ylabel = f"{delta} AP Threshold (mV)"
+
+    elif measure in ["dvdt_falling"]:
+        ylims = (-200, 20)
+        taulims = (0, 0.25)
+        scf = -1.0e-3
+        ylabel = f"{delta} Falling dV/dt (V/s)"
+    
+    elif measure in ["dvdt_rising"]:
+        ylims = (-400, 0)
+        taulims = (0, 0.25)
+        scf = -1.0e-3
+        ylabel = f"{delta} Rising dV/dt (V/s)"
+    
+    elif measure in ["halfwidth"]:
+        ylims = (0, 100)
+        taulims = (0, 0.5)
+        scf = 1e3
+        ylabel = f"{delta} AP Halfwidth ({usec})"
+    
     df[measure + "_amp1"] *= scf
     # =================
     bar_and_scatter(
-        df, x="age_category", y=measure + "_tau1", hue="age_category", experiment=experiment, ax=hw_ax[0]
+        df,
+        x="age_category",
+        y=measure + "_tau1",
+        hue="age_category",
+        experiment=experiment,
+        ax=hw_ax[0],
     )
     # hw_ax[0].set_ylim(ylims)
-    hw_ax[0].set_ylabel("Time Constant (s)")
+    tau = r"$\tau$"
+    hw_ax[0].set_ylabel(f"{tau} (s)")
+    hw_ax[0].set_ylim(taulims)
 
     # =================
     bar_and_scatter(
-        df, x="age_category", y=measure + "_amp1", hue="age_category", experiment=experiment, ax=hw_ax[1],
-        scf=1e3
+        df,
+        x="age_category",
+        y=measure + "_amp1",
+        hue="age_category",
+        experiment=experiment,
+        ax=hw_ax[1],
+        scf=1e3,
     )
     hw_ax[1].set_ylim(ylims)
     hw_ax[1].set_ylabel(ylabel)
@@ -909,6 +1061,36 @@ def plot_amp_tau(experiment:dict, measure:str, ax1, ax2):
     #     ax.text(-0.1, 1.05, s=lab[iax], transform=ax.transAxes, fontsize=18, fontweight="bold")
     # mpl.tight_layout
     # mpl.show()
+
+def plot_ss_hws(experiment, ax=None):
+    if ax is None:
+        f, ax = mpl.subplots(1, 1, figsize=(4,4))
+        ax = [ax] # make it a list for future compatability
+    stats_dir = experiment.get("R_statistics_summaries", None)
+    local_dir = Path(experiment.get("localdatapath", "."), stats_dir)
+    PH.nice_plot(ax[0], direction="out", ticklength=3, position=-0.03)
+    df = pd.read_csv(Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"))
+    df = df[df["age_category"] != "ND"]
+    measure = "halfwidth_steadystate"
+    ylims = (0, 800)
+    scf = 1e6
+    usec = r"$\mu$s"
+    ylabel = f"Steady-state AP Halfwidth ({usec})"
+    df[measure] = df[measure] * scf  # convert to us
+   
+    # =================
+    bar_and_scatter(
+        df,
+        x="age_category",
+        y=measure,
+        hue="age_category",
+        experiment=experiment,
+        ax=ax[0],
+    )
+    ax[0].set_ylim(ylims)
+    ax[0].set_ylabel(ylabel)
+
+    mpl.show()
 
 
 if __name__ == "__main__":
@@ -980,19 +1162,17 @@ if __name__ == "__main__":
         lets = ["A", "B", "C", "D"]
         for k, v in meas_dict.items():
             print("measure: v): ", v)
-            latencies, values, fit_values, ss_mean, sign  = plot_spike_measure(
+            res = plot_spike_measure(
                 d,
                 experiment=experiment,
-                rate_limits=experiment["spike_rate_limits"],
-                protocol_start_times=experiment["Protocol_start_times"],
-                durations=experiment["protocol_durations"],
                 filename=pyrdatapath,
                 measure=v,
-                junction_potential=experiment["junction_potential"] * 1e-3,
                 ax=P.axdict[k],
             )
 
-            plot_amp_tau(experiment, measure=v, ax1=P.axdict[lets[i]+'2'], ax2=P.axdict[lets[i]+'3'])
+            plot_amp_tau(
+                experiment, measure=v, ax1=P.axdict[lets[i] + "2"], ax2=P.axdict[lets[i] + "3"]
+            )
             i += 1
 
         mpl.show()
