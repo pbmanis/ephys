@@ -58,18 +58,18 @@ def check_exclusions(cell_id: str, exclusions: dict, allivs: list,
         slice_id = str(Path(*Path(cell_id).parts[:2]))  # must make a string again.
         if slice_id in list(exclusions.keys()):
             if verbose:
-                print(f"\nCell: {cell_id}")
+                print(f"\nCell(sliceid level): {cell_id}")
                 print(f"    Slice {slice_id} is completely excluded")
             return []  # exclude everyting for this slice.
-        if day_id in exclusions.keys():
+        if day_id in list(exclusions.keys()):
             if verbose:
-                print(f"\nCell: {cell_id}")
+                print(f"\nCell(day level): {cell_id}")
                 print(f"    Day {day_id} is completely excluded")
             return []  # exclude everyting for this day.
         # The rest of the exclusions are are on cell by cell and protocol basis
-        if cell_id in exclusions.keys():
+        if cell_id in list(exclusions.keys()):
             if verbose:
-                print(f"\nCell: {cell_id}")
+                print(f"\nCell(cell_level): {cell_id}")
                 print("     has excluded protocols: ", exclusions[cell_id]["protocols"])
             if exclusions[cell_id]["protocols"] in ["all", "All", ["all"], ["All"]]:
                 msg = f"       All protocols for {cell_id} are excluded from analysis in the configuration file."

@@ -260,17 +260,14 @@ class AnalyzeMap(object):
             self.Pars.analysis_window[0] = self.AR.tend + 0.010
 
         # get the laser pulse times
-        print("Getting laser or LED from: ", Path(protocolFilename).name)
         if self.AR.getLaserBlueTimes():
             self.Pars.LaserBlueTimes = self.AR.LaserBlueTimes
             self.Pars.stimtimes["starts"] = self.AR.LaserBlueTimes["start"]
             self.Pars.stimtimes["durations"] = self.AR.LaserBlueTimes["duration"]
-            print("laser blue times: ", self.AR.LaserBlueTimes)
         if self.AR.getLEDCommand():
             self.Pars.LEDTimes = self.AR.LEDTimes
             self.Pars.stimtimes['starts'] = self.AR.LEDTimes['start']
             self.Pars.stimtimes['durations'] = self.AR.LEDTimes['duration']
-            print("led times: ", self.AR.LEDTimes)
         else:
             pass
 

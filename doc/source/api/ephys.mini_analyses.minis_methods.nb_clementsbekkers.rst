@@ -1,6 +1,6 @@
-minis_methods.nb_clementsbekkers
-================================
+nb_clementsbekkers
+==================
 
-.. currentmodule:: ephys.mini_analyses
+.. currentmodule:: ephys.mini_analyses.minis_methods
 
-.. autoattribute:: minis_methods.nb_clementsbekkers
+.. autofunction:: nb_clementsbekkers

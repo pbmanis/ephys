@@ -7,12 +7,13 @@ It includes functions to fit the changes in spike half-widths over time
 using a double-exponential model, and to plot the results.
 It also produces a summary dataframe of spike half-widths categorized by age groups.
 
-Rise and fall rates, and AP thresholds can also be analyzed.
+Rise and fall rates, and AP thresholds are also analyzed.
 
 To use:
 Make sure the experiment configuration file is accessible. Set the experiment name and cell type.
 
 8/27/2025 Paul B. Manis, Ph.D.
+Refactored, and better handling of fitting and exclusions: 14 Jan 2026. PBM.s
 
 """
 
@@ -76,6 +77,7 @@ class Figure:
     ax: mpl.Axes = None
     figure: mpl.figure = None
     do_fig: bool = False
+
 
 
 def double_exp_rise(
@@ -151,7 +153,7 @@ def double_exp_fall(
 
 def get_spikedata(
     spike_trace, measure: str, start_time: float, window: list, junction_potential: float
-) -> Tuple[list, list, list]:
+) -> Tuple[list, list, list, list]:
     """get_spikedata _extracts spike measure data from a single spike trace structure
     and computes the steady-state values, and fits the time course of the
     measure change to a double-exponential function.
@@ -171,13 +173,14 @@ def get_spikedata(
 
     Returns
     -------
-    Tuple[list, list, list]
-        latencies, values, and steady-state values for the analyzed trace
+    Tuple[list, list, list, list]
+        latencies, values, and steady-state latencies and values for the analyzed trace
     """
     latencies = []
     values = []
     ss_values = []
     ss_latency = []
+    # print("Spike Trace: ",  spike_trace)
     for j, sn in enumerate(spike_trace):  # for each spike in the trace
         if spike_trace[sn].__getattribute__(measure) is None:  # no spikes
             continue
@@ -198,21 +201,57 @@ def get_spikedata(
     latencies = np.array(latencies)
     ss_values = np.array(ss_values)
     ss_latency = np.array(ss_latency)
-    return latencies, values, ss_values, ss_latency
+    return latencies, values, ss_latency, ss_values
 
+def check_excluded(
+    d,
+    experiment: dict,
+) -> bool:
+    """check_exclusions Check if the cell/protocol should be excluded from analysis
+    based on the experiment configuration.
+    Here we also check the steady-state IV exclusions
+    Uses include_exclude from the ephys.tools.check_inclusions_exclusions module.
+
+    Parameters
+    ----------
+    d : dictionary of analyzed values from pickle file
+        includes 'IV', and 'Spikes' entries.
+    experiment : dict
+        Parameters for the experiment being analyzed (from configuration file)
+    """
+    ivs = list(d["IV"].keys())
+    validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
+        str(d["cell_id"]),
+        inclusions=experiment["includeIVs"],
+        exclusions=experiment["excludeIVs"],
+        allivs=ivs,
+        verbose = False,
+    )
+    # print("ex: valid ivs after first pass: ", validivs)
+    # run a second level of exclusion when ss spike parameters are not stable
+    validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
+        d["cell_id"],
+        inclusions=experiment["includeIVs"],
+        exclusions = experiment["exclude_steady_state_spike_shapeIVs"],
+        allivs=validivs,
+        verbose = True,
+        )
+    print("ex: valid ivs after steady-state spike shape exclusion: ", validivs)
+    return validivs
 
 def fit_spike_measures(
     d,
+    protocol: str,
     measure: str,
     experiment: dict,
     window: list = [0.4, 0.5],
 ) -> dict:
     """fit_spike_measures Fit the time course of the spike measure changes through
-        the stimulus duration.
+        the stimulus duration. handles multiple protocols at once.
         Plots the time course of the halfwidths, dv/dt rise and fall, and AP threshold
         for EACH spike detected during the IV protocol, for the rate window specified.
     pr
-        Does ONE cell (data is in d)
+        Does ONE cell (data is in d), and ONE protocol (in protocol)
 
         Parameters
         ----------
@@ -259,141 +298,155 @@ def fit_spike_measures(
         "AP_begin_V": double_exp_fall,
     }
     prots = list(d["Spikes"].keys())
-    ivs = list(d["IV"].keys())
-    validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
-        d["cell_id"],
-        inclusions=experiment["includeIVs"],
-        exclusions=experiment["excludeIVs"],
-        allivs=ivs,
-    )
-    if len(validivs) == 0:
-        print("No valid IV protocols found for fitting.")
-        return None
+    if protocol not in prots:
+        raise ValueError(f"Protocol {protocol} not found in data for fitting.")    
+
     # get parameters from the experiment dict
     protocol_start_times = experiment["Protocol_start_times"]
     durations = experiment["protocol_durations"]
     rate_limits = experiment["spike_rate_limits"]  # firing rate limits for inclusion, Hz.
     junction_potential = experiment["junction_potential"] * 1e-3  # convert to Volts
 
-    ss_values = {}
-    ss_latency = {}
-    ss_latency_array = {}
-    ss_values_array = {}
-    fit_values = {}
-    tr_latency = {}
-    tr_latency_array = {}
-    tr_values = {}
-    tr_values_array = {}
     # first run through the protocols (top level)
-    validivs = [iv for iv in ivs if iv in validivs if iv not in experiment.get("exclude_steady_state_spike_shapeIVs", [])]
-    print("        Valid IV protocols for fitting: ", validivs)
-    for ip, pn in enumerate(validivs):
-        ivs = d["IV"][prots[ip]]
-        spike_traces = d["Spikes"][prots[ip]]["spikes"]
-        pname = str(Path(pn).name)
-        ss_values[pname] = []
-        ss_latency[pname] = []
-        fit_values[pname] = []
-        tr_latency[pname] = []
-        tr_values[pname] = []
-        if pname[:-4] in protocol_start_times:
-            start_time = protocol_start_times[pname[:-4]]
-        else:
-            start_time = 0
 
+    ivs = d["IV"][protocol]
+    spike_traces = d["Spikes"][protocol]["spikes"]
+    pname = str(Path(protocol).name)
+    ss_values = []
+    ss_latency = []
+    fit_values = []
+    tr_latency = []
+    tr_values = []
+    if pname[:-4] in protocol_start_times:
+        start_time = protocol_start_times[pname[:-4]]
+    else:
+        start_time = 0
 
-        if pname[:-4] in durations:
-            dur = durations[pname[:-4]]
-        else:
-            dur = None
+    if pname[:-4] in durations:
+        dur = durations[pname[:-4]]
+    else:
+        raise ValueError(f"Duration for protocol {pname[:-4]} not found in experiment configuration.")
+        # continue
 
-            continue
-
-        # within each protocol, go through the traces with spikes
-        # and get the values
-        for i, spike_trace in enumerate(spike_traces):
-            latencies, values, ssvalues, sslatency = get_spikedata(
-                spike_traces[spike_trace], measure, start_time, window, junction_potential
-            )
-            if len(sslatency) < 2:  # need at least 2 spikes to compute rate
-                continue
-            mean_spike_rate = (1 / np.diff(sslatency)).mean()  # firing rate in Hz
-            if mean_spike_rate < rate_limits[0] or mean_spike_rate > rate_limits[1]:
-                continue  # skip traces outside the rate limits
-            tr_latency[pname].append(latencies)
-            tr_values[pname].append(values)
-            ss_values[pname].append(ssvalues)  # get the mean steady-state values for this protocol
-            ss_latency[pname].append(sslatency)
-            # and get fits to rising exponential
-        #  prepare fitting with double-exponential : ONE for each protocol (average spike data across traces)
-        try:
-            tr_latency_array[pname] = np.concatenate(tr_latency[pname])
-            ss_latency_array[pname] = np.concatenate(ss_latency[pname])
-            ss_values_array[pname] = np.concatenate(ss_values[pname])
-        except ValueError:
-            CP("m", f"        No valid spikes found for protocol {pname}")
-            CP("m", f"        tr_latency[pname]: {tr_latency[pname]}")
-            continue
-        mean_ss_rate = np.mean(1.0 / np.diff(ss_latency_array[pname]))
-        tr_values_array[pname] = np.concatenate(tr_values[pname]) * sign
-        if verbose:
-            print("Mean firing rate at steady-state: ", mean_ss_rate)
-            print("\nFitting function: ", fit_func[measure])
-        a_init = 100.0
-        if fit_func[measure] == double_exp_rise:
-            # estimate the rise as the difference from the first value to the mean of the last 5 values
-            dc_init = tr_values_array[pname][0]
-            a_init = np.mean(tr_values_array[pname][-5:])- dc_init
-        elif fit_func[measure] == double_exp_fall:
-            # estimate the fall as the difference from the first value to the mean of the last 5 values
-            dc_init = np.mean(tr_values_array[pname][:-5])
-            a_init = tr_values_array[pname][0] - dc_init
-        if verbose:
-            print(f"Initial values of measure {measure}: ", "dc: ", dc_init, "a1, a2: ", a_init)
-        d2model = Model(fit_func[measure])
-        if a_init == 0:
-            a_init = 1e-6
-        limits = {
-            "dc": (0.0, 1000.0),
-            "a1": (0.0, a_init),
-            "r1": (0.0, 0.5),
-            "a2": (0.0, a_init),
-            "r2": (0.4, 2.0),
-            }
-        if measure == 'halfwidth':
-            amax = 100e-6
-        else:
-            amax = 1000.
-        params = d2model.make_params(
-            dc={"value": dc_init, "min": 0., "max": 1000},
-            a1={"value": a_init, "min": 0., "max": amax},
-            r1={"value": 0.02, "min": 0., "max": 0.5},
-            a2={"value": 0, "min": 0., "max": amax/2.0},
-            r2={"value": 0.5, "min": 0.4, "max": 2.0},
+    # within each protocol, go through the traces with spikes
+    # and get the values
+    for i, spike_trace in enumerate(spike_traces):
+        latencies, values, sslatency, ssvalues = get_spikedata(
+            spike_traces[spike_trace], measure, start_time, window, junction_potential
         )
-        x = np.linspace(0, dur, 500)
-        y = fit_func[measure](x, **params.valuesdict())
         if verbose:
-            mpl.plot(x, sign * y, "k--")  # initial conditions
-            mpl.plot(
-                tr_latency_array[pname],
-                sign * tr_values_array[pname],
-                "bo",
-                markersize=3,
-            )
-            mpl.ylabel(f"{measure}")
+            print("\nTrace ", i, " has ", len(latencies), " spikes")
+            print("latencies: ", len(latencies), latencies)
+            print("ss latency: ", len(sslatency), sslatency)
+        if len(sslatency) < 2:  # need at least 2 spikes to compute rate
+            # print("      less than 2 spikes")
+            continue
+        mean_spike_rate = (1.0 / np.diff(sslatency)).mean()  # firing rate in Hz
+        if mean_spike_rate < rate_limits[0] or mean_spike_rate > rate_limits[1]:
+            if verbose:
+                print("      mean spike rate: ", mean_spike_rate, " outside limits ", rate_limits)
+            continue  # skip traces outside the rate limits
+        else:
+            if verbose:
+                print("      mean spike rate: ", mean_spike_rate, " inside limits ", rate_limits)
+            tr_latency.append(latencies)
+            tr_values.append(values)
+            ss_latency.append(sslatency)
+            ss_values.append(ssvalues)
+        # and get fits to rising exponential
+    #  prepare fitting with double-exponential : ONE for each protocol (average spike data across traces)
+    try:
+        tr_latency_array = np.concatenate(tr_latency)
+        tr_values_array = np.concatenate(tr_values)
+        ss_latency_array = np.concatenate(ss_latency)
+        ss_values_array = np.concatenate(ss_values)
+    except ValueError:
+        CP("m", f"        No valid spikes found for protocol {protocol}")
+        CP("m", f"        tr_latency[pname]: {tr_latency}")
+        return None
+    mean_ss_rate = np.mean(1.0 / np.diff(ss_latency_array))
+    tr_values_array = tr_values_array * sign
+    if verbose:
+        print("Mean firing rate at steady-state: ", mean_ss_rate)
+        print("\nFitting function: ", fit_func[measure])
+    a_init = 100.0
+    if fit_func[measure] == double_exp_rise:
+        # estimate the rise as the difference from the first value to the mean of the last 5 values
+        dc_init = tr_values_array[0]
+        a_init = np.mean(tr_values_array[-5:]) - dc_init
+    elif fit_func[measure] == double_exp_fall:
+        # estimate the fall as the difference from the first value to the mean of the last 5 values
+        dc_init = np.mean(tr_values_array[:-5])
+        a_init = tr_values_array[0] - dc_init
+    if verbose:
+        print(f"Initial values of measure {measure}: ", "dc: ", dc_init, "a1, a2: ", a_init)
+    d2model = Model(fit_func[measure])
+    if a_init == 0:
+        a_init = 1e-6
+    limits = {
+        "dc": (0.0, 1000.0),
+        "a1": (0.0, a_init),
+        "r1": (0.0, 0.5),
+        "a2": (0.0, a_init),
+        "r2": (0.4, 2.0),
+        }
+    minr1 = 0.02
+    minr2 = 0.5
+    dc_min = 0.0
+    dc_max = 1000.
+    if measure == 'halfwidth':
+        amax = 200e-6
+        minr1 = 0.01
+    if measure == "AP_begin_V":
+        amax = 0.020
+        minr1 = 0.005 
+        minr2 = 1.0
+        dc_init = -0.55
+        dc_min = -0.1
+        dc_max = 0.1
 
-        fit_tr = d2model.fit(tr_values_array[pname], params, x=tr_latency_array[pname])
-        fit_values[pname] = fit_tr
-        # ss_values[pname] = np.mean(ss_trace)  # mean across traces in protocol
-        xf = np.linspace(0, dur, 500)
-        yf = fit_tr.eval(x=xf)
-        if verbose:
-            mpl.plot(xf, sign * yf, "r--")
-            mpl.show()
-            print(fit_values[pname].fit_report())
-            exit()
+    else:
+        minr1 = 0.005
+        amax = 1000.
 
+    params = d2model.make_params(
+        dc={"value": dc_init, "min": dc_min, "max": dc_max},
+        a1={"value": a_init, "min": 0., "max": amax},
+        r1={"value": minr1, "min": 0., "max": 0.1},
+        a2={"value": 0, "min": 0., "max": amax},
+        r2={"value": minr2*1.2, "min": minr2, "max": 3.0},
+    )
+    x = np.linspace(0, dur, 500)
+    y = fit_func[measure](x, **params.valuesdict())
+    if verbose:
+        mpl.plot(x, sign * y, "k--")  # initial conditions
+        mpl.plot(
+            tr_latency_array,
+            sign * tr_values_array,
+            "bo",
+            markersize=3,
+        )
+        mpl.ylabel(f"{measure}")
+    if verbose:
+        print(f"\nParams for {measure}")
+        for p in params:
+            print(f"    {p}: {params[p].value}  ({params[p].min}, {params[p].max})")
+    fit_values = d2model.fit(tr_values_array, params, x=tr_latency_array)
+    xf = np.linspace(0, dur, 500)
+    yf = fit_values.eval(x=xf)
+    if verbose:
+        mpl.plot(xf, sign * yf, "r--")
+        mpl.title(f"Fit for protocol {pname}")
+        # mpl.show()
+        print(fit_values.fit_report())
+        # exit()
+
+    if verbose:
+        print("\nFit for protocol ", protocol, ": ")
+        print(fit_values.fit_report())
+        
+    if verbose:
+        mpl.show()
     return {
         "tr_latency": tr_latency,
         "tr_values": tr_values,
@@ -515,7 +568,7 @@ def plot_spike_measure(
     ], "Invalid measure name"
     scales = {"halfwidth": 1e6, "dvdt_rising": 1.0, "dvdt_falling": -1.0, "AP_begin_V": 1.0e3}
     ylimits = {
-        "halfwidth": (0, 400),
+        "halfwidth": (0, None),
         "dvdt_rising": (0, 1000),
         "dvdt_falling": (800, 0),
         "AP_begin_V": (-0.060 * scales["AP_begin_V"], -0.040 * scales["AP_begin_V"]),
@@ -542,83 +595,83 @@ def plot_spike_measure(
             fontdict={"color": "red", "size": 20},
         )
         return None
-    prots = list(d["Spikes"].keys())
-    ivs = list(d["IV"].keys())
-    any_protocols = False
+
+    # screen inclusions and exclusions of protocols.
+    valid_ivs = check_excluded(d, experiment)
+    # get the ivs and protocols matching the keys in the data
+    prots = [p for p in valid_ivs if p in list(d["Spikes"].keys())]
+    spike_shape_prots = []
+    # filter down to only those protocols that are in the FI_spike_shape_protocols list
+    for ip, protoname in enumerate(prots):
+        pname = str(Path(protoname).name)[:-4]
+        if pname in list(experiment["FI_spike_shape_protocols"].keys()):
+            spike_shape_prots.append(protoname)
+           
+    CP("m", f"Remaining IV protocols for plotting: {spike_shape_prots}")
     protocol_start_times = experiment["Protocol_start_times"]
     durations = experiment["protocol_durations"]
 
-    # Select the protocol with the lowest Rs value for analysis.
+    # Screen the protocols first.
+    # 1. Is the protocol in the list of protocols we want to use ? 
+    # 2. Select the protocol with the lowest Rs value for analysis.
     # Secondarily, if there are 2 protocols with the same Rs, select the one with the most
     # traces in the required firing range.
-    skip_file_text = ""
-    use_protocols = []
+    any_protocols = False
+    usable_protocols = []
     best_Rs = 100.0 # initialize
-    for ip, protoname in enumerate(prots):
-        if d["Spikes"][protoname] is None:
-            continue
+    pnames = []
+    Rs_s = []
+    latencies = {}
+    values = {}
+    fit_values = {}
+    ss_values = {}
+    ss_latencies = {}
+    datasign = {}
 
+    for ip, protoname in enumerate(spike_shape_prots):
         pname = str(Path(protoname).name)[:-4]
-        skip_flag = False
-        # print("Checking protocol for exclusion: ", d['cell_id'], protoname)
-        if d['cell_id'] in experiment["exclude_steady_state_spike_shapeIVs"]:
-            ex = experiment["exclude_steady_state_spike_shapeIVs"][d['cell_id']]
-            protocol = str(Path(protoname).name)
-            if protocol in ex['protocols'] or 'all' in ex['protocols'] or 'All' in ex['protocols']:
-                CP("r", f"\n***** SKIPPING protocol  ***** {d['cell_id']} {protoname}")
-                skip_file_text += f"***** SKIPPING protocol ***** {d['cell_id']} {protoname}\n"
-                skip_flag = True
-        if skip_flag:
-            continue
-        # exit()
         if pname not in experiment["FI_spike_shape_protocols"]:
             continue
-        ivs = d["IV"][prots[ip]]
-        if pname in protocol_start_times:
-            start_time = protocol_start_times[pname]
-        else:
-            start_time = 0.0
-        if pname in durations:
-            dur = durations[pname]
-        else:
-            dur = None
+        ivs = d["IV"][protoname]
         Rs = ivs["CCComp"]["CCBridgeResistance"] * 1e-6
-        CP("c", f"    Protocol: {protoname:s}, Rs: {Rs:.2f} MOhm")
         if Rs > experiment["maximum_access_resistance"]:  # limit to lower access.
             continue
+        pnames.append(pname)
+        Rs_s.append(Rs)
         if Rs < best_Rs:
             best_Rs = Rs
-            use_protocols = [protoname]
-        elif Rs == best_Rs:
-            use_protocols.append(protoname)
-    if len(skip_file_text) > 0:
-        with open("spike_shape_timecourse_skipped.txt", "a") as f:
-            f.write(f"Skipping: \n")
-            f.write(skip_file_text)
-            # f.write(f"\nUsing Protocols: ")
-            # f.write(f"{use_protocols}\n\n")
+            usable_protocols = [protoname]
+        elif Rs == best_Rs:  # same Rs, add to list
+            usable_protocols.append(protoname)
+    CP("m", f"    Using protocol(s) with best Rs for plotting: {usable_protocols}, {best_Rs}")
 
-    
-    print("\n**** Cell: ", ivs)
-    print("       Using protocol(s) with best Rs for plotting: ", use_protocols, best_Rs)
-    # return None
-    prots = use_protocols
-    for ip, protoname in enumerate(prots):
+    used_protocols = []
+    for ip, protoname in enumerate(usable_protocols):
         pname = str(Path(protoname).name)[:-4]
-        if d["Spikes"][protoname] is None:
+        ivs = d["IV"][protoname]
+        start_time = protocol_start_times.get(pname, 0.0)
+        dur = durations.get(pname, None)
+  
+        fit_result = fit_spike_measures(
+            d,
+            protocol = protoname,
+            measure=measure,
+            experiment=experiment,
+            window=[0.4, 0.5],
+        )
+        if fit_result is None:
             continue
-        if pname not in experiment["FI_spike_shape_protocols"]:
+        latencies[pname], values[pname], fit_values[pname], ss_values[pname], datasign[pname] = [x for k, x in fit_result.items()]
+        # print("    Latencies from protocols: ", latencies.keys())
+        # print("pname: ", pname, "protoname: ", protoname)
+        proto_num = Path(protoname).name
+        if len(latencies) == 0:
             continue
-        ivs = d["IV"][prots[ip]]
-        if pname in protocol_start_times:
-            start_time = protocol_start_times[pname]
-        else:
-            start_time = 0.0
-        if pname in durations:
-            dur = durations[pname]
-        else:
-            dur = None
+        any_protocols = True
 
+        lats = np.concatenate(latencies[pname])
+        vals =  np.concatenate(values[pname]) * scales[measure]
+        
         colors = sns.color_palette("husl", max(len(prots), 3))
         if protoname.find("1nA") > 0:
             color = colors[1]
@@ -626,30 +679,14 @@ def plot_spike_measure(
             color = colors[2]
         else:
             color = colors[0]
-
         Rs_Cp_label, labely = _make_label(protoname, ivs, measure)
 
-        fit_result = fit_spike_measures(
-            d,
-            measure=measure,
-            experiment=experiment,
-            window=[0.4, 0.5],
-        )
-        if fit_result is None:
-            continue
-        latencies, values, fit_values, ss_values, sign = [x for k, x in fit_result.items()]
-        print("    Latencies from protocols: ", latencies.keys())
-        if len(latencies[protoname]) == 0:
-            continue
-        any_protocols = True
-        lats = np.concatenate(latencies[protoname])
-        vals = sign * np.concatenate(values[protoname]) * scales[measure]
-        ax.plot(lats, sign * vals, "o", color=color, markersize=1, label=labely, linewidth=0.35)
+        ax.plot(lats, vals, "o", color=color, markersize=1, label=labely, linewidth=0.35)
         if plot_fits:
-            fit_tr = fit_values[protoname]
             xf = np.linspace(0, dur, 500)
-            yf = sign * fit_tr.eval(x=xf) * scales[measure]
+            yf = datasign[pname] * fit_values[pname].eval(x=xf) * scales[measure]
             ax.plot(xf, yf, "r-", linewidth=0.5)
+    # label plot if there was no data to plot
     if not any_protocols:
         ax.text(
             0.5,
@@ -660,6 +697,7 @@ def plot_spike_measure(
             fontdict={"color": "red", "size": 12},
         )
         return None
+    
     ax.set_ylim(ylimits[measure])
     ax.set_xlim(-0.020, 1.0)
     ax.set_xlabel("AP Latency (s)")
@@ -668,7 +706,7 @@ def plot_spike_measure(
         ax.text(
             0.98,
             0.02,
-            f"Rs: {best_Rs:.2f} MOhm\nProtocols: {', '.join(use_protocols)}",
+            f"Rs: {best_Rs:.2f} MOhm\nProtocols: {', '.join(usable_protocols)}",
             ha="right",
             va="bottom",
             transform=ax.transAxes,
@@ -680,9 +718,9 @@ def plot_spike_measure(
         "values": values,
         "fit_values": fit_values,
         "ss_values": ss_values,
-        "sign": sign,
+        "sign": datasign,
         "Rs": best_Rs,
-        "protocols": use_protocols,
+        "protocols": used_protocols,
     }
 
 
@@ -802,7 +840,7 @@ def build_figure_framework():
     return P
 
 
-def compute_measures_all_cells(adpath, exptname, celltype, experiment):
+def compute_measures_all_cells(adpath, exptname, celltype, experiment, specific_cell_list: list):
     datadir = Path(adpath, exptname, celltype)
     files = list(datadir.glob("*_IVs.pkl"))
     # fig.do_fig = True
@@ -826,6 +864,10 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
 
     with PdfPages("spk_hwidths.pdf") as pdf:
         for nf, f in enumerate(files):
+            # print(f.name)
+            if specific_cell_list is not None:
+                if f.name not in specific_cell_list:
+                    continue
             print(f"#{nf:d} {f}")
             d = read_pkl_file(f)
             # if nf > 20:
@@ -861,11 +903,12 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
                         fits=[],
                     )
                     continue
+                
                 else:
-                    tr_latency, tr_values, fit_values, ss_values, sign, best_Rs, used_protocols = [
+                    tr_latency, tr_values, fit_values, ss_values, datasign, best_Rs, usable_protocols = [
                         v for k, v in sp_measures.items()
                     ]
-                    # print("fit values for measure ", measure, ": ", fit_values)
+                    print("fit values for measure ", measure, ": ", fit_values)
                     avfits = average_fits(fit_values)
                     # print("ss_values: ", measure, ss_values)
                     y= [x for k, x in ss_values.items() if len(x) > 0][0]
@@ -893,7 +936,7 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment):
                 else:
                     cell_data[col2] = ss_mean # np.mean([x for x in ss_values.values()])
                 cell_data['Rs_MOhm'] = best_Rs
-                cell_data['Protocols'] = ','.join(used_protocols)
+                cell_data['Protocols'] = ','.join(usable_protocols)
             dlist.append(cell_data)
             # if fig.do_fig and fig.fig_initiated:
             mpl.suptitle(f.stem)
@@ -930,7 +973,7 @@ def bar_and_scatter(
     # line_colors =plot_colors.get("line_plot_colors", None)
     edgecolor = (plot_colors["symbol_edge_color"],)
     linewidth = (plot_colors["symbol_edge_width"],)
-    print("Y is : ", y)
+    # print("Y is : ", y)
     df[y] = df[y] * scf
     sns.boxplot(
         data=df,
@@ -1062,6 +1105,8 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     # mpl.tight_layout
     # mpl.show()
 
+csv_file = "spike_steady_state_halfwidths_11-Jan-2026.csv"
+
 def plot_ss_hws(experiment, ax=None):
     if ax is None:
         f, ax = mpl.subplots(1, 1, figsize=(4,4))
@@ -1069,9 +1114,11 @@ def plot_ss_hws(experiment, ax=None):
     stats_dir = experiment.get("R_statistics_summaries", None)
     local_dir = Path(experiment.get("localdatapath", "."), stats_dir)
     PH.nice_plot(ax[0], direction="out", ticklength=3, position=-0.03)
-    df = pd.read_csv(Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"))
+    df = pd.read_csv(Path(local_dir, csv_file))
     df = df[df["age_category"] != "ND"]
     measure = "halfwidth_steadystate"
+    df['hw'] = df['halfwidth_dc'] + df['halfwidth_amp1'] + df['halfwidth_amp2']
+    df['hw'] = df['hw'] * 1e6
     ylims = (0, 800)
     scf = 1e6
     usec = r"$\mu$s"
@@ -1082,7 +1129,7 @@ def plot_ss_hws(experiment, ax=None):
     bar_and_scatter(
         df,
         x="age_category",
-        y=measure,
+        y="hw", # measure,
         hue="age_category",
         experiment=experiment,
         ax=ax[0],
@@ -1130,7 +1177,14 @@ if __name__ == "__main__":
         raise FileNotFoundError(f"Local directory does not exist: {local_dir!s}")
 
     if args.compute:
-        compute_measures_all_cells(adpath, exptname, celltype, experiment)
+        specific_cell_list = None 
+        # ['2023_01_23_S0C0_pyramidal_IVs.pkl',
+        #         '2023_10_27_S1C1_pyramidal_IVs.pkl',
+        #                       '2024_08_21_S1C2_pyramidal_IVs.pkl',
+        #                       '2023_09_11_S1C1_pyramidal_IVs.pkl',  # for testing specific cells
+        #         ]
+
+        compute_measures_all_cells(adpath, exptname, celltype, experiment, specific_cell_list=specific_cell_list)
         exit()
 
     if args.summary:
@@ -1141,7 +1195,7 @@ if __name__ == "__main__":
         P = build_figure_framework()
 
         # single cell:
-        df = pd.read_csv(Path(local_dir, "spike_steady_state_halfwidths_07-Jan-2026.csv"))
+        df = pd.read_csv(Path(local_dir, csv_file))
         df = df[df["cell_id"] == "2023.09.06_000/slice_000/cell_001"]
         pyrdatapath = Path(adpath, exptname, celltype, "2023_09_06_S0C1_pyramidal_IVs.pkl")
         d = read_pkl_file(filename=pyrdatapath)

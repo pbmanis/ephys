@@ -4,6 +4,7 @@ import json
 import numpy as np
 from pylibrary.tools import cprint as CP
 import ephys.tools.configfile as CF
+import matplotlib.pyplot as mpl
 import sympy.geometry
 import shapely
 import scipy.interpolate
@@ -317,6 +318,7 @@ def find_min_max_axes(boundary):
 def compute_splines(coord_pairs, npoints: int = 100, remove_ends=False):
     if len(coord_pairs) == 0:
         return None, None
+    print("\n", coord_pairs)
     coordinates_x = np.array([x[0] for x in coord_pairs])
     coordinates_y = np.array([x[1] for x in coord_pairs])
     dist = np.sqrt(
@@ -369,7 +371,7 @@ def find_marker_type(markers: dict):
 
 
 def get_coordinates_of_a_type(markers: list, marker_types: list, marker_info, start_pos=0) -> list:
-    """find_markers_of_a_type finds the markers of a specific type in the markers dictionary.
+    """get_coordinates_of_a_type finds the markers of a specific type in the markers dictionary.
 
     Parameters
     ----------
@@ -379,20 +381,31 @@ def get_coordinates_of_a_type(markers: list, marker_types: list, marker_info, st
     Returns
     -------
     list
-        List of surface marker coordinates.
+        List of marker coordinates.
     """
     coordinates: list = []
     coord_names: list = []
-    last_valid_pos = 0
-    for imark, marker in enumerate(marker_info.markers[start_pos:]):  # in order
-        if marker.name in coord_names or marker.group == "point":
+    last_valid_pos = -1
+    print("\n   ### get_coordinates_of_a_type: marker_info")
+    print("         ### GCOAT markers: ", markers)
+    print("         ### GCOAT marker_types: ", marker_types)
+    # pprint.pprint(marker_info)
+    for imark, markerkey in enumerate(marker_info):  # in order
+        marker = marker_info[markerkey]
+        print("\n     ### GCOAT: checking marker: ", imark, marker)
+        print(f"{'='*80}\n", marker.markers)
+        print(imark, len(marker.markers))
+        if imark >= len(marker.markers):
+            continue
+        if marker.name in coord_names or marker.markers[imark].group == "point":
             continue
         if marker.name in ["soma", "somas"]:
             continue
         for mt in marker_types:
-            if (marker.name).find(mt) != -1 or (marker.group).find(mt) != -1:
+            if (marker.name).find(mt) != -1 or (marker.markers[imark].group).find(mt) != -1:
                 try:
-                    coordinates.append(tuple(markers[marker.name]))
+                    print(marker.markers[imark] )
+                    coordinates.append(tuple(marker.markers[imark].coordinates[0]))
                 except KeyError:
                     print("markers had keys: ", markers.keys())
                     print("looking for marker name: ", marker.name)
@@ -413,6 +426,9 @@ def get_coordinates_of_a_type(markers: list, marker_types: list, marker_info, st
     w = dict(zip(coord_names, coordinates))  # remove any duplicates by name
     coord_names = [x for x in w]
     coordinates = [x for x in w.values()]
+    print("coords in order")
+    pprint.pprint(w)
+    print("="*80)
     return coordinates, coord_names, last_valid_pos
 
 
@@ -543,87 +559,67 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
 
     smoothed_poly_list = []
     surface_poly_list = []
-    # print("get_markers 493: markers: ", markers)
-    pprint.pprint(markers)
     new_style = True
-    if markers['name'] not in ["Markers"]:  # new style
-        # print("***NEW STYLE***")
-        marker_definitions = marker_template.defined_markers[markers['name']]
-    else:  # old style
-        marker_definitions = get_marker_definitions(markers, marker_template)
-        new_style = False
-        # print("OLD STYLE")
-    # print("="*80)
-    pprint.pprint(marker_definitions)
-    # raise ValueError("debug stop")
+    marker_definitions = marker_template.defined_markers
     if markers is None: #  or len(markers.keys()) == 0:
         return None, None
-    # marker_type_name = marker_definitions.name
-    for marktype in markers:
-
-        if marktype in ["name", "somas"]:
-            continue    
-        if marktype in ["soma"]:  # draw cell position
+    # print("\n***Plot Mosaic Markers")
+    for imark, marker in enumerate(markers):
+        # print("   ***PMM: marker: ", marker)
+        marktype = marker.name
+        if marktype in ["soma"] or get_marker_info(marker_definitions, marktype, "group") in ["point"]:  # draw cell position
             markersize = get_marker_info(marker_definitions, marktype, "markersize")
             marksymbol = get_marker_info(marker_definitions, marktype, "symbol")
             markcolor = get_marker_info(marker_definitions, marktype, "color")
             markalpha = get_marker_info(marker_definitions, marktype, "alpha")
-            # print("markers[marktype]: ", markers[marktype])
-            if new_style:
-                for cellname in markers[marktype]:
-                    print("cellname: ", cellname, "marktype: ", marktype)
-                    cellpos = markers[marktype][cellname]
-                    if axp is not None:
-                        axp.plot(
-                            cellpos[0],
-                            cellpos[1],
-                            marker=marksymbol,
-                            color=markcolor,
-                            markersize=markersize,
-                            alpha=markalpha,
-                            zorder=10000,
-                        )
-                        axp.text(
-                            cellpos[0],
-                            cellpos[1],
-                            cellname,
-                            fontsize=6,
-                            color="w",
-                            zorder=10001,
-                        )
-                else:
-                    pass
-            continue
+    
+            cellpos = marker.coordinates[0]   # it is a point marker, so only one coordinate
+            if axp is not None:
+                axp.plot(
+                    cellpos[0],
+                    cellpos[1],
+                    marker=marksymbol,
+                    color=markcolor,
+                    markersize=markersize,
+                    alpha=markalpha,
+                    zorder=10000,
+                )
+                axp.text(
+                    cellpos[0],
+                    cellpos[1],
+                    marktype,
+                    fontsize=6,
+                    color="w",
+                    zorder=10001,
+                )
 
-        # here we draw the individual markers
-        position = markers[marktype]
-        if axp is not None and position is not None and len(position) == 2:
+        # if axp is not None and position is not None and len(position) == 2:
 
-            axp.plot(
-                [position[0], position[0]],
-                [position[1], position[1]],
-                marker=get_marker_info(marker_definitions, marktype, "symbol"),
-                color=get_marker_info(marker_definitions, marktype, "color"),
-                markersize=get_marker_info(marker_definitions, marktype, "markersize"),
-                alpha=get_marker_info(marker_definitions, marktype, "alpha"),
-            )
+        #     axp.plot(
+        #         [position[0], position[0]],
+        #         [position[1], position[1]],
+        #         marker=get_marker_info(marker_definitions, marktype, "symbol"),
+        #         color=get_marker_info(marker_definitions, marktype, "color"),
+        #         markersize=get_marker_info(marker_definitions, marktype, "markersize"),
+        #         alpha=get_marker_info(marker_definitions, marktype, "alpha"),
+        #     )
 
-            axp.text(
-                position[0],
-                position[1],
-                s=get_marker_info(marker_definitions, marktype, "short_name"),
-                fontsize=6,
-                color="w",
-            )
+        #     axp.text(
+        #         position[0],
+        #         position[1],
+        #         s=get_marker_info(marker_definitions, marktype, "short_name"),
+        #         fontsize=6,
+        #         color="w",
+        #     )
     # note that by passing marker_template.defined_markers[marktype] (marker_definitions),
     # are providing the ORDER in which the markers should be drawn
 
-    surface_coordinates, surface_coord_names, end_pos = get_coordinates_of_a_type(
-        markers,
-        ["surface", "rostralborder", "caudalborder", "dorsalborder", "ventralborder"],
-        marker_definitions,
-        start_pos=0,
-    )
+    # surface_coordinates, surface_coord_names, end_pos = get_coordinates_of_a_type(
+    #     markers,
+    #     ["surface", "rostralborder", "caudalborder", "dorsalborder", "ventralborder"],
+    #     marker_definitions,
+    #     start_pos=0,
+    # )
     surface_xx, surface_yy = compute_spline_segmenet(
         markers,
         ["surface", "rostralborder", "caudalborder", "dorsalborder", "ventralborder"],
@@ -638,14 +634,19 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
         axp,
         line_style="b-",
     )
-    if "deep_reference" in markers.keys() and "surface_reference" in markers.keys():
-        deep_pt = sympy.geometry.point.Point(markers["deep_reference"], dim=2)
-        surface_pt = sympy.geometry.point.Point(markers["surface_reference"], dim=2)
+    sympy_smoothed_poly = None
+    shapely_smoothed_poly = None
+    names = [markers[i].name for i in range(len(markers))]
+    if "deep_reference" in names and "surface_reference" in names:
+        dr = [m.coordinates for i, m in enumerate(markers) if m.name == "deep_reference"][0][0]
+        sr = [m.coordinates for i, m in enumerate(markers) if m.name == "surface_reference"][0][0]
+        print(dr, sr)
+        deep_pt = sympy.geometry.point.Point(dr, dim=2)
+        surface_pt = sympy.geometry.point.Point(sr, dim=2)
     else:
         deep_pt = None
         surface_pt = None
-        sympy_smoothed_poly = None
-        shapely_smoothed_poly = None
+
 
     if surface_xx is not None:
         CP.cprint("c", "   ...computing surface_xx")
@@ -686,25 +687,32 @@ def plot_mosaic_markers(markers: dict, axp, marker_template=None) -> tuple():
             measures["shortest_line"] = np.array(shortest_line.coords)
             if longest_line is not None:
                 measures["longest_line"] = np.array(longest_line.coords)
-    if "rostralborder" in markers.keys() and "caudalborder" in markers.keys():
-        rostralpt = sympy.geometry.point.Point(markers["rostralborder"], dim=2)
-        caudalpt = sympy.geometry.point.Point(markers["caudalborder"], dim=2)
+    if "rostralborder" in names and "caudalborder" in names:
+        rb = [m.coordinates for i, m in enumerate(markers) if m.name == "rostralborder"][0][0]
+        cb = [m.coordinates for i, m in enumerate(markers) if m.name == "caudalborder"][0][0]
+        rostralpt = sympy.geometry.point.Point(rb, dim=2)
+        caudalpt = sympy.geometry.point.Point(cb, dim=2)
         measures["rostral_caudal_distance"] = float(rostralpt.distance(caudalpt))
-    somas = markers.get("somas", {})
-    if len(somas) == 0:  # try old style
-        somas = markers.get('soma', {})
-        if isinstance(somas, list):
-            somas_dict = {
-                'cell': somas
-            }
-            somas = somas_dict  
+    somas = []
+    if 'soma' in names:
+        print("names: ", names)
+        for m in markers:
+            somas.append(m)
+
+    # if isinstance(somas, list):
+    #     somas_dict = {
+    #         'cell': somas
+    #     }
+    #     somas = somas_dict  
     soma_depth = {}
     soma_radius = {}
     # Locate somas and draw perpendiculars...
     for i_soma, cellname in enumerate(somas):
-        CP.cprint("c", f"  Computing depth for soma: {cellname:s}")
+        print(somas, i_soma, cellname)
+        CP.cprint("c", f"  Computing depth for soma: {somas[i_soma].name:s}")
         # for each soma, mark its position
-        cellpos = somas[cellname]  # z coordinate seems to be in microns...
+        cellpos = somas[i_soma].coordinates[0]  # z coordinate seems to be in microns...
+        print("  cellpos: ", cellpos)
         axp.plot(cellpos[0], cellpos[1], "y*", markersize=7, alpha=1.0, zorder=10000)
         axp.text(cellpos[0], cellpos[1], cellname, fontsize=6, color="y", zorder=10001)
         if sympy_smoothed_poly is None:
@@ -808,7 +816,7 @@ if __name__ == "__main__":
         # print("marker_template: ", MARKS)
         print("markers[marktype]: ", markers[marktype])
         print("markers.to_dict: ", markers[marktype].to_dict())
-        print(dir(MARKS))
-        measure, poly = plot_mosaic_markers(markers[marktype].to_dict()['markers'], axp, marker_template=MARKS)
+        print("dir MARKS:\n", dir(MARKS))
+        measure, poly = plot_mosaic_markers(markers[marktype].markers, axp, marker_template=MARKS)
         axp.set_title(f"Marker type: {marktype:s}")
     mpl.show()
