@@ -2105,12 +2105,16 @@ class DataTables:
 def main():
     # Entry point. Why do I do this ? It keeps sphinxdoc from running the
     # code...
-    (
-        datasets,
-        experiments,
-    ) = GETCONFIG.get_configuration(
-        config_file_path
-    )  # retrieves the configuration file from the running directory
+    print(config_file_path)
+    datasets = {}
+    experiments = {}
+    if Path(config_file_path).is_file():
+        (
+            datasets,
+            experiments,
+        ) = GETCONFIG.get_configuration(
+            config_file_path
+        )  # retrieves the configuration file from the running directory
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
