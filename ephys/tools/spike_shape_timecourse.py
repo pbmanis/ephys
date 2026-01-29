@@ -244,7 +244,6 @@ def fit_spike_measures(
     protocol: str,
     measure: str,
     experiment: dict,
-    window: list = [0.4, 0.5],
 ) -> dict:
     """fit_spike_measures Fit the time course of the spike measure changes through
         the stimulus duration. handles multiple protocols at once.
@@ -269,14 +268,14 @@ def fit_spike_measures(
             junction potential to adjust AP threshold values
         experiment : dict
             Parameters for the experiment being analyzed
-        window : list, optional
-            time window to consider for steady-state values, by default [0.4, 0.5]
+            specifically, we need the steady_state_window
 
         Returns
         -------
         dictionary with : tr_latency, tr_values, fit_values, ss_values, sign
     """
     verbose = False
+    window = experiment["steady_state_window"]
 
     print("Fitting spike measure time courses for measure: ", measure)
     assert measure in [
@@ -398,10 +397,11 @@ def fit_spike_measures(
         amax = 200e-6
         minr1 = 0.01
     if measure == "AP_begin_V":
-        amax = 0.020
+        amax = 0.025
+        a2max = 0.025
         minr1 = 0.005 
         minr2 = 1.0
-        dc_init = -0.55
+        # dc_init = -0.55
         dc_min = -0.1
         dc_max = 0.1
 
@@ -412,9 +412,9 @@ def fit_spike_measures(
     params = d2model.make_params(
         dc={"value": dc_init, "min": dc_min, "max": dc_max},
         a1={"value": a_init, "min": 0., "max": amax},
-        r1={"value": minr1, "min": 0., "max": 0.1},
-        a2={"value": 0, "min": 0., "max": amax},
-        r2={"value": minr2*1.2, "min": minr2, "max": 3.0},
+        r1={"value": minr1, "min": minr1, "max": 0.1},
+        a2={"value": 0, "min": 0., "max": amax, "vary": True},
+        r2={"value": minr2*1.2, "min": minr2, "max": 3.0, "vary": True}
     )
     x = np.linspace(0, dur, 500)
     y = fit_func[measure](x, **params.valuesdict())
@@ -536,6 +536,7 @@ def plot_spike_measure(
     measure="halfwidth",
     plot_fits: bool = True,
     ax: mpl.Axes = None,
+    publication_mode: bool = False,
 ) -> Union[dict, None]:
     """plot_spike_measure Plot the time course of the spike measure changes through
     the stimulus duration.
@@ -553,6 +554,8 @@ def plot_spike_measure(
         name of the measure to plot ('halfwidth', 'dvdt_rising', 'dvdt_falling', 'AP_begin_V'), by default "halfwidth"
     ax : mpl.Axes, optional
         Axes to plot on, by default None
+    publication_mode : bool, optional
+        If True, suppresses extra text for publication figures, by default False
 
     Returns
     -------
@@ -568,10 +571,10 @@ def plot_spike_measure(
     ], "Invalid measure name"
     scales = {"halfwidth": 1e6, "dvdt_rising": 1.0, "dvdt_falling": -1.0, "AP_begin_V": 1.0e3}
     ylimits = {
-        "halfwidth": (0, None),
+        "halfwidth": (0, 500),
         "dvdt_rising": (0, 1000),
         "dvdt_falling": (800, 0),
-        "AP_begin_V": (-0.060 * scales["AP_begin_V"], -0.040 * scales["AP_begin_V"]),
+        "AP_begin_V": (-0.065 * scales["AP_begin_V"], -0.040 * scales["AP_begin_V"]),
     }
     musec = r"$\mu$ s"
     ylabels = {
@@ -582,9 +585,11 @@ def plot_spike_measure(
     }
     if ax is None:
         f, ax = mpl.subplots(1, 1)
-        f.text(0.95, 0.02, datetime.datetime.now(), fontsize=6, transform=f.transFigure, ha="right", va="bottom")
-    if measure == 'halfwidth':
+        if not publication_mode:
+            f.text(0.95, 0.02, datetime.datetime.now(), fontsize=6, transform=f.transFigure, ha="right", va="bottom")
+    if measure == 'halfwidth' and not publication_mode:
         ax.set_title(f"{str(Path(*filename.parts[-3:])):s}")
+    ax.set_ylim(ylimits[measure])
     if d["Spikes"] is None:
         ax.text(
             0.5,
@@ -657,7 +662,6 @@ def plot_spike_measure(
             protocol = protoname,
             measure=measure,
             experiment=experiment,
-            window=[0.4, 0.5],
         )
         if fit_result is None:
             continue
@@ -672,20 +676,34 @@ def plot_spike_measure(
         lats = np.concatenate(latencies[pname])
         vals =  np.concatenate(values[pname]) * scales[measure]
         
-        colors = sns.color_palette("husl", max(len(prots), 3))
+        colors = ['k', 'k', 'grey'] # sns.color_palette("husl", max(len(prots), 3))
+        fillstyle = ['full', None, 'full']
+        facecolor = ["#000000", "#ffffff", "#888888"]
+
         if protoname.find("1nA") > 0:
-            color = colors[1]
+            cindx = 0
         elif protoname.find("4nA") > 0:
-            color = colors[2]
+            cindx = 1
         else:
-            color = colors[0]
+            cindx = 2
+        print("cindx: ", cindx, " for protocol ", protoname)
         Rs_Cp_label, labely = _make_label(protoname, ivs, measure)
 
-        ax.plot(lats, vals, "o", color=color, markersize=1, label=labely, linewidth=0.35)
+        ax.plot(lats, vals, "o",fillstyle=fillstyle[cindx], alpha=0.25,
+                markerfacecolor=facecolor[cindx], markersize=2.5, label=labely, 
+                markeredgecolor = 'k', linewidth=0.15)
+
+        PH.nice_plot(ax, direction="outward", ticklength=3, position=-0.05)
         if plot_fits:
             xf = np.linspace(0, dur, 500)
             yf = datasign[pname] * fit_values[pname].eval(x=xf) * scales[measure]
-            ax.plot(xf, yf, "r-", linewidth=0.5)
+            ax.plot(xf, yf, "r--", linewidth=1.25)
+    xl = [0, experiment['steady_state_window'][1]]
+    ax.set_xlim(xl)
+    yl = ax.get_ylim()
+    PH.do_talbotTicks(ax, 'y', axrange={'x': None, 'y': [yl[0], yl[1]]})
+    xb = experiment['steady_state_window']
+    ax.fill_betweenx(yl, xb[0], xb[1], color="lightgrey", alpha=0.5)
     # label plot if there was no data to plot
     if not any_protocols:
         ax.text(
@@ -698,11 +716,11 @@ def plot_spike_measure(
         )
         return None
     
-    ax.set_ylim(ylimits[measure])
-    ax.set_xlim(-0.020, 1.0)
+
+    # ax.set_xlim(-0.020, 1.0)
     ax.set_xlabel("AP Latency (s)")
     ax.set_ylabel(ylabels[measure])
-    if measure == 'halfwidth':
+    if measure == 'halfwidth' and not publication_mode:
         ax.text(
             0.98,
             0.02,
@@ -813,11 +831,11 @@ def read_pkl_file(filename):
 
 
 def build_figure_framework():
-    x = -0.1
+    x = -0.2
     y = 1.07
 
-    yht = 0.18
-    xp = [0.08, 0.45, 0.72]
+    yht = 0.16
+    xp = [0.08, 0.46, 0.76]
     yp = [0.975 - (n + 1) * 0.22 for n in range(4)]
     xw = [0.30, 0.22, 0.22]
     yh = [yht] * 4
@@ -1030,30 +1048,30 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     delta = r"$\Delta$"
     usec = r"$\mu$s"
 
-    if measure in ["AP_begin_V"]:
-        ylims = (0, 20)
-        taulims = (0, 0.25)
-        scf = 1.0
-        ylabel = f"{delta} AP Threshold (mV)"
-
-    elif measure in ["dvdt_falling"]:
-        ylims = (-200, 20)
-        taulims = (0, 0.25)
-        scf = -1.0e-3
-        ylabel = f"{delta} Falling dV/dt (V/s)"
-    
-    elif measure in ["dvdt_rising"]:
-        ylims = (-400, 0)
-        taulims = (0, 0.25)
-        scf = -1.0e-3
-        ylabel = f"{delta} Rising dV/dt (V/s)"
-    
-    elif measure in ["halfwidth"]:
+    if measure in ["halfwidth"]:
         ylims = (0, 100)
-        taulims = (0, 0.5)
+        taulims = (0, 0.15)
         scf = 1e3
         ylabel = f"{delta} AP Halfwidth ({usec})"
     
+    elif measure in ["dvdt_rising"]:
+        ylims = (-500, 0)
+        taulims = (0, 0.15)
+        scf = -1.0e-3
+        ylabel = f"{delta} Rising dV/dt (V/s)"
+
+    elif measure in ["dvdt_falling"]:
+        ylims = (-250, 0)
+        taulims = (0, 0.15)
+        scf = -1.0e-3
+        ylabel = f"{delta} Falling dV/dt (V/s)"
+    
+    elif measure in ["AP_begin_V"]:
+        ylims = (0, 20)
+        taulims = (0, 0.15)
+        scf = 1.0
+        ylabel = f"{delta} AP Threshold (mV)"
+
     df[measure + "_amp1"] *= scf
     # =================
     bar_and_scatter(
@@ -1081,6 +1099,34 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     )
     hw_ax[1].set_ylim(ylims)
     hw_ax[1].set_ylabel(ylabel)
+
+    def clean_up_plot(bar_axes, experiment):
+        angle = 0
+        ha = "center"
+        newx = experiment.get("new_xlabels", None)
+        for ax in bar_axes:
+            xlab = ax.get_xlabel()
+            if newx is not None:
+                if xlab in newx:
+                    xlab = newx[xlab]
+                    print("xlab: ", xlab)
+            xcats = ax.get_xticklabels()
+            ax.set_xlabel("Age Group")
+            xticks = []
+            for i, lab in enumerate(xcats): 
+                short_xlab = experiment['group_map'].get(lab.get_text(), lab.get_text())
+                print("short_xlab: ", short_xlab)
+                xticks.append(short_xlab)
+            ax.set_xticks(ax.get_xticks(), xticks, rotation=angle, ha=ha)
+            # ax.set_xticks(ax.get_xticks(), ax.get_xticklabels(), rotation=angle, ha=ha)
+            PH.nice_plot(ax, direction="outward", ticklength=3, position=-0.05)
+        for axn  in P.axdict.keys():
+            ax = P.axdict[axn]
+            if ax.get_legend() is not None:
+                    ax.get_legend().remove()
+
+    clean_up_plot(hw_ax, experiment)
+
 
     # =================
     # bar_and_scatter(
@@ -1222,6 +1268,7 @@ if __name__ == "__main__":
                 filename=pyrdatapath,
                 measure=v,
                 ax=P.axdict[k],
+                publication_mode = True,
             )
 
             plot_amp_tau(
