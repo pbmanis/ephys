@@ -46,7 +46,7 @@ from random import sample
 import numpy as np
 import scipy.signal
 
-import obspy.signal.interpolation as OSI  # lanczos resampling
+# import obspy.signal.interpolation as OSI  # lanczos resampling
 from numba import jit
 from numpy import ma as ma
 from scipy import fftpack as spFFT
@@ -677,90 +677,90 @@ class Utility:
             dy[k] = (y[k-3] -8*y[k-2] + 13*y[k - 1] - 13*y[k+1] + 8*y[k+2] - y[k+3])/ (8.0*dt*dt*dt)
         return dy
 
-    def find_threshold(self, y, dt:float, threshold_slope:float=20.0):
-        """
+    # def find_threshold(self, y, dt:float, threshold_slope:float=20.0):
+    #     """
         
-        Includes commented code to find_threshold using Method II from Sekelri et al 2004.
-        This method finds the maximum second deriviative with respect
-        to voltage in the phase space. 
-        We use 4th order accurate methods to compute the derivatives.
+    #     Includes commented code to find_threshold using Method II from Sekelri et al 2004.
+    #     This method finds the maximum second deriviative with respect
+    #     to voltage in the phase space. 
+    #     We use 4th order accurate methods to compute the derivatives.
 
-        Parameters
-        ----------
-        y : np.array
-            voltage time series
-        dt : float
-            sample rate
-        threshold_slope : float (default: 20.0)
-            Slope to use when specifying threshold of an action potential. in V/s or mV/ms.
-        """
-        usefindiff = False
-        old_dt = dt
-        yo = y
-        # # upsample spike
-        upfactor = 5
-        lwin = 10
-        yo = y.copy()
-        y = OSI.lanczos_interpolation(y, 0., old_dt, 0., old_dt/upfactor,
-                            new_npts = len(y)*upfactor - 2*lwin,
-                            a=lwin, window="hanning") # , *args, **kwargs):
-        dt = old_dt/upfactor
-        ydv = self.deriv1(y, dt) # compute max rising slope in upsampled data
-        # print("len ydv, y: ", len(ydv), len(y))
-        i_pk = np.argmax(y) # spike peak index
-        if lwin == i_pk:
-            lwin -= 1
-            i_pk += 1  # give algorithm some room
-            # print("ydv[lwin:i_pk]: ", ydv[lwin:i_pk])
-        # print("lwin: ", lwin, "i_pk: ", i_pk, "max: ", np.max(ydv[lwin:i_pk]), np.argmax(ydv[lwin:i_pk]))
-        i_dv_peak = np.argmax(ydv[lwin:i_pk])+lwin  # get the peak rising phase of spike, excluding the lanczos window
-        # print("peak index, deriv: ", i_dv_peak, np.max(ydv))
-        thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= threshold_slope)[0]
-        # print("ydv: ", ydv[lwin:i_dv_peak])
-        # print(thrpt_dv, lwin, i_dv_peak, len(ydv), threshold_slope)
-        thrpt_dv = thrpt_dv[-1] + lwin # first point on rising phase where slope is below threshold
-        itmin =  0
-        # itmax:int = np.argmax(ydv) # limit to max rising slope time
-        # print("itmax: ", itmax)
-        # itmin:int = itmax - int(2.5e-3/dt) # and 1 msec before peak
-        # if itmin < 0:
-        #     itmin = 0
-        # tthr = np.arange(dt*itmin, dt*itmax, dt)
-        # yt = y[itmin:itmax+1]
+    #     Parameters
+    #     ----------
+    #     y : np.array
+    #         voltage time series
+    #     dt : float
+    #         sample rate
+    #     threshold_slope : float (default: 20.0)
+    #         Slope to use when specifying threshold of an action potential. in V/s or mV/ms.
+    #     """
+    #     usefindiff = False
+    #     old_dt = dt
+    #     yo = y
+    #     # # upsample spike
+    #     upfactor = 5
+    #     lwin = 10
+    #     yo = y.copy()
+    #     y = OSI.lanczos_interpolation(y, 0., old_dt, 0., old_dt/upfactor,
+    #                         new_npts = len(y)*upfactor - 2*lwin,
+    #                         a=lwin, window="hanning") # , *args, **kwargs):
+    #     dt = old_dt/upfactor
+    #     ydv = self.deriv1(y, dt) # compute max rising slope in upsampled data
+    #     # print("len ydv, y: ", len(ydv), len(y))
+    #     i_pk = np.argmax(y) # spike peak index
+    #     if lwin == i_pk:
+    #         lwin -= 1
+    #         i_pk += 1  # give algorithm some room
+    #         # print("ydv[lwin:i_pk]: ", ydv[lwin:i_pk])
+    #     # print("lwin: ", lwin, "i_pk: ", i_pk, "max: ", np.max(ydv[lwin:i_pk]), np.argmax(ydv[lwin:i_pk]))
+    #     i_dv_peak = np.argmax(ydv[lwin:i_pk])+lwin  # get the peak rising phase of spike, excluding the lanczos window
+    #     # print("peak index, deriv: ", i_dv_peak, np.max(ydv))
+    #     thrpt_dv = np.where(ydv[lwin:i_dv_peak] <= threshold_slope)[0]
+    #     # print("ydv: ", ydv[lwin:i_dv_peak])
+    #     # print(thrpt_dv, lwin, i_dv_peak, len(ydv), threshold_slope)
+    #     thrpt_dv = thrpt_dv[-1] + lwin # first point on rising phase where slope is below threshold
+    #     itmin =  0
+    #     # itmax:int = np.argmax(ydv) # limit to max rising slope time
+    #     # print("itmax: ", itmax)
+    #     # itmin:int = itmax - int(2.5e-3/dt) # and 1 msec before peak
+    #     # if itmin < 0:
+    #     #     itmin = 0
+    #     # tthr = np.arange(dt*itmin, dt*itmax, dt)
+    #     # yt = y[itmin:itmax+1]
 
-        # print("thrpt_dv: ", np.where(ydv[:i_dv_peak] <= threshold_slope))
-        # if usefindiff:
-        #     dx1 = FinDiff(0, dt, deriv=1, acc=4)
-        #     dx2 = FinDiff(0, dt, deriv=2, acc=4)
-        #     dx3 = FinDiff(0, dt, deriv=3, acc=4)
-        #     D1 = dx1(yt)
-        #     D2 = dx2(yt)
-        #     D3 = dx3(yt)
-        # else:
-        #     D1 = deriv1(yt, dt)
-        #     D2 = deriv2(yt, dt)
-        #     D3 = deriv3(yt, dt)
+    #     # print("thrpt_dv: ", np.where(ydv[:i_dv_peak] <= threshold_slope))
+    #     # if usefindiff:
+    #     #     dx1 = FinDiff(0, dt, deriv=1, acc=4)
+    #     #     dx2 = FinDiff(0, dt, deriv=2, acc=4)
+    #     #     dx3 = FinDiff(0, dt, deriv=3, acc=4)
+    #     #     D1 = dx1(yt)
+    #     #     D2 = dx2(yt)
+    #     #     D3 = dx3(yt)
+    #     # else:
+    #     #     D1 = deriv1(yt, dt)
+    #     #     D2 = deriv2(yt, dt)
+    #     #     D3 = deriv3(yt, dt)
 
-        # numerator = D3*D1 - D2*D2
-        # denominator = D1*D1*D1
-        # # print(numerator)
-        # # print(denominator)
-        # difffunc = numerator/denominator
-        # thrpt = np.argmax(difffunc)+lwin+1 # add back the lanczos window
-        thrpt = thrpt_dv + itmin
-        Vthr = y[thrpt]
-        Vthr_time = dt*thrpt
-        # thrpt = thrpt + itmin
-        # tx = np.arange(len(y))*dt
-        # fig, ax = mpl.subplots(2, 1, figsize=(5, 8), sharex=True)
-        # ax[0].plot(np.arange(len(yo))*old_dt, yo, 'kx', markersize=3)
-        # ax[0].plot(tx, y, 'bo', markersize=2)
-        # ax[0].plot(Vthr_time, Vthr, 'ro', markersize=3)
-        # ax[0].plot([0, np.max(tx)], [Vthr, Vthr], 'r--')
-        # ax[1].plot(tx, ydv, 'g-')
-        # ax[1].plot([0, np.max(tx)], [threshold_slope, thrV_slope], 'k--')
-        # mpl.show()
-        return Vthr, Vthr_time
+    #     # numerator = D3*D1 - D2*D2
+    #     # denominator = D1*D1*D1
+    #     # # print(numerator)
+    #     # # print(denominator)
+    #     # difffunc = numerator/denominator
+    #     # thrpt = np.argmax(difffunc)+lwin+1 # add back the lanczos window
+    #     thrpt = thrpt_dv + itmin
+    #     Vthr = y[thrpt]
+    #     Vthr_time = dt*thrpt
+    #     # thrpt = thrpt + itmin
+    #     # tx = np.arange(len(y))*dt
+    #     # fig, ax = mpl.subplots(2, 1, figsize=(5, 8), sharex=True)
+    #     # ax[0].plot(np.arange(len(yo))*old_dt, yo, 'kx', markersize=3)
+    #     # ax[0].plot(tx, y, 'bo', markersize=2)
+    #     # ax[0].plot(Vthr_time, Vthr, 'ro', markersize=3)
+    #     # ax[0].plot([0, np.max(tx)], [Vthr, Vthr], 'r--')
+    #     # ax[1].plot(tx, ydv, 'g-')
+    #     # ax[1].plot([0, np.max(tx)], [threshold_slope, thrV_slope], 'k--')
+    #     # mpl.show()
+    #     return Vthr, Vthr_time
 
     def clean_spiketimes(
         self, spikeTimes: Union[List, np.ndarray], mindT: float = 0.7

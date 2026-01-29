@@ -12,7 +12,7 @@ Some Seismogram Interpolating Functions.
 import numpy as np
 import scipy.interpolate
 
-from obspy.signal.headers import clibsignal
+# from obspy.signal.headers import clibsignal
 
 
 def _validate_parameters(data, old_start, old_dt, new_start, new_dt, new_npts):
@@ -164,9 +164,9 @@ def weighted_average_slopes(data, old_start, old_dt, new_start, new_dt,
     # Using scipy.interpolate.piecewise_polynomial_interpolate() is too
     # memory intensive
     return_data = np.empty(len(new_time_array), dtype=np.float64)
-    clibsignal.hermite_interpolation(data, slope, new_time_array, return_data,
-                                     len(data), len(return_data), old_dt,
-                                     old_start)
+    # clibsignal.hermite_interpolation(data, slope, new_time_array, return_data,
+    #                                  len(data), len(return_data), old_dt,
+    #                                  old_start)
     return return_data
 
 
@@ -301,9 +301,9 @@ def lanczos_interpolation(data, old_start, old_dt, new_start, new_dt, new_npts,
 
     return_data = np.zeros(new_npts, dtype=np.float64)
 
-    clibsignal.lanczos_resample(
-        np.require(data, dtype=np.float64), return_data, dt_factor, offset,
-        len(data), len(return_data), int(a), 0)
+    # clibsignal.lanczos_resample(
+    #     np.require(data, dtype=np.float64), return_data, dt_factor, offset,
+    #     len(data), len(return_data), int(a), 0)
     return return_data
 
 
@@ -339,12 +339,12 @@ def calculate_lanczos_kernel(x, a, window):
     y1 = np.zeros(x.shape, dtype=np.float64)
     y2 = np.zeros(x.shape, dtype=np.float64)
 
-    clibsignal.calculate_kernel(
-        x, y0, len(x), a, 0, _LANCZOS_KERNEL_MAP[window])
-    clibsignal.calculate_kernel(
-        x, y1, len(x), a, 1, _LANCZOS_KERNEL_MAP[window])
-    clibsignal.calculate_kernel(
-        x, y2, len(x), a, 2, _LANCZOS_KERNEL_MAP[window])
+    # clibsignal.calculate_kernel(
+    #     x, y0, len(x), a, 0, _LANCZOS_KERNEL_MAP[window])
+    # clibsignal.calculate_kernel(
+    #     x, y1, len(x), a, 1, _LANCZOS_KERNEL_MAP[window])
+    # clibsignal.calculate_kernel(
+    #     x, y2, len(x), a, 2, _LANCZOS_KERNEL_MAP[window])
 
     ret_val = {
         "full_kernel": y0,
