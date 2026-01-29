@@ -37,7 +37,7 @@ from scipy.optimize import curve_fit
 import ephys.mini_analyses.mini_event_dataclasses as MEDC  # get result datastructure
 import ephys.tools.digital_filters as dfilt
 import ephys.tools.functions as FUNCS
-import obspy.signal.interpolation as OSI
+# import obspy.signal.interpolation as OSI
 
 Logger = logging.getLogger("AnalysisLogger")
 
@@ -565,32 +565,42 @@ class MiniAnalyses:
                 dt_upscale = self.dt_seconds / up_freq
                 tb_high = np.arange(0.0, up_freq * data.shape[1] * dt_upscale, dt_upscale)
                 newpts = int(len(artdata) * up_freq) - 20
-                art = OSI.lanczos_interpolation(
+                # art = OSI.lanczos_interpolation(
+                #     artdata - artdata[0],
+                #     0.0,
+                #     self.dt_seconds,
+                #     0.0,
+                #     dt_upscale,
+                #     new_npts=newpts,
+                #     a=20,
+                #     window="lanczos",
+                # )
+                lancwindow1 = scipy.signal.windows.lanczos(20)
+                art2 = scipy.signal.resample(
                     artdata - artdata[0],
-                    0.0,
-                    self.dt_seconds,
-                    0.0,
-                    dt_upscale,
-                    new_npts=newpts,
-                    a=20,
-                    window="lanczos",
+                    newpts,
+                    window=lancwindow1,
                 )
+
                 newptsd = int(len(data[0, :]) * up_freq) - 20
                 for i in range(data.shape[0]):
                     data[i, :] = data[i, :] - data[i, 0]
 
                 dx = np.zeros((data.shape[0], int(data.shape[1] * up_freq) - 20))
                 for i in range(data.shape[0]):
-                    dx[i, :] = OSI.lanczos_interpolation(
-                        data[i, :],
-                        0.0,
-                        self.dt_seconds,
-                        0.0,
-                        dt_upscale,
-                        new_npts=newptsd,
-                        a=20,
-                        window="lanczos",
-                    )  # , *args, **kwargs):
+                    # dx[i, :] = OSI.lanczos_interpolation(
+                    #     data=data[i, :],
+                    #     old_start=0.0,
+                    #     old_dt=self.dt_seconds,
+                    #     new_start=0.0,
+                    #     new_dt=dt_upscale,
+                    #     new_npts=newptsd,
+                    #     a=20,
+                    #     window="lanczos",
+                    # )  # , *args, **kwargs):
+                    dx[i,: ] = scipy.signal.resample(
+                        data[i, :] - data[i, 0], newptsd, window=lancwindow1
+                    )
                 # self.show_prepared_data(timebase, data, tb_high[:-20], np.mean(dx, axis=0))
 
                 dx[:, 0] = 0
