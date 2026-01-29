@@ -436,6 +436,7 @@ cols = [
     "AP_thr_V",
     "AP_thr_T",
     "AP_HW",
+    "AP_SS_HW",
     "AP15Rate",
     "AdaptRatio",
     "AdaptIndex",
@@ -462,6 +463,7 @@ datacols = [
     "AP_thr_V",
     "AP_thr_T",
     "AP_HW",
+    "AP_SS_HW",
     "AP15Rate",
     "AdaptRatio",
     "AdaptIndex",
@@ -898,6 +900,7 @@ class PlotSpikeInfo(QObject):
     def rescale_values(self, df):
         rescaling = {
             "AP_HW": 1e6,  # convert to usec
+            "AP_SS_HW": 1e6,
             "AP_thr_V": 1e3,
             "AHP_depth_V": 1e3,
             "AHP_relative_depth_V": 1,
@@ -1009,6 +1012,7 @@ class PlotSpikeInfo(QObject):
             "AP_thr_V",
             "AP_thr_T",
             "AP_HW",
+            "AP_SS_HW",
             "AP_peak_V",
             "AHP_trough_V",
             "AHP_trough_T",
@@ -1454,6 +1458,7 @@ class PlotSpikeInfo(QObject):
                     hue_category,
                 )
                 if len(df[xname].unique()) == 0:
+                    print("unique xnames: ", df[xname].unique())
                     raise ValueError(f"xname is not in df: <{xname:s}>, {df.columns!s}")
                 # plot_order = [p for p in plot_order if p in df[xname].unique()]
                 picker_func = self.create_one_plot_categorical(
@@ -2556,7 +2561,7 @@ class PlotSpikeInfo(QObject):
         # print(df_clean[measure])
         # print("Groups found: ", df_clean.Group.unique())
         scale = 1.0
-        facs = {"AP_HW": 1e6, "taum": 1e3}
+        facs = {"AP_HW": 1e6, "taum": 1e3, "AP_SS_HW": 1e6}
         if measure in facs:
             scale = facs[measure]
         CP("c", "\n==================================================")
@@ -3212,6 +3217,7 @@ class PlotSpikeInfo(QObject):
                 "dvdt_falling",
                 "AP_thr_V",
                 "AP_HW",
+                "AP_SS_HW",
                 "AHP_relative_depth_V",
                 "AHP_trough_T",
                 # "AP15Rate",
