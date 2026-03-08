@@ -18,6 +18,7 @@ import pyqtgraph as pg
 import scipy
 import seaborn as sns
 from pylibrary.plotting import plothelpers as PH
+import ephys.tools.fitting as fitting
 from pylibrary.tools import cprint
 from pyqtgraph.Qt import QtCore, QtGui
 from scipy.interpolate import spalde, splev, splrep
@@ -1434,6 +1435,76 @@ class Functions:
 
         return
 
+    def get_selected_cell_data_FI(self, parameters):
+
+        """ parameters holds:
+            parameters = {
+                "header": header,
+                "experiment": self.experiment,
+                "datasummary": self.datasummary,
+                "assembleddata": table_data,  # only the
+                "group_by": group_by,
+                "plot_order": plot_order,
+                "colors": self.experiment['plot_colors'],
+                "hue_category": hue_category,
+                "pick_display_function": None,  # self.display_from_table_by_cell_id
+                }
+
+        """
+        assembled = parameters['assembleddata']
+        for index, selected in assembled.iterrows():
+            print("selected: ", selected.keys())
+
+        nplots = len(assembled)
+        nrows, ncols = PH.getLayoutDimensions(nplots)
+        print(f"nplots: {nplots}, nrows: {nrows}, ncols: {ncols}")
+        # build plot
+        P = PH.regular_grid(nrows, ncols, margins = {'leftmargin': 0.1, 'rightmargin': 0.1, 'topmargin': 0.15, 'bottommargin': 0.1} )
+        ax = P.axarr.ravel()
+        i_ax = 0
+        for index, selected in assembled.iterrows():
+            print("selected: ", nplots, selected.keys())
+            print("fit: ", selected['fit'])
+            print(f"max slope: {selected['maxHillSlope']}")
+            print(f"max slope SD: {selected['maxHillSlope_SD']}")
+            print(f"I_max hill slope: {selected['I_maxHillSlope']}")
+            print(f"SD: {selected['I_maxHillSlope_SD']}")
+            print(f"FISlope:  {selected['FISlope']}")
+            print(f"FIMax_1:  {selected['FIMax_1']}")
+            day = selected['date'][:-4]
+            slicecell = selected['cell_id'][-4:]
+            pcolor = pg.intColor(nplots, hues=nplots, values=1, minValue=200, maxValue=255)
+            cell_df, cell_df_tmp = filename_tools.get_cell(
+                parameters['experiment'], assembled, cell_id=selected['cell_id']
+            )
+            self.cell_df = cell_df
+            self.current_selection = selected
+            print("cell_df: ", cell_df["date"], cell_df["slice_slice"], cell_df["cell_id"])
+            protocols = list(cell_df["Spikes"].keys())
+            protocols = self.remove_excluded_protocols(
+                parameters['experiment'], cell_id=cell_df["cell_id"], protocols=protocols
+            )
+            fi1 = selected['FI_Curve1']
+            ax[i_ax].plot(fi1[0]*1e12, fi1[1], 'ko')
+            if not np.isnan(selected['maxHillSlope']):
+                k_hill = selected['maxHillSlope']
+                vh = selected['I_maxHillSlope']
+                x = np.linspace(0, np.max(fi1[0]*1e12), 100)
+                fitter_func = fitting.Fitting().fitfuncmap['Hill']
+                # pars = [                ["Fmax", "IC50", "n"],]
+                pars = [0., selected['FIMax_1'], selected['maxHillSlope'], 1.0]
+                yfit = fitter_func[0](pars, x=x, C=None)
+                ax[i_ax].plot(x, yfit, 'r--', linewidth=0.5)
+            ax[i_ax].set_title(f"{cell_df['cell_id']}\n{selected['fit']}")
+            i_ax += 1
+
+            # for protocol in protocols:
+            #     Iinj = selected['IV']
+        mpl.tight_layout()
+        mpl.show()
+        return P
+              
+
     def mouse_move(self, event):
         """
         Display text in box in response to mouse movement
@@ -2247,6 +2318,7 @@ class Functions:
 
     def fit_FI_Hill(
         self,
+        experiment: dict,
         FI_Data_I,
         FI_Data_FR,
         FI_Data_FR_Std,
@@ -2258,13 +2330,14 @@ class Functions:
         FI_fits,
         linfits,
         cell: str,
-        celltype: str,
+        cell_type: str,
         # plot_fits=False,
         # ax: Union[mpl.Axes, None] = None,
     ):
         plot_raw = False  # only to plot the unaveraged points.
         spanalyzer = spike_analysis.SpikeAnalysis()
         spanalyzer.fitOne(
+            experiment=experiment,
             i_inj=FI_Data_I,
             spike_count=FI_Data_FR,
             pulse_duration=None,  # protodurs[ivname],
@@ -2273,6 +2346,8 @@ class Functions:
             fixNonMonotonic=True,
             excludeNonMonotonic=False,
             max_current=None,
+
+            cell_type=cell_type
         )
 
         try:
@@ -2280,7 +2355,7 @@ class Functions:
         except:
             CP(
                 "r",
-                f"fitpars has no solution? : {cell!s}, {celltype:s}, {spanalyzer.analysis_summary['FI_Growth']!s}",
+                f"fitpars has no solution? : {cell!s}, {cell_type:s}, {spanalyzer.analysis_summary['FI_Growth']!s}",
             )
             return (
                 hill_max_derivs,
@@ -2322,7 +2397,7 @@ class Functions:
         # if plot_fits:
         #     if ax is None:
         #         fig, ax = mpl.subplots(1, 1)
-        #         fig.suptitle(f"{celltype:s} {cell:s}")
+        #         fig.suptitle(f"{cell_type:s} {cell:s}")
 
         #     line_FI = ax.errorbar(
         #         np.array(FI_Data_I) * 1e9,
@@ -2840,6 +2915,7 @@ class Functions:
             )
             # do a curve fit on the first 1 nA of the protocol
             hill_max_derivs, hill_i_max_derivs, FI_fits, linfits = self.fit_FI_Hill(
+                experiment=self.experiment,
                 FI_Data_I=FI_Data_I1,
                 FI_Data_FR=FI_Data_FR1,
                 FI_Data_I_=FI_Data_I1_,
@@ -2851,7 +2927,7 @@ class Functions:
                 FI_fits=FI_fits,
                 linfits=linfits,
                 cell=cell,
-                celltype=df_tmp.cell_type.values[0],
+                cell_type=df_tmp.cell_type.values[0],
             )
         if len(FI_Data_I4_) > 0:
             FI_Data_I4, FI_Data_FR4, FI_Data_FR4_Std, FI_Data_N1 = self.average_FI(

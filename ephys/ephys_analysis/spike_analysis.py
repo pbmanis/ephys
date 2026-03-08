@@ -151,6 +151,7 @@ class SpikeAnalysis:
 
     def setup(
         self,
+        experiment,
         clamps=None,
         threshold=None,
         refractory: float = 0.0007,
@@ -204,7 +205,9 @@ class SpikeAnalysis:
             Set true to get lots of print out while running - used
             mostly for debugging.
         """
-
+        if experiment is None:
+            raise ValueError("Experiment must be defined")
+        self.experiment = experiment
         if clamps is None or threshold is None:
             raise ValueError("Spike Analysis requires defined clamps and threshold")
         self.Clamps = clamps
@@ -1170,14 +1173,16 @@ class SpikeAnalysis:
 
     def fitOne(
         self,
-        i_inj=None,
-        spike_count=None,
+        experiment: dict,
+        i_inj:Union[list, np.ndarray],
+        spike_count:Union[list, np.ndarray],
         pulse_duration=None,
         info="",
         function=None,
         fixNonMonotonic=True,
         excludeNonMonotonic=False,
         max_current: Union[float, None] = None,
+        cell_type: Union[str, None] = None,
     ):
         """Fit the FI plot to one of several possible equations.
             1: 'FIGrowthExpBreak' - exponential growth with a breakpoint
@@ -1185,7 +1190,7 @@ class SpikeAnalysis:
             3:
         Parameters
         ----------
-            i_inj : numpy array (no default)
+            i_inj : numpy array (no default)  In Amperes
                 The x data to fit (typically an array of current levels)
 
             spike_count : numpy array (no default)
@@ -1208,7 +1213,7 @@ class SpikeAnalysis:
             excludeNonMonotonic : Boolean (default: False)
                 if True, does not even try to fit, and returns None
 
-            max_current : float, None (default: None)
+            max_current : float, None (default: None) in A
                 The max current level to include in the fitting,
                 to minimize effects of rollover/depolarization block
         Returns
@@ -1217,6 +1222,7 @@ class SpikeAnalysis:
         tuple of (fpar, xf, yf, names, error, f, func)
             These are the fit parameters
         """
+
         if pulse_duration is None:
             pulse_duration = 1.0  # no correction, assumes spike_count is already converted to rate
         if function is not None:
@@ -1224,9 +1230,20 @@ class SpikeAnalysis:
         if i_inj is None:  # use class data
             i_inj = self.analysis_summary["FI_Curve"][0]
             spike_count = self.analysis_summary["FI_Curve"][1]
-            if max_current is not None:
-                i_inj = i_inj[i_inj <= max_current]
-                spike_count = spike_count[i_inj <= max_current]
+        if experiment["FI_maximum_current_by_celltype"] is not None:
+            if cell_type in experiment["FI_maximum_current_by_celltype"].keys():
+                max_current = experiment["FI_maximum_current_by_celltype"][cell_type]*1e-9
+                # print("cell_type: ", cell_type)
+                # print("max current is: ", max_current)
+                # print("max i_inj is: ", np.max(i_inj))
+
+        if max_current is not None:
+            inj_ok = np.where(i_inj <= max_current)
+            i_inj = i_inj[inj_ok]
+            spike_count = spike_count[inj_ok]
+        # if cell_type == 'cartwheel':
+        #     print("max current: ", max_current, cell_type, np.max(i_inj))
+        #     raise ValueError("current test")
         spike_rate = spike_count / pulse_duration  # convert to rate in spikes/second
         spike_rate_max = np.max(spike_rate)
         spike_rate_max_index = np.argmax(spike_rate)  # get where the peak rate is located
@@ -1400,6 +1417,7 @@ class SpikeAnalysis:
             fitbreak0 = ibreak0
             if fitbreak0 > 0.0:
                 fitbreak0 = 0.0
+
             x1 = np.argwhere((spike_rate > 0.0) & (i_inj > fitbreak0))
             initpars = [0.0, spike_rate_max, 0.5 * np.mean(i_inj[x1]), 1.0]
             bounds = [(0.0, 200.0), (0.0, spike_rate_max * 2.0), (0.0, np.max(i_inj)), (0.0, 10.0)]

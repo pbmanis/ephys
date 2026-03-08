@@ -908,6 +908,7 @@ class IVAnalysis(Analysis):
         #     minimum_postspike_interval = 0.025
         max_spike_shape = self.experiment.get("max_spike_shape", 5)
         self.SP.setup(
+            experiment=self.experiment,
             clamps=self.AR,
             threshold=threshold,
             refractory=refractory,

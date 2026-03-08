@@ -266,12 +266,13 @@ def concurrent_selected_fidata_data_plotting(
 
     # unpack parameters:
     header = parameters["header"]
-    experiment = parameters["experiment"]
-    assembleddata = parameters["assembleddata"]
+    # experiment = parameters["experiment"]
+    # assembleddata = parameters["assembleddata"]
 
     P2 = FUNCS.get_selected_cell_data_FI(
-        experiment=experiment,
-        assembleddata=assembleddata,
+        parameters = parameters,
+        # experiment=experiment,
+        # assembleddata=assembleddata,
     )
 
     if P2 is not None:
@@ -2263,6 +2264,9 @@ class PlotSpikeInfo(QObject):
                 max_fi = self.experiment["max_FI"] * 1e-9
             else:
                 max_fi = 1.05e-9
+            if "FI_maximum_current_by_celltype" in self.experiment.keys():
+                if df['cell_type'][index] in self.experiment['FI_maximum_current_by_celltype'].keys():
+                    max_fi = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e-9
             FI_data_saved = FI_data.copy()
             ### HERE WE LIMIT FI_data to the range with the max firing
             FI_data = self.limit_to_max_rate_and_current(
