@@ -398,7 +398,7 @@ class GetAllIVs:
             else:
                 expts = [self.experiment]
             # print(f"Experiments: {str(expts):s}")
-            for i in range(len(expts)):
+            for i, expt in enumerate(expts):
                 expt = self.experiments[expts[i]]
                 self.analyzed_datapath = Path(expt['databasepath'], expt['directory'])
                 cprint("g", f"   Analyzing experiment: {str(expts[i]):s}")
@@ -416,7 +416,8 @@ class GetAllIVs:
 
                     coding_f = Path(expt["databasepath"], expt['directory'], expt["coding_file"])
                     sheet_name = expt["coding_sheet"]
-                    print("    Input file name: ", self.inputFilename)
+                    CP.cprint("m", f"    Input file name: {self.inputFilename}")
+                    CP.cprint("y", f"    Coding file name: {coding_f:s}, sheet: {sheet_name:s}  exists: {coding_f.exists()}")
                     df_i = clean_database_merge(
                         pkl_file=self.inputFilename,
                         coding_file=coding_f,
