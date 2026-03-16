@@ -194,7 +194,7 @@ def clean_sex_column(row):
 def categorize_ages(row, experiment: dict):
     age = int(numeric_age(row))
     if "age_categories" not in experiment.keys():
-        row.age_category = "ND"
+        row.age_category = 0
         return row.age_category
     for k in experiment["age_categories"].keys():
         if (age >= experiment["age_categories"][k][0]) and (
@@ -203,7 +203,7 @@ def categorize_ages(row, experiment: dict):
             row.age_category = k
             break
         else:
-            row.age_category = "ND"
+            row.age_category = 0.
     return row.age_category
 
 
@@ -213,6 +213,8 @@ def clean_rin(row, experiment: dict):
         if row.cell_type in experiment["data_inclusion_criteria"].keys():
             min_Rin = experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
         else:
+            print("Using default Rin min")
+            print(experiment["data_inclusion_criteria"].keys())
             min_Rin = experiment["data_inclusion_criteria"]["default"]["Rin_min"]
     if isinstance(row.Rin, float):
         row.Rin = [row.Rin]
