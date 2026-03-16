@@ -2251,7 +2251,6 @@ class PlotSpikeInfo(QObject):
             if pd.isnull(cdd["cell_id"][index]):
                 print("No cell ids")
                 continue
-
             try:
                 FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
             except:
@@ -2271,24 +2270,36 @@ class PlotSpikeInfo(QObject):
                 print("No FI data from excel table?")
                 continue
 
+            # grab the fit from the analysis
+            FIFit = cdd['fit'][index][0]
+            FIFit = np.array(FIFit).squeeze()
+            if FIFit.shape[0] == 0:
+                print("FIFit is empty for cell ", cdd.cell_id[index])
+                continue
+            
+            maxi = 1000e-12
+            maxi2 = 201e-12
+            max_FI = 1.0  # in nA
+
             if "max_FI" in self.experiment.keys():
-                max_fi = self.experiment["max_FI"] * 1e-9
+                max_FI = self.experiment["max_FI"]  # value should be in nA 
             else:
-                max_fi = 1.05e-9
+                max_FI= 1.05
+            # check to see if only want to plot up to a maximum current - override the defaults
             if "FI_maximum_current_by_celltype" in self.experiment.keys():
                 if df['cell_type'][index] in self.experiment['FI_maximum_current_by_celltype'].keys():
-                    max_fi = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e-9
+                    max_FI = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e9 # convert A to nA
+            
             FI_data_saved = FI_data.copy()
             ### HERE WE LIMIT FI_data to the range with the max firing
             FI_data = self.limit_to_max_rate_and_current(
-                FI_data, imax=max_fi, id=cdd["cell_id"][index]
+                FI_data, imax=max_FI, id=cdd["cell_id"][index]
             )
 
-            maxi = 1000e-12
-            maxi2 = 201e-12
+            # define limits on the FI data arrays
             ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
             ilim2 = np.argwhere(FI_data[0] <= maxi2)[-1][0]
-            if ptype in ["individual"]:
+            if ptype in ["individual"]:  # plot the individual curves
                 fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
                 NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
                 if found_groups is None:
@@ -2306,10 +2317,25 @@ class PlotSpikeInfo(QObject):
                     color=colors["line_plot_colors"][group],
                     marker=None,
                     markersize=2.5,
-                    linewidth=0.5,
+                    linewidth=1.5,
                     clip_on=False,
-                    alpha=0.35,
+                    alpha=0.5,
                 )
+                if FIFit.shape[0] > 0:
+                    # limit the plot of the fit to the data range.
+                    data_imax = np.max(fix[:ilim])
+                    i_fitlim = np.argwhere(FIFit[0] <= data_imax)[-1][0]
+                    ax.plot(
+                        np.array(FIFit[0][:i_fitlim+1]) * 1e9,
+                        np.array(FIFit[1][:i_fitlim+1]),
+                        color = colors.get("fit_plot_colors", colors["line_plot_colors"]).get(group, "k"),
+                        marker=None,
+                        markersize=2.5,
+                        linewidth=0.75,
+                        linestyle='--',
+                        clip_on=False,
+                        alpha=1.0,
+                    )
                 for idn, current in enumerate(FI_data_saved[0]):
                     if current > maxi2:
                         continue
@@ -2355,7 +2381,7 @@ class PlotSpikeInfo(QObject):
 
         if ptype == "mean":
             # compute the avearge and plot the data with errorbars
-            max_FI = 1.0
+
             Q = 0.90
             if errorbar_type in ["SD", 'sd', 'std', 'STD']:
                 errtype = "std"
@@ -2402,8 +2428,9 @@ class PlotSpikeInfo(QObject):
 
                 if len(fx) == 0:
                     continue
-                if "max_FI" in self.experiment.keys():
-                    max_FI = self.experiment["max_FI"] * 1e-3
+                # if "max_FI" in self.experiment.keys():
+                #     max_FI = self.experiment["max_FI"] * 1e-3
+                print("max_FI: ", max_FI, np.max(fx))
                 ax.errorbar(
                     fx[fx <= max_FI],
                     fy[fx <= max_FI],
