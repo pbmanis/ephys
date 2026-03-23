@@ -11,6 +11,9 @@ mini_viewer_recent_files.cfg
 testbridge.xlsx
 untitled*.*
 
+# test data files (Allen SDK test data)
+cell_types/*
+
 *.p 
 # database (pickled python) files
 *.pkl 
