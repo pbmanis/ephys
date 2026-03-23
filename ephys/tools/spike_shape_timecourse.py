@@ -534,6 +534,7 @@ def plot_spike_measure(
     experiment: dict,
     filename: Path,
     measure="halfwidth",
+    plotsign:float=1.0,
     plot_fits: bool = True,
     ax: mpl.Axes = None,
     publication_mode: bool = False,
@@ -569,11 +570,11 @@ def plot_spike_measure(
         "dvdt_falling",
         "AP_begin_V",
     ], "Invalid measure name"
-    scales = {"halfwidth": 1e6, "dvdt_rising": 1.0, "dvdt_falling": -1.0, "AP_begin_V": 1.0e3}
+    scales = {"halfwidth": 1e6, "dvdt_rising": 1.0, "dvdt_falling": 1.0, "AP_begin_V": 1.0e3}
     ylimits = {
         "halfwidth": (0, 500),
         "dvdt_rising": (0, 1000),
-        "dvdt_falling": (800, 0),
+        "dvdt_falling": (0, 800),
         "AP_begin_V": (-0.065 * scales["AP_begin_V"], -0.040 * scales["AP_begin_V"]),
     }
     musec = r"$\mu$ s"
@@ -689,14 +690,14 @@ def plot_spike_measure(
         print("cindx: ", cindx, " for protocol ", protoname)
         Rs_Cp_label, labely = _make_label(protoname, ivs, measure)
 
-        ax.plot(lats, vals, "o",fillstyle=fillstyle[cindx], alpha=0.25,
+        ax.plot(lats, plotsign*vals, "o",fillstyle=fillstyle[cindx], alpha=0.25,
                 markerfacecolor=facecolor[cindx], markersize=2.5, label=labely, 
                 markeredgecolor = 'k', linewidth=0.15)
 
         PH.nice_plot(ax, direction="outward", ticklength=3, position=-0.05)
         if plot_fits:
             xf = np.linspace(0, dur, 500)
-            yf = datasign[pname] * fit_values[pname].eval(x=xf) * scales[measure]
+            yf = plotsign * datasign[pname] * fit_values[pname].eval(x=xf) * scales[measure]
             ax.plot(xf, yf, "r--", linewidth=1.25)
     xl = [0, experiment['steady_state_window'][1]]
     ax.set_xlim(xl)
@@ -971,12 +972,12 @@ def compute_measures_all_cells(adpath, exptname, celltype, experiment, specific_
     # save to a file, using the local data path (not the RAID drive)
     stats_dir = experiment.get("R_statistics_summaries", None)
     local_dir = Path(experiment.get("localdatapath", "."), stats_dir)
-    if stats_dir is not None:
-        df.to_csv(Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"))
-        print(
-            "Saved spike halfwidth summary to: ",
-            Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"),
-        )
+    # if stats_dir is not None:
+    #     df.to_csv(Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"))
+    #     print(
+    #         "Saved spike halfwidth summary to: ",
+    #         Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"),
+    #     )
 
 
 def bar_and_scatter(
@@ -1028,11 +1029,11 @@ def bar_and_scatter(
     )
 
 
-def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
+def plot_amp_tau(experiment: dict, measure: str, plotsign:float, ax1, ax2):
     stats_dir = experiment.get("R_statistics_summaries", None)
     local_dir = Path(experiment.get("localdatapath", "."), stats_dir)
 
-    df = pd.read_csv(Path(local_dir, "spike_steady_state_halfwidths_11-Jan-2026.csv"))
+    df = pd.read_csv(Path(local_dir, "spike_steady_state_halfwidths_16-Jan-2026.csv"))
     df = df[df["age_category"] != "ND"]
 
     hw_ax = [ax1, ax2]
@@ -1047,7 +1048,7 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     # hw_ax[0].set_ylabel("AP Halfwidth (s)")
     delta = r"$\Delta$"
     usec = r"$\mu$s"
-
+    y_ticks = None
     if measure in ["halfwidth"]:
         ylims = (0, 100)
         taulims = (0, 0.15)
@@ -1055,15 +1056,16 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
         ylabel = f"{delta} AP Halfwidth ({usec})"
     
     elif measure in ["dvdt_rising"]:
-        ylims = (-500, 0)
+        ylims = (0, 400)
         taulims = (0, 0.15)
-        scf = -1.0e-3
+        scf = 1.0e-3
         ylabel = f"{delta} Rising dV/dt (V/s)"
 
     elif measure in ["dvdt_falling"]:
-        ylims = (-250, 0)
+        ylims = (0, 250)
+        y_ticks = [0, 50, 100, 150, 200, 250]
         taulims = (0, 0.15)
-        scf = -1.0e-3
+        scf = -1.0e-3*plotsign
         ylabel = f"{delta} Falling dV/dt (V/s)"
     
     elif measure in ["AP_begin_V"]:
@@ -1087,6 +1089,7 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     hw_ax[0].set_ylabel(f"{tau} (s)")
     hw_ax[0].set_ylim(taulims)
 
+
     # =================
     bar_and_scatter(
         df,
@@ -1099,6 +1102,8 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     )
     hw_ax[1].set_ylim(ylims)
     hw_ax[1].set_ylabel(ylabel)
+    if y_ticks is not None:
+        hw_ax[1].set_yticks(y_ticks)
 
     def clean_up_plot(bar_axes, experiment):
         angle = 0
@@ -1151,7 +1156,7 @@ def plot_amp_tau(experiment: dict, measure: str, ax1, ax2):
     # mpl.tight_layout
     # mpl.show()
 
-csv_file = "spike_steady_state_halfwidths_11-Jan-2026.csv"
+csv_file = "spike_steady_state_halfwidths_16-Jan-2026.csv"
 
 def plot_ss_hws(experiment, ax=None):
     if ax is None:
@@ -1260,19 +1265,25 @@ if __name__ == "__main__":
         }
         i = 0
         lets = ["A", "B", "C", "D"]
+        plotsign = 1.0
         for k, v in meas_dict.items():
-            print("measure: v): ", v)
+            if v in ["dvdt_falling"]:
+                plotsign = -1.0
+            else:
+                plotsign = 1.0
+            print("measure: v: ", v, "plotsign: ", plotsign)
             res = plot_spike_measure(
                 d,
                 experiment=experiment,
                 filename=pyrdatapath,
                 measure=v,
+                plotsign=plotsign,
                 ax=P.axdict[k],
                 publication_mode = True,
             )
 
             plot_amp_tau(
-                experiment, measure=v, ax1=P.axdict[lets[i] + "2"], ax2=P.axdict[lets[i] + "3"]
+                experiment, measure=v, plotsign=plotsign, ax1=P.axdict[lets[i] + "2"], ax2=P.axdict[lets[i] + "3"]
             )
             i += 1
 
