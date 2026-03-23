@@ -755,6 +755,7 @@ if __name__ == "__main__":
     cfg, d = get_configuration(str(fn))
     # exptname = "VM_Dentate"
     exptname = "GlyT2_NIHL"
+    exptname = "CBA_Age"
     print(cfg)
     experiment = d[exptname]
     expts = experiment
@@ -765,12 +766,26 @@ if __name__ == "__main__":
     print(assembled_filename)
     data = read_pickle(assembled_filename, compression="gzip")
     assembled_time = assembled_filename.stat().st_mtime
-    print("assembled data columns: ", data.columns)
+    # print(data.FI_Curve1.values[0])
+    # print(data.FIMax_1.values[0])
     print("assembled data: ", data.iloc[0].keys())
     # print(data["post_durations"].values)
     # print(data["post_rates"].values)
     # print(data["post_spike_counts"].values)
     # print(data["FI_Curve1"][0][0]*1e9)
+    # for i, row in data.iterrows():
+    #     print(
+    #         i, 
+    #         "cell id: ",
+    #         row.cell_id,
+    #         "AdaptIndex2: ",
+    #         row.AdaptIndex2,
+    #         "Adapt Rates2: ",
+    #         row.AdaptRates2,
+    #         "Rs: ",
+    #         np.mean(row.Rs)*1e-6,
+    #     )
+    df_adapt = data[["cell_id", "AdaptIndex2", "AdaptRates2"]]
     for i, row in data.iterrows():
         pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
         pkl_time = pkl.stat().st_mtime
@@ -782,16 +797,50 @@ if __name__ == "__main__":
             pkl.is_file(),
             datetime.datetime.fromtimestamp(pkl.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
         )
-        if pkl_time > assembled_time:
-            pkl_d = datetime.datetime.fromtimestamp(pkl_time).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            ass_d = datetime.datetime.fromtimestamp(assembled_time).strftime("%Y-%m-%d %H:%M:%S")
-            CP.cprint(
-                "r",
-                f"     *pkl file: {pkl.name} at {pkl_d} is newer than assembled data file: {assembled_filename.name} at {ass_d}",
-            )
+        # if pkl_time > assembled_time:
+        #     pkl_d = datetime.datetime.fromtimestamp(pkl_time).strftime(
+        #         "%Y-%m-%d %H:%M:%S"
+        #     )
+        #     ass_d = datetime.datetime.fromtimestamp(assembled_time).strftime("%Y-%m-%d %H:%M:%S")
+        #     CP.cprint(
+        #         "r",
+        #         f"     *pkl file: {pkl.name} at {pkl_d} is newer than assembled data file: {assembled_filename.name} at {ass_d}",
+        #     )
+        new_data = {'cell_id': row.cell_id, "AdaptIndex2": row.AdaptIndex2, "AdaptRates2": row.AdaptRates2}
+        df_adapt = df_adapt._append(new_data, ignore_index=True)
 
+    df_adapt.to_csv("adaptation_data_2026.03.19_new_run.csv", index=False)
+    exit()
+
+        # if i == 0:
+        #     pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
+        #     dpkl = pd.read_pickle(pkl, compression="gzip")
+        #     # print("pkl data keys: ", dpkl.keys
+        #     spks = dpkl['Spikes'][list(dpkl["Spikes"].keys())[1]]['spikes']
+        #     for k, v in enumerate(spks):  # for all traces with spikes
+        #         # print("trace: ", k)
+        #         latencies = []
+        #         for ks, vs in enumerate(spks[v]):
+        #             latencies.append(spks[v][ks].AP_latency)
+        #             # print("    spike: ", ks, spks[v][ks].AP_latency)
+        #         lats = np.array(latencies) 
+        #         i_lats = np.where((lats > 0.1) & (lats <= 0.6))[0]
+        #         # print(lats[i_lats])
+        #         if len(i_lats) > 3:
+        #             w_lats = lats[i_lats]
+        #             isis = np.diff(w_lats)
+        #             rate = 1./np.mean(isis)
+
+
+        #             ar_mean = []
+        #             if rate > 80 and rate < 120:
+        #                 ar = np.mean((isis[1:] - isis[:-1])/ (isis[1:]+isis[:-1]))
+        #                 ar_mean.append(ar)
+        #                 print("    rate: ", rate, len(i_lats)/0.5)
+        #                 print("    rates, original AR2: ", row.AdaptRates2, row.AdaptIndex2, np.mean(row.AdaptIndex2))
+        #                 print("    recomputed Adaptation Ratio: ", ar)
+                    
+        #     exit()
 
     # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
     # exit()
