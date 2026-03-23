@@ -658,7 +658,7 @@ class PlotSpikeInfo(QObject):
         else:
             df_x = df.copy(deep=True)
         # print("dfx type 1: ", type(df_x))
-
+        CP("y", f"# cells of type: {celltype}:  {len(df_x)}")
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
 
         if plot_colors is None:  # set to defaults
@@ -732,6 +732,12 @@ class PlotSpikeInfo(QObject):
 
         else:
             # main strip plot, but data are clipped to axes
+            print("hue category: ", hue_category)
+            print("plot order: ", plot_order)
+            print("palette: ", self.experiment["plot_colors"]["symbol_colors"])
+            print("edge color: ", plot_colors["symbol_edge_color"])
+            print("linewidth: ", plot_colors["symbol_edge_width"])
+            print("x: ", xname, " y: ", yname)
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -891,7 +897,10 @@ class PlotSpikeInfo(QObject):
                 row[measure] = [row[measure] * scale]
             elif isinstance(row[measure], list) and len(row[measure]) > 0 and row[measure] != [np.nan]:
                 # print(row[measure], measure)
-                row[measure] = np.nanmean(row[measure]) * scale
+                try:
+                    row[measure] = np.nanmean(row[measure]) * scale
+                except Exception as e:
+                    print(f"Error in rescale_values_apply for measure {measure} {cell_id}: {e}")
             elif isinstance(row[measure], list) and len(row[measure]) == 0:
                 row[measure] = [np.nan]
             else:
@@ -1134,7 +1143,7 @@ class PlotSpikeInfo(QObject):
             plabels = [f"{let.upper():s}{num+1:d}" for let in letters for num in range(ncols)]
         else:  # just use A,
             plabels = [f"{let.upper():s}" for let in letters]
-        horizontal_spacing = 0.06
+        horizontal_spacing = 0.075
         vertical_spacing = 0.09
         # if data_class == "spike_measures":
         #     ncols = 4
@@ -1156,7 +1165,7 @@ class PlotSpikeInfo(QObject):
                 "topmargin": top_margin,
                 "bottommargin": bottom_margin,
                 "leftmargin": 0.1,
-                "rightmargin": 0.15,
+                "rightmargin": 0.1,
             },
             verticalspacing=vertical_spacing,
             horizontalspacing=horizontal_spacing,
@@ -1204,6 +1213,7 @@ class PlotSpikeInfo(QObject):
         # don't add AP_peak_V unless AP_thr_V is there
         if( ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures)) and "AP_thr_V" in local_measures:
             local_measures.append("AP_peak_V")
+        print("representation: ", representation)
         if representation in ["bestRs", "mean"]:
             max_rs = self.experiment.get("maximum_access_resistance", 1e8)
             df = SAD.get_best_and_mean(
@@ -1330,11 +1340,12 @@ class PlotSpikeInfo(QObject):
         # print("Summary plot ephys parameters categorical: df columns: \n", df.columns)
         # print("df groups 1: ", df["Group"].unique())
         picker_funcs = {}
+        print("Groups going in: ", df["Group"].unique())
         # n_celltypes = len(self.experiment["celltypes"])
         df, local_measures = self.compute_calculated_measures(
                 df, measures=measures, representation=representation
             )
-
+        print("Groups after compute: ", df["Group"].unique())
         # print("df groups 1.5: ", df["Group"].unique())
         if parent_figure is None:
             P, letters, plabels, cols, nrows = self.create_plot_figure(
@@ -1386,20 +1397,20 @@ class PlotSpikeInfo(QObject):
                     else:
                         ylims = self.ylims[ycell][x_measure]
                     if measure not in df.columns:
-                        print("Measure : ", measure, "not in columns")
-                        print(df.columns)
-                        raise ValueError("Missing measure: ", measure)
-                    print(
-                        "\n    row: ", i, P.axlabels[i], P.axarr.ravel()[i], axp,
+                        # print("Measure : ", measure, "not in columns")
+                        # print(df.columns)
+                        raise ValueError(f"Missing measure: {measure}\nin Columns: {df.columns!s}")
+                    # print(
+                    #     "\n    row: ", i, P.axlabels[i], P.axarr.ravel()[i], axp,
 
-                        "Plotting measure: ",
-                        measure,
-                        "xname: ", xname,
-                        "Unique x values: ", df[xname].unique())
-                    print(
-                        "    plot order: ", plot_order,
-                        "hue category: ", hue_category,
-                    )
+                    #     "Plotting measure: ",
+                    #     measure,
+                    #     "xname: ", xname,
+                    #     "Unique x values: ", df[xname].unique())
+                    # print(
+                    #     "    plot order: ", plot_order,
+                    #     "hue category: ", hue_category,
+                    # )
                     picker_func = self.create_one_plot_categorical(
                         data=df,
                         xname=xname,
@@ -1438,7 +1449,7 @@ class PlotSpikeInfo(QObject):
 
                 if measure not in df.columns:
                     CP("r", f"measure not in df_columns:  {measure:s}, {df.columns!s}")
-                    raise ValueError("Missing measure: ", measure)
+                    raise ValueError(f"Missing measure: {measure} in df columns")
 
                 if measure in ["RMP", "RMP_bestRs", "RMP_Zero"]:  # put the assumed JP on the plot.
                     axp.text(
@@ -1450,13 +1461,15 @@ class PlotSpikeInfo(QObject):
                         ha="left",
                         va="bottom",
                     )
+                print("df columns: ", df.columns)
+                print("df group: ", df["Group"])
                 print(
                     "(single row) Plotting measure: ",
                     measure,
-                    xname,
-                    df[xname].unique(),
-                    plot_order,
-                    hue_category,
+                    "xname: ", xname,
+                    "Unique x values: ", df[xname].unique(),
+                    "plot_order: ", plot_order,
+                    "hue_category: ", hue_category,
                 )
                 if len(df[xname].unique()) == 0:
                     print("unique xnames: ", df[xname].unique())
@@ -1496,8 +1509,6 @@ class PlotSpikeInfo(QObject):
                 ].legend_.remove()  # , direction="outward", ticklength=3, position=-0.03)
         i = 0
         icol = 0
-        print("plabels [i]: ", plabels[i])
-        print("axdict: ", P.axdict)
         axp = P.axdict[f"{plabels[i]:s}"]
         axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
@@ -2085,7 +2096,7 @@ class PlotSpikeInfo(QObject):
                 "topmargin": 0.12,
                 "bottommargin": 0.12,
                 "leftmargin": 0.12,
-                "rightmargin": 0.22,
+                "rightmargin": 0.12,
             },
             verticalspacing=0.2,
             horizontalspacing=0.1,
@@ -2240,7 +2251,6 @@ class PlotSpikeInfo(QObject):
             if pd.isnull(cdd["cell_id"][index]):
                 print("No cell ids")
                 continue
-
             try:
                 FI_data = FUNCS.convert_FI_array(cdd["FI_Curve1"][index])
             except:
@@ -2260,24 +2270,36 @@ class PlotSpikeInfo(QObject):
                 print("No FI data from excel table?")
                 continue
 
+            # grab the fit from the analysis
+            FIFit = cdd['fit'][index][0]
+            FIFit = np.array(FIFit).squeeze()
+            if FIFit.shape[0] == 0:
+                print("FIFit is empty for cell ", cdd.cell_id[index])
+                continue
+            
+            maxi = 1000e-12
+            maxi2 = 201e-12
+            max_FI = 1.0  # in nA
+
             if "max_FI" in self.experiment.keys():
-                max_fi = self.experiment["max_FI"] * 1e-9
+                max_FI = self.experiment["max_FI"]  # value should be in nA 
             else:
-                max_fi = 1.05e-9
+                max_FI= 1.05
+            # check to see if only want to plot up to a maximum current - override the defaults
             if "FI_maximum_current_by_celltype" in self.experiment.keys():
                 if df['cell_type'][index] in self.experiment['FI_maximum_current_by_celltype'].keys():
-                    max_fi = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e-9
+                    max_FI = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e9 # convert A to nA
+            
             FI_data_saved = FI_data.copy()
             ### HERE WE LIMIT FI_data to the range with the max firing
             FI_data = self.limit_to_max_rate_and_current(
-                FI_data, imax=max_fi, id=cdd["cell_id"][index]
+                FI_data, imax=max_FI, id=cdd["cell_id"][index]
             )
 
-            maxi = 1000e-12
-            maxi2 = 201e-12
+            # define limits on the FI data arrays
             ilim = np.argwhere(FI_data[0] <= maxi)[-1][0]
             ilim2 = np.argwhere(FI_data[0] <= maxi2)[-1][0]
-            if ptype in ["individual"]:
+            if ptype in ["individual"]:  # plot the individual curves
                 fix, fiy, fiystd, yn = FUNCS.avg_group(np.array(FI_data[0]), FI_data[1], ndim=1)
                 NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
                 if found_groups is None:
@@ -2295,10 +2317,25 @@ class PlotSpikeInfo(QObject):
                     color=colors["line_plot_colors"][group],
                     marker=None,
                     markersize=2.5,
-                    linewidth=0.5,
+                    linewidth=1.5,
                     clip_on=False,
-                    alpha=0.35,
+                    alpha=0.5,
                 )
+                if FIFit.shape[0] > 0:
+                    # limit the plot of the fit to the data range.
+                    data_imax = np.max(fix[:ilim])
+                    i_fitlim = np.argwhere(FIFit[0] <= data_imax)[-1][0]
+                    ax.plot(
+                        np.array(FIFit[0][:i_fitlim+1]) * 1e9,
+                        np.array(FIFit[1][:i_fitlim+1]),
+                        color = colors.get("fit_plot_colors", colors["line_plot_colors"]).get(group, "k"),
+                        marker=None,
+                        markersize=2.5,
+                        linewidth=0.75,
+                        linestyle='--',
+                        clip_on=False,
+                        alpha=1.0,
+                    )
                 for idn, current in enumerate(FI_data_saved[0]):
                     if current > maxi2:
                         continue
@@ -2344,7 +2381,7 @@ class PlotSpikeInfo(QObject):
 
         if ptype == "mean":
             # compute the avearge and plot the data with errorbars
-            max_FI = 1.0
+
             Q = 0.90
             if errorbar_type in ["SD", 'sd', 'std', 'STD']:
                 errtype = "std"
@@ -2391,8 +2428,9 @@ class PlotSpikeInfo(QObject):
 
                 if len(fx) == 0:
                     continue
-                if "max_FI" in self.experiment.keys():
-                    max_FI = self.experiment["max_FI"] * 1e-3
+                # if "max_FI" in self.experiment.keys():
+                #     max_FI = self.experiment["max_FI"] * 1e-3
+                print("max_FI: ", max_FI, np.max(fx))
                 ax.errorbar(
                     fx[fx <= max_FI],
                     fy[fx <= max_FI],
@@ -2789,16 +2827,21 @@ class PlotSpikeInfo(QObject):
         """
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
-        # print("cellid match: ", cell_id_match)
+        # print("cellid match: ", cell_id, cell_id_match)
         if cell_id_match is None:  # no cell
             return ""  # no match, leave empty
         if cell_id_match is not None:  # we have a match, so save as the Subject
             # handle variations in the column name (historical changes)
             idname = "Subject"
             # print(df_summary.columns)
+            idname = "animal_identifier"  # handle variations in the column name
+            if idname not in df_summary.columns:
+                idname = "animal identifier"
+            
             row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][
-                "animal identifier"
+                idname
             ].values[0]
+            print("row.Subject: ", row.Subject, row.cell_id, "group: ", row.Group)
             # else:
             #     print("row keys: ", sorted(row.keys()))
             #     if "Subject" in row.keys():
@@ -3060,7 +3103,7 @@ class PlotSpikeInfo(QObject):
         """preprocess_data Clean up the data, add columns, etc., apply junction potential corrections, etc."""
         df_summary = PSIF.get_datasummary(experiment)
         # self.print_preprocessing(df_summary)
-
+        CP("y", "\n   Preprocess_data: Starting preprocessing of data")
         # generate a subject column
         df["Subject"] = ""
         df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
@@ -3085,6 +3128,7 @@ class PlotSpikeInfo(QObject):
                     self.get_cell_expression, df_summary=df_summary, axis=1
                 )
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
+            print("   (These values are from the metadata for the cells)")
 
         #  ******************************************************************************
         CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")

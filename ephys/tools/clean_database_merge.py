@@ -3,7 +3,9 @@ import pandas as pd
 from pathlib import Path
 from typing import Union
 from ephys.tools import parse_ages
+from pylibrary.tools import cprint
 
+CP = cprint.cprint
 """Perform a merge of the main pickled database and a coding file,
 using the coding sheet. 
 This also performs some cleaning of the database, such as
@@ -20,9 +22,8 @@ def clean_database_merge(pkl_file: Union[str, Path], coding_file: Union[str, Pat
     def sanitize_age(row, agename = "Age"):
         row[agename] = parse_ages.ISO8601_age(row[agename])
         return row
-    
-    print("Reading pkl file: ", pkl_file)
-    print(f"    File exists: {str(Path(pkl_file).is_file()):s}")
+    CP("g", f"clean_database_merge:: Reading pkl file: {pkl_file}")
+    CP("g", f"    File exists: {str(Path(pkl_file).is_file()):s}")
     try:
         df = pd.read_pickle(pkl_file, compression={'method': 'gzip', 'compresslevel': 5, 'mtime': 1})
     except:
@@ -33,7 +34,7 @@ def clean_database_merge(pkl_file: Union[str, Path], coding_file: Union[str, Pat
     if "age" in df.columns:
         df = df.rename(columns={"age": "Age"})
     df = df.apply(sanitize_age, axis=1)
-    print(f"    With {len(df.index):d} entries")
+    CP("g", f"    With {len(df.index):d} entries")
     df["cell_type"] = df["cell_type"].values.astype(str)
     
     def _cell_type_lower(row):
@@ -43,13 +44,14 @@ def clean_database_merge(pkl_file: Union[str, Path], coding_file: Union[str, Pat
     df = df.apply(_cell_type_lower, axis=1)
     df.reset_index(drop=True)
     if coding_sheet is None:
+        CP("r", "No coding sheet found")
         return df
     
     df_c = pd.read_excel(
         Path(coding_file),
         sheet_name=coding_sheet,
         )
-    print(f"    Successfully Read Coding sheet {str(coding_file)}.pkl")
+    CP("g", f"    Successfully Read Coding sheet {str(coding_file)}.pkl")
     print(f"    With these columns: {str(df_c.columns):s}")
     print(f"    and {int(np.max(df_c.index.values)):d} entries")
     gr = list(set(df_c.Group.values))

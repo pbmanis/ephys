@@ -13,7 +13,7 @@ To use:
 Make sure the experiment configuration file is accessible. Set the experiment name and cell type.
 
 8/27/2025 Paul B. Manis, Ph.D.
-Refactored, and better handling of fitting and exclusions: 14 Jan 2026. PBM.s
+Refactored, and better handling of fitting and exclusions: 14 Jan 2026. PBM.
 
 """
 

@@ -108,6 +108,7 @@ class ProcessSpikeAnalysis:
         self.experiment = experiment
         if self.experiment is not None:
             computer_name = get_computer()
+            print("computer name: ", computer_name)
             nworkers = self.experiment["NWORKERS"][computer_name]
             self.set_workers(nworkers, computer=computer_name)
 
@@ -128,11 +129,43 @@ class ProcessSpikeAnalysis:
         return datename
 
     def datenum(self, datestr: str):
+        """datenum Convert a dotted date string to
+        an integer number.
+        For example:
+        '2012.01.12 'becomes 20120112
+
+        Parameters
+        ----------
+        datestr : str
+            dotted version of a date, for example '2012.01.12'
+
+        Returns
+        -------
+        int
+            integer representation of the date, for example 20120112
+        """
         s = datestr.split(".")
         d = int(1e4 * int(s[0])) + int(1e2 * int(s[1])) + int(s[2])
         return d
 
     def find_lowest_current_spike(self, row, SP):
+        """find_lowest_current_spike 
+        Find the lowest current level (depolarizing) that results in at
+        least one spike, and extract the information about the first spike 
+        into the database.
+
+        Parameters
+        ----------
+        row : Pandas Series (row)
+            The series that holds the data for this cell
+        SP : Spike structure from the spike analysis functions.
+            See spike_analysis for the structure
+
+        Returns
+        -------
+        Panda Series
+            The row for this cell, updated
+        """
         dvdts = []
         for tr in SP.spikeShapes:  # for each trace
             if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
@@ -169,11 +202,23 @@ class ProcessSpikeAnalysis:
         """Get the IV protocol from this dataframe row.
         This is meant to be used in an "df.apply" function, so the row is passed in.
         Also checks the protocol "important" flag and adds it to the row information.
-        Args:
-            row (_type_): _description_
-            pdf_pages:
+        
+        Parameters
+        ----------
+            row: Pandas Series
+                The row for the selected cell
+            pdf_pages: PDF_pages object
+                For plotting, passed to the IV analysis function
+            ds: datasummary dataframe
+                To access age information
+            celltypes: list or None
+              List of cell types to include, or None for all
+              Note: This parameter is NOT used in the current code.
 
-            ds: datasummary dataframe to pull age information from
+        Returns
+        -------
+        Pandas Series
+            The updated row with IV protocol information
         """
         dataok = False
         if pd.isnull(row.date):
@@ -228,7 +273,7 @@ class ProcessSpikeAnalysis:
                         Logger.error(AR.error_info)
                     AR.error_info = None
                     return row  # failed to get data, error will be indicated by acq4read
-            except:
+            except FileNotFoundError:
                 CP("r", f"Acq4Read failed to read data file: {str(fullpath.name):s}")
                 raise ValueError
 
@@ -257,7 +302,7 @@ class ProcessSpikeAnalysis:
             IVA.iv_check(duration=0.1)
             try:
                 IVA.AR.tstart
-            except:
+            except FileNotFoundError:
                 CP("r", f"Failed to correctly read file: \n        {str(fullpath):s}")
                 raise ValueError("Failed to read file")
                 # return row
@@ -536,13 +581,12 @@ class ProcessSpikeAnalysis:
 
         Returns
         -------
-        _type_
-            _description_
+        Pandas DataFrame
+            The processed dataframe with IV protocol information.
         """
 
         if codesheet is not None:
             df_codes = pd.read_excel(codesheet)
-
         assert result_sheet is not None
 
         df_summary = pd.read_pickle(datasummary)

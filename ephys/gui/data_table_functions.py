@@ -2567,29 +2567,29 @@ class Functions:
             else:
                 fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
             with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
-                try:
-                    if not AR.getData(
-                        fullpath, allow_partial=True, record_list=[0]
-                    ):  # just get the first record.
-                        continue
-                    sample_rate = AR.sample_rate[0]
-                    duration = AR.tend - AR.tstart
-                    delay = AR.tstart
-                    srs.append(sample_rate)
-                    Rs.append(AR.CCComp["CCBridgeResistance"])
-                    CNeut.append(AR.CCComp["CCNeutralizationCap"])
-                    durations.append(duration)
-                    delays.append(delay)
-                    important.append(AR.checkProtocolImportant(fullpath))
-                    # CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
-                    valid_prots.append(protocol)
-                except ValueError:
-                    CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
-                    if self.status_bar is not None:
-                        self.status_bar.showMessage(
-                            f"Acq4Read failed to read data file: {str(fullpath):s}"
-                        )
-                    raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
+                # try:
+                if not AR.getData(
+                    fullpath, allow_partial=True, record_list=[0]
+                ):  # just get the first record.
+                    continue
+                sample_rate = AR.sample_rate[0]
+                duration = AR.tend - AR.tstart
+                delay = AR.tstart
+                srs.append(sample_rate)
+                Rs.append(AR.CCComp["CCBridgeResistance"])
+                CNeut.append(AR.CCComp["CCNeutralizationCap"])
+                durations.append(duration)
+                delays.append(delay)
+                important.append(AR.checkProtocolImportant(fullpath))
+                # CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                valid_prots.append(protocol)
+            # except ValueError:
+            #         CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
+            #         if self.status_bar is not None:
+            #             self.status_bar.showMessage(
+            #                 f"Acq4Read failed to read data file: {str(fullpath):s}"
+            #             )
+            #         raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
 
         protocols = valid_prots  # only count valid protocols
         CP("c", f"Valid Protocols: {protocols!s}")

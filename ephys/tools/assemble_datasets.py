@@ -456,9 +456,11 @@ class AssembleDatasets:
         return
 
     def read_coding_file(self, df, coding_file, coding_sheet, level="date"):
+        assert(Path(coding_file).is_file()), f"Coding file does not exist: {coding_file!s}"
+        print("coding level: ", level)
         df_coding = pd.read_excel(coding_file, sheet_name=coding_sheet)
         self.check_coding_file(df_coding)
-        # print("Coding file head: \n", df_coding.head())
+        print("Coding file head: \n", df_coding.head())
         if "Group" not in df.columns:
             df["Group"] = ""
         for index in df.index:
@@ -466,7 +468,12 @@ class AssembleDatasets:
             row = df.loc[index]
             if pd.isnull(row.date):
                 continue
+            id_name = "animal_identifier"  # handle variations in the column name
+            if id_name not in df.columns:
+                id_name = "animal identifier"
+
             coding_name = self.experiment.get("coding_name", "Group")
+            print("coding name: ", coding_name)
             # print(row.date, df_coding.date.values)
             # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
@@ -482,7 +489,7 @@ class AssembleDatasets:
                         df_coding[df_coding.date == row.date].cell_expression.astype(str).values[0]
                     )
 
-                # how to assign groups: by date or subject?
+                # how to assign groups: by date or subject or cell?
                 # print("Level: ", level.lower())
                 if level.casefold() == "date".casefold():
                     # print("    row.date match/level::: ", row.date,  "code: ", df_coding[df_coding.date == row.date][coding_name].astype(str).values[0])
@@ -498,10 +505,10 @@ class AssembleDatasets:
                 elif level.casefold() == "subject".casefold():
                     mask = df_coding.subject == row['animal identifier'] # row.subject
                     df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.casefold() == "slice".casefold:
+                elif level.casefold() == "slice".casefold() or level.casefold() == "slice_slice".casefold():
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
                     df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.casefold() == "cell".casefold:
+                elif level.casefold() == "cell".casefold or level.casefold() == "cell_cell".casefold():
                     mask = (
                         (df_coding.date == row.date)
                         & (df_coding.slice_slice == row.slice_slice)
@@ -512,8 +519,12 @@ class AssembleDatasets:
                     print("df_coding.slice_slice: ", row.slice_slice)
                     print("df_coding.cell_cell: ", row.cell_cell)
                     print("coding name: ", coding_name)
-                    print("Mask: ", df_coding[mask][coding_name].astype(str))
-                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
+                    dmask = df_coding[mask][coding_name].astype(str)
+                    print("Mask: ", dmask)
+                    if len(dmask.values) > 0:
+                        df.at[index, "Group"] = dmask.values[0]
+                    else:
+                        df.at[index, "Group"] = self.experiment.get("no_data_marker", "ND")
             else:
                 CP("c", f"Assigning nan to : {df.at[index, 'cell_id']:s}")
                 df.at[index, "Group"] = np.nan

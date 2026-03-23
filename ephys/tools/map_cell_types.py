@@ -109,6 +109,7 @@ def test():
         ],
         "t-stellate": [
             "T-Stellate",
+            "T-stellate",
             "tstellate",
             "t-stellate",
             "t stellate",
@@ -125,6 +126,7 @@ def test():
         ],
         "pyramidal": [
             "Pyramidal",
+            "pyramidal",
             "pyramidal cell",
             "Pyramidal cell",
             "Fusiform",
