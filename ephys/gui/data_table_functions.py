@@ -27,7 +27,7 @@ import ephys
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools import annotated_cursor, annotated_cursor_pg, filename_tools, utilities
-
+from ephys.ephys_analysis import adaptation_indices
 UTIL = utilities.Utility()
 AnnotatedCursor = annotated_cursor.AnnotatedCursor
 AnnotatedCursorPG = annotated_cursor_pg.AnnotatedCursorPG
@@ -2657,9 +2657,9 @@ class Functions:
         firing_rates: list = []
         firing_last_spikes: list = []
         latencies: list = []
-        adaptation_indices: list = []
+        adaptation_indices: list = []  # MKX 2019 version
         adaptation_rates: list = []
-        adaptation_indices2: list = []
+        adaptation_indices2: list = []  # Allen Institute version
         adaptation_rates2: list = []
         post_durations: list = []
         post_latencies: list = []
@@ -2757,7 +2757,7 @@ class Functions:
 
             # only do adaptation calculation for the protocols in the list
             if short_proto_name in experiment["Adaptation_index_protocols"].keys():
-                adaptation_index, adaptation_rate = self.compute_adaptation_index(
+                adaptation_index, adaptation_rate = self.compute_adaptation_index_MKX2019(
                     df_cell.Spikes[protocol]["spikes"],
                     trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
                     trace_delay=experiment["Protocol_start_times"][short_proto_name],
@@ -2766,7 +2766,7 @@ class Functions:
                         experiment["Adaptation_measurement_parameters"]["max_rate"],
                     ],
                 )
-                adaptation_index2, adaptation_rate2 = self.compute_adaptation_index2(
+                adaptation_index2, adaptation_rate2 = self.compute_adaptation_index_AllenInst(
                     df_cell.Spikes[protocol]["spikes"],
                     trace_duration=experiment["Adaptation_index_protocols"][short_proto_name],
                     trace_delay=experiment["Protocol_start_times"][short_proto_name],
@@ -3094,55 +3094,57 @@ class Functions:
                     f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file"
                 )
 
-    def find_lowest_current_spike(self, row, SP):
-        """find_lowest_current_spike Find the first spike that is evoked at the lowest current
-        level from all the spike data for this protocol.
-        ***** NOT CALLED IN THIS CLASS ****
-        Parameters
-        ----------
-        row : Pandas series from the main dataframe
-            row of the dataframe to fill in with the results
-        SP : spike shape data structure
+    # def find_lowest_current_spike(self, row, SP):
+    #     """find_lowest_current_spike Find the first spike that is evoked at the lowest current
+    #     level from all the spike data for this protocol.
+    #     ***** NOT CALLED IN THIS CLASS ****
+    #     ***** The function actually used is in process_spike_analysis in ephys/tools.
+    #  
+    #     Parameters
+    #     ----------
+    #     row : Pandas series from the main dataframe
+    #         row of the dataframe to fill in with the results
+    #     SP : spike shape data structure
 
 
-        Returns
-        -------
-        row : Pandas series
-            from the main dataframe, updated with specific measures for
-            the lowest current spike
+    #     Returns
+    #     -------
+    #     row : Pandas series
+    #         from the main dataframe, updated with specific measures for
+    #         the lowest current spike
 
-        """
+    #     """
 
-        dvdts = []
-        for tr in SP.spikeShapes:  # for each trace
-            if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
-                spk = SP.spikeShapes[tr][0]  # get the first spike in the trace
-                dvdts.append(spk)  # accumulate first spike info
+    #     dvdts = []
+    #     for tr in SP.spikeShapes:  # for each trace
+    #         if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
+    #             spk = SP.spikeShapes[tr][0]  # get the first spike in the trace
+    #             dvdts.append(spk)  # accumulate first spike info
 
-        if len(dvdts) > 0:
-            currents = []
-            for d in dvdts:  # for each first spike, make a list of the currents
-                currents.append(d.current)
-            min_current = np.argmin(currents)  # find spike elicited by the minimum current
-            row.dvdt_rising = dvdts[min_current].dvdt_rising
-            row.dvdt_falling = dvdts[min_current].dvdt_falling
-            if not np.isnan(row.dvdt_falling):
-                row.dvdt_ratio = dvdts[min_current].dvdt_rising / dvdts[min_current].dvdt_falling
-            else:
-                row.dvdt_ratio = np.nan
-            row.dvdt_current = currents[min_current] * 1e12  # put in pA
-            row.AP_thr_V = 1e3 * dvdts[min_current].AP_begin_V
-            if dvdts[min_current].halfwidth_interpolated is not None:
-                row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
-            row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
-            row.AP_peak_V = 1e3 * dvdts[min_current].peak_V
-            CP(
-                "y",
-                f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f},"
-                + f" dvdtFall={row.dvdt_falling:6.1f}, dvdtRatio={row.dvdt_ratio:7.3f},"
-                + f" APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
-            )
-        return row
+    #     if len(dvdts) > 0:
+    #         currents = []
+    #         for d in dvdts:  # for each first spike, make a list of the currents
+    #             currents.append(d.current)
+    #         min_current = np.argmin(currents)  # find spike elicited by the minimum current
+    #         row.dvdt_rising = dvdts[min_current].dvdt_rising
+    #         row.dvdt_falling = dvdts[min_current].dvdt_falling
+    #         if not np.isnan(row.dvdt_falling):
+    #             row.dvdt_ratio = dvdts[min_current].dvdt_rising / dvdts[min_current].dvdt_falling
+    #         else:
+    #             row.dvdt_ratio = np.nan
+    #         row.dvdt_current = currents[min_current] * 1e12  # put in pA
+    #         row.AP_thr_V = 1e3 * dvdts[min_current].AP_begin_V
+    #         if dvdts[min_current].halfwidth_interpolated is not None:
+    #             row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
+    #         row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
+    #         row.AP_peak_V = 1e3 * dvdts[min_current].peak_V
+    #         CP(
+    #             "y",
+    #             f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f},"
+    #             + f" dvdtFall={row.dvdt_falling:6.1f}, dvdtRatio={row.dvdt_ratio:7.3f},"
+    #             + f" APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
+    #         )
+    #     return row
 
     def find_lowest_current_trace(self, spikes):
         """find_lowest_current_trace : find the trace with the lowest current
@@ -3177,79 +3179,63 @@ class Functions:
         # print(current[min_current_index], trace[min_current_index])
         return min_current_index, current[min_current_index], trace[min_current_index]
 
-    def adaptation_index(self, spk_lat, trace_duration: float = 1.0):
-        """adaptation_index Compute an adaptation index based on Manis et al., 2019
-        The adaptation index goes from:
-        1 (only a spike in the frst half of the stimulus;
-        no spikes in second half)
-        to 0 (rate in the first and second half are identical)
-        to -1 (all the spikes are in the second half)
+    # def adaptation_index_MKX(self, spk_lat, trace_duration: float = 1.0):
+    #     """adaptation_index Compute an adaptation index based on Manis et al., 2019
+    #     The adaptation index goes from:
+    #     1 (only a spike in the frst half of the stimulus;
+    #     no spikes in second half)
+    #     to 0 (rate in the first and second half are identical)
+    #     to -1 (all the spikes are in the second half)
 
-        Parameters
-        ----------
-        spk_lat : _type_
-            _description_
-        trace_duration : float, optional
-            _description_, by default 1.0
+    #     Parameters
+    #     ----------
+    #     spk_lat : list 
+    #         _description_
+    #     trace_duration : float, optional
+    #         _description_, by default 1.0
 
-        Returns
-        -------
-        float
-            adaptation index as described above
-        """
-        ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / trace_duration) - 0.5)
-        return ai
+    #     Returns
+    #     -------
+    #     float
+    #         adaptation index as described above
+    #     """
+    #     ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / trace_duration) - 0.5)
+    #     return ai
 
-    def adaptation_index2(self, spk_lat: Union[list, np.ndarray]):
-        """adaptation_index Compute an adaptation index from eFEL (2025)
-        Modified to use Allen Institute ephys SDK version (norm_diff)
-        Parameters
-        ----------
-        spk_lat : array
-            spike latencies, already trimmed to current step window.
-        trace_duration : float, optional
-            _description_, by default 1.0
+    # def adaptation_index2(self, spk_lat: Union[list, np.ndarray]):
+    #     """adaptation_index Compute an adaptation index from eFEL (2025)
+    #     Modified to use Allen Institute ephys SDK version (norm_diff)
+    #     Parameters
+    #     ----------
+    #     spk_lat : array
+    #         spike latencies, already trimmed to current step window.
 
-        Returns
-        -------
-        float
-            adaptation index as described above
-        """
+    #     Returns
+    #     -------
+    #     float
+    #         adaptation index as described above
+    #     """
+    #     # all computations moved to tools/adaptation_indices.py
+    #     return adaptation_indices.adaptation_index_AllenInst(
+    #         spike_data=spk_lat,  trace_duration: float = 1.0, minimum_spikes: int = 4, 
+    #         input: str = "spike_latencies"
+    #     )
 
-        if len(spk_lat) < 4:
-            return np.nan
-        # eFEL version:
 
-        # clean up the spike latencies to be sure there are no duplicates ?
-        # spk_lat = np.unique(spk_lat)  # prevent isi_sub from being zero. how that might happen is a mystery
-        # isi_values = spk_lat[1:] - spk_lat[:-1]
-        # isi_sum = isi_values[1:] + isi_values[:-1]
-        # isi_sub = isi_values[1:] - isi_values[:-1]
-        # print("adaptation_index2: ISI SUB: ", isi_sub)
-        # nonzeros = np.argwhere(isi_sub != 0.0)
-        # adaptation_index = np.mean(isi_sum[nonzeros] / isi_sub[nonzeros])
-
-        # Allen Institute version:
-        if np.allclose((spk_lat[1:] + spk_lat[:-1]), 0.0):
-            return np.nan
-        norm_diffs = (spk_lat[1:] - spk_lat[:-1]) / (spk_lat[1:] + spk_lat[:-1])
-        norm_diffs[(spk_lat[1:] == 0) & (spk_lat[:-1] == 0)] = 0.0
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
-            adaptation_index = np.nanmean(norm_diffs)
-        return adaptation_index
-
-    def compute_adaptation_index(
+    def compute_adaptation_index_MKX2019(
         self,
         spikes,
-        trace_delay: float = 0.15,
+        trace_delay: float = 0.0,
         trace_duration: float = 1.0,
         rate_bounds: list = [20.0, 40.0],
     ):
         """compute_adapt_index
-        Compute the adaptation index for a set of spikes
-        The adaptation index is the ratio of the last interspike interval
-        to the first interspike interval.
+        Compute the adaptation index for a set of spikes using the method
+        described in Manis et al., 2019, which is based on the ratio spikes
+        before and after the midpoint of the stimulus. The index goes from 1 
+        (only a spike in the frst half of the stimulus; no spikes in second half) to 0
+        (rate in the first and second half are identical) to -1 
+        (all the spikes are in the second half).
         Assumes the spikes are times corrected for the delay to the start of the stimulus.
 
         Parameters
@@ -3268,7 +3254,7 @@ class Functions:
         recnums = list(spikes.keys())
         adapt_rates = []
         adapt_indices = []
-        print("Rate bounds: ", rate_bounds)
+        # print("Rate bounds: ", rate_bounds)
 
         for rec in recnums:
             spikelist = list(spikes[rec].keys())
@@ -3294,34 +3280,41 @@ class Functions:
             # else:
             #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
             adapt_rates.append(rate)
-            adapt_indices.append(self.adaptation_index(spk_lat, trace_duration))
-        #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
+            adapt_indices.append(adaptation_indices.adaptation_index_MKX2019(spike_data=spk_lat, 
+                                                                   trace_duration=trace_duration))
+            CP("y", f"Adaptation index MKX2019: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
 
         return adapt_indices, adapt_rates
 
-    def compute_adaptation_index_one_trace(
-        self, latencies, trace_duration: float = 1.0, rate_bounds: list = [0.1, 100.0]
-    ):
-        n_spikes = len(latencies)
-        rate = n_spikes / (latencies[-1] - latencies[0])
-        if rate < rate_bounds[0] or rate > rate_bounds[1]:
-            return np.nan, rate
-        adapt_index = self.adaptation_index(latencies, trace_duration)
-        CP("y", f"Adaptation index: {adapt_index:6.3f}, rate: {rate:6.1f}")
-        return adapt_index, rate
+    # def compute_adaptation_index_MKX2019_one_trace(
+    #     self, latencies, trace_duration: float = 1.0, rate_bounds: list = [0.1, 100.0]
+    # ):
+    #     """ same as above, but just for one set of latencies"""
+    #     n_spikes = len(latencies)
+    #     rate = n_spikes / (latencies[-1] - latencies[0])
+    #     if rate < rate_bounds[0] or rate > rate_bounds[1]:
+    #         return np.nan, rate
+    #     adapt_index = adaptation_indices.adaptation_index_MKX2019(spike_data=latencies, trace_duration=trace_duration)
+    #     CP("y", f"Adaptation index: {adapt_index:6.3f}, rate: {rate:6.1f}")
+    #     return adapt_index, rate
 
-    def compute_adaptation_index2(
+    def compute_adaptation_index_AllenInst(
         self,
         spikes,
-        trace_delay: float = 0.15,
+        trace_delay: float = 0.0,
         trace_duration: float = 1.0,
         rate_bounds: list = [20.0, 40.0],
     ):
         """compute_adapt_index
         Compute the adaptation index for a set of spikes
-        This uses the algorithm from eFEL to compute the adaptation index
+        This uses the algorithm from the Allen Institute ephys SDK (2017/2025), 
+        which is a normalized difference of the ISIs, averaged across the trace.
         Assumes the spikes are times corrected for the delay to the start of the stimulus.
+        results may not exactly match th AI results, as we mandate a minimum of 4 spikes
+        required to compute the index.
 
+        This will appear as AdaptIndex2 in the output.
+        
         Parameters
         ----------
         spikes : list
@@ -3336,8 +3329,8 @@ class Functions:
         """
 
         recnums = list(spikes.keys())
-        adapt_rates2 = []
-        adapt_indices2 = []
+        adapt_rates_AllenInst = []
+        adapt_indices_AllenInst = []
         print("Rate bounds: ", rate_bounds)
 
         for rec in recnums:
@@ -3348,7 +3341,6 @@ class Functions:
                 [spikes[rec][spk].AP_latency for spk in spikelist if spk is not None]
             )
             spk_lat = np.array([spk for spk in spk_lat if spk is not None])
-            # print("spk_lat: ", spk_lat)
             if spk_lat is None:
                 continue
             else:
@@ -3356,17 +3348,20 @@ class Functions:
                 spk_lat = spk_lat[spk_lat < trace_duration]
             # print(spk_lat)
             n_spikes = len(spk_lat)
+            if n_spikes < 4:
+                continue
             rate = n_spikes / (spk_lat[-1] - spk_lat[0])
             if rate < rate_bounds[0] or rate > rate_bounds[1]:
                 # CP("y", f"Adaption calculation: rec: {rec:d} failed rate limit: {rate:.1f}, {rate_bounds!s}, spk_lat: {spk_lat!s}")
                 continue
             # else:
             #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
-            adapt_rates2.append(rate)
-            adapt_indices2.append(self.adaptation_index2(spk_lat))
-        #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
+            adapt_rates_AllenInst.append(rate)
+            adapt_indices_AllenInst.append(adaptation_indices.adaptation_index_AllenInst(
+                spk_lat, trace_duration=trace_duration, input="spike_latencies"))
+            CP("y", f"Adaptation index AllenInst: {adapt_indices_AllenInst[-1]:6.3f}, rate: {rate:6.1f}")
 
-        return adapt_indices2, adapt_rates2
+        return adapt_indices_AllenInst, adapt_rates_AllenInst
 
     def convert_FI_array(self, FI_values):
         """convert_FI_array Take a potential string representing the FI_data,
@@ -3614,7 +3609,8 @@ class Functions:
                             "AP_thr_V",
                             "peak_V",
                             "AP_peak_T",
-                            "AP_max_V" "AHP_trough_V",
+                            "AP_max_V",
+                            "AHP_trough_V",
                             "AHP_trough_T",
                             "AHP_depth_V",
                             "AHP_depth_T",
