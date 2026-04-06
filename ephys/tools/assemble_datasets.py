@@ -320,11 +320,9 @@ class AssembleDatasets:
                 This is in ['spikes']["LowestCurrentSpike"]
 
             b. Do not use traces that are above the spike firing rate turnover point (non-monotonic)
-            c. compute the Adaptation Index (Manis et al., 2019, PLoS One) for a selected firing rate
-                range. (e.g., 20-40 Hz)
-            c. compute Adaptation Index by eFEL method (all across train; same limited firing range)
-               Try using Allen Institute version to catch values for adaptation_index instead of eFEL version.
-
+            c. compute the Adaptation Index (see adaptation_indices) for a selected firing rate
+                range. (e.g., 20-40 Hz) using the MKX 2019 method 
+            c. Compute Adaptation index using the Allen Institute method for a selected firing rate range (e.g., 20-40 Hz)
 
         """
         CP("y", "Combine by cell")
@@ -503,7 +501,7 @@ class AssembleDatasets:
                             f"{row[coding_name]:s} from coding file column: {coding_name:s}",
                         )
                 elif level.casefold() == "subject".casefold():
-                    mask = df_coding.subject == row['animal identifier'] # row.subject
+                    mask = df_coding.subject == row['animal identifier']
                     df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
                 elif level.casefold() == "slice".casefold() or level.casefold() == "slice_slice".casefold():
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
