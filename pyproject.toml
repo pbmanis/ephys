@@ -10,7 +10,7 @@ authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
 ]
-requires-python = ">=3.13.7"
+requires-python = "==3.13.7"
 readme = "README.md"
 license = "MIT"
 classifiers = [
@@ -63,7 +63,6 @@ dependencies = [
     "psutil>=6.1.0",
     "pyabf==2.3.8",
     "pyarrow==19.0.0",
-    "pynwb==3.1.0",
     "pyopengl>=3.1.5",
     "pyparsing==3.2.3",
     "pypdf>=6.0.0",
@@ -105,6 +104,10 @@ dependencies = [
     "numdifftools>=0.9.41",
     "efel>=5.7.20",
     "metaarray",
+    "h5py",
+    "hdf5plugin>=6.0.0",
+    "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
+    # "allensdk>=0.16.3",
 ]
 
 [dependency-groups]
