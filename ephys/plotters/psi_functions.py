@@ -3,6 +3,11 @@ import datetime
 import numpy as np
 import pandas as pd
 
+""" psi_functions
+Helper functions for plot_spike_info module.
+
+"""
+
 
 def get_plot_order(experiment):
     """get_plot_order get the order of the groups to plot
@@ -203,7 +208,7 @@ def categorize_ages(row, experiment: dict):
             row.age_category = k
             break
         else:
-            row.age_category = 0.
+            row.age_category = 0.0
     return row.age_category
 
 
@@ -262,6 +267,7 @@ def adjust_AHP_trough_V(row, experiment: dict):
         row.AHP_trough_V = [ap + 1e-3 * experiment["junction_potential"] for ap in row.AHP_trough_V]
 
     return row.AHP_trough_V
+
 
 def compute_AHP_relative_depth(row):
     # Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
@@ -385,10 +391,9 @@ def clean_rmp_zero(row, experiment: dict):
         else:
             min_RMP = experiment["data_inclusion_criteria"]["default"]["RMP_min"]
     if isinstance(row.RMP_Zero, float):
-        jp = experiment['junction_potential']
-        r0 = [
-            row.RMP_Zero + jp]
-          # handle case where there is only one float value
+        jp = experiment["junction_potential"]
+        r0 = [row.RMP_Zero + jp]
+        # handle case where there is only one float value
     else:
         r0 = [(rmp_0 + jp) for rmp_0 in row.RMP_Zero]
     for i, r0 in enumerate(r0):

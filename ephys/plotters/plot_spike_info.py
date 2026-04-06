@@ -86,7 +86,7 @@ def concurrent_data_plotting(
 
     if mode == "categorical":
         df = plot_spikes.preload(filename)
-        if group_by in ["nan"]:
+        if group_by in ["nan"] or group_by not in list(experiment["hue_palette"].keys()):
             if status_bar_message is None:
                 raise ValueError("group_by is null: please select group for categorical plot")
             else:
@@ -270,7 +270,7 @@ def concurrent_selected_fidata_data_plotting(
     # assembleddata = parameters["assembleddata"]
 
     P2 = FUNCS.get_selected_cell_data_FI(
-        parameters = parameters,
+        parameters=parameters,
         # experiment=experiment,
         # assembleddata=assembleddata,
     )
@@ -291,6 +291,7 @@ def concurrent_selected_fidata_data_plotting(
         P2.figure_handle.show()
     return P2
 
+
 def concurrent_selected_dropout_data_plotting(
     filename: str,
     parameters: dict = None,
@@ -308,7 +309,7 @@ def concurrent_selected_dropout_data_plotting(
     P2 = FUNCS.get_dropout_data(
         experiment=experiment,
         assembleddata=assembleddata,
-        parameters = parameters,
+        parameters=parameters,
     )
 
     if P2 is not None:
@@ -326,6 +327,7 @@ def concurrent_selected_dropout_data_plotting(
         )
         P2.figure_handle.show()
     return P2
+
 
 after = "2000.01.01"
 after_parsed = datetime.datetime.timestamp(DUP.parse(after))
@@ -369,7 +371,7 @@ def set_ylims(experiment):
         if experiment is None:  # may happen on startup
             ylims = [0, 1]
         else:
-            ylims = experiment['ylims']["default"]
+            ylims = experiment["ylims"]["default"]
         # ylims = DY.get_default_ylims()
         return ylims
 
@@ -447,7 +449,7 @@ cols = [
     "AHP_relative_depth_V",
     "tauh",
     "Gh",
-    'bovera',
+    "bovera",
     "FiringRate",
     "FI_Curve",
 ]
@@ -473,7 +475,7 @@ datacols = [
     "AHP_relative_depth_V",
     "tauh",
     "Gh",
-    'bovera',
+    "bovera",
     "FiringRate",
 ]
 
@@ -690,6 +692,11 @@ class PlotSpikeInfo(QObject):
 
         if hue_category in [None, "None"]:
             hue_category = xname
+        if hue_category not in list(self.experiment["hue_palette"].keys()):
+            errmsg = f"Hue category {hue_category!s} not found in experiment configuration 'hue_palette' entry. "
+            errmsg += f"Available categories are: {list(self.experiment['hue_palette'].keys())!s}"
+            errmsg += f"Please check the Plotting -> Group By selection in datatables."
+            raise ValueError(errmsg)
         hue_palette = self.experiment["hue_palette"][hue_category]
         hue_order = self.experiment["plot_order"][hue_category]
 
@@ -732,12 +739,6 @@ class PlotSpikeInfo(QObject):
 
         else:
             # main strip plot, but data are clipped to axes
-            print("hue category: ", hue_category)
-            print("plot order: ", plot_order)
-            print("palette: ", self.experiment["plot_colors"]["symbol_colors"])
-            print("edge color: ", plot_colors["symbol_edge_color"])
-            print("linewidth: ", plot_colors["symbol_edge_width"])
-            print("x: ", xname, " y: ", yname)
             sns.stripplot(
                 x=xname,
                 y=yname,
@@ -787,8 +788,7 @@ class PlotSpikeInfo(QObject):
         if not all(np.isnan(df_x[yname])):
             df_x = df_x.dropna(subset=[yname])
             df_x = df_x.dropna(subset=[xname])
-            print(f"Plotting {xname:s} vs {yname:s} with hue: {hue_category:s}")
-
+     
             sns.boxplot(
                 data=df_x,
                 x=xname,
@@ -822,8 +822,6 @@ class PlotSpikeInfo(QObject):
         ax.set_xticks(ax.get_xticks(), ax.get_xticklabels(), rotation=angle, ha=ha)
         # remove extra legend handles
         handles, labels = ax.get_legend_handles_labels()
-        print("\nHandles: ", handles)
-        print("Labels: ", labels)
         ax.legend(
             handles[2:],
             labels[2:],
@@ -895,7 +893,11 @@ class PlotSpikeInfo(QObject):
             # print("rescale values: ", measure, row[measure])
             if isinstance(row[measure], float):
                 row[measure] = [row[measure] * scale]
-            elif isinstance(row[measure], list) and len(row[measure]) > 0 and row[measure] != [np.nan]:
+            elif (
+                isinstance(row[measure], list)
+                and len(row[measure]) > 0
+                and row[measure] != [np.nan]
+            ):
                 # print(row[measure], measure)
                 try:
                     row[measure] = np.nanmean(row[measure]) * scale
@@ -917,7 +919,6 @@ class PlotSpikeInfo(QObject):
             "AHP_trough_V": 1e3,
             "AHP_trough_T": 1e3,
             "AP_peak_V": 1e3,
-            "AP_max_V": 1e3,
             "FISlope": 1e-9,
             "maxHillSlope": 1,
             "I_maxHillSlope": 1e-3,
@@ -946,7 +947,7 @@ class PlotSpikeInfo(QObject):
         # print("Rs row: ", row['Rs'])
         # for protocol in row['Rs'].keys():
         #     rs.append(row['Rs'][protocol])
-        rsa = np.mean(row["Rs"])
+        rsa = np.nanmean(row["Rs"])
         row["Rs"] = rsa
         return row
 
@@ -958,7 +959,10 @@ class PlotSpikeInfo(QObject):
         row["CNeut"] = rsa
         return row
 
-    def compute_peak_v(self, row):
+    def compute_peak_v_re_threshold(self, row):
+        verbose: bool=False
+        if verbose:
+            CP("r", f"row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
         if isinstance(row.AP_peak_V, list):
             ap_pkv = float(row.AP_peak_V[0])
         else:
@@ -971,8 +975,9 @@ class PlotSpikeInfo(QObject):
             row["AP_peak_V_re_threshold"] = np.nan
         else:
             row["AP_peak_V_re_threshold"] = ap_pkv - ap_thr
+        if verbose:
+            CP("r", f"Computed AP_peak_V_re_threshold: {row['AP_peak_V_re_threshold']}")
         return row
-
 
     def remove_nans(self, row, measure):
         if isinstance(row[measure], list):
@@ -995,12 +1000,18 @@ class PlotSpikeInfo(QObject):
         return row
 
     def export_r(
-        self, df: pd.DataFrame, xname: str, measures: str, hue_category: str, filename: Union[str, None] = None
+        self,
+        df: pd.DataFrame,
+        xname: str,
+        measures: str,
+        hue_category: str,
+        filename: Union[str, None] = None,
     ):
         """export_r _summary_
         Export  the relevant data to a csv file to read in R for further analysis.
         """
         print("Export_r: Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
+        print("# rows in df: ", len(df))
         if hue_category is None or hue_category == "None":
             columns = [xname]
         else:
@@ -1024,6 +1035,7 @@ class PlotSpikeInfo(QObject):
             "AP_HW",
             "AP_SS_HW",
             "AP_peak_V",
+            "AP_peak_V_re_threshold",
             "AHP_trough_V",
             "AHP_trough_T",
             "AHP_depth_V",
@@ -1036,6 +1048,7 @@ class PlotSpikeInfo(QObject):
             "maxHillSlope",
             "I_maxHillSlope",
         ]
+  
         df = SAD.populate_columns(
             df,
             configuration=self.experiment,
@@ -1056,25 +1069,27 @@ class PlotSpikeInfo(QObject):
             "Subject",
             "protocols",
             "used_protocols",
-            # "AP_peak_V_re_threshold"
         ]
-        for c in ensure_cols:
-            if c not in columns:
-                columns.append(c)
+        required_columns = list(set(columns + ensure_cols))
+        df = df.reindex(columns=df.columns.union(ensure_cols))
+        df_R = df[required_columns]
         select_by = "Rs"
-        df_R = df[[c for c in columns]]
+    
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
         if "Rs" in df_R.columns:
             df_R = df_R.apply(self.average_rs, axis=1)
+    
         if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_cneut, axis=1)
-        if "AP_peak_V_re_threshold" not in df_R.columns and "AP_peak_V" in df_R.columns:
-            df_R["AP_peak_V_re_threshold"] = np.nan
-            df_R = df_R.apply(self.compute_peak_v, axis=1)
-        # for meas in measures:
-        #     if meas in df_R.columns:
-        #         print("meas: ", meas)
+        if "AP_peak_V" in df_R.columns:
+            df_R = df_R.apply(self.compute_peak_v_re_threshold, axis=1)
+        for meas in measures:
+            if meas in df_R.columns:
+                print("meas: ", meas)
+            else:
+                print(f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
+                raise ValueError(f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
         df_R = SAD.perform_selection(
             select_by=select_by,
             select_limits=[0, self.experiment.get("maximum_access_resistance", 1e8)],
@@ -1193,12 +1208,12 @@ class PlotSpikeInfo(QObject):
 
         Parameters
         ----------
-        df : _type_
-            _description_
-        measures : _type_
-            _description_
-        representation : _type_
-            _description_
+        df : pandas dataframe with analyzed data
+            The dataframe containing the analyzed data.
+        measures : list
+            The list of measures to compute.
+        representation : str
+            The representation method to use ("bestRs" or "mean").
         ap_thr_relative : bool, optional
             If True, the AP threshold is subtracted from the AP peak voltage and AHP depth
             voltage, by default False
@@ -1209,10 +1224,13 @@ class PlotSpikeInfo(QObject):
         """
         df = self.rescale_values(df)
         local_measures = measures.copy()
-        # print("local_measures: ", local_measures)
-        # don't add AP_peak_V unless AP_thr_V is there
-        if( ("AP_peak_V" not in local_measures) and ("AP_max_V" not in local_measures)) and "AP_thr_V" in local_measures:
+        print("local_measures: ", local_measures)
+        assert "AP_thr_V" in local_measures
+
+        # add AP_peak_V
+        if "AP_peak_V" not in local_measures:
             local_measures.append("AP_peak_V")
+
         print("representation: ", representation)
         if representation in ["bestRs", "mean"]:
             max_rs = self.experiment.get("maximum_access_resistance", 1e8)
@@ -1225,30 +1243,38 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-        # print("groups B: ", df["Group"].unique())
-    
+  
         # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
-            # if measure in ["AP_thr_V", "AP_peak_V", "AP_max_V"]:
-            #     CP("y", f"{measure:s}: {df[measure]!s}")
-            # print("Measure IS: ", measure)
             if measure.startswith("dvdt_ratio_bestRs"):
                 if measure not in df.columns:
                     df[measure] = {}
                 df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
 
-            if measure.startswith("AP_max_V"):
+            if measure.startswith("AP_peak_V"):
+                # adjust the best Rs value for the junction potential.
                 if measure not in df.columns:
-                    df[measure] = {}    
-                df["AP_max_V_bestRs"] = df["AP_peak_V"] + self.experiment["junction_potential"]
-
+                    df[measure] = {}
+                df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [self.experiment["junction_potential"]]*len(df)
+            CP("r", f"Measure: {measure:s}")
             if measure.startswith("AP_peak_V_bestRs"):  # height is diff from ap thr to peak ap
                 if measure not in df.columns:
                     df[measure] = {}
 
-                def compute_ap_peak_v(row):
+                def compute_ap_peak_v_re_threshold(row):
+                    """Given the maximum V from AP_peak_V_bestRs,
+                    and the threshold V, 
+                    compute the AP peak V relative to threshold. 
+                    This is the more meaningful measure of spike height, 
+                    as it accounts for differences in threshold and accuracy of the
+                    RMP (voltage error in absolute voltage measurement)
+                    across cells. 
+                    Also, check that the AP amplitude is not too low (< 40 mV), 
+                    which would suggest an error in the measurement.
+                    The result is returned in the row value of "AP_peak_V_bestRs"
+                    """
                     if isinstance(row["AP_peak_V_bestRs"], (list, np.ndarray)):
-                        thrv = -100.0
+                        thrv = np.nan
                         if isinstance(row["AP_thr_V_bestRs"], list):
                             thrv = float(row["AP_thr_V_bestRs"][0])
                         else:
@@ -1263,16 +1289,13 @@ class PlotSpikeInfo(QObject):
                     if val < 40 and not np.isnan(val):
                         CP(
                             "r",
-                            f"AP_peak_V val (float, float): {val:.2f} < 40mV, {row['cell_id']}",
+                            f"AP_peak_V re threshold (float, float): {val:.2f} < 40mV, {row['cell_id']}",
                         )
                         val = np.nan
-                    row["AP_peak_V_bestRs"] = val
-                    # CP("m", f"AP_peak_V val: {measure:s} {row[ 'cell_id']}: {val:.2f} mV {row[measure]}")
+                    row["AP_peak_V_re_threshold"] = val
                     return row
 
-                df = df.apply(compute_ap_peak_v, axis=1)
-
-
+                df = df.apply(compute_ap_peak_v_re_threshold, axis=1)
 
             if measure.startswith("AP_depth_V"):
                 # print("AP depth measure: ", measure)
@@ -1337,14 +1360,12 @@ class PlotSpikeInfo(QObject):
             )
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
         df["Subject"] = df.apply(PSIF.set_subject, axis=1)
-        # print("Summary plot ephys parameters categorical: df columns: \n", df.columns)
-        # print("df groups 1: ", df["Group"].unique())
         picker_funcs = {}
         print("Groups going in: ", df["Group"].unique())
         # n_celltypes = len(self.experiment["celltypes"])
         df, local_measures = self.compute_calculated_measures(
-                df, measures=measures, representation=representation
-            )
+            df, measures=measures, representation=representation
+        )
         print("Groups after compute: ", df["Group"].unique())
         # print("df groups 1.5: ", df["Group"].unique())
         if parent_figure is None:
@@ -1363,17 +1384,11 @@ class PlotSpikeInfo(QObject):
             else:
                 letters = plabels
             nrows = len(self.experiment["celltypes"])
-        print("Nrows: ", nrows)
-        print("Local measures: ", local_measures)
-        print("df Groups 2: ", df["Group"].unique())
-        print("Xname: ", xname)
 
         axind = 0
         for icol, measure in enumerate(local_measures):
             if plotable_measures is not None and measure not in plotable_measures:
-                print(
-                    f"Skipping measure {measure:s} as it is not in the plotable_measures list."
-                )
+                print(f"Skipping measure {measure:s} as it is not in the plotable_measures list.")
                 continue
             if measure in self.transforms.keys():
                 tf = self.transforms[measure]
@@ -1440,11 +1455,13 @@ class PlotSpikeInfo(QObject):
             else:  # single row
                 # here we probably have the cell type or group as the x category,
                 # so we will simplify some things
+                ycell = self.experiment["celltypes"][0]
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 print("(single row) measure::: ", measure)
                 x_measure = "_".join((measure.split("_"))[:-1])
-                if x_measure not in self.ylims["default"]:
-                    CP("r", f"Measure not in y_lims in config file - cannot plot! {x_measure:s}")
+                if x_measure not in self.ylims[ycell]:
+                    CP("r", f"Measure not in y_lims['{ycell}'] in config file - cannot plot! {x_measure:s} from {measure:s}")
+                    print(f"ylims['{ycell}']: ", self.ylims[ycell].keys())
                     raise ValueError("Missing measure in default limits: ", x_measure)
 
                 if measure not in df.columns:
@@ -1461,15 +1478,17 @@ class PlotSpikeInfo(QObject):
                         ha="left",
                         va="bottom",
                     )
-                print("df columns: ", df.columns)
-                print("df group: ", df["Group"])
                 print(
                     "(single row) Plotting measure: ",
                     measure,
-                    "xname: ", xname,
-                    "Unique x values: ", df[xname].unique(),
-                    "plot_order: ", plot_order,
-                    "hue_category: ", hue_category,
+                    "xname: ",
+                    xname,
+                    "Unique x values: ",
+                    df[xname].unique(),
+                    "plot_order: ",
+                    plot_order,
+                    "hue_category: ",
+                    hue_category,
                 )
                 if len(df[xname].unique()) == 0:
                     print("unique xnames: ", df[xname].unique())
@@ -1485,7 +1504,7 @@ class PlotSpikeInfo(QObject):
                     plot_order=plot_order,
                     plot_colors=plot_colors,
                     logx=False,
-                    ylims=self.ylims["default"][x_measure],
+                    ylims=self.ylims[ycell][x_measure],
                     transform=tf,
                     xlims=None,
                     enable_picking=enable_picking,
@@ -1531,6 +1550,8 @@ class PlotSpikeInfo(QObject):
             )  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
+        print("exported measures: ", measures)
+        print("AP max v: \n", df["AP_peak_V"].values)
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
@@ -2110,7 +2131,9 @@ class PlotSpikeInfo(QObject):
         mode = "mean"  # "individual"
         # P.figure_handle.suptitle(f"Protocol: {','.join(protosel):s}", fontweight="bold", fontsize=18)
         if mode == "mean":
-            P.figure_handle.suptitle(f"FI Mean ({errorbar_type:s})", fontweight="normal", fontsize=18)
+            P.figure_handle.suptitle(
+                f"FI Mean ({errorbar_type:s})", fontweight="normal", fontsize=18
+            )
         elif mode == "individual":
             P.figure_handle.suptitle("FI Individual", fontweight="normal", fontsize=18)
         fi_stats = []
@@ -2228,7 +2251,9 @@ class PlotSpikeInfo(QObject):
         FIx_all: dict = {k: [] for k in N.keys()}
 
         # create a dataframe for the plot. Dataframe is unique to cell types and plot type
-        fi_group_sum = pd.DataFrame(columns=[group_by, "sum", "sex", "cell_type", "cell_expression"])
+        fi_group_sum = pd.DataFrame(
+            columns=[group_by, "sum", "sex", "cell_type", "cell_expression"]
+        )
         ax.set_xlabel("I$_{inj}$ (nA)")
         if ptype in ["mean", "individual"]:
             ax.set_ylabel("Rate (sp/s)")
@@ -2271,25 +2296,31 @@ class PlotSpikeInfo(QObject):
                 continue
 
             # grab the fit from the analysis
-            FIFit = cdd['fit'][index][0]
+            FIFit = cdd["fit"][index][0]
             FIFit = np.array(FIFit).squeeze()
             if FIFit.shape[0] == 0:
                 print("FIFit is empty for cell ", cdd.cell_id[index])
                 continue
-            
+
             maxi = 1000e-12
             maxi2 = 201e-12
             max_FI = 1.0  # in nA
 
             if "max_FI" in self.experiment.keys():
-                max_FI = self.experiment["max_FI"]  # value should be in nA 
+                max_FI = self.experiment["max_FI"]  # value should be in nA
             else:
-                max_FI= 1.05
+                max_FI = 1.05
             # check to see if only want to plot up to a maximum current - override the defaults
             if "FI_maximum_current_by_celltype" in self.experiment.keys():
-                if df['cell_type'][index] in self.experiment['FI_maximum_current_by_celltype'].keys():
-                    max_FI = self.experiment['FI_maximum_current_by_celltype'][df['cell_type'][index]]*1e9 # convert A to nA
-            
+                if (
+                    df["cell_type"][index]
+                    in self.experiment["FI_maximum_current_by_celltype"].keys()
+                ):
+                    max_FI = (
+                        self.experiment["FI_maximum_current_by_celltype"][df["cell_type"][index]]
+                        * 1e9
+                    )  # convert A to nA
+
             FI_data_saved = FI_data.copy()
             ### HERE WE LIMIT FI_data to the range with the max firing
             FI_data = self.limit_to_max_rate_and_current(
@@ -2304,9 +2335,9 @@ class PlotSpikeInfo(QObject):
                 NCells[(celltype, group)] += 1  # to build legend, only use "found" groups
                 if found_groups is None:
                     found_groups = []
-                if group not in colors['line_plot_colors'].keys():
+                if group not in colors["line_plot_colors"].keys():
                     continue
-                
+
                 if group not in found_groups:
                     if pd.isnull(group) or group == "nan":
                         group = "Unidentified"
@@ -2326,20 +2357,22 @@ class PlotSpikeInfo(QObject):
                     data_imax = np.max(fix[:ilim])
                     i_fitlim = np.argwhere(FIFit[0] <= data_imax)[-1][0]
                     ax.plot(
-                        np.array(FIFit[0][:i_fitlim+1]) * 1e9,
-                        np.array(FIFit[1][:i_fitlim+1]),
-                        color = colors.get("fit_plot_colors", colors["line_plot_colors"]).get(group, "k"),
+                        np.array(FIFit[0][: i_fitlim + 1]) * 1e9,
+                        np.array(FIFit[1][: i_fitlim + 1]),
+                        color=colors.get("fit_plot_colors", colors["line_plot_colors"]).get(
+                            group, "k"
+                        ),
                         marker=None,
                         markersize=2.5,
                         linewidth=0.75,
-                        linestyle='--',
+                        linestyle="--",
                         clip_on=False,
                         alpha=1.0,
                     )
                 for idn, current in enumerate(FI_data_saved[0]):
                     if current > maxi2:
                         continue
-        
+
                     ds = pd.DataFrame(
                         {
                             "cell_id": cdd["cell_id"][index],
@@ -2383,7 +2416,7 @@ class PlotSpikeInfo(QObject):
             # compute the avearge and plot the data with errorbars
 
             Q = 0.90
-            if errorbar_type in ["SD", 'sd', 'std', 'STD']:
+            if errorbar_type in ["SD", "sd", "std", "STD"]:
                 errtype = "std"
             elif errorbar_type in ["CI", "ci"]:
                 errtype = "CI"
@@ -2837,11 +2870,8 @@ class PlotSpikeInfo(QObject):
             idname = "animal_identifier"  # handle variations in the column name
             if idname not in df_summary.columns:
                 idname = "animal identifier"
-            
-            row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][
-                idname
-            ].values[0]
-            print("row.Subject: ", row.Subject, row.cell_id, "group: ", row.Group)
+
+            row.Subject = df_summary.loc[df_summary.cell_id == cell_id_match][idname].values[0]
             # else:
             #     print("row keys: ", sorted(row.keys()))
             #     if "Subject" in row.keys():
@@ -3309,4 +3339,3 @@ class PlotSpikeInfo(QObject):
 if __name__ == "__main__":
     print("Calling this module directly is not supported (deprecated, 2025).")
     print("This is meant to be used inside of the ephys package, e.g., from 'datatables'")
-    

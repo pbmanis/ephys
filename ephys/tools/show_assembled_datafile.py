@@ -1,6 +1,8 @@
 # show assembed file data
+import ast
 import datetime
 from pathlib import Path
+import re
 
 import matplotlib.pyplot as mpl
 import numpy as np
@@ -9,10 +11,15 @@ import pylibrary.tools.cprint as CP
 import seaborn as sns
 from pandas import read_pickle
 from typing import Union
-
+from sklearn.linear_model import LinearRegression
 import ephys.tools.categorize_ages as CatAge
 import ephys.tools.filename_tools as FT
 from ephys.tools.get_configuration import get_configuration
+
+"""Show the data in the assembled data file, with the best Rs values and means for each parameter.
+This is used to check the data in the assembled data file, and to generate a table of the best Rs values and means for each parameter.
+The main function is get_best_and_mean, which takes the data frame and the configuration dictionary, and returns a new data frame with the best Rs values and means for each parameter.
+"""
 
 
 def transfer_cc_taum(row, excludes: list):
@@ -75,9 +82,12 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # handle the case where there is no data, which may be indicated by a single [nan]
     # representing all protocols:
     verbose = False
-    verbose_selects = [None] # ["RMP", "taum", "Rs", "Rin"]
+    verbose_selects = ["Rs"]  #  [None] # ["RMP", "taum", "Rs", "Rin"]
+    if verbose:
+        print("select_by: ", select_by, "parameter: ", parameter)
+        print("row: ", row)
     if verbose and (select_by in verbose_selects):
-        print("\n", "="*60)
+        print("\n", "=" * 60)
         print("Selector to use: ", select_by)
         print("Parameter to test, value: ", parameter, row[parameter])
     if parameter not in row.keys():
@@ -99,7 +109,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         if row[parameter].ndim == 1:
             if len(row[parameter]) == 0:
                 # row[parameter] = [row[parameter][0]] * len(row["protocols"])
-            # else:
+                # else:
                 row[parameter] = [np.nan] * len(row["protocols"])
         elif row[parameter].ndim == 0:
             row[parameter] = [row[parameter]] * len(row["protocols"])
@@ -138,8 +148,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # Standard measurements: the mean of ALL of the measurements
     # collected across all protocols (data in a new column, representing the
     # mean)
-
-    # now do the selection. Find out which protocols have the
+    # Find out which protocols have the
     # lowest select_by measurement
     # these arrays are the same length as the number of protocols
     # also, if the selection value is out of range, set
@@ -242,7 +251,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             else:
                 taums.append(params[i])
 
-    if verbose  and (select_by in verbose_selects):
+    if verbose and (select_by in verbose_selects):
         print("iprot, eq_mins, values, taums: ", iprots, equal_mins, values, taums)
     if len(iprots) == 0:
         CP.cprint(
@@ -290,8 +299,8 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     return row
 
 
-def innermost(datalist):
-    """innermost For a nested set of lists, return the innermost list
+def get_innermost(datalist):
+    """get_innermost For a nested set of lists, return the innermost list
 
     Parameters
     ----------
@@ -305,7 +314,7 @@ def innermost(datalist):
     """
     for element in datalist:
         if isinstance(element, list):
-            return innermost(element)
+            return get_innermost(element)
         else:
             continue
     return datalist  # no inner list found
@@ -313,6 +322,8 @@ def innermost(datalist):
 
 def filter_rs(row, maxRs, axis=1):
     """filter_rs : Filter the Rs values to remove those that are too high
+        filtered values are replaced with nan, which wecan drop
+        from the data frame after this step.
 
     Parameters
     ----------
@@ -326,13 +337,22 @@ def filter_rs(row, maxRs, axis=1):
     pandas Series
         The filtered row of data
     """
+    verbose: bool = False
     if isinstance(row["Rs"], float):
+        if verbose:
+            print("Filter_rs: ", row["Subject"], "Rs: ", row["Rs"], "maxRs: ", maxRs)
         if row["Rs"] > maxRs:
             row["Rs"] = np.nan
+            if verbose:
+                CP.cprint("r", "   *** Rs value is too high, setting to nan")
             return row
         else:
+            if verbose:
+                CP.cprint("g", "   Rs value is within limits")
             return row
     else:
+        if verbose:
+            CP.cprint("r", f"row['Rs'] is not float: {row['Rs']}")
         return row
 
 
@@ -343,6 +363,26 @@ def populate_columns(
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
 ):
+    """populate_columns make sure certain columns are properly set up
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        analysis result data frame
+    configuration : dict
+        configuration dictionary
+    parameters : list
+        list of parameters to populate
+    select_by : str, optional
+        selection criteria, by default "Rs"
+    select_limits : list, optional
+        selection limits, by default [0, 1e9]
+
+    Returns
+    -------
+    pd.DataFrame
+        Data frame with populated columns
+    """
     datap = data.copy(deep=True)  # defrag dataframe.
     # print("populate columns (show assemb data): ", datap.columns)
     # populate the new columns for each parameter
@@ -352,18 +392,18 @@ def populate_columns(
         if p not in datap.columns:
             CP.cprint("c", f"ADDING {p:s} to data columns")
             datap[p] = np.nan
-        m_str = p + "_mean"
+        m_str = p + "_mean"  # add the mean column for this parameter
         if m_str not in datap.columns:
             datap[p + "_mean"] = np.nan
         b_str = p + f"_best{select_by:s}"
-        if b_str not in datap.columns:
+        if b_str not in datap.columns:  # add best select_by column for this parameter
             datap[b_str] = np.nan
     if "age_category" not in datap.columns:
-        datap["age_category"] = None
+        datap["age_category"] = None  # make sure age category is there too
     age_cats = None
     if "age_categories" in configuration.keys():
         age_cats = configuration["age_categories"]
-    
+
     # generate list of excluded protocols:
     # ones ending in "all" mean exclude everything
     excludes = []
@@ -371,20 +411,25 @@ def populate_columns(
         for cellid in configuration["excludeIVs"]:
             for protos in configuration["excludeIVs"][cellid]["protocols"]:
                 excludes.append(str(Path(cellid, protos)))
-   
+
     datap = datap.apply(
         filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
-    )  # (data["Rs"].values[0] <= select_limits[1]*1e-6)
-    datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data
+    )  # select_limits is in Ohms, but Rs is in MOhms, so convert. Values outside range are set to NaN
+    # print("After filtering Rs, data length: ", len(datap), "\n", datap[["Subject", "Rs"]].head(20))
+    datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data if nan
+    datap = datap.copy()
     if "taum" not in data.columns:
         datap["taum"] = {}
     if "CC_taum" not in data.columns:
         datap["CC_taum"] = {}
     datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
-   
+    datap = datap.copy()
+
     assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
     datap["age_category"] = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
+    print("After filtering Rs, data length: ", len(datap), "\n", datap[["Subject", "Rs"]].head(20))
+    raise ValueError("Stop after filtering Rs for debugging")
     return datap
 
 
@@ -409,8 +454,8 @@ def check_types(data1, data2):
         d1 = data1.get(d)
         # print("looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
         if d in ["pars", "fit"]:
-            data1[d] = innermost(data1[d])
-            data2[d] = innermost(data2[d])
+            data1[d] = get_innermost(data1[d])
+            data2[d] = get_innermost(data2[d])
             d2 = data2.get(d)
             d1 = data1.get(d)
             # print("re-looking at d, d1, d2: ",d,  type(d1), d1, type(d2), d2)
@@ -429,7 +474,7 @@ def check_types(data1, data2):
                 if d in pars:
                     assert type(data1.get(d) == type(data2.get(d)))
                     if isinstance(data1[d], list):
-                        data1[d] = float(innermost(data1[d])[0])  # convert to float
+                        data1[d] = float(get_innermost(data1[d])[0])  # convert to float
                     else:
                         data1[d] = float(data1[d])
                     if d == "AHP_trough_V":
@@ -491,7 +536,6 @@ def perform_selection(
     configuration: dict,
     select_by: str = "Rs",
     select_limits: list = [0, 1e9],
-
 ):
     assert configuration is not None
     assert data is not None
@@ -507,10 +551,12 @@ def perform_selection(
         parameters=parameters,
         select_by=select_by,
         select_limits=select_limits,
-    )
-    # print("In perform selection, did populate columns again")
-    # check_values(data, halt=False)
+    ) 
+    # Note: at this point, some of the columns have been populated and
+    # outlying data selected out, but we don't have all the data in the columns
+    # yet.
 
+    # next, filter by other parameters as needed
     for parameter in parameters:
         # CP.cprint("c", f"**** PROCESSING*** : {parameter:s}, len: {len(data[parameter])}")
         try:
@@ -523,7 +569,7 @@ def perform_selection(
             )
         except:
             print("Error in apply_select_by on key=", parameter)
-            raise ValueError
+            raise ValueError(f"Error in apply_select_by on key={parameter}")
 
     # check_values(data, halt=True)
 
@@ -552,15 +598,16 @@ parameters = [
     "used_protocols",
 ]
 
-def check_values(df, halt:bool=False):
-    print("*"*80)
+
+def check_values(df, halt: bool = False):
+    print("*" * 80)
     for index in df.index[:20]:
         row = df.loc[index]
-        print(row['cell_id'], row['AdaptIndex2'])
+        print(row["cell_id"], row["AdaptIndex2"])
     if halt:
         print("stop, debugging")
         raise ValueError("Debugging")
-        
+
 
 def get_best_and_mean(
     data: pd.DataFrame, experiment: dict, parameters: list, select_by: str, select_limits: list
@@ -740,6 +787,59 @@ def mean_adaptation(row):
     return row
 
 
+def convert_string_to_np(s):
+    x = []
+    for ss in s:
+        s1 = ss.replace(" ", ",")
+        s2 = s1.replace("[,", "[")
+        s3 = re.sub(r",+", ",", s2)
+        # s3 = s2.replace(",," , ',')
+        # print(f"\n ss: {s3}")
+        # for i, u in enumerate(s3):
+        #     print(f"u: {ord(u)} = {ord(u):x}" )
+        # print("\n")
+        py_list = ast.literal_eval(s3)
+        if len(py_list) == 0:
+            xi = np.nan
+        else:
+            try:
+                xi = np.array(py_list)
+                xi = np.mean(xi)
+            except:
+                xi = np.nan
+            x.append(xi)
+    return np.array(x)
+
+
+def linfit(x, y, xrange=[-0.2, 0.2]):
+    """linfit
+    Fit a line to the data and return the slope and intercept.
+    Parameters
+    ----------
+    x : array
+        x values
+    y : array
+        y values
+
+    Returns
+    -------
+    slope, intercept (tuple)
+        slope and intercept of the fitted line
+    """
+    lr = LinearRegression()
+    x = x.reshape(-1, 1)
+    y = y.reshape(-1, 1)
+    notnan = np.where(~np.isnan(x) & ~np.isnan(y))[0]
+    x = x[notnan]
+    y = y[notnan]
+
+    lr.fit(x, y)
+    r_2 = lr.score(x, y)
+    x_fit = np.linspace(xrange[0], xrange[1], 100).reshape(-1, 1)
+    y_fit = lr.predict(x_fit)
+    return lr.coef_[0][0], lr.intercept_[0], r_2, x_fit, y_fit
+
+
 if __name__ == "__main__":
     # print(data.head(10))
     import matplotlib.pyplot as mpl
@@ -748,7 +848,7 @@ if __name__ == "__main__":
 
     # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
     # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
-    fn  = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
+    fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
     # fn = Path("./config/experiments.cfg")
 
     select_by = "Rs"
@@ -775,7 +875,7 @@ if __name__ == "__main__":
     # print(data["FI_Curve1"][0][0]*1e9)
     # for i, row in data.iterrows():
     #     print(
-    #         i, 
+    #         i,
     #         "cell id: ",
     #         row.cell_id,
     #         "AdaptIndex2: ",
@@ -791,7 +891,7 @@ if __name__ == "__main__":
         pkl_time = pkl.stat().st_mtime
 
         print(
-            i, 
+            i,
             "cell id: ",
             pkl,
             pkl.is_file(),
@@ -806,41 +906,73 @@ if __name__ == "__main__":
         #         "r",
         #         f"     *pkl file: {pkl.name} at {pkl_d} is newer than assembled data file: {assembled_filename.name} at {ass_d}",
         #     )
-        new_data = {'cell_id': row.cell_id, "AdaptIndex2": row.AdaptIndex2, "AdaptRates2": row.AdaptRates2}
+        new_data = {
+            "cell_id": row.cell_id,
+            "AdaptIndex2": row.AdaptIndex2,
+            "AdaptRates2": row.AdaptRates2,
+        }
         df_adapt = df_adapt._append(new_data, ignore_index=True)
 
-    df_adapt.to_csv("adaptation_data_2026.03.19_new_run.csv", index=False)
+    df_adapt.to_csv("adaptation_data_2026.03.23_new_run.csv", index=False)
+
+    f, ax = mpl.subplots(1, 1)
+    fn0 = "adaptation_data_2026.03.19_1646.csv"
+    fn1 = "adaptation_data_2026.03.19_new_run.csv"
+    fn2 = "adaptation_data_2026.03.23_new_run.csv"
+    fnshort = ["A", "B", "C"]
+    fns = [fn0, fn1, fn2]
+    markers = ["o", "s", "^"]
+    df = {}
+    for i, f in enumerate(fns):
+        p = Path("/Users/pbmanis/Desktop/Python/ephys", f)
+        df[fnshort[i]] = pd.read_csv(p)
+    s = df["B"]["AdaptIndex2"].values
+    x = convert_string_to_np(s)
+    r = df["C"]["AdaptIndex2"].values
+    y = convert_string_to_np(r)
+    x[x > 0.035] = np.nan
+    y[(y < -0.02) | (y > 0.02)] = np.nan
+    d_ok = np.where(~np.isnan(x) & ~np.isnan(y))[0]
+    x = np.array(x)[d_ok]
+    y = np.array(y)[d_ok]
+    ax.scatter(x, y, label="A vs C", marker=markers[1], s=3)
+    ax.set_ylim([-0.05, 0.15])
+    ax.set_xlim([0.0, 0.15])
+    slope, intercept, r_2, x_fit, y_fit = linfit(x, y, xrange=[0.0, 0.05])
+    ax.plot(x_fit, y_fit, "r-", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+
+    ax.legend()
+    mpl.show()
     exit()
 
-        # if i == 0:
-        #     pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
-        #     dpkl = pd.read_pickle(pkl, compression="gzip")
-        #     # print("pkl data keys: ", dpkl.keys
-        #     spks = dpkl['Spikes'][list(dpkl["Spikes"].keys())[1]]['spikes']
-        #     for k, v in enumerate(spks):  # for all traces with spikes
-        #         # print("trace: ", k)
-        #         latencies = []
-        #         for ks, vs in enumerate(spks[v]):
-        #             latencies.append(spks[v][ks].AP_latency)
-        #             # print("    spike: ", ks, spks[v][ks].AP_latency)
-        #         lats = np.array(latencies) 
-        #         i_lats = np.where((lats > 0.1) & (lats <= 0.6))[0]
-        #         # print(lats[i_lats])
-        #         if len(i_lats) > 3:
-        #             w_lats = lats[i_lats]
-        #             isis = np.diff(w_lats)
-        #             rate = 1./np.mean(isis)
+    # if i == 0:
+    #     pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
+    #     dpkl = pd.read_pickle(pkl, compression="gzip")
+    #     # print("pkl data keys: ", dpkl.keys
+    #     spks = dpkl['Spikes'][list(dpkl["Spikes"].keys())[1]]['spikes']
+    #     for k, v in enumerate(spks):  # for all traces with spikes
+    #         # print("trace: ", k)
+    #         latencies = []
+    #         for ks, vs in enumerate(spks[v]):
+    #             latencies.append(spks[v][ks].AP_latency)
+    #             # print("    spike: ", ks, spks[v][ks].AP_latency)
+    #         lats = np.array(latencies)
+    #         i_lats = np.where((lats > 0.1) & (lats <= 0.6))[0]
+    #         # print(lats[i_lats])
+    #         if len(i_lats) > 3:
+    #             w_lats = lats[i_lats]
+    #             isis = np.diff(w_lats)
+    #             rate = 1./np.mean(isis)
 
+    #             ar_mean = []
+    #             if rate > 80 and rate < 120:
+    #                 ar = np.mean((isis[1:] - isis[:-1])/ (isis[1:]+isis[:-1]))
+    #                 ar_mean.append(ar)
+    #                 print("    rate: ", rate, len(i_lats)/0.5)
+    #                 print("    rates, original AR2: ", row.AdaptRates2, row.AdaptIndex2, np.mean(row.AdaptIndex2))
+    #                 print("    recomputed Adaptation Ratio: ", ar)
 
-        #             ar_mean = []
-        #             if rate > 80 and rate < 120:
-        #                 ar = np.mean((isis[1:] - isis[:-1])/ (isis[1:]+isis[:-1]))
-        #                 ar_mean.append(ar)
-        #                 print("    rate: ", rate, len(i_lats)/0.5)
-        #                 print("    rates, original AR2: ", row.AdaptRates2, row.AdaptIndex2, np.mean(row.AdaptIndex2))
-        #                 print("    recomputed Adaptation Ratio: ", ar)
-                    
-        #     exit()
+    #     exit()
 
     # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
     # exit()
@@ -852,7 +984,7 @@ if __name__ == "__main__":
             data.loc[index]["protocol"],
             "AI2: ",
             data.iloc[index].AdaptIndex2,
-            "FSL: ", 
+            "FSL: ",
             data.iloc[index].post_latencies,
         )
         # print("     values: ", data.iloc[index])
