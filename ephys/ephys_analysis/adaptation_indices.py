@@ -20,10 +20,8 @@ CP = cprint.cprint
 
 """
 
-# all_adapt_indices = [adaptation_index_MKX19, adaptation_index_AllenInst, adaptation_first_last_isi, adaptation_index_exponential]
 
-
-def adaptation_index_MKX19(spk_lat, trace_duration: float = 1.0, minimum_spikes: int = 4):
+def adaptation_index_MKX2019(spike_data, trace_duration: float = 1.0, minimum_spikes: int = 4):
     """adaptation_index Compute an adaptation index based on Manis, Kasten and Xie, PLoS One, 2019
     This measure simply takes the difference between the spike counts in the first and second halves of the trace,
     and normalizes it by the total number of spikes.
@@ -35,10 +33,13 @@ def adaptation_index_MKX19(spk_lat, trace_duration: float = 1.0, minimum_spikes:
 
     Parameters
     ----------
-    spk_lat : _type_
-        _description_
+    spike_data : array-like
+        spike latencies or ISIs, already trimmed to current step window
+        (start time should be 0 or start of the step; the end time should be trace duration,
+        but might be shorter if gathering data from traces with different durations).
     trace_duration : float, optional
-        _description_, by default 1.0
+        duration of the current step, in seconds, used to trim the spike latencies to the
+        step window, by default 1.0
     minimum_spikes : int, optional
         minimum number of spikes required to compute the adaptation index, by default 4
 
@@ -47,14 +48,17 @@ def adaptation_index_MKX19(spk_lat, trace_duration: float = 1.0, minimum_spikes:
     float
         adaptation index as described above
     """
-    if len(spk_lat) < minimum_spikes:
+    if len(spike_data) < minimum_spikes:
         return np.nan
-    ai = (-2.0 / len(spk_lat)) * np.sum((spk_lat / trace_duration) - 0.5)
+    ai = (-2.0 / len(spike_data)) * np.sum((spike_data / trace_duration) - 0.5)
     return ai
 
 
 def adaptation_index_AllenInst(
-    spike_data: Union[list, np.ndarray], trace_duration: float = 1.0, minimum_spikes: int = 4, input: str = "spike_latencies"
+    spike_data: Union[list, np.ndarray],
+    trace_duration: float = 1.0,
+    minimum_spikes: int = 4,
+    input: str = "spike_latencies",
 ):
     """
     Allen Institute ephys SDK version (using normalized diff of ISIs)
@@ -262,7 +266,7 @@ def compute_adaptation_index(
     Parameters
     ----------
     method: str
-        method to compute adaptation index. Must be one of "MKX19" or "AllenInst"
+        method to compute adaptation index. Must be one of "MKX2019" or "AllenInst"
     spikes : dictionary
         a dictionary of lists of spike times, with 0 time at the start of the stimulus
         The dictionary key is the trace number (sweep).
@@ -309,14 +313,25 @@ def compute_adaptation_index(
         #     CP("c", f"Adaption calculation: rec: {rec:d} rate: {rate:.1f}, spk_lat: {spk_lat!s} PASSED")
         adapt_rates.append(rate)
         match method:
-            case "MKX19":
-                adapt_indices.append(adaptation_index_MKX19(spk_lat, trace_duration, minimum_spikes=minimum_spikes))
+            case "MKX2019":
+                adapt_indices.append(
+                    adaptation_index_MKX2019(spk_lat, trace_duration, minimum_spikes=minimum_spikes)
+                )
             case "AllenInst":
                 adapt_indices.append(
-                    adaptation_index_AllenInst(spk_lat, trace_duration, input="spike_latencies", minimum_spikes=minimum_spikes)
+                    adaptation_index_AllenInst(
+                        spk_lat,
+                        trace_duration,
+                        input="spike_latencies",
+                        minimum_spikes=minimum_spikes,
+                    )
                 )
             case "FirstLastISI":
-                adapt_indices.append(adaptation_first_last_isi(spk_lat, trace_duration, minimum_spikes=minimum_spikes))
+                adapt_indices.append(
+                    adaptation_first_last_isi(
+                        spk_lat, trace_duration, minimum_spikes=minimum_spikes
+                    )
+                )
     #    CP("y", f"Adaptation index: {adapt_indices[-1]:6.3f}, rate: {rate:6.1f}")
 
     return adapt_indices, adapt_rates
@@ -336,7 +351,7 @@ class SpikeData:
     nspikes: int = 0
     rate: float = np.nan  # firing rate in Hz (spikes per second)
     AI_adapt_index: float = np.nan
-    adapt_index_MKX19: float = np.nan
+    adapt_index_MKX2019: float = np.nan
     adapt_index_AllenInst: float = np.nan
     adapt_index_AllenInst_spktimes: float = np.nan
     adapt_index_FirstLastISI: float = np.nan
@@ -345,18 +360,19 @@ class SpikeData:
     def print_head(self):
         """Print the header for the adaptation index table."""
         print(
-            f"{'RecNum':>6s} {'NSpikes':>8s} {'Rate':>8s} {'AI_Adapt':>10s} {'MKX19':>10s} {'AllenInst':>12s} {'AllenInst_SpkTimes':>18s} {'FirstLastISI':>14s} {'ExpFit':>10s}"
+            f"{'RecNum':>6s} {'NSpikes':>8s} {'Rate':>8s} {'AI_Adapt':>10s} {'MKX2019':>10s} {'AllenInst':>12s} {'AllenInst_SpkTimes':>18s} {'FirstLastISI':>14s} {'ExpFit':>10s}"
         )
 
     def print_row(self):
         """Print the data for this sweep in a row of the adaptation index table."""
         print(
-            f"{self.recnum:6d} {self.nspikes:8d} {self.rate:8.1f} {self.AI_adapt_index:10.5f} {self.adapt_index_MKX19:10.5f}",
+            f"{self.recnum:6d} {self.nspikes:8d} {self.rate:8.1f} {self.AI_adapt_index:10.5f} {self.adapt_index_MKX2019:10.5f}",
             end="",
         )
         print(
             f"{self.adapt_index_AllenInst:10.5f} {self.adapt_index_AllenInst_spktimes:18.5f} {self.adapt_index_FirstLastISI:14.5f} {self.adapt_index_exponential:10.5f}"
         )
+
 
 def linfit(x, y, xrange=[-0.2, 0.2]):
     """linfit
@@ -386,7 +402,8 @@ def linfit(x, y, xrange=[-0.2, 0.2]):
     y_fit = lr.predict(x_fit)
     return lr.coef_[0][0], lr.intercept_[0], r_2, x_fit, y_fit
 
-def tests(ncells:int=5, minimum_spikes:int=4, plot_flag:bool=False):
+
+def tests(ncells: int = 5, minimum_spikes: int = 4, plot_flag: bool = False):
     import allensdk.ephys.ephys_extractor as ephys_extractor
     import allensdk.ephys.extract_cell_features as extract_cell_features
     import allensdk.ephys.feature_extractor as ephys_feature_extractor
@@ -400,17 +417,20 @@ def tests(ncells:int=5, minimum_spikes:int=4, plot_flag:bool=False):
     axarr = []
     if plot_flag:
         r, c = PH.getLayoutDimensions(ncells)
-        P = PH.regular_grid(rows=r, cols=c, order="rowsfirst", figsize=(11, 8.5),
-                            )
+        P = PH.regular_grid(
+            rows=r,
+            cols=c,
+            order="rowsfirst",
+            figsize=(11, 8.5),
+        )
         axarr = P.axarr.ravel()  # in order, linear
         labeled = [False] * ncells
     print(f"# of cells in manifest: {len(cells)}")
-    cell_ids =  range(ncells)  # [0, 1, 2, 3]
+    cell_ids = range(ncells)  # [0, 1, 2, 3]
 
-    comparisions = ["MKX19", "AllenInst", "AllenInst_SpkTimes", "FirstLastISI", "ExpFit"]
+    comparisions = ["MKX2019", "AllenInst", "AllenInst_SpkTimes", "FirstLastISI", "ExpFit"]
     cell_data = {}
     adapt_data = {}
-
 
     for icell in cell_ids:
         print(f"\n\n{'='*80}")
@@ -466,10 +486,16 @@ def tests(ncells:int=5, minimum_spikes:int=4, plot_flag:bool=False):
                 axarr[icell].set_xlim(0.95, 2.05)
                 axarr[icell].set_ylim(-110, 50)
                 if not labeled[icell]:
-                    axarr[icell].text(0.025, 1.00, f"Cell {cell_specimen_id:d}", transform=axarr[icell].transAxes, fontsize=7)
+                    axarr[icell].text(
+                        0.025,
+                        1.00,
+                        f"Cell {cell_specimen_id:d}",
+                        transform=axarr[icell].transAxes,
+                        fontsize=7,
+                    )
                     axarr[icell].set_xlabel("Time (s)", fontsize=6)
                     axarr[icell].set_ylabel("Voltage (mV)", fontsize=6)
-                    axarr[icell].tick_params(axis='both', which='major', labelsize=6)
+                    axarr[icell].tick_params(axis="both", which="major", labelsize=6)
                     labeled[icell] = True
 
         # get data using AI cell ephys extractor
@@ -504,23 +530,31 @@ def tests(ncells:int=5, minimum_spikes:int=4, plot_flag:bool=False):
                     nspikes=nspikes,
                     rate=avg_rate,
                     AI_adapt_index=adapt if not np.isnan(adapt) else np.nan,
-                    adapt_index_MKX19=adaptation_index_MKX19(spt, trace_duration=1.0, minimum_spikes=minimum_spikes),
+                    adapt_index_MKX2019=adaptation_index_MKX2019(
+                        spt, trace_duration=1.0, minimum_spikes=minimum_spikes
+                    ),
                     adapt_index_AllenInst=adaptation_index_AllenInst(
-                        spike_data=spt, trace_duration=1.0, minimum_spikes=minimum_spikes,
-                        input="spike_latencies"
+                        spike_data=spt,
+                        trace_duration=1.0,
+                        minimum_spikes=minimum_spikes,
+                        input="spike_latencies",
                     ),
                     adapt_index_AllenInst_spktimes=adaptation_index_AllenInst_spktimes(
                         spike_data=spt, trace_duration=1.0, minimum_spikes=minimum_spikes
                     ),
-                    adapt_index_exponential=adaptation_index_exponential(spt, trace_duration=1.0, minimum_spikes=minimum_spikes),
-                    adapt_index_FirstLastISI=adaptation_first_last_isi(spt, trace_duration=1.0, minimum_spikes=minimum_spikes),
+                    adapt_index_exponential=adaptation_index_exponential(
+                        spt, trace_duration=1.0, minimum_spikes=minimum_spikes
+                    ),
+                    adapt_index_FirstLastISI=adaptation_first_last_isi(
+                        spt, trace_duration=1.0, minimum_spikes=minimum_spikes
+                    ),
                 )
             )
 
             cell_data[cell_specimen_id] = this_cell_data
         print(f"Cell {cell_specimen_id:d}")
         if len(adapt_data[cell_specimen_id]) > 0:
-               adapt_data[cell_specimen_id][0].print_head()
+            adapt_data[cell_specimen_id][0].print_head()
 
         max_rate = 0.0
         for iad in range(len(adapt_data[cell_specimen_id])):
@@ -537,7 +571,6 @@ def tests(ncells:int=5, minimum_spikes:int=4, plot_flag:bool=False):
 
     with open("adaptation_indices.pkl", "wb") as f:
         pickle.dump(adapt_data, f)
-    
 
     if plot_flag:
         mpl.show()
@@ -549,7 +582,7 @@ def plot_adaptation_indices(adapt_data, plot_flag=False):
             adapt_data = pickle.load(f)
 
     f, ax = mpl.subplots(2, 3, figsize=(10, 8))
-    ax[0,0].set_title("MKX19")
+    ax[0, 0].set_title("MKX2019")
     ai_ai = []
     ai_mkx = []
     ai_ai2 = []
@@ -558,64 +591,78 @@ def plot_adaptation_indices(adapt_data, plot_flag=False):
     ai_exp = []
     for cell in adapt_data.keys():
         print(f"\n\nCell {cell:d}")
-        ai_mkx.extend([adapt_data[cell][iad].adapt_index_MKX19 for iad in range(len(adapt_data[cell]))])
+        ai_mkx.extend(
+            [adapt_data[cell][iad].adapt_index_MKX2019 for iad in range(len(adapt_data[cell]))]
+        )
         ai_ai.extend([adapt_data[cell][iad].AI_adapt_index for iad in range(len(adapt_data[cell]))])
-        ai_ai2.extend([adapt_data[cell][iad].adapt_index_AllenInst for iad in range(len(adapt_data[cell]))])
-        ai_spk.extend([adapt_data[cell][iad].adapt_index_AllenInst_spktimes for iad in range(len(adapt_data[cell]))])
-        ai_flisi.extend([adapt_data[cell][iad].adapt_index_FirstLastISI for iad in range(len(adapt_data[cell]))])
-        ai_exp.extend([adapt_data[cell][iad].adapt_index_exponential for iad in range(len(adapt_data[cell]))])
+        ai_ai2.extend(
+            [adapt_data[cell][iad].adapt_index_AllenInst for iad in range(len(adapt_data[cell]))]
+        )
+        ai_spk.extend(
+            [
+                adapt_data[cell][iad].adapt_index_AllenInst_spktimes
+                for iad in range(len(adapt_data[cell]))
+            ]
+        )
+        ai_flisi.extend(
+            [adapt_data[cell][iad].adapt_index_FirstLastISI for iad in range(len(adapt_data[cell]))]
+        )
+        ai_exp.extend(
+            [adapt_data[cell][iad].adapt_index_exponential for iad in range(len(adapt_data[cell]))]
+        )
         nans = np.where(np.array(ai_exp) < -20.0)[0]
         for inan in nans:
             ai_exp[inan] = np.nan
     colors = range(len(ai_ai))
-    colormap = 'gist_rainbow'
+    colormap = "gist_rainbow"
     print("\nMKX")
-    ax[0,0].scatter(ai_ai, ai_mkx, c=colors, cmap = colormap, label=f"MKX")
+    ax[0, 0].scatter(ai_ai, ai_mkx, c=colors, cmap=colormap, label=f"MKX")
     slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_ai).reshape(-1, 1), np.array(ai_mkx))
     print("mkx: ", slope, intercept, r_2)
-    ax[0,0].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+    ax[0, 0].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
 
     print("\nAllenInst")
-    ax[0,1].set_title("AllenInst")
+    ax[0, 1].set_title("AllenInst")
     xr = [np.nanmin(ai_ai), np.nanmax(ai_ai)]
-    ax[0,1].scatter(ai_ai, ai_ai2, c=colors, cmap = colormap, label=f"AllenInst_isi")
+    ax[0, 1].scatter(ai_ai, ai_ai2, c=colors, cmap=colormap, label=f"AllenInst_isi")
     slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_ai), np.array(ai_ai2), xrange=xr)
     print("allen inst: ", slope, intercept, r_2)
-    ax[0,1].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
-    
+    ax[0, 1].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+
     print("\nAllen Sptimes")
-    ax[0,2].set_title("AllenInst_SpkTimes")
-    ax[0,2].scatter(ai_ai, ai_spk, c=colors, cmap = colormap, label=f"AllenInst_SpkTimes")
+    ax[0, 2].set_title("AllenInst_SpkTimes")
+    ax[0, 2].scatter(ai_ai, ai_spk, c=colors, cmap=colormap, label=f"AllenInst_SpkTimes")
     slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_ai), np.array(ai_spk), xrange=xr)
     print("allen inst spk times: ", slope, intercept, r_2)
-    ax[0,2].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
-    
+    ax[0, 2].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+
     print("\nFirstLastISI")
-    ax[1,0].set_title("FirstLastISI")
-    ax[1,0].scatter(ai_ai, ai_flisi, c=colors, cmap = colormap, label=f"FirstLastISI")
+    ax[1, 0].set_title("FirstLastISI")
+    ax[1, 0].scatter(ai_ai, ai_flisi, c=colors, cmap=colormap, label=f"FirstLastISI")
     slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_ai), np.array(ai_flisi), xrange=xr)
     print("first last isi: ", slope, intercept, r_2)
-    ax[1,0].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
-    
+    ax[1, 0].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+
     print("\nExpFit")
-    ax[1,1].set_title("ExpFit")
-    ax[1,1].scatter(ai_ai, ai_exp, c=colors, cmap = colormap, label=f"ExpFit")
+    ax[1, 1].set_title("ExpFit")
+    ax[1, 1].scatter(ai_ai, ai_exp, c=colors, cmap=colormap, label=f"ExpFit")
     slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_ai), np.array(ai_exp), xrange=xr)
     print("exp fit: ", slope, intercept, r_2)
-    ax[1,1].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
-    
+    ax[1, 1].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+
     print("\nFLISI vs EXP")
-    ax[1,2].set_title("FLISI vs EXP")
-    ax[1,2].scatter(ai_flisi, ai_exp, c=colors, cmap = colormap, label=f"FLISI vs ExpFit")
-    slope, intercept, r_2, x_fit, y_fit = linfit(np.array(ai_flisi), np.array(ai_exp), xrange=[np.nanmin(ai_flisi), np.nanmax(ai_flisi)])
+    ax[1, 2].set_title("FLISI vs EXP")
+    ax[1, 2].scatter(ai_flisi, ai_exp, c=colors, cmap=colormap, label=f"FLISI vs ExpFit")
+    slope, intercept, r_2, x_fit, y_fit = linfit(
+        np.array(ai_flisi), np.array(ai_exp), xrange=[np.nanmin(ai_flisi), np.nanmax(ai_flisi)]
+    )
     print("flisi vs exp fit: ", slope, intercept, r_2)
-    ax[1,2].plot(x_fit, y_fit, 'r--', label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
+    ax[1, 2].plot(x_fit, y_fit, "r--", label=f"Fit: y={slope:.2f}x+{intercept:.2f}, R²={r_2:.2f}")
     axs = ax.ravel()
     for a in axs:
         a.legend()
 
     mpl.show()
-
 
 
 if __name__ == "__main__":
@@ -624,12 +671,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute adaptation indices for a set of cells.")
     parser.add_argument("--test", action="store_true", help="Whether to run the tests")
     parser.add_argument("--ncells", type=int, default=5, help="Number of cells to analyze")
-    parser.add_argument("--plot_traces", action="store_true", help="Whether to plot the traces during the tests")
-    parser.add_argument("--plot_comparisons", action="store_true", help="Whether to plot the comparision of the adaptation indices after the tests")
-    args = parser.parse_args()              
-    
+    parser.add_argument(
+        "--plot_traces", action="store_true", help="Whether to plot the traces during the tests"
+    )
+    parser.add_argument(
+        "--plot_comparisons",
+        action="store_true",
+        help="Whether to plot the comparision of the adaptation indices after the tests",
+    )
+    args = parser.parse_args()
+
     if args.test:
-        tests(ncells=args.ncells  , plot_flag=args.plot_traces)
-    
+        tests(ncells=args.ncells, plot_flag=args.plot_traces)
+
     if args.plot_comparisons:
         plot_adaptation_indices(None, plot_flag=True)
