@@ -1225,7 +1225,7 @@ class PlotSpikeInfo(QObject):
         df = self.rescale_values(df)
         local_measures = measures.copy()
         print("local_measures: ", local_measures)
-        assert "AP_thr_V" in local_measures
+        # assert "AP_thr_V" in local_measures
 
         # add AP_peak_V
         if "AP_peak_V" not in local_measures:
@@ -1455,7 +1455,10 @@ class PlotSpikeInfo(QObject):
             else:  # single row
                 # here we probably have the cell type or group as the x category,
                 # so we will simplify some things
+                if icol >= len(plabels):
+                    continue
                 ycell = self.experiment["celltypes"][0]
+                print("icol: ", icol, "plabels: ", plabels, "ycell: ", ycell, "measure: ", measure)
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 print("(single row) measure::: ", measure)
                 x_measure = "_".join((measure.split("_"))[:-1])
