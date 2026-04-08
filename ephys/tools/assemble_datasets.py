@@ -191,12 +191,16 @@ class AssembleDatasets:
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
         # return
-        df = self.combine_by_cell(df)
-        print("\nWriting assembled data to : ", fn)
+        date = datetime.now().strftime("%d-%m-%Y")
+        fn_no_ext = Path(fn).stem
+        fn_parent = Path(fn).parent
+        fn_out = Path(fn_parent, f"{fn_no_ext}_{date}.pkl")
+
+        print("\nWriting assembled data to : ", fn_out)
         print(df.head())
         print("Assembled data columns: ", df.columns)
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
-        df.to_pickle(fn, compression="gzip")
+        df.to_pickle(fn_out, compression="gzip")
 
     def categorize_ages(self, row):
         row.age = numeric_age(row)
