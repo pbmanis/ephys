@@ -922,7 +922,7 @@ class DataTables:
                                 )
                             else:
                                 coding_file = None
-                            fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                            fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="write")
 
                             self.assemble_dataset.assemble_datasets(
                                 df_summary=self.datasummary,
@@ -1131,7 +1131,7 @@ class DataTables:
                                     )
 
                                 case "Plot FICurves":
-                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
                                     print("Loading fn: ", fn)
                                     df = self.PSI.preload(fn)
                                     P4, picker_funcs4 = self.PSI.summary_plot_fi(
@@ -1176,7 +1176,7 @@ class DataTables:
                                     if self.assembleddata is None:
                                         raise ValueError("Must load assembled data file first")
 
-                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
                                     print("Loading assembled data file: ", fn)
                                     group_by = (
                                         self.ptreedata.child("Plotting").child("Group By").value()
@@ -1245,7 +1245,7 @@ class DataTables:
                                     if self.assembleddata is None:
                                         raise ValueError("Must load assembled data file first")
 
-                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
                                     print("Loading fn: ", fn)
                                     group_by = (
                                         self.ptreedata.child("Plotting").child("Group By").value()
@@ -1303,7 +1303,7 @@ class DataTables:
                                         analysis_cell_types,
                                         adddata,
                                     ) = self.PSI_2.setup(self.experiment)
-                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+                                    fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
                                     print("Loading fn: ", fn)
                                     df = self.PSI.preload(fn)
                                     divider = "=" * 80
@@ -1627,7 +1627,7 @@ class DataTables:
         # FI_measures: ["AdaptRatio",  "maxHillSlope", "I_maxHillSlope", "FIMax_1", "FIMax_4"]
 
         assert data_class in self.experiment.keys()
-        fn = self.assemble_dataset.get_assembled_filename(self.experiment)
+        fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
         plot_order = self.experiment["plot_order"][group_by]
         hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
@@ -1919,7 +1919,7 @@ class DataTables:
         """get the current assembled data file, if it exists
         if not, let us know.
         """
-        self.assembledfile = self.assemble_dataset.get_assembled_filename(self.experiment)
+        self.assembledfile = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
         if not self.assembledfile.is_file():  # make sure file exists first
             FUNCS.textappend(
                 f"Assembled data file: {self.assembledfile!s} does not yet exist - please generate it first"

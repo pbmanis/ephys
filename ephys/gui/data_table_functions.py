@@ -2475,6 +2475,7 @@ class Functions:
         df: pd.DataFrame,
         cell: str,
         protodurs: dict = None,
+        dotindex_data: Union[dict, None] = None,
     ):
         """combine_measures_and_FI_Fits
         Assemble data from multiple protocols to compute the FI curve for a cell.
@@ -2491,6 +2492,12 @@ class Functions:
             _description_
         protodurs : dict, optional
             _description_, by default None
+        dotindex_data : Union[dict, None], optional
+            If no ".index" dataframe is provided,
+            we will try to read the index data from the raw data files.
+            If it is provided, it is assumed to be a pandas dataframe
+            with all of the information.
+            by default None
 
         Returns
         -------
@@ -2566,31 +2573,51 @@ class Functions:
                 )
             else:
                 fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
-            with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
-                # try:
-                if not AR.getData(
-                    fullpath, allow_partial=True, record_list=[0]
-                ):  # just get the first record.
+            if dotindex_data is None:
+                raise ValueError("No index data provided, and code to read from raw files is no longer implemented")
+                with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
+                    # try:
+                    if not AR.getData(
+                        fullpath, allow_partial=True, record_list=[0]
+                    ):  # just get the first record.
+                        continue
+                    sample_rate = AR.sample_rate[0]
+                    duration = AR.tend - AR.tstart
+                    delay = AR.tstart
+                    srs.append(sample_rate)
+                    Rs.append(AR.CCComp["CCBridgeResistance"])
+                    CNeut.append(AR.CCComp["CCNeutralizationCap"])
+                    durations.append(duration)
+                    delays.append(delay)
+                    important.append(AR.checkProtocolImportant(fullpath))
+                    # CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                    valid_prots.append(protocol)
+                # except ValueError:
+                #         CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
+                #         if self.status_bar is not None:
+                #             self.status_bar.showMessage(
+                #                 f"Acq4Read failed to read data file: {str(fullpath):s}"
+                #             )
+                #         raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
+            else:
+                # get the data from the index dataframe
+                index_row = dotindex_data[
+                    (dotindex_data.cell_id == day_slice_cell)
+                    & (dotindex_data.protocol == protocol)
+                ]
+                if len(index_row) == 0:
+                    CP("y", f"    >>>> No index data found for cell: {cell:s}, protocol: {protocol:s}")
                     continue
-                sample_rate = AR.sample_rate[0]
-                duration = AR.tend - AR.tstart
-                delay = AR.tstart
+                sample_rate = index_row.sample_rate.values[0]
+                duration = index_row.duration.values[0]
+                delay = index_row.delay.values[0]
+                Rs.append(index_row.Rs.values[0])
+                CNeut.append(index_row.CNeut.values[0])
                 srs.append(sample_rate)
-                Rs.append(AR.CCComp["CCBridgeResistance"])
-                CNeut.append(AR.CCComp["CCNeutralizationCap"])
                 durations.append(duration)
                 delays.append(delay)
-                important.append(AR.checkProtocolImportant(fullpath))
-                # CP("g", f"    Protocol {protocol:s} has sample rate of {sample_rate:e}")
+                important.append(index_row.important.values[0])
                 valid_prots.append(protocol)
-            # except ValueError:
-            #         CP("r", f"Acq4Read failed to read data file: {str(fullpath):s}")
-            #         if self.status_bar is not None:
-            #             self.status_bar.showMessage(
-            #                 f"Acq4Read failed to read data file: {str(fullpath):s}"
-            #             )
-            #         raise ValueError(f"Acq4Read failed to read data file: {str(fullpath):s}")
-
         protocols = valid_prots  # only count valid protocols
         CP("c", f"Valid Protocols: {protocols!s}")
         if len(protocols) > 1:
