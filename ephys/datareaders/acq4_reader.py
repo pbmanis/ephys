@@ -753,6 +753,7 @@ class acq4_reader:
             else:
                 self.error_info = f"Protocol directory was not found: {self.protocol!s}"
                 CP.cprint("r", self.error_info)
+                raise FileNotFoundError(self.error_info)
             return False
         index = self._readIndex()
         self.info = self.getIndex(self.protocol)  # self.protocol)
