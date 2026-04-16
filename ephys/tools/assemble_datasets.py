@@ -96,24 +96,56 @@ class AssembleDatasets:
         # print(row.date, row.data_complete.values)
         return row
 
-    def get_assembled_filename(self, experiment):
+    def get_assembled_filename(self, experiment, mode:str="write"):
         """get_assembled_filename Create the filename for the assembled FI data.
 
         Parameters
         ----------
         experiment : _type_
-            _description_
-
+            configuration file with paths
+        mode : str
+            "write" or "read"
+            if "write", the filename will be modified to include the current date and time
+            if a file of the same name exists.
+            if "read", the filename will be returned as is without adding a timestamp.
         Returns
         -------
         _type_
             _description_
         """
+        assert mode in ["write", "read"], "Mode must be 'write' or 'read'"
         assembled_fn = Path(
                 experiment["analyzeddatapath"],
                 experiment["directory"],
                 experiment["assembled_filename"],
             )
+        
+        # avoid overwriting the assembled file if it already exists and is from a different date
+        import re
+        old_date = re.search(r"\d{4}.\d{2}.\d{2}", str(assembled_fn))
+        if old_date is not None:
+            old_date = old_date.group(0)
+        else:
+            old_date = "None"
+        current_date = datetime.datetime.now().strftime("%Y.%m.%d")
+
+        print("old date: ", old_date, current_date)
+        if old_date != "None" and old_date != current_date:
+            assembled_fn = str(assembled_fn).replace(old_date, current_date)
+        else:
+            assembled_fn = str(assembled_fn).replace(".pkl", f"_{current_date}.pkl")  # make new filename
+        assembled_fn = Path(assembled_fn)
+        if assembled_fn.is_file() and mode == "write":
+            print("Assembled file already exists: ", assembled_fn)
+            print("Will not overwrite, but will rename existing file adding a timestamp.")
+            tstamp = assembled_fn.stat().st_mtime  # get the file's last modified time
+            tstamp = datetime.datetime.fromtimestamp(tstamp).strftime("%H.%M.%S")
+            new_name = str(assembled_fn).replace(".pkl", f"_{tstamp}.pkl")
+            if not Path(new_name).is_file():
+                print(f"Renaming existing file {assembled_fn} to: {new_name}")
+                assembled_fn.rename(new_name)
+        # print("Assembled filename: ", assembled_fn)
+        # raise ValueError("Assembled filename: ", assembled_fn)
         return assembled_fn
 
     def assemble_datasets(
@@ -152,6 +184,9 @@ class AssembleDatasets:
             raise ValueError(
                 "Experiment not defined in AssembleData; should be done at time of the call"
             )
+      
+        print("Output will be written to: ", fn)
+
         self.experiment = experiment
         coding_file = experiment["coding_file"]
         coding_sheet = experiment["coding_sheet"]
@@ -345,6 +380,13 @@ class AssembleDatasets:
         df = df[df["shortdate"] >= after_parsedts]
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
+        dotindex_file = Path(
+            self.experiment["analyzeddatapath"],
+            self.experiment["directory"],
+            self.experiment["dotindex_filename"],
+        )
+        dotindex_data = pd.read_pickle(dotindex_file) if dotindex_file.is_file() else None
+
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
         computer_name = get_computer()
@@ -396,7 +438,7 @@ class AssembleDatasets:
             raise ValueError("Need to set a limit for the number of cells to process")
         result = [None] * len(tasks)
         results = dfdict
-        parallel = True
+        parallel = False
         if parallel:
             with concurrent.futures.ProcessPoolExecutor(max_workers=nworkers) as executor:
                 results = executor.map(
@@ -405,6 +447,7 @@ class AssembleDatasets:
                     [df] * len(tasks),
                     [cell_list[i] for i in tasks],
                     [self.experiment["FI_protocols"]] * len(tasks),
+                    [dotindex_data] * len(tasks),
                 )
                 for i, result in enumerate(results):
                     if result is not None:
@@ -430,7 +473,8 @@ class AssembleDatasets:
                     "c", f"    Computing FI_Fits for cell: {cell:s}"
                 )  # df[df.cell_id==cell].cell_type)
                 datadict = FUNCS.combine_measures_and_FI_Fits(
-                    self.experiment, df, cell, protodurs=self.experiment["FI_protocols"]
+                    self.experiment, df, cell, protodurs=self.experiment["FI_protocols"], 
+                    dotindex_data=dotindex_data
                 )
                 if datadict is None:
                     print("    datadict is none for cell: ", cell)
