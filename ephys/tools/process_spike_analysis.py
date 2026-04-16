@@ -108,7 +108,8 @@ class ProcessSpikeAnalysis:
         self.experiment = experiment
         if self.experiment is not None:
             computer_name = get_computer()
-            print("computer name: ", computer_name)
+            print("This computer name: ", computer_name)
+            print("Known computers: ", self.experiment["NWORKERS"])
             nworkers = self.experiment["NWORKERS"][computer_name]
             self.set_workers(nworkers, computer=computer_name)
 
