@@ -109,7 +109,7 @@ def get_configuration(configfile: Union[str, Path, None] = None, check_completen
 def retrieve_standard_values(experiments, datasets):
     """retrieve_standard_values : retrieve standard values for the configuration file.
     In particular, this captures missing configuration keys and sets them to default values
-    If the standard key IS in the current configuration, file, is is NOT changed.
+    If the standard key IS in the current configuration, file, it is NOT changed.
 
     The standard keys are:
         data_inclusion_criteria
