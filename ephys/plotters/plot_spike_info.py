@@ -1462,10 +1462,16 @@ class PlotSpikeInfo(QObject):
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 print("(single row) measure::: ", measure)
                 x_measure = "_".join((measure.split("_"))[:-1])
+                print("x_measure: ", x_measure)
+                print("ylims keys: ", self.ylims[ycell].keys())
                 if x_measure not in self.ylims[ycell]:
-                    CP("r", f"Measure not in y_lims['{ycell}'] in config file - cannot plot! {x_measure:s} from {measure:s}")
-                    print(f"ylims['{ycell}']: ", self.ylims[ycell].keys())
-                    raise ValueError("Missing measure in default limits: ", x_measure)
+                    x_measure = measure
+                    if x_measure not in self.ylims[ycell]:
+                        CP("r", f"Measure not in y_lims['{ycell}'] in config file - cannot plot! {x_measure:s} from {measure:s}")
+                        print(f"ylims['{ycell}']: ", self.ylims[ycell].keys())
+                        for k in self.ylims[ycell].keys():
+                            print(f"    {k:>30s} : {self.ylims[ycell][k]}")
+                        raise ValueError("Missing measure in default limits: ", x_measure)
 
                 if measure not in df.columns:
                     CP("r", f"measure not in df_columns:  {measure:s}, {df.columns!s}")
@@ -1554,7 +1560,11 @@ class PlotSpikeInfo(QObject):
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
         print("exported measures: ", measures)
-        print("AP max v: \n", df["AP_peak_V"].values)
+        raise ValueError("Stopping here to check measures before export.")
+        print("AP peak V: \n", df["AP_peak_V"].values)
+        print("AP threshold V: \n", df["AP_thr_V"].values)
+        print("AP peak V re threshold: \n", df["AP_peak_V_re_threshold"].values)
+        print("AP_peak_V_re_threshold_bestRs: \n", df["AP_peak_V_re_threshold_bestRs"].values)
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
