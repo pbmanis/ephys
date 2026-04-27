@@ -361,6 +361,7 @@ class DataTables:
         self.end_date = "None"
         self.CD = None  # not set up yet -
         self.DS_table_manager = None  # not set up yet
+        print(self.datasets)
         self.dataset = self.datasets[0]
 
         self.set_experiment(self.dataset)
@@ -2115,6 +2116,9 @@ def main():
         ) = GETCONFIG.get_configuration(
             config_file_path
         )  # retrieves the configuration file from the running directory
+    else:
+        print(f"Configuration file not found at: {config_file_path!s}")
+        raise ValueError(f"Configuration file not found at: {config_file_path!s}")
     D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
     if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
         QtWidgets.QApplication.instance().exec()
