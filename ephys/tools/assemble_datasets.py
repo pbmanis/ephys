@@ -21,6 +21,7 @@ ValueError
 import concurrent.futures
 import datetime
 from pathlib import Path
+import re
 from typing import Optional
 
 import dateutil.parser as DUP
@@ -120,8 +121,11 @@ class AssembleDatasets:
                 experiment["assembled_filename"],
             )
         
+        if mode == "read":
+            print("Reading assembled data from: ", assembled_fn)
+            return assembled_fn
         # avoid overwriting the assembled file if it already exists and is from a different date
-        import re
+
         old_date = re.search(r"\d{4}.\d{2}.\d{2}", str(assembled_fn))
         if old_date is not None:
             old_date = old_date.group(0)
@@ -130,6 +134,7 @@ class AssembleDatasets:
         current_date = datetime.datetime.now().strftime("%Y.%m.%d")
 
         print("old date: ", old_date, current_date)
+
         if old_date != "None" and old_date != current_date:
             assembled_fn = str(assembled_fn).replace(old_date, current_date)
         else:
