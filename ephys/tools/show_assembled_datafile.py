@@ -61,17 +61,20 @@ def transfer_cc_taum(row, excludes: list):
 def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     """
     apply_select_by : Here we filter the data from the different protocols
-    in the measurements for this row on the "select_by" criteria (measurement type, limits).
+    in the measurements for this row on the "select_by" criteria 
+    (a measuremed parameter and defined limits).
     We then select the "best" value to report for the selected parameter based on the filtered data.
 
-    Usually, this will be when the select_by parameter with the lowest value(s),
+    Usually, this will be when the select_by parameter has the lowest value(s),
     where the parameter value is not nan, and the select_by value is not nan.
     Typically, the selection will be for the protocol with the lowest Rs that
     has a valid measurement for the parameter.
 
     This routine sets the following columns in the row:
-        'parameter'_mean : the mean of the parameter values
-        'parameter'_bestselect_by : the best value of the parameter
+        'parameter'_mean : the mean of all the measured parameter values, independent
+        of the select_by limits or "best" value.
+        'parameter'_best'select_by' : the best value of the parameter using the
+        select_by criteria, e.g., Rin_bestRs
         If the parameter is "CC_taum", then the value is taken only from the
         CC_taum protocols, if they exist.
         Otherwise the value is taken from the named parameter.
@@ -92,7 +95,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         print("Parameter to test, value: ", parameter, row[parameter])
     if parameter not in row.keys():
         CP.cprint("y", f"Parameter {parameter:s} is not in current data row")
-        raise ValueError
+        raise ValueError(f"Parameter {parameter:s} is not in current data row")
         print("     row keys: ", row.keys())
         return row
     if parameter == "used_protocols":
@@ -119,6 +122,8 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         row[parameter] = [np.nan]
     if verbose and (select_by in verbose_selects):
         print("converted: type of row[parameter]: ", type(row[parameter]), row[parameter])
+
+
     # if isinstance(row[parameter], np.ndarray) and row[parameter].shape == (0,):
     #     row[parameter] = [np.nan] * len(row["protocols"])
     # elif isinstance(row[parameter], (float, np.float64)) or not hasattr(row[parameter], "__iter__"):
@@ -145,7 +150,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             row[parameter] = np.nan
             return row
 
-    # Standard measurements: the mean of ALL of the measurements
+    # Next, compute standard measurements: the mean of ALL of the measurements
     # collected across all protocols (data in a new column, representing the
     # mean)
     # Find out which protocols have the
@@ -163,7 +168,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     )
 
     # print(" selected values:", selector_values, print(select_limits))
-    # print("parametre, row[parameter]: ", parameter, row[parameter])
+    # print("parameter, row[parameter]: ", parameter, row[parameter])
     params = np.array(row[parameter])
     prots = row["protocols"]
     if verbose and (select_by in verbose_selects):
