@@ -8,6 +8,7 @@ from pylibrary.tools import cprint
 CP = cprint.cprint
 import ephys.tools.configfile as CF
 PP = pprint.PrettyPrinter(indent=4)
+import ephys.tools.get_computer as get_computer
 
 
 def get_configuration(configfile: Union[str, Path, None] = None, check_completeness: bool = True):
@@ -62,7 +63,43 @@ def get_configuration(configfile: Union[str, Path, None] = None, check_completen
         config = CF.readConfigFile(configfile)
         experiments = config["experiments"]
     
+    # remap directories based on the computer system in use.
+    # If "rawdatapath" exists and "System" does not exist, we DO not do this.
+    for dataset in experiments.keys():
+        if "rawdatapath" in experiments[dataset].keys() and "System" not in experiments[dataset].keys():
+            continue
+        else:
+            print("checking to map directories for dataset: ", dataset)
+        computer_name = get_computer.get_computer()
+        if computer_name in experiments[dataset]["System"].keys():
+            CP("c", f"Remapping directories for dataset '{dataset}' based on computer name '{computer_name}'")
+            for key in experiments[dataset]['System'][computer_name].keys():
+                experiments[dataset][key] = experiments[dataset]["System"][computer_name][key]
+        else:
+            raise ValueError(
+                f"No computer-specific directories for dataset '{dataset}' found for computer '{computer_name}'"
+                )
     datasets = list(experiments.keys())
+
+    print("Datasets found in configuration file: ", datasets)
+    for dataset in datasets:
+        print(f"    Dataset: {dataset}")
+        # check for existence of required directories.
+        required_dirs = ["rawdatapath", "analyzeddatapath", "databasepath"]
+        for dirkey in required_dirs:
+            if dirkey in experiments[dataset].keys():
+                if not Path(experiments[dataset][dirkey]).is_dir():
+                    raise FileNotFoundError(
+                        f"        Directory '{experiments[dataset][dirkey]!s}' for key '{dirkey}' in dataset '{dataset}' not found"
+                    )
+                else:
+                    CP("g", f"       Directory '{experiments[dataset][dirkey]!s}' for key '{dirkey}' in dataset '{dataset}' found")
+            else:
+                raise ValueError(
+                    f"        Required directory key '{dirkey}' not found in dataset '{dataset}'"
+                )
+            
+
     if check_completeness:
         retrieve_standard_values(experiments, datasets)
         validate_configuration(experiments, datasets)
@@ -216,3 +253,7 @@ def validate_configuration(experiments, datasets):
             CP("c", f"Configuration for dataset '{dataset}' is compliant")
     
 
+if __name__ == "__main__":
+    # use this for testing the configuration file retrieval and validation
+    # assumes a .config/'configfile' name in the current working directory
+    datasets, experiments = get_configuration(configfile="./config/experiments.cfg", check_completeness=True)
