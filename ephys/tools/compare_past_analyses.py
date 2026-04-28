@@ -15,15 +15,6 @@ from pylibrary.tools import cprint
 
 expts = get_configuration.get_configuration("config/experiments.cfg")
 
-
-# fn = "CBA_Age/CBA_Age_combined_by_cell.pkl"
-# date = datetime.now().strftime("%d-%m-%Y")
-# fn_no_ext = Path(fn).stem
-# fn_parent = Path(fn).parent
-# fn_out = Path(fn_parent, f"{fn_no_ext}_{date}.pkl")
-
-
-
 CP = cprint.cprint
 
 re_list = r"^\[([0-9.,\s]+)\]$"  # matches a list of numbers, with surrounded by brackets
@@ -58,7 +49,8 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
     diff_cells = set()
     diff_measures = set()
     skip = ["AdaptIndex2", "Subject"]
-
+    ndiff = 0
+    
     if flags.verbose:
         print(f"{'='*80:s}")
     for cell_id in d1["cell_id"]:
@@ -97,13 +89,18 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                 # print("col:, ", col, "val1: ", val1, type(val1), "val2: ", val2, type(val2))
                 # convert strings of numbers or lists to np arrays
                 if isinstance(val1, str) and isinstance(val2, str):
+                    # if check_verbose(flags, col, skip):
+                    #     print("col: ", col, "\n   val1: ", val1, type(val1), "\n   val2: ", val2, type(val2))
                     val1 = val1.replace("np.float64(", "").replace(")", "")
                     val2 = val2.replace("np.float64(", "").replace(")", "")
                     res1 = re.match(re_list, val1)
                     res2 = re.match(re_list, val2)
                     if res1 and res2:
                         val1 = np.array(literal_eval(val1)) if res1 else val1
+                        val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+
                         val2 = np.array(literal_eval(val2)) if res2 else val2
+                        val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
                     # print('val1, val2: ', val1, val2)
                     if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
                         if not np.array_equal(np.sort(val1), np.sort(val2)):
@@ -144,7 +141,8 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                         val2 = np.nan
                     elif isinstance(val2, str):
                         val2 = float(val2)
-                    print("val1, val2: ", val1, val2, type(val1), type(val2))
+                    if check_verbose(flags, col, skip):
+                        print("val1, val2: ", val1, val2, type(val1), type(val2))
                     if not (np.isnan(val1) and np.isnan(val2)):
                         if cell_id_ok:
                             if check_verbose(flags, col, skip):
@@ -157,6 +155,11 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                 # compare numbers/arrays 
                 else:
                     # print(val1, val2)
+                    # if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
+                    #     print(val1, val2)
+                    #     raise Exception("Debugging: stop here to check values")
+                    val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+                    val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
                     if not np.allclose(val1, val2, 1e-6, equal_nan=True):
                         if col.startswith("Rs"):
                             if np.allclose(val1, 1e-6*val2, 1e-6, equal_nan=True):
@@ -172,6 +175,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                                 prot1 = row1["used_protocols"] if "used_protocols" in row1 else "unknown"
                                 prot2 = row2["used_protocols"] if "used_protocols" in row2 else "unknown"
                                 CP("y", f"        Protocols used:\n     {date1}:  {prot1}\n     {date2}:  {prot2}")
+                                ndiff += 1
                             cell_id_ok = False
                         diff_cells.add(cell_id)
                         diff_measures.add(col)
@@ -276,7 +280,7 @@ def sort_by_date(files: Union[str, Path]) -> list:
     sorted_files = sorted(files_with_dates, key=lambda x: x[1], reverse=True)
     return [f[0] for f in sorted_files]
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         description="Compare spike shape analyses across different runs"
     )
@@ -305,10 +309,11 @@ if __name__ == "__main__":
                         help="Compare datasets and report whether different protocols were used in a cell's analysis")
     args = parser.parse_args()
     # check for experiment in the config file
-    if args.experiment not in expts:
+    if args.experiment not in expts[1]:
         CP("r", f"Experiment {args.experiment} not found in config file")
+        print(f"Available experiments: {list(expts[1].keys())}")
         exit()
-    expt = expts[args.experiment]
+    expt = expts[1][args.experiment]
     # print(args.files_1, args.files_2)
     files_1 = sort_by_date(args.files_1) if args.files_1 else []
     files_2 = sort_by_date(args.files_2) if args.files_2 else []
@@ -346,3 +351,5 @@ if __name__ == "__main__":
  
     exit()
 
+if __name__ == "__main__":
+    main()
