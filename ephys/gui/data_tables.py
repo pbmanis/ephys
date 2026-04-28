@@ -275,6 +275,7 @@ class DataTables:
         )
 
         self.win = pg.QtWidgets.QMainWindow()
+
         self.status_bar_message("Starting...", color="green", weight="bold")
         
         # use dock system instead of layout.
@@ -435,7 +436,13 @@ class DataTables:
         # self.Dock_Traces.addWidget(self.trace_selector_plot, row=5, col=0, rowspan=1, colspan=1)
 
         self.set_experiment(self.dataset)
-
+        script_path = Path(__file__).resolve().parent.parent.parent
+        icon_file = Path(script_path, "icons/tray_icon2.png")
+        if not icon_file.exists():
+            print("Icon file not found: ", icon_file, 'from: ', Path.cwd())
+            raise FileNotFoundError(f"Icon file not found: {icon_file}")
+        icon = pg.QtGui.QIcon(str(icon_file))
+        self.app.setWindowIcon(icon)
         self.win.show()
         self.table.setSelectionMode(pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(QtWidgets.QTableView.SelectionBehavior.SelectRows)
