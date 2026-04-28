@@ -17,44 +17,11 @@ import re
 import ephys.tools.check_inclusions_exclusions as CIE
 import ephys.tools.assemble_datasets as assemble
 
-
 vc_re = re.compile(r"\s*VC_Spont_", re.IGNORECASE)
 cc_re = re.compile(r"\s*CC_Spont_", re.IGNORECASE)
-# print('VC_re: ', vc_re.match("VC_Spont_001"))
-# exit()
-
-
-def numeric_age(row):
-    """numeric_age convert age to numeric for pandas row.apply
-
-    Parameters
-    ----------
-    row : pd.row_
-
-    Returns
-    -------
-    value for row entry
-    """
-    if isinstance(row.age, float):
-        return row.age
-    row.age = int("".join(filter(str.isdigit, row.age)))
-    return float(row.age)
-
-
-def categorize_ages(row, experiment):
-    row.age = numeric_age(row)
-    for k in experiment["age_categories"].keys():
-        if (
-            row.age >= experiment["age_categories"][k][0]
-            and row.age <= experiment["age_categories"][k][1]
-        ):
-            row.age_category = k
-    return row.age_category
-
 
 AR = DR.acq4_reader.acq4_reader()
 SP = EP.spike_analysis.SpikeAnalysis()
-
 
 def setup(
     config_file_path: Union[Path, str] = "./config/experiments.cfg", dataset: str = "NF107Ai32_Het"
