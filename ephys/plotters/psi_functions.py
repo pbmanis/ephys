@@ -2,6 +2,9 @@ from pathlib import Path
 import datetime
 import numpy as np
 import pandas as pd
+from pylibrary.tools import cprint
+from ephys.tools import categorize_ages
+CP = cprint.cprint
 
 """ psi_functions
 Helper functions for plot_spike_info module.
@@ -63,7 +66,7 @@ def rename_groups(row, experiment):
         row.groupname = experiment["group_map"][row.Group]
     else:
         row.groupname = np.nan  # deassign the group
-    return row.groupname
+    return row
 
 
 def get_datasummary(experiment):
@@ -127,7 +130,7 @@ def set_subject(row):
         row["Subject"] = subj[:10]
     if row["Subject"] is None:
         row["Subject"] = "NoID"
-    return row["Subject"]
+    return row
 
 
 def get_age(age_value):
@@ -146,37 +149,17 @@ def get_age(age_value):
     return age
 
 
-def numeric_age(row):
-    """numeric_age convert age to numeric for pandas row.apply
-
-    Parameters
-    ----------
-    row : pd.row_
-
-    Returns
-    -------
-    value for row entry
-    """
-    if isinstance(row.age, float):
-        return row.age
-    if isinstance(row.age, str):
-        if len(row.age) == 0:
-            row.age = np.nan
-        else:
-            row.age = int("".join(filter(str.isdigit, row.age)))
-        return float(row.age)
+def make_datetime_date(row):
+    column_names = row.keys()
+    if "date" in column_names and "Date" in column_names:
+        column_name = "Date"  # preference to uppercase.
     else:
-        raise ValueError(f"age is not a float or string: {row.age!s}")
-
-
-def make_datetime_date(row, colname="date"):
-    if colname == "date" and "Date" in row.keys():
-        colname = "Date"
-    if pd.isnull(row[colname]) or row[colname] == "nan":
+        column_name = "date"
+    if pd.isnull(row[column_name]) or row[column_name] == "nan":
         row.shortdate = 0
-        return row.shortdate
+        return row
 
-    date = str(Path(row[colname]).name)
+    date = str(Path(row[column_name]).name)
     date = date.split("_", maxsplit=1)[0]
     shortdate = datetime.datetime.strptime(date, "%Y.%m.%d")
     shortdate = datetime.datetime.timestamp(shortdate)
@@ -187,33 +170,33 @@ def make_datetime_date(row, colname="date"):
     if pd.isnull(row.shortdate):
         raise ValueError("row.shortdate is null ... in make_datetime_date")
 
-    return row.shortdate
+    return row
 
 
 def clean_sex_column(row):
     if row.sex not in ["F", "M"]:
         row.sex = "U"
-    return row.sex
-
-
-def categorize_ages(row, experiment: dict):
-    age = int(numeric_age(row))
-    if "age_categories" not in experiment.keys():
-        row.age_category = 0
-        return row.age_category
-    for k in experiment["age_categories"].keys():
-        if (age >= experiment["age_categories"][k][0]) and (
-            age <= experiment["age_categories"][k][1]
-        ):
-            row.age_category = k
-            break
-        else:
-            row.age_category = 0.0
-    return row.age_category
-
+    return row
 
 def clean_rin(row, experiment: dict):
-    min_Rin = 6.0
+    """clean_rin: Limit the minimum Rin values to those deeemed acceptable for a given
+    cell type, or the default in the experiment dict.
+
+    Meant to be used with an apply function to the dataframe, and will return a list of Rin values
+
+    Parameters
+    ----------
+    row : Pandas series
+            data row to operate on
+    experiment : dict
+            experiment dictionary, used to get data inclusion criteria for Rin
+
+    Returns
+    -------
+    list of Rin values, with those below the minimum set to NaN.
+
+    """
+    min_Rin = 6.0  # expressed in MegaOhms.
     if "data_inclusion_criteria" in experiment.keys():
         if row.cell_type in experiment["data_inclusion_criteria"].keys():
             min_Rin = experiment["data_inclusion_criteria"][row.cell_type]["Rin_min"]
@@ -226,7 +209,7 @@ def clean_rin(row, experiment: dict):
     for i, rin in enumerate(row.Rin):
         if row.Rin[i] < min_Rin:
             row.Rin[i] = np.nan
-    return row.Rin
+    return row
 
 
 def adjust_AHP_depth_V(row, experiment: dict):
@@ -246,8 +229,43 @@ def adjust_AHP_depth_V(row, experiment: dict):
         row.AHP_depth_V = [row.AHP_depth_V + 1e-3 * experiment["junction_potential"]]
     else:
         row.AHP_depth_V = [ap + 1e-3 * experiment["junction_potential"] for ap in row.AHP_depth_V]
-    return row.AHP_depth_V
+    return row
 
+def compute_ap_peak_v_re_threshold(row, measure: str):
+    verbose: bool=False  # flag for debugging print statements
+    if verbose:
+        CP("r", f"row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
+    if isinstance(row.AP_peak_V, list):
+        ap_pkv = float(row.AP_peak_V[0])
+    else:
+        ap_pkv = row.AP_peak_V
+    if isinstance(row.AP_thr_V, list):
+        ap_thr = float(row.AP_thr_V[0])
+    else:
+        ap_thr = row.AP_thr_V
+    if np.isnan(ap_pkv) or np.isnan(ap_thr):
+        row["AP_peak_V_re_threshold"] = np.nan
+    else:
+        row[measure] = ap_pkv - ap_thr
+    if verbose:
+        CP("r", f"Computed {measure:s}: {row[measure]}")
+    return row
+
+def compute_ap_depth_v(row, measure: str):
+    if isinstance(row["AP_depth_V_bestRs"], (list, np.ndarray)):
+        if isinstance(row["AP_thr_V_bestRs"], list):
+            thrv = float(row["AP_thr_V_bestRs"][0])
+        else:
+            thrv = float(row["AP_thr_V_bestRs"])
+        val = 1e3 * float(row["AP_depth_V_bestRs"][0]) - thrv
+    elif isinstance(row["AHP_depth_V_bestRs"], float) and isinstance(
+        row["AP_thr_V_bestRs"], float
+    ):
+        val = 1e3 * float(row["AP_depth_V_bestRs"]) - row["AP_thr_V_bestRs"]
+    else:
+        val = np.nan
+    row[measure] = val
+    return row
 
 def compute_ap_relative_depth_v(row, measure: str):
     if isinstance(row["AHP_relative_depth_V_bestRs"], (list, np.ndarray)):
@@ -266,17 +284,18 @@ def adjust_AHP_trough_V(row, experiment: dict):
     else:
         row.AHP_trough_V = [ap + 1e-3 * experiment["junction_potential"] for ap in row.AHP_trough_V]
 
-    return row.AHP_trough_V
+    return row
 
 
 def compute_AHP_relative_depth(row):
-    # Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
-    # if the depth is positive, then the trough is above threshold, so set to nan.
-    # this creates a AHP_rel_depth_V column.
-    # Usually we want to take this from the spike evoked by the lowest-current level (e.g., near rheobase)
-    # as the analysis of that spike is what is used for the dvdt/hw measures and threshold,
-    # and is an isolated spike (minimum default distance to next spike is 25 ms)
-
+    """ compute_AHP_relative_depth:
+    Calculate the AHP relative depth, as the voltage between the the AP threshold and the AHP trough
+    If the depth is positive, then the trough is above threshold, so set to nan.
+    This creates a AHP_rel_depth_V column.
+    Usually we want to take this from the spike evoked by the lowest-current level (e.g., near rheobase)
+    as the analysis of that spike is what is used for the dvdt/hw measures and threshold,
+    and is an isolated spike (minimum default distance to next spike is 25 ms)
+    """
     # print("row.keys: ", row.keys())
     if "AHP_relative_depth_V" in row.keys():
         lcs_depth = row.get("AHP_relative_depth_V", np.nan)
@@ -304,33 +323,59 @@ def compute_AHP_relative_depth(row):
 
 
 def compute_AHP_trough_time(row):
-    # RE-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
+    # Re-Calculate the AHP trough time, as the time between the AP threshold and the AHP trough
     # if the depth is positive, then the trough is above threshold, so set to nan.
-
-    if isinstance(row.AP_thr_T, float):
-        row.AP_thr_T = [row.AP_thr_T]
+    verbose: bool = False
     if isinstance(row.AHP_trough_T, float):
-        if np.isnan(row.AHP_trough_T):
-            return row.AHP_trough_T
-        row.AHP_trough_T = [row.AHP_trough_T]
-    for i, att in enumerate(row.AP_thr_T):  # base index on threshold measures
-        # print("AP_thr_T: ", row.AP_thr_T[i], row.AHP_trough_T)
+        if np.isnan(row.AHP_trough_T):  # no trough found, so return as is
+            return row
+        row.AHP_trough_T = [row.AHP_trough_T]  # otherwise make it a list for the loop below
+    if isinstance(row.AP_thr_T, float): # if threshold is a single value, make it a list for the loop below
+        row.AP_thr_T = [row.AP_thr_T]
+    if verbose:
+        print(f"{len(row.AP_thr_T):d}, {len(row.AHP_trough_T):d}")
+    n_ok = len(row.AP_thr_T)
+    if len(row.AP_thr_T) > len(row.AHP_trough_T):
+        if verbose:
+            CP("y", f"Warning: length of AP_thr_T and AHP_trough_T do not match for cell_id: {row.cell_id}")
+            print("   AP_thr_T: ", row.AP_thr_T, "AHP_trough_T: ", row.AHP_trough_T)
+        n_ok = min(len(row.AP_thr_T), len(row.AHP_trough_T))
+    for i in range(n_ok):  # base index on threshold measures
+        if verbose:
+            print("   i: ", i, "AP_thr_T: ", row.AP_thr_T[i], "AP_trough_T: ", row.AHP_trough_T[i])
         if np.isnan(row.AHP_trough_T[i]):
-            return row.AHP_trough_T[i]
-        # print("trought_t, thrt: ", row.AHP_trough_T[i], row.AP_thr_T[i])  # note AP_thr_t is in ms, AHP_trough_T is in s
-        if not np.isnan(row.AHP_trough_T[i]):
-            row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
-            if row.AHP_trough_T[i] < 0:
-                row.AHP_trough_T[i] = np.nan
-    return row.AHP_trough_T
+            continue
+        if verbose:
+            print("   trough_t, thrt: ", row.AHP_trough_T[i], row.AP_thr_T[i])  # units: AP_thr_t: ms, AHP_trough_T: s
+        row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
+        if row.AHP_trough_T[i] < 0:
+            row.AHP_trough_T[i] = np.nan
+    return row
 
 
 def adjust_AP_thr_V(row, experiment: dict):
+    """adjust_AP_thr_V Offset measured threshold with junction potential.
+        This is to be used with an apply function to the dataframe.
+        If the threshold is a float, we convert to a list.
+
+    Parameters
+    ----------
+    row : Pandas series
+        data row to operate on
+    experiment : dict
+        experiment dictionary, used to get junction potential
+
+    Returns
+    -------
+    thresholds: list
+        Values for the adjusted threshold.
+    
+    """
     if isinstance(row.AP_thr_V, float):
         row.AP_thr_V = [row.AP_thr_V + 1e-3 * experiment["junction_potential"]]
     else:
         row.AP_thr_V = [ap + 1e-3 * experiment["junction_potential"] for ap in row.AP_thr_V]
-    return row.AP_thr_V
+    return row
 
 
 def clean_rmp(row, experiment: dict):
@@ -368,7 +413,7 @@ def clean_rmp(row, experiment: dict):
             row.RMP[i] = np.nan
         else:
             row.RMP[i] = float(rmpi)
-    return row.RMP  # returns the original value.
+    return row  # returns the original value.
 
 
 def clean_rmp_zero(row, experiment: dict):
@@ -399,4 +444,4 @@ def clean_rmp_zero(row, experiment: dict):
     for i, r0 in enumerate(r0):
         if min_RMP is not None and r0 > min_RMP:
             row.RMP_Zero[i] = np.nan
-    return row.RMP_Zero
+    return row

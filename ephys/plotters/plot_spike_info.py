@@ -30,6 +30,7 @@ import ephys.tools.show_assembled_datafile as SAD
 from ephys.gui import data_table_functions
 from ephys.plotters import psi_functions as PSIF
 from ephys.tools import fitting, utilities
+from ephys.tools import categorize_ages
 
 PP = pprint.PrettyPrinter()
 
@@ -863,12 +864,12 @@ class PlotSpikeInfo(QObject):
         else:
             return np.nan
 
-    def flag_date(self, row):
+    def flag_date(self, row): 
         if row.shortdate >= after_parsed:
             row.SR = 1
         else:
             row.SR = 0
-        return row.SR
+        return row
 
     def relabel_yaxes(self, axp, measure):
         if "new_ylabels" in self.experiment.keys():
@@ -901,13 +902,15 @@ class PlotSpikeInfo(QObject):
                 # print(row[measure], measure)
                 try:
                     row[measure] = np.nanmean(row[measure]) * scale
+                except Warning as e:
+                    print(f"Warning in rescale_values_apply for measure {measure} {cell_id}: {e}")
                 except Exception as e:
                     print(f"Error in rescale_values_apply for measure {measure} {cell_id}: {e}")
             elif isinstance(row[measure], list) and len(row[measure]) == 0:
                 row[measure] = [np.nan]
             else:
                 row[measure] = row[measure] * scale
-        return row[measure]
+        return row
 
     def rescale_values(self, df):
         rescaling = {
@@ -934,7 +937,7 @@ class PlotSpikeInfo(QObject):
         for measure, scale in rescaling.items():
             if measure not in df.columns:
                 continue
-            df[measure] = df.apply(
+            df = df.apply(
                 self.rescale_values_apply,
                 axis=1,
                 measure=measure,
@@ -958,27 +961,7 @@ class PlotSpikeInfo(QObject):
         rsa = np.mean(row["CNeut"])
         row["CNeut"] = rsa
         return row
-
-    def compute_peak_v_re_threshold(self, row):
-        verbose: bool=False
-        if verbose:
-            CP("r", f"row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
-        if isinstance(row.AP_peak_V, list):
-            ap_pkv = float(row.AP_peak_V[0])
-        else:
-            ap_pkv = row.AP_peak_V
-        if isinstance(row.AP_thr_V, list):
-            ap_thr = float(row.AP_thr_V[0])
-        else:
-            ap_thr = row.AP_thr_V
-        if np.isnan(ap_pkv) or np.isnan(ap_thr):
-            row["AP_peak_V_re_threshold"] = np.nan
-        else:
-            row["AP_peak_V_re_threshold"] = ap_pkv - ap_thr
-        if verbose:
-            CP("r", f"Computed AP_peak_V_re_threshold: {row['AP_peak_V_re_threshold']}")
-        return row
-
+    
     def remove_nans(self, row, measure):
         if isinstance(row[measure], list):
             m = [x for x in row[measure]]  #  if not pd.isnull(x)]
@@ -1246,84 +1229,70 @@ class PlotSpikeInfo(QObject):
   
         # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
-            if measure.startswith("dvdt_ratio_bestRs"):
-                if measure not in df.columns:
-                    df[measure] = {}
-                df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
-
-            if measure.startswith("AP_peak_V"):
-                # adjust the best Rs value for the junction potential.
-                if measure not in df.columns:
-                    df[measure] = {}
-                df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [self.experiment["junction_potential"]]*len(df)
             CP("r", f"Measure: {measure:s}")
-            if measure.startswith("AP_peak_V_bestRs"):  # height is diff from ap thr to peak ap
-                if measure not in df.columns:
-                    df[measure] = {}
+            match measure:
+                case str(measure) if "dvdt_ratio_bestRs" in measure:
+                    if measure not in df.columns:
+                        df[measure] = {}
+                    df[measure] = df["dvdt_rising_bestRs"] / df["dvdt_falling_bestRs"]
+                case str(measure) if "AP_peak_V" in measure:
+                    # adjust the best Rs value for the junction potential.
+                    CP("m", "ap peak v computation")
+                    if measure not in df.columns:
+                        df[measure] = {}
+                    df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [self.experiment["junction_potential"]]*len(df)
+                case str(measure) if "AP_peak_V_re_threshold" in measure:  # height is diff from ap thr to peak ap
+                    if measure not in df.columns:
+                        df[measure] = {}
+                    df = df.apply(PSIF.compute_ap_peak_v_re_threshold)
 
-                def compute_ap_peak_v_re_threshold(row):
-                    """Given the maximum V from AP_peak_V_bestRs,
-                    and the threshold V, 
-                    compute the AP peak V relative to threshold. 
-                    This is the more meaningful measure of spike height, 
-                    as it accounts for differences in threshold and accuracy of the
-                    RMP (voltage error in absolute voltage measurement)
-                    across cells. 
-                    Also, check that the AP amplitude is not too low (< 40 mV), 
-                    which would suggest an error in the measurement.
-                    The result is returned in the row value of "AP_peak_V_bestRs"
-                    """
-                    if isinstance(row["AP_peak_V_bestRs"], (list, np.ndarray)):
-                        thrv = np.nan
-                        if isinstance(row["AP_thr_V_bestRs"], list):
-                            thrv = float(row["AP_thr_V_bestRs"][0])
-                        else:
-                            thrv = float(row["AP_thr_V_bestRs"])
-                        val = float(row["AP_peak_V_bestRs"][0]) - thrv
-                    elif isinstance(row["AP_peak_V_bestRs"], float) and isinstance(
-                        row["AP_thr_V_bestRs"], float
-                    ):
-                        val = float(row["AP_peak_V_bestRs"]) - row["AP_thr_V_bestRs"]
-                    else:
-                        val = np.nan
-                    if val < 40 and not np.isnan(val):
-                        CP(
-                            "r",
-                            f"AP_peak_V re threshold (float, float): {val:.2f} < 40mV, {row['cell_id']}",
-                        )
-                        val = np.nan
-                    row["AP_peak_V_re_threshold"] = val
-                    return row
+                # def compute_ap_peak_v_re_threshold(row):
+                #     """Given the maximum V from AP_peak_V_bestRs,
+                #     and the threshold V, 
+                #     compute the AP peak V relative to threshold. 
+                #     This is the more meaningful measure of spike height, 
+                #     as it accounts for differences in threshold and accuracy of the
+                #     RMP (voltage error in absolute voltage measurement)
+                #     across cells. 
+                #     Also, check that the AP amplitude is not too low (< 40 mV), 
+                #     which would suggest an error in the measurement.
+                #     The result is returned in the row value of "AP_peak_V_bestRs"
+                #     """
+                #     if isinstance(row["AP_peak_V_bestRs"], (list, np.ndarray)):
+                #         thrv = np.nan
+                #         if isinstance(row["AP_thr_V_bestRs"], list):
+                #             thrv = float(row["AP_thr_V_bestRs"][0])
+                #         else:
+                #             thrv = float(row["AP_thr_V_bestRs"])
+                #         val = float(row["AP_peak_V_bestRs"][0]) - thrv
+                #     elif isinstance(row["AP_peak_V_bestRs"], float) and isinstance(
+                #         row["AP_thr_V_bestRs"], float
+                #     ):
+                #         val = float(row["AP_peak_V_bestRs"]) - row["AP_thr_V_bestRs"]
+                #     else:
+                #         val = np.nan
+                #     if val < 40 and not np.isnan(val):
+                #         CP(
+                #             "r",
+                #             f"AP_peak_V re threshold (float, float): {val:.2f} < 40mV, {row['cell_id']}",
+                #         )
+                #         val = np.nan
+                #     row["AP_peak_V_re_threshold"] = val
+                #     return row
 
-                df = df.apply(compute_ap_peak_v_re_threshold, axis=1)
+                case str(measure) if "AP_depth_V" in measure:
+                    # print("AP depth measure: ", measure)
+                    if measure not in df.columns:
+                        df[measure] = {}
+                    df = df.apply(PSIF.compute_ap_depth_v, measure=measure, axis=1)
 
-            if measure.startswith("AP_depth_V"):
-                # print("AP depth measure: ", measure)
-                if measure not in df.columns:
-                    df[measure] = {}
+                case str(measure) if "AP_relative_depth_V" in measure:
+                    if measure not in df.columns:
+                        df[measure] = {}
+                    df = df.apply(PSIF.compute_ap_relative_depth_v, measure=measure, axis=1)
+                case _:
+                    pass
 
-                def compute_ap_depth_v(row, measure: str):
-                    if isinstance(row["AP_depth_V_bestRs"], (list, np.ndarray)):
-                        if isinstance(row["AP_thr_V_bestRs"], list):
-                            thrv = float(row["AP_thr_V_bestRs"][0])
-                        else:
-                            thrv = float(row["AP_thr_V_bestRs"])
-                        val = 1e3 * float(row["AP_depth_V_bestRs"][0]) - thrv
-                    elif isinstance(row["AHP_depth_V_bestRs"], float) and isinstance(
-                        row["AP_thr_V_bestRs"], float
-                    ):
-                        val = 1e3 * float(row["AP_depth_V_bestRs"]) - row["AP_thr_V_bestRs"]
-                    else:
-                        val = np.nan
-                    row[measure] = val
-                    return row
-
-                df = df.apply(compute_ap_depth_v, measure=measure, axis=1)
-
-            if measure.startswith("AP_relative_depth_V"):
-                if measure not in df.columns:
-                    df[measure] = {}
-                df = df.apply(PSIF.compute_ap_relative_depth_v, measure=measure, axis=1)
         return df, local_measures
 
     def summary_plot_ephys_parameters_categorical(
@@ -1359,7 +1328,7 @@ class PlotSpikeInfo(QObject):
                 "data_class must be one of: spike_measures, rmtau_measures, FI_measures"
             )
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
-        df["Subject"] = df.apply(PSIF.set_subject, axis=1)
+        df = df.apply(PSIF.set_subject, axis=1)
         picker_funcs = {}
         print("Groups going in: ", df["Group"].unique())
         # n_celltypes = len(self.experiment["celltypes"])
@@ -1458,12 +1427,12 @@ class PlotSpikeInfo(QObject):
                 if icol >= len(plabels):
                     continue
                 ycell = self.experiment["celltypes"][0]
-                print("icol: ", icol, "plabels: ", plabels, "ycell: ", ycell, "measure: ", measure)
+                # print("icol: ", icol, "plabels: ", plabels, "ycell: ", ycell, "measure: ", measure)
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 print("(single row) measure::: ", measure)
                 x_measure = "_".join((measure.split("_"))[:-1])
                 print("x_measure: ", x_measure)
-                print("ylims keys: ", self.ylims[ycell].keys())
+                # print("ylims keys: ", self.ylims[ycell].keys())
                 if x_measure not in self.ylims[ycell]:
                     x_measure = measure
                     if x_measure not in self.ylims[ycell]:
@@ -1560,11 +1529,13 @@ class PlotSpikeInfo(QObject):
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
         print("exported measures: ", measures)
-        raise ValueError("Stopping here to check measures before export.")
+        # raise ValueError("Stopping here to check measures before export.")
+        print(df.columns)
         print("AP peak V: \n", df["AP_peak_V"].values)
         print("AP threshold V: \n", df["AP_thr_V"].values)
-        print("AP peak V re threshold: \n", df["AP_peak_V_re_threshold"].values)
-        print("AP_peak_V_re_threshold_bestRs: \n", df["AP_peak_V_re_threshold_bestRs"].values)
+        if "AP_peak_V_re_threshold" in df.keys():
+            print("AP peak V re threshold: \n", df["AP_peak_V_re_threshold"].values)
+            print("AP_peak_V_re_threshold_bestRs: \n", df["AP_peak_V_re_threshold_bestRs"].values)
         self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
@@ -1621,11 +1592,12 @@ class PlotSpikeInfo(QObject):
         # df["FIMax_4"] = df.apply(get_fi_max_imax, axis=1, imax=4.0)
         df["FIRate"] = df.apply(self.get_fi_rate, axis=1)
         df.dropna(subset=["Group"], inplace=True)  # remove empty groups
-        df["age"] = df.apply(PSIF.numeric_age, axis=1)
+        df = df.apply(categorize_ages.numeric_age, axis=1)
         if "max_age" in self.experiment.keys():
             df = df[(df.Age >= 0) & (df.Age <= self.experiment["max_age"])]
-        df["shortdate"] = df.apply(PSIF.make_datetime_date, axis=1)
-        df["SR"] = df.apply(self.flag_date, axis=1)
+        df['shortdate'] = {}
+        df = df.apply(PSIF.make_datetime_date, axis=1)
+        df = df.apply(self.flag_date, axis=1)
         # df.dropna(subset=["age"], inplace=True)
         df = self.rescale_values(df)
         if representation in ["bestRs", "mean"]:
@@ -2666,7 +2638,8 @@ class PlotSpikeInfo(QObject):
 
         if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
             # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
-            df_clean = df_clean.apply(self.categorize_ages, axis=1)
+            df_clean = df_clean.apply(categorize_ages.categorize_ages, 
+                                      age_categories=self.experiment['age_categories'], axis=1)
         # print("2: ", df_clean[measure])
         if len(groups_in_data) < 2:  # need 2 groups to compare
             nodatatext = "\n".join(
@@ -2890,13 +2863,13 @@ class PlotSpikeInfo(QObject):
             #     if "Subject" in row.keys():
             #         print("Found subject column but not animal[_]identifier: ", row["Subject"])
             #     raise ValueError("could not match animal id/Subject with column")
-        return row.Subject
+        return row
 
     def get_cell_layer(self, row, df_summary):
         cell_id = row.cell_id
         cell_id_match = FUNCS.compare_cell_id(cell_id, df_summary.cell_id.values)
         if cell_id_match is None:
-            return ""
+            return row
         if cell_id_match is not None:
             row.cell_layer = df_summary.loc[df_summary.cell_id == cell_id_match].cell_layer.values[
                 0
@@ -2907,7 +2880,7 @@ class PlotSpikeInfo(QObject):
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
             raise ValueError(f"Cell id {cell_id} not found in summary")
-        return row.cell_layer
+        return row
 
     def get_cell_expression(self, row, df_summary):
         """get_cell_expression from the main datasummary dataframe
@@ -2957,7 +2930,7 @@ class PlotSpikeInfo(QObject):
             print("cell id not found: ", cell_id)
             print("values: ", df_summary.cell_id.values.tolist())
             raise ValueError(f"Cell id {cell_id} not found in summary")
-        return row.cell_expression
+        return row
 
     def preload(self, fn):
         """preload Load the assembled data from a .pkl file
@@ -3149,7 +3122,7 @@ class PlotSpikeInfo(QObject):
         CP("y", "\n   Preprocess_data: Starting preprocessing of data")
         # generate a subject column
         df["Subject"] = ""
-        df["Subject"] = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
+        df = df.apply(self.get_animal_id, df_summary=df_summary, axis=1)
         print("preprocess data : groups: ", df["Group"].unique())
         # generate a usable layer column
         if "cell_layer" not in df.columns:
@@ -3158,7 +3131,7 @@ class PlotSpikeInfo(QObject):
                 df["cell_layer"] = "unknown"
             else:
                 df["cell_layer"] = ""
-                df["cell_layer"] = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
+                df = df.apply(self.get_cell_layer, df_summary=df_summary, axis=1)
 
         # generate a usable cell expression column (e.g., is cell labeled or not)
         if "cell_expression" not in df.columns:
@@ -3167,7 +3140,7 @@ class PlotSpikeInfo(QObject):
                 df["cell_expression"] = "ND"
             else:
                 df["cell_expression"] = ""
-                df["cell_expression"] = df.apply(
+                df = df.apply(
                     self.get_cell_expression, df_summary=df_summary, axis=1
                 )
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
@@ -3175,17 +3148,17 @@ class PlotSpikeInfo(QObject):
 
         #  ******************************************************************************
         CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")
-        df["sex"] = df.apply(PSIF.clean_sex_column, axis=1)
-        df["Rin"] = df.apply(PSIF.clean_rin, experiment=self.experiment, axis=1)
-        df["RMP"] = df.apply(PSIF.clean_rmp, experiment=self.experiment, axis=1)
+        df = df.apply(PSIF.clean_sex_column, axis=1)
+        df = df.apply(PSIF.clean_rin, experiment=self.experiment, axis=1)
+        df = df.apply(PSIF.clean_rmp, experiment=self.experiment, axis=1)
         if "RMP_Zero" in df.columns:
-            df["RMP_Zero"] = df.apply(PSIF.clean_rmp_zero, experiment=self.experiment, axis=1)
+            df = df.apply(PSIF.clean_rmp_zero, experiment=self.experiment, axis=1)
         else:
             df["RMP_Zero"] = np.nan  # not determined...
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
         # print("2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        df["age_category"] = df.apply(PSIF.categorize_ages, experiment=self.experiment, axis=1)
+        df = df.apply(categorize_ages.categorize_ages, age_categories=self.experiment['age_categories'], axis=1)
         df["FIRate"] = df.apply(self.get_fi_rate, axis=1)
         df["Group"] = df["Group"].astype("str")
         if "FIMax_4" not in df.columns:
@@ -3195,24 +3168,24 @@ class PlotSpikeInfo(QObject):
         if "AP_thr_V" not in df.columns:
             df["AP_thr_V"] = np.nan
         else:
-            df["AP_thr_V"] = df.apply(PSIF.adjust_AP_thr_V, experiment=self.experiment, axis=1)
+            df = df.apply(PSIF.adjust_AP_thr_V, experiment=self.experiment, axis=1)
         if "AHP_trough_V" not in df.columns:
-            df["AHP_trough_V"] = np.nan
+            df = np.nan
         else:
-            df["AHP_trough_V"] = df.apply(
+            df = df.apply(
                 PSIF.adjust_AHP_trough_V, experiment=self.experiment, axis=1
             )
 
         if "AHP_depth_V" not in df.columns:
             df["AHP_depth_V"] = {}
-        df["AHP_depth_V"] = df.apply(PSIF.adjust_AHP_depth_V, experiment=self.experiment, axis=1)
+        df = df.apply(PSIF.adjust_AHP_depth_V, experiment=self.experiment, axis=1)
 
         if "AHP_depth_measure" not in df.columns:
             df["AHP_depth_measure"] = "None"
         if "AHP_relative_depth_V" not in df.columns:
             df["AHP_relative_depth_V"] = {}
         df = df.apply(PSIF.compute_AHP_relative_depth, axis=1)
-        df["AHP_trough_T"] = df.apply(PSIF.compute_AHP_trough_time, axis=1)
+        df = df.apply(PSIF.compute_AHP_trough_time, axis=1)
         # print("preprocessing : df cols: ", df.columns)
 
         # if "LowestCurrentSpike" in df.keys() and len(df["LowestCurrentSpike"] > 0):
@@ -3246,7 +3219,7 @@ class PlotSpikeInfo(QObject):
 
         if "groupname" not in df.columns:
             df["groupname"] = np.nan
-        df["groupname"] = df.apply(PSIF.rename_groups, experiment=self.experiment, axis=1)
+        df = df.apply(PSIF.rename_groups, experiment=self.experiment, axis=1)
         if len(groups) > 1:
             # df.dropna(subset=["Group"], inplace=True)  # remove empty groups
             df.drop(df.loc[df.Group == "nan"].index, inplace=True)
@@ -3256,9 +3229,10 @@ class PlotSpikeInfo(QObject):
             + f"{len(df.Group.unique()):d}"
         )
 
-        df["age"] = df.apply(PSIF.numeric_age, axis=1)
-        df["shortdate"] = df.apply(PSIF.make_datetime_date, axis=1)
-        df["SR"] = df.apply(self.flag_date, axis=1)
+        df = df.apply(categorize_ages.numeric_age, axis=1)
+        df['shortdate'] = {}
+        df = df.apply(PSIF.make_datetime_date, axis=1)
+        df = df.apply(self.flag_date, axis=1)
 
         # Now make sure the excluded IV data is removed from the dataset and that included
         # datasets are properly included.
