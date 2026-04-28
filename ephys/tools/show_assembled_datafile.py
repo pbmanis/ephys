@@ -432,7 +432,7 @@ def populate_columns(
 
     assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
-    datap["age_category"] = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
+    datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
     print("After filtering Rs, data length: ", len(datap), "\n", datap[["Subject", "Rs"]].head(20))
     # raise ValueError("Stop after filtering Rs for debugging")
     return datap
