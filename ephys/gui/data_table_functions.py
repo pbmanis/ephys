@@ -27,6 +27,7 @@ import ephys
 import ephys.datareaders as DR
 from ephys.ephys_analysis import spike_analysis
 from ephys.tools import annotated_cursor, annotated_cursor_pg, filename_tools, utilities
+from ephys.tools import categorize_ages
 from ephys.ephys_analysis import adaptation_indices
 UTIL = utilities.Utility()
 AnnotatedCursor = annotated_cursor.AnnotatedCursor
@@ -230,23 +231,6 @@ iv_mapper: dict = {
     "Rin": "Rin",
     "RMP": "RMP",
 }
-
-
-def numeric_age(row):
-    """numeric_age convert age to numeric for pandas row.apply
-
-    Parameters
-    ----------
-    row : pd.row_
-
-    Returns
-    -------
-    value for row entry
-    """
-    if isinstance(row.age, float):
-        return row.age
-    age = float(int("".join(filter(str.isdigit, row.age))))
-    return age
 
 
 def print_spike_keys(row):
@@ -1515,16 +1499,6 @@ class Functions:
         x, y = event.xdata, event.ydata
         self.txt1.set_text("Test\n x=%1.2f, y=%1.2f" % (x, y))
 
-    def categorize_ages(self, row, experiment):
-        age = numeric_age(row)
-        for k in experiment["age_categories"].keys():
-            if (
-                age >= experiment["age_categories"][k][0]
-                and age <= experiment["age_categories"][k][1]
-            ):
-                age_category = k
-        return age_category
-
     def get_group_type(self, row, coding, name):
         """get_group_type Assign a group
         based on the data in the coding dataframe.
@@ -1770,7 +1744,7 @@ class Functions:
             cell_df = self.set_group_by_subject(cell_df, df_coding, name=experiment["coding_name"])
             if "age_category" not in cell_df.keys():
                 cell_df["age_category"] = np.nan
-            cell_df["age_category"] = self.categorize_ages(cell_df, experiment=experiment)
+            cell_df = categorize_ages.categorize_ages(cell_df, age_categories=experiment['age_categories'], axis=1)
 
             # assign group
             group_type = parameters["group_by"]
