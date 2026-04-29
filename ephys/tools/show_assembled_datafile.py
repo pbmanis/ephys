@@ -389,10 +389,8 @@ def populate_columns(
         Data frame with populated columns
     """
     datap = data.copy(deep=True)  # defrag dataframe.
-    # print("populate columns (show assemb data): ", datap.columns)
     # populate the new columns for each parameter
-    if "taums" not in datap.columns:
-        datap["taums"] = np.nan
+
     for p in parameters:
         if p not in datap.columns:
             CP.cprint("c", f"ADDING {p:s} to data columns")
@@ -420,21 +418,20 @@ def populate_columns(
     datap = datap.apply(
         filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
     )  # select_limits is in Ohms, but Rs is in MOhms, so convert. Values outside range are set to NaN
-    # print("After filtering Rs, data length: ", len(datap), "\n", datap[["Subject", "Rs"]].head(20))
     datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data if nan
     datap = datap.copy()
-    if "taum" not in data.columns:
-        datap["taum"] = {}
-    if "CC_taum" not in data.columns:
-        datap["CC_taum"] = {}
-    datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
-    datap = datap.copy()
-
-    assert isinstance(datap["CC_taum"], pd.Series)
+    # only add taum and CC_taum if doing rmtau analysis - 
+    if "RMP" in data.columns and "Rin" in data.columns:
+        if "taum" not in data.columns:
+            datap["taum"] = {}
+        if "CC_taum" not in data.columns:
+            datap["CC_taum"] = {}
+        datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
+        datap = datap.copy()
+        assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
     datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
-    print("After filtering Rs, data length: ", len(datap), "\n", datap[["Subject", "Rs"]].head(20))
-    # raise ValueError("Stop after filtering Rs for debugging")
+    print("After filtering Rs, data length: ", len(datap))
     return datap
 
 
