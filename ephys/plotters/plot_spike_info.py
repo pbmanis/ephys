@@ -1296,17 +1296,57 @@ class PlotSpikeInfo(QObject):
         enable_picking=False,
         parent_figure=None,
     ):
-        """Make a summary plot of spike parameters for selected cell types.
+        """summary_plot_ephys_parameters_categorical 
+        Plot the measures using a categorical variable on x
 
-        Args:
-            df (Pandas dataframe): _description_
-            xname: str: name to use for x category
-            hue_category: str: name to use for hue category
-            plot_order: list, optional: order to plot the categories
-            publication_plot_mode: bool, optional: use publication plot mode
-            measures: list, optional: list of measures to plot
-            colors: dict, optional: dictionary of colors to use for the categories
-            enable_picking: bool, optional: enable picking of data points
+        Parameters
+        ----------
+        df_in : pd.DataFrame
+            Pandas dataframe with the data to plot. This should already have the analyzed measures in it.
+        xname : str
+            The name of the column in the dataframe to use as the x category (e.g., "cell_type", "Group", "age_category", etc.)
+        measures : list
+            List of measures (df_in columns) to plot.
+        hue_category : str, optional
+            The name of the column in the dataframe to use as the hue category, by default None
+        plot_order : Optional[list], optional
+            The order in which to plot the categories, by default None
+        data_class : Optional[str], optional
+            The class of data to plot (e.g., "spike_measures", "rmtau_measures", "FI_measures"), by default None
+        plabels : Optional[list], optional
+            The labels to use for the plots, by default None
+        plotable_measures : Optional[list], optional
+            The measures that are allowed to be plotted, by default None
+        representation : str, optional
+            The representation of the data to plot (e.g., "all", "mean", "median"), by default "all"
+        publication_plot_mode : bool, optional
+            Whether to use publication plot mode, by default False
+        plot_colors : dict, optional
+            A dictionary specifying the colors to use for the plots, by default None
+        enable_picking : bool, optional
+            Whether to enable picking on the plots, by default False
+        parent_figure : matplotlib.figure.Figure, optional
+            The parent figure to plot into, by default None
+
+        Returns
+        -------
+        tuple: (matplotlib.figure.Figure, picker_funcs (dict))
+            The figure containing the plots and the picke function dictionary.
+
+        Raises
+        ------
+        ValueError
+            If the data_class is not one of the allowed values.
+        ValueError
+            If a required measure is missing from the dataframe.
+        ValueError
+            If RMP measures have not been adjusted for JP.
+        ValueError
+            If a required column is missing from the dataframe.
+        ValueError
+            If an invalid transformation is specified.
+        ValueError
+            If an invalid representation is specified.
         """
         if data_class not in ["spike_measures", "rmtau_measures", "FI_measures", None]:
             raise ValueError(
@@ -1331,6 +1371,12 @@ class PlotSpikeInfo(QObject):
         )
         axind = 0
         for icol, measure in enumerate(local_measures):
+            if measure.endswith("_bestRs_bestRs"):
+                measure = "_".join([*measure.split("_")[:-1]])
+                CP("c", f"Warning: measure name had duplicate _bestRs suffix, renamed to {measure}")
+            if measure.endswith("_bestRs"):
+                CP("c", f"Warning: measure name had _bestRs suffix")
+                                
             if plotable_measures is not None and measure not in plotable_measures:
                 CP("y", f"Skipping measure {measure:s} as it is not in the plotable_measures list.")
                 continue
@@ -1352,13 +1398,9 @@ class PlotSpikeInfo(QObject):
                     x_measure = "_".join((measure.split("_"))[:-1])
                     if x_measure not in self.ylims[ycell]:
                         ylims = None
-                        # print("setting ylims to None for measure: ", x_measure)
-                        # print(self.ylims[ycell])
                     else:
                         ylims = self.ylims[ycell][x_measure]
                     if measure not in df.columns:
-                        # print("Measure : ", measure, "not in columns")
-                        # print(df.columns)
                         raise ValueError(f"Missing measure: {measure}\nin Columns: {df.columns!s}")
                     if measure.startswith("RMP"):  # put the assumed JP on the plot.
                         raise ValueError("RMP measures should have been adjusted for JP in compute_calculated_measures.")
@@ -1395,10 +1437,8 @@ class PlotSpikeInfo(QObject):
                 if icol >= len(plabels):
                     continue
                 ycell = self.experiment["celltypes"][0]
-                # print("icol: ", icol, "plabels: ", plabels, "ycell: ", ycell, "measure: ", measure)
                 axp = P.axdict[f"{plabels[icol]:s}"]
                 x_measure = "_".join((measure.split("_"))[:-1])
-                # print("ylims keys: ", self.ylims[ycell].keys())
                 if x_measure not in self.ylims[ycell]:
                     x_measure = measure
                     if x_measure not in self.ylims[ycell]:
@@ -1481,17 +1521,8 @@ class PlotSpikeInfo(QObject):
             )  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
-        print("exported measures: ", measures)
-        # # print(df.columns)
-        # print("AP peak V: \n", df["AP_peak_V"].values)
-        # print("AP threshold V: \n", df["AP_thr_V"].values)
-        # if "AP_peak_V_re_threshold" in df.keys():
-        #     print("AP peak V re threshold: \n", df["AP_peak_V_re_threshold"].values)
-        #     print("AP_peak_V_re_threshold_bestRs: \n", df["AP_peak_V_re_threshold_bestRs"].values)
-        # # raise ValueError("Stopping here to check measures before export.")
-        measures_bestRs = [f"{m:s}_bestRs" for m in measures]
-        measures_bestRs = measures + measures_bestRs
-        self.export_r(df=df, xname=xname, measures=measures_bestRs, hue_category=hue_category, filename=fn)
+        print(f"Exporting measures: {measures}\n   to file: {fn!s}")
+        self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
     def summary_plot_ephys_parameters_continuous(
@@ -1510,24 +1541,45 @@ class PlotSpikeInfo(QObject):
         publication_plot_mode: bool = False,
         parent_figure=None,
     ):
-        """Make a summary plot of spike parameters for selected cell types.
+        """summary_plot_ephys_parameters_continuous 
+        Create a time-continuous (not grouped) plot of the measures.
 
-        Args:
-            df (Pandas dataframe): _description_
+
+        Parameters
+        ----------
+        df_in : pd.DataFrame
+            dataframe containing the data to plot.
+        measures : list
+            list of measures to plot
+        hue_category : str, optional
+            category for hue, by default None
+        plot_order : list, optional
+            order of plots, by default None
+        plot_colors : list, optional
+            colors for plots, by default None
+        xname : str, optional
+            _description_, by default ""
+        logx : bool, optional
+            time axis is log (True) or linear (False), by default False
+        xlims : tuple, optional
+            limits for the x-axis, by default None
+        plabels : list, optional
+            labels for the plots, by default None
+        representation : str, optional
+            representation of the data, by default "bestRs"
+        enable_picking : bool, optional
+            whether to enable picking, by default False
+        publication_plot_mode : bool, optional
+            whether to use publication plot mode, by default False
+        parent_figure : matplotlib.figure.Figure, optional
+            parent figure, by default None
+            If None, we make a new figure.
+
+        Returns
+        -------
+        tuple (matplotlib.figure.Figure, dict)
+            matplotlib figure and dictionary of picker functions
         """
-        # print("starting continuous with representation = ", representation)
-        # print("Incoming parameters: ")
-        # print("measures: ", measures)
-        # print("hue_category: ", hue_category)
-        # print("plot_order: ", plot_order)
-        # print("colors: ", colors)
-        # print("xname: ", xname)
-        # print("logx: ", logx)
-        # print("xlims: ", xlims)
-        # print("representation: ", representation)
-        # print("enable_picking: ", enable_picking)
-        # print("publication_plot_mode: ", publication_plot_mode)
-        # print("parent_figure: ", parent_figure)
         axes = None
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
         picker_funcs = {}
@@ -1568,6 +1620,8 @@ class PlotSpikeInfo(QObject):
                 local_measures[i] = f"{m:s}_{representation:s}"
 
         for icol, measure in enumerate(local_measures):
+            if measure.endswith("_bestRs_bestRs"):
+                measure = "_".join([*measure.split("_")[:-1]])
             if measure.startswith("dvdt_ratio_bestRs"):
                 if measure not in df.columns:
                     df[measure] = {}
@@ -1621,7 +1675,7 @@ class PlotSpikeInfo(QObject):
                 axp = P.axdict[f"{plabels[icol]:s}"]
 
                 if measure.endswith("_bestRs_bestRs"):
-                    measure = "_".join(measure.split("_")[:-1])
+                    measure = "_".join([*measure.split("_")[:-1]])
 
                 if measure not in df.columns:
                     continue
