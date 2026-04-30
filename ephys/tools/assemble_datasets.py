@@ -231,7 +231,7 @@ class AssembleDatasets:
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
         # return
-        date = datetime.now().strftime("%d-%m-%Y")
+        date = datetime.datetime.now().strftime("%d-%m-%Y")
         fn_no_ext = Path(fn).stem
         fn_parent = Path(fn).parent
         fn_out = Path(fn_parent, f"{fn_no_ext}_{date}.pkl")
