@@ -841,52 +841,7 @@ def linfit(x, y, xrange=[-0.2, 0.2]):
     y_fit = lr.predict(x_fit)
     return lr.coef_[0][0], lr.intercept_[0], r_2, x_fit, y_fit
 
-
-if __name__ == "__main__":
-    # print(data.head(10))
-    import matplotlib.pyplot as mpl
-
-    import ephys.tools.parse_ages as parse_ages
-
-    # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
-    # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
-    fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
-    # fn = Path("./config/experiments.cfg")
-
-    select_by = "Rs"
-    cfg, d = get_configuration(str(fn))
-    # exptname = "VM_Dentate"
-    exptname = "GlyT2_NIHL"
-    exptname = "CBA_Age"
-    print(cfg)
-    experiment = d[exptname]
-    expts = experiment
-
-    assembled_filename = Path(
-        expts["analyzeddatapath"], expts["directory"], expts["assembled_filename"]
-    )
-    print(assembled_filename)
-    data = read_pickle(assembled_filename, compression="gzip")
-    assembled_time = assembled_filename.stat().st_mtime
-    # print(data.FI_Curve1.values[0])
-    # print(data.FIMax_1.values[0])
-    print("assembled data: ", data.iloc[0].keys())
-    # print(data["post_durations"].values)
-    # print(data["post_rates"].values)
-    # print(data["post_spike_counts"].values)
-    # print(data["FI_Curve1"][0][0]*1e9)
-    # for i, row in data.iterrows():
-    #     print(
-    #         i,
-    #         "cell id: ",
-    #         row.cell_id,
-    #         "AdaptIndex2: ",
-    #         row.AdaptIndex2,
-    #         "Adapt Rates2: ",
-    #         row.AdaptRates2,
-    #         "Rs: ",
-    #         np.mean(row.Rs)*1e-6,
-    #     )
+def check_adaptation_data(data):
     df_adapt = data[["cell_id", "AdaptIndex2", "AdaptRates2"]]
     for i, row in data.iterrows():
         pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
@@ -947,48 +902,76 @@ if __name__ == "__main__":
     mpl.show()
     exit()
 
-    # if i == 0:
-    #     pkl = Path(FT.get_cell_pkl_filename(experiment=experiment, df=data, cell_id=row.cell_id))
-    #     dpkl = pd.read_pickle(pkl, compression="gzip")
-    #     # print("pkl data keys: ", dpkl.keys
-    #     spks = dpkl['Spikes'][list(dpkl["Spikes"].keys())[1]]['spikes']
-    #     for k, v in enumerate(spks):  # for all traces with spikes
-    #         # print("trace: ", k)
-    #         latencies = []
-    #         for ks, vs in enumerate(spks[v]):
-    #             latencies.append(spks[v][ks].AP_latency)
-    #             # print("    spike: ", ks, spks[v][ks].AP_latency)
-    #         lats = np.array(latencies)
-    #         i_lats = np.where((lats > 0.1) & (lats <= 0.6))[0]
-    #         # print(lats[i_lats])
-    #         if len(i_lats) > 3:
-    #             w_lats = lats[i_lats]
-    #             isis = np.diff(w_lats)
-    #             rate = 1./np.mean(isis)
+def main():
+    # fn = Path("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
+    # fn = Path("/Users/pbmanis/Desktop/Python/Maness_ANK2_nex/config/experiments.cfg")
+    fn = Path("/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg")
+    # fn = Path("./config/experiments.cfg")
 
-    #             ar_mean = []
-    #             if rate > 80 and rate < 120:
-    #                 ar = np.mean((isis[1:] - isis[:-1])/ (isis[1:]+isis[:-1]))
-    #                 ar_mean.append(ar)
-    #                 print("    rate: ", rate, len(i_lats)/0.5)
-    #                 print("    rates, original AR2: ", row.AdaptRates2, row.AdaptIndex2, np.mean(row.AdaptIndex2))
-    #                 print("    recomputed Adaptation Ratio: ", ar)
+    select_by = "Rs"
+    cfg, d = get_configuration(str(fn))
+    # exptname = "VM_Dentate"
+    exptname = "GlyT2_NIHL"
+    exptname = "CBA_Age"
+    print(cfg)
+    experiment = d[exptname]
+    expts = experiment
 
-    #     exit()
+    assembled_filename = Path(
+        expts["analyzeddatapath"], expts["directory"], expts["assembled_filename"]
+    )
+    print(assembled_filename)
+    data = read_pickle(assembled_filename, compression="gzip")
+    assembled_time = assembled_filename.stat().st_mtime
+    print("Reading from Assembled data file: ", assembled_filename.name, " at ", datetime.datetime.fromtimestamp(assembled_time).strftime("%Y-%m-%d %H:%M:%S"))
+    # print(data.FI_Curve1.values[0])
+    # print(data.FIMax_1.values[0])
+    # print("assembled data: ", data.iloc[0].keys())
+    # print(data["post_durations"].values)
+    # print(data["post_rates"].values)
+    # print(data["post_spike_counts"].values)
+    # print(data["FI_Curve1"][0][0]*1e9)
+    # for i, row in data.iterrows():
+    #     print(
+    #         i,
+    #         "cell id: ",
+    #         row.cell_id,
+    #         "AdaptIndex2: ",
+    #         row.AdaptIndex2,
+    #         "Adapt Rates2: ",
+    #         row.AdaptRates2,
+    #         "Rs: ",
+    #         np.mean(row.Rs)*1e-6,
+    #     )
+    
+    # check_adaptation_data(data):
 
-    # print("AP Peak, thr, subject, protocol: ", data.AP_peak_V, data.AP_thr_V, data.Subject, data.protocol)
-    # exit()
+    missing_subjs = []
+    looking_for = [
+        "2024.05.06_000_S2C1",
+        "2023.10.27_000_S1C1",
+        "2024.06.12_000_S4C0",
+        "2024.05.15_000_S4C2",
+    ]
+    found_looks = []
     for index in data.index:
-        print(
-            "index: ",
-            index,
-            data.loc[index]["Subject"],
-            data.loc[index]["protocol"],
-            "AI2: ",
-            data.iloc[index].AdaptIndex2,
-            "FSL: ",
-            data.iloc[index].post_latencies,
-        )
+        if data.loc[index]["Subject"] in looking_for:
+            print("Subject found: ", data.loc[index]["Subject"])
+            print(
+                "index: ",
+                index,
+                data.loc[index]["Subject"],
+                data.loc[index]["protocol"],
+                "RMP: ",
+                data.iloc[index].RMP,
+                # "AI2: ",
+                # data.iloc[index].AdaptIndex2,
+                # "FSL: ",
+                # data.iloc[index].post_latencies,
+            )
+            found_looks.append(data.loc[index]["Subject"])
+        else:
+            missing_subjs.append(data.loc[index]["Subject"])
         # print("     values: ", data.iloc[index])
 
         # print(
@@ -1014,6 +997,21 @@ if __name__ == "__main__":
         # print(data.iloc[index].FI_Curve1)
         # print(data.iloc[index].FI_Curve4)
         # print(np.array(data.AP_peak_V.values) - np.array(data.AP_thr_V.values))
+    if len(found_looks) < len(looking_for):
+        print("Missing subjects: ", set(looking_for) - set(found_looks))
+    else:
+        print("All subjects found.")
+    exit()
+
+if __name__ == "__main__":
+    # print(data.head(10))
+    import matplotlib.pyplot as mpl
+
+    import ephys.tools.parse_ages as parse_ages
+
+    main()
+
+
     exit()
 
     df_summary_filename = Path(
