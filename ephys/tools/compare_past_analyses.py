@@ -50,7 +50,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
     diff_measures = set()
     skip = ["AdaptIndex2", "Subject"]
     ndiff = 0
-    
+
     if flags.verbose:
         print(f"{'='*80:s}")
     for cell_id in d1["cell_id"]:
@@ -202,9 +202,19 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
     if flags.summary:
         CP("b", f"\n{'='*40}\nSummary of differences between datasets:\n{'='*40}")
         print(f"    {fn1}  (n1={len(set(d1['cell_id']))}), vs {fn2}  (n2={len(set(d2['cell_id']))})")
+        missing_in_set_1 = set(d2["cell_id"]) - set(d1["cell_id"])
+        missing_in_set_2 = set(d1["cell_id"]) - set(d2["cell_id"])
+        if len(missing_in_set_1) > 0:
+            CP("y", f"    Cells missing in file 1 present in file 2: {missing_in_set_1}")
+        else:
+            CP("g", f"    No cells missing in file 1 that are present in file 2.")
+        if len(missing_in_set_2) > 0:
+            CP("y", f"    Cells missing in file 2 present in file 1: {missing_in_set_2}")
+        else:
+            CP("g", f"    No cells missing in file 2 that are present in file 1.")
 
         if check_verbose(flags, col, skip):
-            print(f"    Cells with differences: {diff_cells}\n")
+            CP("y", f"    Cells with differences: {diff_cells}\n")
         print(
             f"    Total cells with differences: {len(diff_cells)}, cells with no differences: {len(set(d1['cell_id']).union(set(d2['cell_id']))) - len(diff_cells)}"
         )
@@ -222,12 +232,14 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                 uprot2 = [p.strip() for p in row2['used_protocols'].split(",")] if 'used_protocols' in row2 and isinstance(row2['used_protocols'], str) else [  ]
                 uprot1 = sorted([p for p in uprot1 if len(p) > 0])
                 uprot2 = sorted([p for p in uprot2 if len(p) > 0])
-                print(f"   Protocols 1: {uprot1 if 'used_protocols' in row1 else 'unknown'}")
-                print(f"   Protocols 2: {uprot2 if 'used_protocols' in row2 else 'unknown'}")
+                if set(uprot1) != set(uprot2):
+                    print(f"   Protocols 1: {uprot1 if 'used_protocols' in row1 else 'unknown'}")
+                    print(f"   Protocols 2: {uprot2 if 'used_protocols' in row2 else 'unknown'}")
+                else:
+                    CP("g", f"           Protocols used are the same in both analyses")
+            diff_msg = {}
             for col in diff_measures:
-                
                 if col in d1.columns and col in d2.columns:
-                    print(col)
                     val1 = row1[col]
                     val2 = row2[col]
                     same = np.allclose(val1, val2, 1e-6, equal_nan=True) if isinstance(val1, (int, float, np.ndarray)) and isinstance(val2, (int, float, np.ndarray)) else val1 == val2
@@ -237,7 +249,20 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                     else:
                         label = "different"
                         color = 'r'
-                    CP("r", f"        {col}: {val1} vs {val2} ({label})")
+                        diff_msg[col] = (f"           {col}: {val1} vs {val2} ({label})\n", color, label)
+            if len(diff_msg) > 0:
+                if len(diff_msg) == 1 and list(diff_msg.keys())[0].startswith("Rs"):  # only note Rs if nothing else is different
+                    CP("y", f"           Cell {cell_id} has differences in Rs only")
+                    CP('m', diff_msg[list(diff_msg.keys())[0]][0])
+                else:  # list all the differences
+                    CP("y", f"           Cell {cell_id} has differences in measures: {list(diff_msg.keys())}")
+                    if len(diff_msg) > 1:
+                        for col, (msg, color, label) in diff_msg.items():
+                            if label != 'same':
+                                CP(color, msg)
+                    else:
+                        if not list(diff_msg.keys())[0].startswith("Rs"):
+                            CP('r', diff_msg[list(diff_msg.keys())[0]][0])
     
     date_1 = re.search(r"\d{2}-\w{3}-\d{4}", fn1.name).group(0) if re.search(r"\d{2}-\w{3}-\d{4}", fn1.name) else "unknown"
     date_2 = re.search(r"\d{2}-\w{3}-\d{4}", fn2.name).group(0) if re.search(r"\d{2}-\w{3}-\d{4}", fn2.name) else "unknown"
@@ -298,8 +323,8 @@ def main():
         help="Type of comparison to perform",
     )
 
-    parser.add_argument('--files_1', type=str, help="Path to the first CSV file to compare")
-    parser.add_argument('--files_2', type=str, help="Path to the second CSV file to compare")
+    parser.add_argument('--date_1', type=str, help="Date of first CSV file to compare")
+    parser.add_argument('--date_2', type=str, help="Date of second CSV file to compare")
     parser.add_argument(
         "--verbose", action="store_true", help="Print detailed information about differences"
     )
@@ -314,9 +339,11 @@ def main():
         print(f"Available experiments: {list(expts[1].keys())}")
         exit()
     expt = expts[1][args.experiment]
+    files_1 = [f"{args.compare_type}_{args.experiment}_{args.date_1}.csv"] if args.date_1 else []
+    files_2 = [f"{args.compare_type}_{args.experiment}_{args.date_2}.csv"] if args.date_2 else []
     # print(args.files_1, args.files_2)
-    files_1 = sort_by_date(args.files_1) if args.files_1 else []
-    files_2 = sort_by_date(args.files_2) if args.files_2 else []
+    # files_1 = sort_by_date(args.files_1) if args.files_1 else []
+    # files_2 = sort_by_date(args.files_2) if args.files_2 else []
     # print(args.summary, args.verbose)
     summary_data = []
     if len(files_1) == 1 and len(files_2) == 1:
