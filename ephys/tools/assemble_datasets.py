@@ -33,6 +33,7 @@ from ephys.gui import data_table_functions
 from ephys.tools import filter_data
 from ephys.tools import functions as FUNCS
 from ephys.tools.get_computer import get_computer
+from ephys.tools.categorize_ages import numeric_age, categorize_ages, numeric_age_from_data 
 
 CP = cprint.cprint
 FUNCS = data_table_functions.Functions()
@@ -67,21 +68,21 @@ def make_cell_id(row):
     return row
 
 
-def numeric_age(row):
-    """numeric_age convert age to numeric for pandas row.apply
+# def numeric_age(row):
+#     """numeric_age convert age to numeric for pandas row.apply
 
-    Parameters
-    ----------
-    row : pd.row_
+#     Parameters
+#     ----------
+#     row : pd.row_
 
-    Returns
-    -------
-    value for row entry
-    """
-    if isinstance(row.age, float):
-        return row.age
-    row.age = int("".join(filter(str.isdigit, row.age)))
-    return float(row.age)
+#     Returns
+#     -------
+#     value for row entry
+#     """
+#     if isinstance(row.age, float):
+#         return row.age
+#     row.age = int("".join(filter(str.isdigit, row.age)))
+#     return float(row.age)
 
 
 class AssembleDatasets:
@@ -211,7 +212,7 @@ class AssembleDatasets:
             status_bar=self.status_bar,
         )
         print("groups after combining: ", df.Group.unique())
-    
+
         if "protocol" not in df.columns:
             df["protocol"] = ""
         df = df.apply(self._data_complete_to_series, axis=1)
@@ -231,31 +232,19 @@ class AssembleDatasets:
         print("protostrings: ", protostrings)
         print("Protocols: ", df["protocol"].unique())
         # return
-        date = datetime.now().strftime("%d-%m-%Y")
-        fn_no_ext = Path(fn).stem
-        fn_parent = Path(fn).parent
-        fn_out = Path(fn_parent, f"{fn_no_ext}_{date}.pkl")
-
-        print("\nWriting assembled data to : ", fn_out)
-        print(df.head())
+        # date = datetime.datetime.now().strftime("%d-%m-%Y")
+        # fn_no_ext = Path(fn).stem
+        # fn_parent = Path(fn).parent
+        # fn_out = Path(fn_parent, f"{fn_no_ext}.pkl")
+        df = self.combine_by_cell(df)
+        # print("\nWriting assembled data to : ", fn)
+        fn_out = self.get_assembled_filename(self.experiment, mode="write")
+        print("fnout: ", fn_out)
+        print("fn: ", fn)
+        print(df.head(10))
         print("Assembled data columns: ", df.columns)
         print("Assembled groups: dataframe Groups: ", df.Group.unique())
-        df.to_pickle(fn_out, compression="gzip")
-
-    def categorize_ages(self, row):
-        row.age = numeric_age(row)
-        for k in self.experiment["age_categories"].keys():
-            if (
-                row.age >= self.experiment["age_categories"][k][0]
-                and row.age <= self.experiment["age_categories"][k][1]
-            ):
-                row.age_category = k
-        return row.age_category
-
-    def clean_sex_column(self, row):
-        if row.sex not in ["F", "M"]:
-            row.sex = "U"
-        return row.sex
+        df.to_pickle(fn, compression="gzip")
 
     def combine_summary_and_coding(
         self,
@@ -370,7 +359,6 @@ class AssembleDatasets:
 
         """
         CP("y", "Combine by cell")
-
         df = df.apply(make_cell_id, axis=1)
         df.dropna(subset=["cell_id"], inplace=True)
         df.rename(columns={"sex_x": "sex"}, inplace=True)
@@ -391,6 +379,9 @@ class AssembleDatasets:
             self.experiment["dotindex_filename"],
         )
         dotindex_data = pd.read_pickle(dotindex_file) if dotindex_file.is_file() else None
+        if dotindex_data is None:
+            print("Dotindex file not found: ", dotindex_file)
+            raise ValueError("Dotindex file not found: ", dotindex_file)
 
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
@@ -524,7 +515,7 @@ class AssembleDatasets:
                 id_name = "animal identifier"
 
             coding_name = self.experiment.get("coding_name", "Group")
-            print("coding name: ", coding_name)
+            # print("coding name: ", coding_name)
             # print(row.date, df_coding.date.values)
             # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
@@ -577,7 +568,7 @@ class AssembleDatasets:
                     else:
                         df.at[index, "Group"] = self.experiment.get("no_data_marker", "ND")
             else:
-                CP("c", f"Assigning nan to : {df.at[index, 'cell_id']:s}")
+                CP("c", f"Assigning group=nan to : {df.at[index, 'cell_id']:s}")
                 df.at[index, "Group"] = np.nan
         # print("returning coding file: ", df.columns)
         print("Returning with Groups: ", df.Group.unique())
