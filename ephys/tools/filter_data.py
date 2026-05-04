@@ -179,7 +179,7 @@ class FilterDataset:
                         "y",
                         msg
                     )
-                    FUNCS.textappend(msg)
+                    # FUNCS.textappend(msg)
                 df.loc[df.cell_id == fn, "data_complete"] = data_prots
 
         # exclude certain internal solutions
