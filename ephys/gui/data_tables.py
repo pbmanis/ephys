@@ -1915,6 +1915,7 @@ class DataTables:
         msg += f"    Last updated: {datetime.datetime.fromtimestamp(self.datasummaryfile.stat().st_mtime)!s}"
         FUNCS.textappend(msg)
         FUNCS.textappend("Loading ...")
+        CP.cprint("c", msg)
         self.datasummary = pd.read_pickle(self.datasummaryfile)
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
