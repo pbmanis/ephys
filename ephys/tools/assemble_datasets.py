@@ -172,18 +172,18 @@ class AssembleDatasets:
         ----------
         df_summary : pd.DataFrame
             _description_
-        coding_file : Optional[str], optional
-            _description_, by default None
-        coding_sheet : Optional[str], optional
-            _description_, by default None
-        coding_level : Optional[str], optional
-            _description_, by default None
-        coding_name : Optional[str], optional
-            _description_, by default "Group
-        exclude_unimportant : bool, optional
-            _description_, by default False
         fn : str, optional
             _description_, by default ""
+        experiment : dict, optional
+            _description_, by default None
+             The experiment dictionary should have the following keys:
+            - coding_file: str, the name of the coding file (excel) that has the coding information for the experiment.
+            - coding_sheet: str, the name of the sheet in the coding file that has the coding information for the experiment.
+            - coding_level: str, the level at which to apply the coding information (e.g., "date", "subject", "slice", "cell").
+            - coding_name: str, the name of the column in the coding file that has the group information for the experiment.
+        exclude_unimportant : bool, optional
+            _description_, by default False
+
 
         """
         if experiment is None and self.experiment is None:
