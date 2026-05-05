@@ -18,12 +18,37 @@ expts = get_configuration.get_configuration("config/experiments.cfg")
 CP = cprint.cprint
 
 re_list = r"^\[([0-9.,\s]+)\]$"  # matches a list of numbers, with surrounded by brackets
+re_float = r"^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$"  # matches a float number, including scientific notation, no brackets
 
 rpath = Path("R_statistics_summaries")
 
 def check_verbose(flags: argparse.Namespace, col: str, skip: list) -> bool:
         return flags.verbose and not any(col.startswith(s) for s in skip)
 
+def convert_string_to_array(val):
+    """Convert a string representation of a list of numbers to a numpy array.
+    If the string is not in the correct format, return the original value.
+
+    Parameters
+    ----------
+    val : str
+
+    Returns
+    -------
+    np.ndarray or original value if is float
+    """
+    if isinstance(val, str):
+        val = val.replace("np.float64(", "").replace(")", "")
+        res = re.match(re_list, val)
+        if res:
+            return np.array([literal_eval(res.group(0))])
+        else:
+            res = re.match(re_float, val)
+            if res:
+                return np.array([literal_eval(res.group(0))])
+    elif isinstance(val, (int, float)):
+        return np.array([val])
+    return val
 
 def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_2: Union[str, Path] = None,
                      flags: argparse.Namespace = None) -> dict:
@@ -76,6 +101,11 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                 if col == "Subject" and pd.isna(val1) or pd.isna(val2):
                     ignore_subject = True  # if Subject is missing in one dataset, we can't compare protocols, so skip this check
                 # check if protocol list is different
+                if isinstance(val2, str) and val2.startswith('[') and not val2.endswith(']'):
+                    if ',' in val2:
+                        val2 = val2 + "]"  # add missing closing bracket if the list was truncated in the CSV
+                    else:
+                        val2 = val2[1:]
                 if col == "protocols_used" and flags.diffprotocols:
                     if val1 != val2:
                         if cell_id_ok:
@@ -86,22 +116,34 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                         diff_measures.add(col)
                         CP("y", f"        protocols_used: {val1} vs {val2}")
                     continue
-                # print("col:, ", col, "val1: ", val1, type(val1), "val2: ", val2, type(val2))
-                # convert strings of numbers or lists to np arrays
-                if isinstance(val1, str) and isinstance(val2, str):
-                    # if check_verbose(flags, col, skip):
-                    #     print("col: ", col, "\n   val1: ", val1, type(val1), "\n   val2: ", val2, type(val2))
-                    val1 = val1.replace("np.float64(", "").replace(")", "")
-                    val2 = val2.replace("np.float64(", "").replace(")", "")
-                    res1 = re.match(re_list, val1)
-                    res2 = re.match(re_list, val2)
-                    if res1 and res2:
-                        val1 = np.array(literal_eval(val1)) if res1 else val1
-                        val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+                print("col:, ", col, "val1: ", val1, type(val1), "val2: ", val2, type(val2))
 
-                        val2 = np.array(literal_eval(val2)) if res2 else val2
-                        val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
-                    # print('val1, val2: ', val1, val2)
+                # convert strings of numbers or lists to np arrays
+                if isinstance(val1, str) or isinstance(val2, str):
+                    if check_verbose(flags, col, skip):
+                        print("str found: col: ", col, "\n   val1: ", val1, type(val1), "\n   val2: ", val2, type(val2))
+                    val1 = convert_string_to_array(val1) if isinstance(val1, str) else val1
+                    val2 = convert_string_to_array(val2) if isinstance(val2, str) else val2
+                    #     if res1 is None:
+                    #         res1 = re.match(re_float, val1)
+                    #         val1 = f"[{res1.group(0)}]" if res1 else None  # if it's a single float, convert to list format for consistency
+                    #         val1 = val1.replace("np.float64(", "").replace(")", "")
+                    # if isinstance(val2, str):
+                    #     val2 = val2.replace("np.float64(", "").replace(")", "")
+                    #     res2 = re.match(re_list, val2)
+                    #     if res2 is None:
+                    #         res2 = re.match(re_float, val2)
+                    #         val2 = f"[{res2.group(0)}]" if res2 else None  # if it's a single float, convert to list format for consistency
+                    #         val2 = val2.replace("np.float64(", "").replace(")", "")
+                    # print("After regex check: res1: ", res1, "res2: ", res2)
+                    # if res1 and res2:
+                    #     val1 = np.array(literal_eval(val1)) if res1 else val1
+                    #     val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+
+                    #     val2 = np.array(literal_eval(val2)) if res2 else val2
+                    #     val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
+                    print('val1: ', type(val1), val1)
+                    print('val2: ', type(val2), val2)
                     if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
                         if not np.array_equal(np.sort(val1), np.sort(val2)):
                             if cell_id_ok:
