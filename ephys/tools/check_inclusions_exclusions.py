@@ -32,45 +32,50 @@
 #
 # The return from include_exclude is a list of valid protocols for the cell, exclusive of those that are excluded.
 
+import datetime
 from pathlib import Path
+from typing import Union
+import pandas as pd
 from pylibrary.tools import cprint as CP
 
 
 def include_exclude(
-    cell_id: str, exclusions: dict, inclusions: dict, allivs: list, verbose: bool = False
+    cell_id: str, exclusions: dict, inclusions: dict, allivs: list, verbose: bool = False,
+    inclusions_flag: bool = True, exclusions_flag: bool = True,
 ):
     """
     Get the included and remove the excluded data from the list of IVs.
     """
-    validivs = check_exclusions(cell_id, exclusions, allivs, verbose=verbose)
+    validivs = check_exclusions(cell_id, exclusions,
+                                allivs, verbose=verbose, exclusions_flag=exclusions_flag)
     additional_ivs, additional_iv_records = check_inclusions(
-        cell_id, inclusions, verbose=verbose)
-    
+        cell_id, inclusions, verbose=verbose, inclusions_flag=inclusions_flag)
+    if verbose or (exclusions_flag and cell_id in exclusions) or (inclusions_flag and cell_id in inclusions):
+        print(f"     Valid IVs after exclusions: {validivs}")
+        print(f"     Additional IVs from inclusions: {additional_ivs}")
+        print(f"     Additional IV records from inclusions: {additional_iv_records}")
     return validivs, additional_ivs, additional_iv_records
 
 
 def check_exclusions(cell_id: str, exclusions: dict, allivs: list, 
-                     verbose:bool=False) -> list:
+                     verbose:bool=False, exclusions_flag:bool=True) -> list:
     validivs = []
     if exclusions is not None:
         # handle shortcut cases first:
         day_id = Path(cell_id).parts[0]
         slice_id = str(Path(*Path(cell_id).parts[:2]))  # must make a string again.
         if slice_id in list(exclusions.keys()):
-            if verbose:
-                print(f"\nCell(sliceid level): {cell_id}")
-                print(f"    Slice {slice_id} is completely excluded")
+            if verbose or exclusions:
+                CP.cprint("y", f"\nCell(sliceid level): {cell_id}: {slice_id} is completely excluded")
             return []  # exclude everyting for this slice.
         if day_id in list(exclusions.keys()):
-            if verbose:
-                print(f"\nCell(day level): {cell_id}")
-                print(f"    Day {day_id} is completely excluded")
+            if verbose or exclusions_flag:
+                CP.cprint("y", f"\nCell(day level): {cell_id}: {day_id} is completely excluded")
             return []  # exclude everyting for this day.
         # The rest of the exclusions are are on cell by cell and protocol basis
         if cell_id in list(exclusions.keys()):
-            if verbose:
-                print(f"\nCell(cell_level): {cell_id}")
-                print("     has excluded protocols: ", exclusions[cell_id]["protocols"])
+            if (verbose or exclusions_flag):
+                CP.cprint("y", f"\nCell (cell_level): {cell_id} has excluded protocols: {exclusions[cell_id]['protocols']}")
             if exclusions[cell_id]["protocols"] in ["all", "All", ["all"], ["All"]]:
                 msg = f"       All protocols for {cell_id} are excluded from analysis in the configuration file."
                 CP.cprint("r", msg)
@@ -86,7 +91,7 @@ def check_exclusions(cell_id: str, exclusions: dict, allivs: list,
                 # print("   ... Appending excepted protocols from 'except': ")
                 for protocol in  exclusions[cell_id]["exceptions"]:
                     if Path(protocol).name in exclusions[cell_id]["exceptions"]:
-                        if verbose:
+                        if verbose or exclusions_flag:
                             CP.cprint("y", f"     adding excepted protocol: {protocol}")
                         if protocol not in validivs:
                             validivs.append(protocol)
@@ -104,19 +109,19 @@ def check_exclusions(cell_id: str, exclusions: dict, allivs: list,
                 # print("     After appending, validivs now is: ", validivs)
                 # validivs.append([protocol for protocol in allivs if Path(protocol).name not in exclusions[cell_id]['protocols']])
         else:
-            if verbose:
-                print(f"\nCell: {cell_id}")
-                print("    no exclusions")
+            if verbose or exclusions_flag:
+                CP.cprint("g",f"\nCell: {cell_id}: No exclusions")
             validivs = allivs
         # print("after Exclusions, validivs is: ", validivs)
     else:
-        if verbose:
-            print("cell_inclusion_exclusion: check_exclusio:: No exclusions for this cell: ", cell_id)
+        if verbose or exclusions_flag:
+            CP.cprint("g",f"\nCell: {cell_id}: No exclusions")
         validivs = allivs
     return validivs
 
 
-def check_inclusions(cell_id: str, inclusions: dict, verbose: bool = False):
+def check_inclusions(cell_id: str, inclusions: dict, verbose: bool = False, inclusions_flag: bool = True,
+                     ):
     additional_ivs = []
     additional_iv_records = None
     if inclusions is not None:
@@ -124,8 +129,8 @@ def check_inclusions(cell_id: str, inclusions: dict, verbose: bool = False):
         # protocols that did not run to completion, but which might still have useful data
         # We also add the records for these ivs, so that we can select the appropriate sweeps
         if cell_id in inclusions:
-            if verbose:
-                print(f"\nCell: {cell_id}")
+            if verbose or inclusions_flag:
+                CP.cprint("g",f"\nCell: {cell_id}")
 
             for iprot, protocol in enumerate(inclusions[cell_id]["protocols"]):
                 # protopath = str(Path(cell_id, protocol))
@@ -139,24 +144,27 @@ def check_inclusions(cell_id: str, inclusions: dict, verbose: bool = False):
                         cell_id,
                         inclusions[cell_id]["records"][iprot],
                     ]
-                if verbose:
-                    print("       has included protocols: ", additional_ivs)
-                    print(
-                    "       with records: ",
-                    additional_iv_records,
-                )
+                if verbose or inclusions_flag:
+                    CP.cprint("m", f"       has included protocols: {additional_ivs}")
+                    CP.cprint("m", f"       with records: {additional_iv_records}")
             # for iaiv, aiv in enumerate(additional_ivs):
             #     if additional_ivs[iaiv] not in validivs:
             #         validivs.append(additional_ivs[iaiv])
     return additional_ivs, additional_iv_records
 
 
-def list_inclusions_exclusions(df, exclusion_dict, inclusion_dict, all_ivs:list, verbose:bool=False):
+def list_inclusions_exclusions(df, exclusion_dict, inclusion_dict, all_ivs:list, verbose:bool=False,
+                               inclusions_flag:bool=True, exclusions_flag:bool=True, find_cell:Union[str, None]=None):
     """
     List the inclusions and exclusions for each cell in the DataFrame
     """
     cell_ids = df.cell_id.unique()
+    if find_cell is not None and find_cell not in cell_ids:
+        print(f"Cell {find_cell} not found in the DataFrame.")
+        return
     for cell_count, cell_id in enumerate(cell_ids):
+        if find_cell is not None and cell_id != find_cell:
+            continue
         all_ivs = list(df[df.cell_id == cell_id]['data_complete'].values[0].replace(" ", "").split(','))
         validivs, additional_ivs, additional_iv_records = include_exclude(
             cell_id=cell_id,
@@ -164,19 +172,32 @@ def list_inclusions_exclusions(df, exclusion_dict, inclusion_dict, all_ivs:list,
             inclusions=inclusion_dict,
             allivs=all_ivs,
             verbose=verbose,
+            inclusions_flag=inclusions_flag,
+            exclusions_flag=exclusions_flag,
         )
         # if cell_id == "2024.04.23_000/slice_001/cell_000":
-        if verbose:
-            print("*" * 80)
-            print(f"Cell: {cell_id}")
-            print(f"     Valid IVs: {validivs}")
-            print(f"     Additional IVs: {additional_ivs}")
-            print(f"           Additional IV Records: {additional_iv_records}")
-            print("*" * 80)
-            print("\n\n")
+        # if verbose:
+        #     print("*" * 80)
+        #     print(f"Cell: {cell_id}")
+        #     print(f"     Valid IVs: {validivs}")
+        #     print(f"     Additional IVs: {additional_ivs}")
+        #     print(f"           Additional IV Records: {additional_iv_records}")
+        #     print("*" * 80)
+        #     print("\n\n")
 
     if verbose:
         print(exclusion_dict.keys())
+        print(inclusion_dict.keys())
+    if not verbose and exclusions_flag:
+        if find_cell is not None and find_cell not in exclusion_dict.keys():
+            print(f"\nCell {find_cell} not found in the exclusion dictionary.")
+        print(f"\nExclusions: {len(exclusion_dict.keys())} cells with exclusions")
+        print(f"     {len(exclusion_dict.keys())} cells with some protocol exclusions")
+    if not verbose and inclusions_flag:
+        if find_cell is not None and find_cell not in inclusion_dict.keys():
+            print(f"\nCell {find_cell} not found in the inclusion dictionary.")
+        print(f"\nInclusions: {len(inclusion_dict.keys())} cells with inclusions")
+        print(f"     {len(inclusion_dict.keys())} cells with some protocol inclusions")
 
 
 def get_datasummary(experiment):
@@ -196,17 +217,45 @@ def get_datasummary(experiment):
     datasummary = pd.read_pickle(datasummaryfile)
     return datasummary
 
-
-if __name__ == "__main__":
+def main():
+    import argparse
     from ephys.tools.get_configuration import get_configuration
     import datetime
-    import pandas as pd
 
-    configfile = "/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg"
+    parser = argparse.ArgumentParser(description="Check inclusions and exclusions in the configuration file")
+    parser.add_argument("-c", "--configfile", type=str, default="config/experiments.cfg", help="Path to the configuration file")
+    parser.add_argument("-d", "--dataset", type=str, default=None, help="Dataset to check (default: all datasets in the configuration file)")
+    parser.add_argument("-e", "--exclude", action="store_true", help="Check exclusions")
+    parser.add_argument("-i", "--include", action="store_true", help="Check inclusions")
+    parser.add_argument("-b",  action="store_true", help="check inclusions and exclusions")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print verbose output")
+    parser.add_argument("-f", "--find", type=str, default=None, help="Find the cell and report its inclusions and exclusions")
+
+    args = parser.parse_args()
+    configfile = args.configfile
+    verbose = args.verbose
+    inclusions_flag = args.include
+    exclusions_flag = args.exclude
+    check_both = args.b
+    if check_both:
+        inclusions_flag = True
+        exclusions_flag = True
+    find_cell = args.find
     datasets, experiments = get_configuration(configfile)
-    experiment = experiments["NF107Ai32_NIHL"]
-    inclusion_dict = experiment["includeIVs"]
-    exclusion_dict = experiment["excludeIVs"]
-    datasummary = get_datasummary(experiment)
-    all_ivs = []
-    list_inclusions_exclusions(datasummary, exclusion_dict, inclusion_dict, all_ivs, verbose=True)
+    if args.dataset is not None:
+        if args.dataset in datasets:
+            datasets = [args.dataset]
+        else:
+            print(f"Dataset {args.dataset} not found in configuration file. Checking all datasets in experiment.cfg.")
+    for dataset in datasets:
+        experiment = experiments[dataset]
+        inclusion_dict = experiment["includeIVs"]
+        exclusion_dict = experiment["excludeIVs"]
+        datasummary = get_datasummary(experiment)
+        all_ivs = []
+        print(f"\n{'='*80}\nDataset: {dataset}\n{'='*80}")
+        list_inclusions_exclusions(datasummary, exclusion_dict, inclusion_dict, all_ivs, verbose=verbose,
+                                   inclusions_flag=inclusions_flag, exclusions_flag=exclusions_flag, find_cell=find_cell)
+
+if __name__ == "__main__":
+    main()
