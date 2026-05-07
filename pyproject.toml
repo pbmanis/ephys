@@ -103,7 +103,7 @@ dependencies = [
     "prettyprinter>=0.18.0",
     "numdifftools>=0.9.41",
     "efel>=5.7.20",
-    "metaarray",
+    "metaarray>=2.2.2",
     "h5py",
     "hdf5plugin>=6.0.0",
     "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
@@ -163,7 +163,7 @@ dependencies = { file = ["requirements.txt"]}
 [tool.uv.sources]
 montage = { path = "../montage" }
 pylibrary = { git = "https://github.com/pbmanis/pylibrary" }
-metaarray = { path = "../metaarray", editable = true }
+# metaarray = { path = "../metaarray", editable = true }
 
 [tool.ruff.format]
 indent-style = "space"
