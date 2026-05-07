@@ -44,7 +44,7 @@ dependencies = [
     "metaarray==2.2.2",
     # "metaarray @ git+https://github.com/pbmanis/metaarray.git@nparray-fix#egg=metaarray",  # forked from Martin Chase directly
     # "metaarray @ file:/Users/pbmanis/Desktop/Python/metaarray#egg=metaarray",  # forked from Martin Chase directly
-    "montage",
+    # "montage",
     "nest-asyncio==1.2.0",
     "networkx>=2.0",
     "ngauge",
