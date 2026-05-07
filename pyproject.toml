@@ -161,7 +161,7 @@ packages = ['ephys', 'ephys.gui', 'ephys.mapanalysistools', 'ephys.tools']
 dependencies = { file = ["requirements.txt"]}
 
 [tool.uv.sources]
-montage = { path = "../montage" }
+# montage = { path = "montage" }
 pylibrary = { git = "https://github.com/pbmanis/pylibrary" }
 # metaarray = { path = "../metaarray", editable = true }
 
