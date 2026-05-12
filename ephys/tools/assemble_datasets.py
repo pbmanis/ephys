@@ -34,6 +34,7 @@ from ephys.tools import filter_data
 from ephys.tools import functions as FUNCS
 from ephys.tools.get_computer import get_computer
 from ephys.tools.categorize_ages import numeric_age, categorize_ages, numeric_age_from_data 
+from ephys.tools.check_df_for_cells_trap import check_df_for_cells_trap
 
 CP = cprint.cprint
 FUNCS = data_table_functions.Functions()
@@ -60,11 +61,12 @@ def make_datetime_date(row, colname="date"):
     return row.shortdate
 
 
-def make_cell_id(row):
+def make_cell_id_short(row):
     sliceno = int(row["slice_slice"][-3:])
     cellno = int(row["cell_cell"][-3:])
     cell_id = f"{row['date']:s}_S{sliceno:d}C{cellno:d}"
-    row["cell_id"] = cell_id
+    # print("original id: ", row["cell_id"], " new id: ", cell_id)
+    row["cell_id_short"] = cell_id
     return row
 
 
@@ -211,7 +213,8 @@ class AssembleDatasets:
             exclude_unimportant=exclude_unimportant,
             status_bar=self.status_bar,
         )
-        print("groups after combining: ", df.Group.unique())
+
+        check_df_for_cells_trap(df, experiment, message="AssembleDatasets, after combining summary and coding")
 
         if "protocol" not in df.columns:
             df["protocol"] = ""
@@ -236,7 +239,9 @@ class AssembleDatasets:
         # fn_no_ext = Path(fn).stem
         # fn_parent = Path(fn).parent
         # fn_out = Path(fn_parent, f"{fn_no_ext}.pkl")
+        check_df_for_cells_trap(df, experiment, message="AssembleDatasets, after exploding protocols")
         df = self.combine_by_cell(df)
+        check_df_for_cells_trap(df, experiment, message="AssembleDatasets, after combining by cell")
         # print("\nWriting assembled data to : ", fn)
         fn_out = self.get_assembled_filename(self.experiment, mode="write")
         print("fnout: ", fn_out)
@@ -359,9 +364,12 @@ class AssembleDatasets:
 
         """
         CP("y", "Combine by cell")
-        df = df.apply(make_cell_id, axis=1)
+        check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combine_by_cell, before combining by cell")
+        # df = df.apply(make_cell_id, axis=1)
+        check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combine_by_cell, after make_cell_id")
         df.dropna(subset=["cell_id"], inplace=True)
         df.rename(columns={"sex_x": "sex"}, inplace=True)
+        check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combine_by_cell, before filtering by cell type")
         if self.experiment["celltypes"] != ["all"]:
             df = df[df.cell_type.isin(self.experiment["celltypes"])]
         df["shortdate"] = df.apply(
@@ -371,17 +379,21 @@ class AssembleDatasets:
         after_parsed = datetime.datetime.timestamp(DUP.parse(after))
         after_parsedts = after_parsed
         df = df[df["shortdate"] >= after_parsedts]
+        check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combine_by_cell, after filtering by date and cell type")
         cell_list = list(set(df.cell_id))
         cell_list = sorted(cell_list)
-        dotindex_file = Path(
-            self.experiment["analyzeddatapath"],
-            self.experiment["directory"],
-            self.experiment["dotindex_filename"],
-        )
-        dotindex_data = pd.read_pickle(dotindex_file) if dotindex_file.is_file() else None
-        if dotindex_data is None:
-            print("Dotindex file not found: ", dotindex_file)
-            raise ValueError("Dotindex file not found: ", dotindex_file)
+        if self.experiment['dotindex_filename'] is not None:
+            dotindex_file = Path(
+                self.experiment["analyzeddatapath"],
+                self.experiment["directory"],
+                self.experiment["dotindex_filename"],
+            )
+            dotindex_data = pd.read_pickle(dotindex_file) if dotindex_file.is_file() else None
+            if dotindex_data is None:
+                print("Dotindex file not found: ", dotindex_file)
+                raise ValueError("Dotindex file not found: ", dotindex_file)
+        else:
+            dotindex_data = None
 
         dfdict = {}  # {col: [] for col in cols}
         df_new = pd.DataFrame.from_dict(dfdict)
@@ -416,6 +428,8 @@ class AssembleDatasets:
         else:
             already_done = []
             self.previous_date = datetime.datetime.now()
+        check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets::CombineByCell 425")
+    
         # cells_to_do = [cell for cell in cells_to_do if cell not in already_done]
         # instrument up to to a limited set of the data for testing
         # The limit numbers refer to the IV data table.
@@ -436,6 +450,7 @@ class AssembleDatasets:
         results = dfdict
         parallel = False
         if parallel:
+            check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets::CombineByCell before combining measures (parallel)")
             with concurrent.futures.ProcessPoolExecutor(max_workers=nworkers) as executor:
                 results = executor.map(
                     FUNCS.combine_measures_and_FI_Fits,
@@ -452,7 +467,7 @@ class AssembleDatasets:
                         )
           
         else:
-
+            check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combinebycell, before combining by cell (serial)")
             # do each cell in the database
             for icell, cell in enumerate(cell_list):
                 print("icell: ", icell)
@@ -476,6 +491,7 @@ class AssembleDatasets:
                     print("    datadict is none for cell: ", cell)
                     continue
                 df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
+        check_df_for_cells_trap(df_new, self.experiment, message="AssembleDatasets:combinebycell, after combining measures (df_new)")
         return df_new
 
     def check_coding_file(self, df_coding):
@@ -502,9 +518,12 @@ class AssembleDatasets:
         print("coding level: ", level)
         df_coding = pd.read_excel(coding_file, sheet_name=coding_sheet)
         self.check_coding_file(df_coding)
-        print("Coding file head: \n", df_coding.head())
+        # print("Coding file head: \n", df_coding.head())
         if "Group" not in df.columns:
             df["Group"] = ""
+        print("coded groups: ", df_coding.Group.unique())
+        coding_name = self.experiment.get("coding_name", "Group")
+        # print("coding name: ", coding_name)
         for index in df.index:
             # print("INDEX: ", index)
             row = df.loc[index]
@@ -514,9 +533,7 @@ class AssembleDatasets:
             if id_name not in df.columns:
                 id_name = "animal identifier"
 
-            coding_name = self.experiment.get("coding_name", "Group")
-            # print("coding name: ", coding_name)
-            # print(row.date, df_coding.date.values)
+            print(row.date, df_coding.date.values)
             # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
             # print("row in coding: ", row.date in df_coding.date.values)
@@ -532,7 +549,7 @@ class AssembleDatasets:
                     )
 
                 # how to assign groups: by date or subject or cell?
-                # print("Level: ", level.lower())
+                print("Coding Level: ", level.lower())
                 if level.casefold() == "date".casefold():
                     # print("    row.date match/level::: ", row.date,  "code: ", df_coding[df_coding.date == row.date][coding_name].astype(str).values[0])
                     df.at[index, "Group"] = (
@@ -550,7 +567,7 @@ class AssembleDatasets:
                 elif level.casefold() == "slice".casefold() or level.casefold() == "slice_slice".casefold():
                     mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
                     df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.casefold() == "cell".casefold or level.casefold() == "cell_cell".casefold():
+                elif level.casefold() == "cell".casefold() or level.casefold() == "cell_cell".casefold():
                     mask = (
                         (df_coding.date == row.date)
                         & (df_coding.slice_slice == row.slice_slice)
@@ -570,6 +587,5 @@ class AssembleDatasets:
             else:
                 CP("c", f"Assigning group=nan to : {df.at[index, 'cell_id']:s}")
                 df.at[index, "Group"] = np.nan
-        # print("returning coding file: ", df.columns)
         print("Returning with Groups: ", df.Group.unique())
         return df
