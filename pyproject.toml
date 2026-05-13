@@ -106,7 +106,7 @@ dependencies = [
     "metaarray>=2.2.2",
     "h5py",
     "hdf5plugin>=6.0.0",
-    "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
+    # "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
     # "allensdk>=0.16.3",
 ]
 
