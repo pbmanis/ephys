@@ -63,7 +63,7 @@ def categorize_ages(row, age_categories:Union[dict, None]):
     """
     if age_categories is None:
         row.age_category = 0.
-        return row.age_category
+        return row
     row = numeric_age(row)  # convert to a floating number in row.age
     for k in age_categories.keys():
         if row.age >= age_categories[k][0] and row.age <= age_categories[k][1]:
