@@ -34,10 +34,21 @@
 
 import datetime
 from pathlib import Path
+import re
 from typing import Union
 import pandas as pd
 from pylibrary.tools import cprint as CP
+from ephys.gui import data_table_functions
+FUNCS = data_table_functions.Functions()  # only needed for check_include_exclude.
 
+def check_list_contained(self, A: list, B: list):
+    # check if any of values in A are in B.
+    A_str = " ".join(map(str, A))
+    B_str = " ".join(map(str, B))
+    # find all instances of A within B, case insensitive
+    instances = re.findall(A_str, B_str, re.IGNORECASE)
+    # return True if any instances were found, False otherwise
+    return len(instances) > 0
 
 def include_exclude(
     cell_id: str, exclusions: dict, inclusions: dict, allivs: list, verbose: bool = False,
@@ -50,7 +61,17 @@ def include_exclude(
                                 allivs, verbose=verbose, exclusions_flag=exclusions_flag)
     additional_ivs, additional_iv_records = check_inclusions(
         cell_id, inclusions, verbose=verbose, inclusions_flag=inclusions_flag)
-    if verbose or (exclusions_flag and cell_id in exclusions) or (inclusions_flag and cell_id in inclusions):
+    if verbose or (exclusions_flag and cell_id in exclusions) or (inclusions_flag and inclusions is not None and cell_id in inclusions):
+        print(f"     Cell: {cell_id}")
+        print(f"     All IVs: {allivs}")
+        if cell_id in list(exclusions.keys()):
+            print(f"     Exclusions: {exclusions[cell_id]}")
+        else:
+            print(f"     Exclusions: None")
+        if cell_id in list(inclusions.keys()):
+            print(f"     Inclusions: {inclusions[cell_id]}")
+        else:
+            print(f"     Inclusions: None")
         print(f"     Valid IVs after exclusions: {validivs}")
         print(f"     Additional IVs from inclusions: {additional_ivs}")
         print(f"     Additional IV records from inclusions: {additional_iv_records}")
@@ -106,6 +127,17 @@ def check_exclusions(cell_id: str, exclusions: dict, allivs: list,
                         # print("    adding valid protocol: ", protocol)
                         if protocol not in validivs:
                             validivs.append(protocol)
+                # check that the names of the excluded protocols are in fact in allivs for this cell
+                for exprot in exclusions[cell_id]["protocols"]:
+                    allivnames = [Path(p).name for p in allivs]
+                    if exprot not in allivnames:
+                        print(f"Configuration file error: Excluded protocol not found in cell's protocols: {cell_id}")
+                        print("   ... Excluded protocol: ", exprot)
+                        print("   ... All IVs for this cell: ", allivnames)
+                        print("   ... Check the configuration file")
+                        # raise ValueError(f"Configuration file error: Excluded protocol {exprot} not found in cell's protocols (cell_id = {cell_id})")
+                    if verbose or exclusions_flag:
+                        CP.cprint("y", f"     excluding protocol: {exprot}")
                 # print("     After appending, validivs now is: ", validivs)
                 # validivs.append([protocol for protocol in allivs if Path(protocol).name not in exclusions[cell_id]['protocols']])
         else:
@@ -153,7 +185,7 @@ def check_inclusions(cell_id: str, inclusions: dict, verbose: bool = False, incl
     return additional_ivs, additional_iv_records
 
 
-def list_inclusions_exclusions(df, exclusion_dict, inclusion_dict, all_ivs:list, verbose:bool=False,
+def list_inclusions_exclusions(df, exclusion_dict:dict, inclusion_dict:dict, all_ivs:list, verbose:bool=False,
                                inclusions_flag:bool=True, exclusions_flag:bool=True, find_cell:Union[str, None]=None):
     """
     List the inclusions and exclusions for each cell in the DataFrame
@@ -217,6 +249,148 @@ def get_datasummary(experiment):
     datasummary = pd.read_pickle(datasummaryfile)
     return datasummary
 
+
+def check_include_exclude(df: pd.DataFrame, experiment: dict, verbose: bool = False):
+    """check_include_exclude 
+    Prior version from plot_spike_info... 
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the data to check for inclusions and exclusions.
+    experiment : dict
+        Dictionary containing experiment details and inclusion/exclusion rules.
+    verbose : bool, optional
+        If True, print detailed information about the inclusions and exclusions, by default False.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with updated inclusion/exclusion information.
+    """
+    # Note that prior to this step, excluded IVs may have been analyzed
+    # so that the pdf and pkl files are present. If the analysis was updated,
+    # then the files *may* represent the updated analysis, but there may still be some
+    # excluded IVs on the disk.
+    # Note: this is tricky, as we may also have 'included' partial datasets
+    # Included IVs should *always* take precedence over the exclusion rules,
+    # as they will have partial data that is being "rescued" and should NOT be excluded.
+    # for the same cell and protocol!
+
+    if experiment["excludeIVs"] is None or len(experiment["excludeIVs"]) == 0:
+        return df
+    re_check_all = re.compile(r"All", re.IGNORECASE)
+    re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
+    re_slice = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})$")
+    re_slicecell = re.compile(
+        r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$"
+    )
+    # get slice and cell nubmers
+    re_slicecell2 = re.compile(
+        r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
+    )
+    if experiment["includeIVs"] is not None:
+        includes = list(experiment["includeIVs"].keys())
+    else:
+        includes = []
+
+    CP.cprint("c", "Parsing/checking excluded and included IV datasets (noise, etc)")
+
+    for filename, key in experiment["excludeIVs"].items():
+        # so we should test for inclusion here first, for a cell and it's protocols.
+        # includes are always fully specified day/slice/cell names, with protocols.
+        # includes always take precedence. Note that the analysis will have already excluded the
+        # protocols in the exclude list, so we can skip those here.
+        if filename in includes:
+            FUNCS.textappend(
+                # "c",
+                f"   Preprocess_data: {filename:s} is in inclusion list (which takes precedence), so it will not be excluded.",
+            )
+            continue
+        # everything after this relates only to exclusion by day, slice, or cell.
+        fparts = Path(filename).parts
+        fn = str(Path(*fparts[-3:]))
+        # print(fn)
+        # raise ValueError("Stop here")
+
+        if len(fparts) > 3:
+            fnpath = str(Path(*fparts[:-3]))  # just day/slice/cell
+        else:
+            fnpath = None  # no leading path
+        reason = key["reason"]
+        protocols = key["protocols"]
+        # includes will ALWAYS be fully specified day/slice/cell names, with protocols.
+
+        # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
+        dropped = False
+
+        if re_day.match(fn) is not None:  # specified a day, not a cell:
+            df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
+            FUNCS.textappend(
+                # "r",
+                f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}",
+            )
+            dropped = True
+        elif re_slice.match(fn) is not None:  # specified day and slice
+            fns = re_slice.match(fn)
+            if fns is not None:
+                df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
+                FUNCS.textappend(
+                    # "r",
+                    f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}",
+                )
+            dropped = True
+        elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
+            fnc = re_slicecell2.match(fn)
+            # generate an id with 1 number for the slice and 1 for the cell,
+            # test variations with _ between S and C as well
+            fn1 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}C{int(fnc['cellno']):1d}"
+            fn1a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}_C{int(fnc['cellno']):1d}"
+            fn2 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}C{int(fnc['cellno']):02d}"
+            fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
+            fns = [fn1, fn1a, fn2, fn2a]
+            # print(df.cell_id.unique())
+            dropped = False
+            for i, f in enumerate(fns):
+                if fnpath is not None:
+                    fns[i] = str(Path(fnpath, f))  # add back the leading path
+                if not df.loc[df.cell_id == fns[i]].empty:
+                    if check_list_contained(["all"], protocols):
+                        df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
+                        FUNCS.textappend(
+                            "r",
+                            f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
+                        )
+                        dropped = True
+                    # otherwise, the excluded protocols were NOT analyzed in the first place, so we can continue
+                    # df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
+                    # CP.cprint(
+                    #     "m",
+                    #     f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
+                    # )
+                    # dropped = True
+                elif not dropped:
+                    pass
+                    # FUNCS.textappend(
+                    #     # "y",
+                    #     f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)",
+                    # )
+        elif not dropped:
+            FUNCS.textappend(
+                # "y",
+                f"   Preprocess_data: {filename:s} not dropped, but was found in exclusion list",
+            )
+        else:
+            FUNCS.textappend(
+                # "y",
+                f"   Preprocess_data: No exclusions found for {filename:s}"
+            )
+        # if fn == "2023.09.11_000/slice_001/cell_001":
+        #     print("Dropped: ", dropped)
+        #     raise ValueError("Dropped: ", dropped)
+
+    return df
+    
 def main():
     import argparse
     from ephys.tools.get_configuration import get_configuration
@@ -254,7 +428,8 @@ def main():
         datasummary = get_datasummary(experiment)
         all_ivs = []
         print(f"\n{'='*80}\nDataset: {dataset}\n{'='*80}")
-        list_inclusions_exclusions(datasummary, exclusion_dict, inclusion_dict, all_ivs, verbose=verbose,
+        list_inclusions_exclusions(datasummary, exclusion_dict=exclusion_dict, inclusion_dict=inclusion_dict, 
+                                   all_ivs=all_ivs, verbose=verbose,
                                    inclusions_flag=inclusions_flag, exclusions_flag=exclusions_flag, find_cell=find_cell)
 
 if __name__ == "__main__":
