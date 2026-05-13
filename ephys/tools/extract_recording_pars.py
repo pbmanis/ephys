@@ -44,6 +44,7 @@ def main():
     )
     parser.add_argument("--show", action="store_true", help="Show the recording parameters in the most recent file")
     parser.add_argument("--date", type=str, help="Date of the recording parameters file to show (format: YYYY.MM.DD)")
+    parser.add_argument("--cellid", type=str, help="Cell ID to show recording parameters for (only used with --show)")
     args = parser.parse_args()
     experiment_name = args.experiment_name
 
@@ -67,6 +68,8 @@ def main():
             print("Please run the script without --show to extract recording parameters first.")
         else:
             df_recording_pars = pd.read_pickle(output_fn)
+            if args.cellid is not None:
+                df_recording_pars = df_recording_pars[df_recording_pars.cell_id == args.cellid]
             print("Recording parameters for experiment: ", experiment_name)
             print("for file: ", output_fn)
             pd.set_option("display.max_columns", None)  # Show all columns
@@ -106,9 +109,10 @@ def main():
     )
 
     for irow, df_cell in df_summary.iterrows():
-        cellpath = Path(experiment["directory"], experiment["rawdatapath"], df_cell["cell_id"])
-        # print(cellpath, cellpath.exists())
-        if not cellpath.exists():
+        cellpath = Path(experiment["directory"], experiment["rawdatapath"], args.experiment_name, df_cell["cell_id"])
+        print(cellpath, cellpath.exists())
+        if not cellpath.is_dir():
+            raise ValueError(f"Cell path not found for cell {df_cell['cell_id']} at: {cellpath}")
             n_missing += 1
         else:
             protocol_list = [p.lstrip() for p in df_cell["data_complete"].split(",") if p.strip()]
