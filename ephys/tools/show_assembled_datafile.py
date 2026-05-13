@@ -84,15 +84,16 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
 
     # handle the case where there is no data, which may be indicated by a single [nan]
     # representing all protocols:
-    verbose = False
+    verbose = True
     verbose_selects = ["Rs"]  #  [None] # ["RMP", "taum", "Rs", "Rin"]
     if verbose:
-        print("select_by: ", select_by, "parameter: ", parameter)
-        print("row: ", row)
+        print(f"\n{'='*80:s}")
+        print("Select_by: ", select_by, "parameter: ", parameter)
+        print("    row: ", row)
     if verbose and (select_by in verbose_selects):
-        print("\n", "=" * 60)
-        print("Selector to use: ", select_by)
-        print("Parameter to test, value: ", parameter, row[parameter])
+        print(f"\n{'-'*60:s}")
+        print("    Selector to use: ", select_by)
+        print("    Parameter to test, value: ", parameter, row[parameter])
     if parameter not in row.keys():
         CP.cprint("y", f"Parameter {parameter:s} is not in current data row")
         raise ValueError(f"Parameter {parameter:s} is not in current data row")
@@ -103,7 +104,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
 
     # first, convert the measurements to a *list* if they are not already
     if verbose and (select_by in verbose_selects):
-        print("type of row[parameter]: ", type(row[parameter]), row[parameter])
+        print("    Type of row[parameter]: ", type(row[parameter]), row[parameter])
     if isinstance(row[parameter], (float, np.float64)):
         row[parameter] = [row[parameter]]
     # print("row par: ", row[parameter], type(row[parameter]))
@@ -121,7 +122,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     else:
         row[parameter] = [np.nan]
     if verbose and (select_by in verbose_selects):
-        print("converted: type of row[parameter]: ", type(row[parameter]), row[parameter])
+        print("    Converted: type of row[parameter]: ", type(row[parameter]), row[parameter])
 
 
     # if isinstance(row[parameter], np.ndarray) and row[parameter].shape == (0,):
@@ -141,9 +142,9 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     #     row[parameter] = [row[parameter][0]] * len(row["protocols"])
     # if no valid measurements, just return the row
     if verbose and (select_by in verbose_selects):
-        print("row par: ", row[parameter])
-        print("type: ", type(row[parameter]))
-        print("row parameter: ", row[parameter])
+        print("    row par: ", row[parameter])
+        print("    type: ", type(row[parameter]))
+        print("    row parameter: ", row[parameter])
     if not isinstance(row[parameter], str):
         if np.all(np.isnan(row[parameter])):
             # CP.cprint("r", f"Parameter {parameter:s} is all nan")
@@ -158,7 +159,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     # these arrays are the same length as the number of protocols
     # also, if the selection value is out of range, set
     # the parameter to nan, to remove it
-    select_limits = np.array(select_limits) * 1e-6
+    select_limits = np.array(select_limits)
     if isinstance(row[select_by], float):
         selector_vals = np.array([row[select_by]])
     else:
@@ -172,7 +173,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     params = np.array(row[parameter])
     prots = row["protocols"]
     if verbose and (select_by in verbose_selects):
-        print("selector_values: , ", selector_values)
+        print("Selector_values: ", selector_values)
         print(
             "   # measures, selectors, protocols : ",
             params.shape,
@@ -185,7 +186,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if verbose and (select_by in verbose_selects):
         print("Params: ", params)
         print("selector values: ", selector_values)
-        print("valid indices: ", valid_measures)
+        print("valid measures: ", valid_measures)
 
     if len(valid_measures) == 0:  # no matching values available, set nans.
         CP.cprint("r", f"No valid values for {parameter:s} in {row.cell_id:s}")
@@ -208,11 +209,14 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     taums = []  # taum values for CC_taum protocol
     if verbose and (select_by in verbose_selects):
         print("prots: ", prots)
+    print("valid measures: ", valid_measures)
     for i, prot in enumerate(prots):
         if i not in valid_measures:  # no measure for this protocol, so move on
+            if verbose:
+                print("Skipping protocol: ", prot, "i not in valid measures: ", i, valid_measures)
             continue
         if verbose and (select_by in verbose_selects):
-            print("prot: ", prot)
+            print("prot (again): ", prot)
         p = str(Path(prot).name)  # get the name of the protocol
         # skip specific protocols
         if p.startswith(
@@ -261,7 +265,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if len(iprots) == 0:
         CP.cprint(
             "r",
-            f"No minimum value found for: {row.cell_id!s}, {select_by:s} {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
+            f"No minimum value found for: {row.cell_id!s}, selector: {select_by:s} on {parameter:s} ({row[select_by]:.2f}) {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
         )
         if verbose and (select_by in verbose_selects):
             print("    protocols: ", row[select_by])
@@ -271,12 +275,12 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if len(iprots) == 1:
         if isinstance(values, list):
             values = values[0]
-        # CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
+        CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
         row[parameter + f"_best{select_by:s}"] = values
         used_prots = f"{parameter:s}:{str(Path(prots[iprots[0]]).name):s}"
     elif len(iprots) > 1:
         used = ",".join([str(Path(prots[i]).name) for i in equal_mins])
-        # CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
+        CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
         row[parameter + f"_best{select_by:s}"] = np.mean(values)
         used_prots = f"{parameter:s}:{used:s}"
 
@@ -390,7 +394,7 @@ def populate_columns(
     """
     datap = data.copy(deep=True)  # defrag dataframe.
     # populate the new columns for each parameter
-
+    # print("datap: ", datap.head())
     for p in parameters:
         if p not in datap.columns:
             CP.cprint("c", f"ADDING {p:s} to data columns")
@@ -416,7 +420,7 @@ def populate_columns(
                 excludes.append(str(Path(cellid, protos)))
 
     datap = datap.apply(
-        filter_rs, maxRs=select_limits[1] * 1e-6, axis=1
+        filter_rs, maxRs=select_limits[1], axis=1
     )  # select_limits is in Ohms, but Rs is in MOhms, so convert. Values outside range are set to NaN
     datap.dropna(subset=["Rs"], inplace=True)  # trim out the max Rs data if nan
     datap = datap.copy()
@@ -430,8 +434,8 @@ def populate_columns(
         datap = datap.copy()
         assert isinstance(datap["CC_taum"], pd.Series)
     datap["used_protocols"] = ""
-    datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
-    print("After filtering Rs, data length: ", len(datap))
+    if age_cats is not None:
+        datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
     return datap
 
 
@@ -639,6 +643,9 @@ def get_best_and_mean(
     """
     # print("get_best_and_mean: 1", data["Group"].unique())
     # check_values(data, halt=False)
+    print("Rs values: ", data["Rs"])
+    print("Rs limits: ", select_limits)
+
     data = populate_columns(
         data,
         configuration=experiment,
@@ -948,10 +955,10 @@ def main():
 
     missing_subjs = []
     looking_for = [
-        "2024.05.06_000_S2C1",
-        "2023.10.27_000_S1C1",
-        "2024.06.12_000_S4C0",
-        "2024.05.15_000_S4C2",
+        "2024.05.06_000/slice_002/cell_001",
+        "2023.10.27_000/slice_001/cell_001",
+        "2024.06.12_000/slice_004/cell_000",
+        "2024.05.15_000/slice_004/cell_002",
     ]
     found_looks = []
     for index in data.index:
@@ -1001,6 +1008,16 @@ def main():
         print("Missing subjects: ", set(looking_for) - set(found_looks))
     else:
         print("All subjects found.")
+    print(data.columns)
+    cells_to_check = ["2023.10.17_000/slice_000/cell_000", "2023.11.06_000/slice_001/cell_000"]
+    for celln in cells_to_check:
+        if celln not in data.cell_id.values:
+            print(f"Cell {celln} not found in data.")
+        else:
+            print(f"Cell {celln} found in data.")
+        celld = data[data.cell_id == celln]
+        # print(celld)
+        print(f"    dvdt_rising: {celld['dvdt_rising'].values}\n    dvdt_falling: {celld['dvdt_falling'].values}\n    AP_HW: {celld['AP_HW'].values}")
     exit()
 
 if __name__ == "__main__":
