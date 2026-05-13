@@ -167,6 +167,13 @@ class ProcessSpikeAnalysis:
         Panda Series
             The row for this cell, updated
         """
+        expt = self.experiment[self.data]
+        proto = row.protocol
+        lcsprotos = expt.get("LowestCurrentSpike_protocols", None)
+        # restrict LCS data
+        if lcsprotos is not None and proto not in list(lcsprotos.keys()):
+            return
+                               
         dvdts = []
         for tr in SP.spikeShapes:  # for each trace
             if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
@@ -232,7 +239,7 @@ class ProcessSpikeAnalysis:
 
         if int(row.name) > max_rows and max_rows != -1:
             return row
-        row.date = row.date.replace("NF107ai32", "NF107Ai32")
+        row.date = row.date.replace("NF107ai32", "NF107Ai32")  # force case consistency.
         # if datenum(row.shortdate) != datenum("2019.04.15"):
         #     return row
         date = Path(row.date).name
