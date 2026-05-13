@@ -404,11 +404,13 @@ def linfit(x, y, xrange=[-0.2, 0.2]):
 
 
 def tests(ncells: int = 5, minimum_spikes: int = 4, plot_flag: bool = False):
-    import allensdk.ephys.ephys_extractor as ephys_extractor
-    import allensdk.ephys.extract_cell_features as extract_cell_features
-    import allensdk.ephys.feature_extractor as ephys_feature_extractor
-    import h5py
-    from allensdk.core.cell_types_cache import CellTypesCache
+    # allensdk has not been updated in a few years, so it lags, and requires 
+    # pynwb and hdmf versions that are not compatible with Dandi.
+    # import allensdk.ephys.ephys_extractor as ephys_extractor
+    # import allensdk.ephys.extract_cell_features as extract_cell_features
+    # import allensdk.ephys.feature_extractor as ephys_feature_extractor
+    # import h5py
+    # from allensdk.core.cell_types_cache import CellTypesCache
 
     # from pynwb import NWBHDF5IO
 
