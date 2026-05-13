@@ -2450,6 +2450,8 @@ class Functions:
         cell: str,
         protodurs: dict = None,
         dotindex_data: Union[dict, None] = None,
+        verbose: bool = False,
+        check_cell: Union[str, None] = None,
     ):
         """combine_measures_and_FI_Fits
         Assemble data from multiple protocols to compute the FI curve for a cell.
@@ -2485,6 +2487,8 @@ class Functions:
         ValueError
             _description_
         """
+        check_cell = "2023.10.17_000/slice_000/cell_000"
+
         if self.status_bar is not None:
             self.status_bar.showMessage(
                 f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}  Group {df[df.cell_id == cell].Group.values[0]!s}"
@@ -2507,8 +2511,11 @@ class Functions:
         if df_cell is None:
             return None
         # print("    df_tmp group>>: ", df_tmp.Group.values)
-        # print("    df_cell group>>: ", df_cell.keys())
-        # print("combine_measures_and_FI_Fits: ", df_tmp.keys())
+        if verbose:
+            print("    df_cell>>: ", df_cell.keys())
+            print("    cell id: ", df_cell.cell_id)
+            # raise ValueError("Code stop #2 - check the keys in df_cell and df_tmp")
+    # print("combine_measures_and_FI_Fits: ", df_tmp.keys())
         protocol_list = list(df_cell.Spikes.keys())
         # build protocols excluding removed protocols
         protocols = []
@@ -2518,6 +2525,10 @@ class Functions:
                 protocols.append(protocol)
             # else:
             #     raise ValueError(f"Code stop #3 cell: {day_slice_cell:s}  protocol: {protocol:s}")
+        if verbose and day_slice_cell == check_cell:
+            print("Check cell: ", check_cell)
+            print("    (verbose #4) Protocols: ", protocols)
+            # raise ValueError("Code stop #4 - check the protocols that are included")    
         srs = []
         durations = []
         delays = []
@@ -2533,7 +2544,6 @@ class Functions:
                 self.status_bar.showMessage(
                     f"Reading data for cell: {cell:s}, protocol: {protocol:s}"
                 )
-            day_slice_cell = str(Path(df_cell.date, df_cell.slice_slice, df_cell.cell_cell))
             CP("m", f"day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
             # if self.check_excluded_dataset(day_slice_cell, experiment, protocol):
             # continue
@@ -2548,7 +2558,7 @@ class Functions:
             else:
                 fullpath = Path(experiment["rawdatapath"], day_slice_cell, protocol)
             if dotindex_data is None:
-                raise ValueError("No index data provided, and code to read from raw files is no longer implemented")
+                # raise ValueError("No index data provided, and code to read from raw files is no longer implemented")
                 with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
                     # try:
                     if not AR.getData(
@@ -2577,28 +2587,59 @@ class Functions:
                 # get the data from the index dataframe
                 index_row = dotindex_data[
                     (dotindex_data.cell_id == day_slice_cell)
-                    & (dotindex_data.protocol == protocol)
+                    & (dotindex_data.protocol == str(Path(protocol).name))
                 ]
+                print("Index row: ", index_row)
                 if len(index_row) == 0:
-                    CP("y", f"    >>>> No index data found for cell: {cell:s}, protocol: {protocol:s}")
-                    continue
-                sample_rate = index_row.sample_rate.values[0]
-                duration = index_row.duration.values[0]
-                delay = index_row.delay.values[0]
-                Rs.append(index_row.Rs.values[0])
-                CNeut.append(index_row.CNeut.values[0])
-                srs.append(sample_rate)
-                durations.append(duration)
-                delays.append(delay)
-                important.append(index_row.important.values[0])
-                valid_prots.append(protocol)
+                    CP("y", f"    >>>> No index data found for cell: {cell:s} day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
+                    with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
+                    # try:
+                        if not AR.getData(
+                            fullpath, allow_partial=True, record_list=[0]
+                        ):  # just get the first record.
+                            continue
+                        sample_rate = AR.sample_rate[0]
+                        duration = AR.tend - AR.tstart
+                        delay = AR.tstart
+                        srs.append(sample_rate)
+                        Rs.append(AR.CCComp["CCBridgeResistance"])
+                        CNeut.append(AR.CCComp["CCNeutralizationCap"])
+                        durations.append(duration)
+                        delays.append(delay)
+                        important.append(AR.checkProtocolImportant(fullpath))
+                        valid_prots.append(protocol)
+                        # cid = dotindex_data[(dotindex_data.cell_id == day_slice_cell)]
+                        # prot = dotindex_data[(dotindex_data.protocol == str(Path(protocol).name))]
+                        # print("Cid: ", cid, "prot: ", prot)
+                        # print("Here are the cell_ids in the index dataframe: ",dotindex_data.cell_id.unique())
+                        # print("Here are the protocols in the index dataframe: ", dotindex_data.protocol.unique())
+                        # # raise ValueError(f"No index data found for cell: {cell:s}, day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
+                else:
+                    sample_rate = index_row.sample_rate.values[0]
+                    duration = index_row.duration.values[0]
+                    delay = index_row.delay.values[0]
+                    Rs.append(index_row.Rs.values[0])
+                    CNeut.append(index_row.CNeut.values[0])
+                    srs.append(sample_rate)
+                    durations.append(duration)
+                    delays.append(delay)
+                    important.append(index_row.important.values[0])
+                    valid_prots.append(protocol)
         protocols = valid_prots  # only count valid protocols
-        CP("c", f"Valid Protocols: {protocols!s}")
+        if verbose and day_slice_cell == check_cell:
+            print("    df_cell>>: ", df_cell.keys())
+            print("    cell id: ", df_cell.cell_id)
+            print("    spikes: ", df_cell.Spikes.keys())
+            protoname = list(df_cell.Spikes.keys())[0]
+            print("    Spikes: ", df_cell.Spikes[protoname].keys())
+            print("    individual spikes: ", df_cell.Spikes[protoname]["spikes"][11][0])
+            # raise ValueError("Code stop #5 - check the keys in df_cell and df_tmp")
         if len(protocols) > 1:
             protname = protocols
         elif len(protocols) == 1:
             protname = [protocols[0]]
         else:
+            raise ValueError(f"No valid protocols found for cell: {cell:s}")
             return None
         # CP("r", f"ccif cellid: {df_tmp.cell_id.values!s} ccif group: {group!s}")
         if "Date" in df_tmp.keys():  # solve poor programming practice from earlier versions.
@@ -2642,7 +2683,9 @@ class Functions:
                 threshold_slope=experiment["AP_threshold_dvdt"],
             )
             # print("datadict: ", datadict)
-
+        if verbose and day_slice_cell == check_cell:
+            print("    datadict after measures: ", datadict)
+            raise ValueError("Code stop #6 - check the datadict after measures")
         # now combine the FI data across protocols for this cell
         FI_Data_I1_: list = []
         FI_Data_FR1_: list = []  # firing rate
@@ -3095,57 +3138,68 @@ class Functions:
                     f"Cell_id: {cell_id:s} or {cell_id2:s} not found in list of cell_ids in the datasummary file"
                 )
 
-    # def find_lowest_current_spike(self, row, SP):
-    #     """find_lowest_current_spike Find the first spike that is evoked at the lowest current
-    #     level from all the spike data for this protocol.
-    #     ***** NOT CALLED IN THIS CLASS ****
-    #     ***** The function actually used is in process_spike_analysis in ephys/tools.
-    #  
-    #     Parameters
-    #     ----------
-    #     row : Pandas series from the main dataframe
-    #         row of the dataframe to fill in with the results
-    #     SP : spike shape data structure
+    def find_lowest_current_spike_to_dict(self, SP: object):
+        """find_lowest_current_spike Find the first spike that is evoked at the lowest current
+        level from all the spike data for this protocol.
+        ***** NOT CALLED IN THIS CLASS ****
+        ***** The function actually also is in process_spike_analysis in ephys/tools.
+     
+        Parameters
+        ----------
+
+        SP : spike shape data structure
 
 
-    #     Returns
-    #     -------
-    #     row : Pandas series
-    #         from the main dataframe, updated with specific measures for
-    #         the lowest current spike
+        Returns
+        -------
+        dictionary for LowestCurrent Spike
 
-    #     """
-
-    #     dvdts = []
-    #     for tr in SP.spikeShapes:  # for each trace
-    #         if len(SP.spikeShapes[tr]) > 1:  # if there is a spike
-    #             spk = SP.spikeShapes[tr][0]  # get the first spike in the trace
-    #             dvdts.append(spk)  # accumulate first spike info
-
-    #     if len(dvdts) > 0:
-    #         currents = []
-    #         for d in dvdts:  # for each first spike, make a list of the currents
-    #             currents.append(d.current)
-    #         min_current = np.argmin(currents)  # find spike elicited by the minimum current
-    #         row.dvdt_rising = dvdts[min_current].dvdt_rising
-    #         row.dvdt_falling = dvdts[min_current].dvdt_falling
-    #         if not np.isnan(row.dvdt_falling):
-    #             row.dvdt_ratio = dvdts[min_current].dvdt_rising / dvdts[min_current].dvdt_falling
-    #         else:
-    #             row.dvdt_ratio = np.nan
-    #         row.dvdt_current = currents[min_current] * 1e12  # put in pA
-    #         row.AP_thr_V = 1e3 * dvdts[min_current].AP_begin_V
-    #         if dvdts[min_current].halfwidth_interpolated is not None:
-    #             row.AP_HW = dvdts[min_current].halfwidth_interpolated * 1e3
-    #         row.AP_begin_V = 1e3 * dvdts[min_current].AP_begin_V
-    #         row.AP_peak_V = 1e3 * dvdts[min_current].peak_V
-    #         CP(
-    #             "y",
-    #             f"I={currents[min_current]*1e12:6.1f} pA, dvdtRise={row.dvdt_rising:6.1f},"
-    #             + f" dvdtFall={row.dvdt_falling:6.1f}, dvdtRatio={row.dvdt_ratio:7.3f},"
-    #             + f" APthr={row.AP_thr_V:6.1f} mV, HW={row.AP_HW*1e3:6.1f} usec",
-    #         )
-    #     return row
+        """
+        # print(SP.keys())
+        dvdts = []
+        for tr in SP['spikes']:  # for each trace
+            if len(SP['spikes'][tr]) > 1:  # if there is a spike
+                spk = SP['spikes'][tr][0]  # get the first spike in the trace
+                dvdts.append(spk)  # accumulate first spike info
+        LCS = {} # dictionary to hold the lowest current spike info
+        if len(dvdts) > 0:
+            currents = []
+            for d in dvdts:  # for each first spike, make a list of the currents
+                currents.append(d.current)
+            LCS['min_current'] = np.argmin(currents)  # find spike elicited by the minimum current
+            dvdt_rising = dvdts[LCS['min_current']].dvdt_rising
+            dvdt_falling = dvdts[LCS['min_current']].dvdt_falling
+            if not np.isnan(dvdt_falling):
+                dvdt_ratio = dvdts[LCS['min_current']].dvdt_rising / dvdts[LCS['min_current']].dvdt_falling
+            else:
+                dvdt_ratio = np.nan
+            LCS['dvdt_rising'] = dvdt_rising
+            LCS['dvdt_falling'] = dvdt_falling
+            LCS['dvdt_ratio'] = dvdt_ratio
+            dvdt_current = currents[LCS['min_current']] * 1e12  # put in pA
+            LCS['dvdt_current'] = dvdt_current
+            AP_thr_V = 1e3 * dvdts[LCS['min_current']].AP_begin_V
+            LCS['AP_thr_V'] = AP_thr_V
+            AP_thr_T = dvdts[LCS['min_current']].AP_latency
+            print(AP_thr_T)
+            LCS['AP_thr_T'] = AP_thr_T
+            if dvdts[LCS['min_current']].halfwidth_interpolated is not None:
+                AP_HW = dvdts[LCS['min_current']].halfwidth_interpolated * 1e3
+                LCS['AP_HW'] = AP_HW
+            else:
+                AP_HW = np.nan
+                LCS['AP_HW'] = AP_HW
+            AP_begin_V = 1e3 * dvdts[LCS['min_current']].AP_begin_V
+            AP_peak_V = 1e3 * dvdts[LCS['min_current']].peak_V
+            LCS['AP_begin_V'] = AP_begin_V
+            LCS['AP_peak_V'] = AP_peak_V    
+            CP(
+                "y",
+                f"I={currents[LCS['min_current']]*1e12:6.1f} pA, dvdtRise={LCS['dvdt_rising']:6.1f},"
+                + f" dvdtFall={LCS['dvdt_falling']:6.1f}, dvdtRatio={LCS['dvdt_ratio']:7.3f},"
+                + f" APthr={LCS['AP_thr_V']:6.1f} mV, HW={LCS['AP_HW']*1e3:6.1f} usec, AP_thr_T={LCS['AP_thr_T']:6.1f} ms",
+            )
+        return LCS
 
     def find_lowest_current_trace(self, spikes):
         """find_lowest_current_trace : find the trace with the lowest current
@@ -3410,7 +3464,7 @@ class Functions:
         df_cell : _type_
             _description_
         cell_id: str
-            The Cell id in the form of yyyy.mm.dd_000/slice_nnn/cell_nnn
+            The cell id in the form of yyyy.mm.dd_000/slice_nnn/cell_nnn
         measure : _type_
             _description_
         datadict : _type_
@@ -3490,7 +3544,7 @@ class Functions:
                                 exit()
                         # print("TAU: ", protocol, measure, value)
                         self.add_measure(protocol, measure, value=value)
-            #
+            
             # Next we check what is in iv_mapper - this remaps the "measure" to
             # a value in the data table.
             # iv_mapper: dict = {
@@ -3501,6 +3555,7 @@ class Functions:
             #     "Rin": "Rin",
             #     "RMP": "RMP",
             # }
+            
 
             case measure if (measure in list(iv_mapper.keys())) and (iv_mapper[measure] in iv_keys):
                 # print("        >>>> in iv_mapper")
@@ -3522,7 +3577,7 @@ class Functions:
                             f"No spikes in protocol (measure=current):  {protocol!s}, {df_cell.Spikes[protocol].keys():s}",
                         )
                         self.add_measure(protocol, measure, value=np.nan)
-                        continue
+                        # continue
                     # we need to get the first spike evoked by the lowest current level ...
                     min_current_index, current, trace = self.find_lowest_current_trace(
                         df_cell.Spikes[protocol]
@@ -3549,8 +3604,9 @@ class Functions:
             #             self.add_measure(
             #                 protocol, measure, value=df_cell.Spikes[protocol][mapper1[measure]]
             #             )
+
             case measure if measure in spike_keys:  # here we actually check the spike data
-                print("       >>>> in spike_keys")
+                CP("c", f"       >>>> in spike_keys, for measure: {measure}")
                 for (
                     protocol
                 ) in protocols:  # for all protocols with spike analysis data for this cell
@@ -3559,18 +3615,17 @@ class Functions:
                     sp_exc_list = self.experiment["exclude_Spikes"]
 
                     # check the spike exclusion list for this protocol.
-                    cell_id_full = filename_tools.make_cellid_from_slicecell(cell_id)
-                    # print(cell_id, cell_id_full, "\n   ", sp_exc_list.keys())
-                    if sp_exc_list is not None and (cell_id_full in sp_exc_list.keys()):
+
+                    if sp_exc_list is not None and (cell_id in sp_exc_list.keys()):
                         skip = False
-                        if protocol in sp_exc_list[cell_id_full]["protocols"]:
+                        if protocol in sp_exc_list[cell_id]["protocols"]:
                             skip = True
-                        if "all" in sp_exc_list[cell_id_full]["protocols"]:
+                        if "all" in sp_exc_list[cell_id]["protocols"]:
                             skip = True
                         if skip:
                             CP(
                                 "y",
-                                f"Skipping protocol {cell_id_full:s} {protocol:s} because it is in the spike exclusion list, reason: {sp_exc_list[cell_id_full]['reason']}",
+                                f"Skipping protocol {cell_id:s} {protocol:s} because it is in the spike exclusion list, reason: {sp_exc_list[cell_id]['reason']}",
                             )
                             continue
                     if "spikes" not in df_cell.Spikes[protocol].keys():
@@ -3585,6 +3640,26 @@ class Functions:
                         and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
                         and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
                     )
+                    if not have_LCS_data:  # we don't have the data yet, try to get it from the protocol
+                        lcs_protos = self.experiment.get("LCS_spike_shape_protocols", None)
+
+                        if lcs_protos is None or protocol[:-4] in lcs_protos:
+                            LCS = self.find_lowest_current_spike_to_dict(df_cell.Spikes[protocol])
+                            df_cell.Spikes[protocol]["LowestCurrentSpike"] = LCS
+                    # if cell_id == "2023.10.17_000/slice_000/cell_000":
+                    #     CP("m", f"Checking LCS data for cell: {cell_id:s}")
+                    #     CP("m", f"protocol: {protocol}")
+                    #     CP("m", f" lcs field: {df_cell.Spikes[protocol].get('LowestCurrentSpike', None)}")
+                    #     CP("m", f"LCS data: {have_LCS_data}, keys: {df_cell.Spikes[protocol].keys()}")
+                    #     CP("m", f"LCS data: {have_LCS_data}, LowestCurrentSpike: {df_cell.Spikes[protocol].get('LowestCurrentSpike', None)}")
+                    #     print()
+                        # raise ValueError("Check the LCS data for this cell and protocol")
+                    have_LCS_data = (
+                        "LowestCurrentSpike" in df_cell.Spikes[protocol].keys()
+                        and df_cell.Spikes[protocol]["LowestCurrentSpike"] is not None
+                        and len(df_cell.Spikes[protocol]["LowestCurrentSpike"]) > 0
+                    )
+                    
                     if have_LCS_data:
                         CP(
                             "c",
@@ -3595,8 +3670,7 @@ class Functions:
                             "y",
                             f"    DO NOT have LowestCurrentSpike: {have_LCS_data!s}  from {protocol:s}",
                         )
-                    # if have_LCS_data:
-                    #     print("LCS Data: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
+
                     spike_data = df_cell.Spikes[protocol]["spikes"]
                     # print("    checking measure in protocol: ", measure)
                     if (
@@ -3670,7 +3744,7 @@ class Functions:
 
                             CP(
                                 "r",
-                                f"Missing lowest current spike data in spikes dictionary: {cell_id_full:s} {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
+                                f"Missing lowest current spike data in spikes dictionary: {cell_id:s} {protocol:s}, {df_cell.Spikes[protocol].keys()!s}",
                             )
                             value = np.nan
                         self.add_measure(protocol, measure, value=value)
@@ -3698,7 +3772,7 @@ class Functions:
                                 print("LCS has: ", df_cell.Spikes[protocol]["LowestCurrentSpike"])
                                 AHP_trough_V = np.nan
                                 raise ValueError(
-                                    f"AHP_trough_V not found in LCS data: {cell_id_full:s}  {df_cell.Spikes[protocol]['LowestCurrentSpike'].keys()!s}"
+                                    f"AHP_trough_V not found in LCS data: {cell_id:s}  {df_cell.Spikes[protocol]['LowestCurrentSpike'].keys()!s}"
                                 )
                         else:
                             AHP_trough_V = np.nan
