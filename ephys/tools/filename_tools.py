@@ -192,7 +192,7 @@ def get_pickle_filename_from_row(selected: pd.Series, mode="IVs", map_cell_name:
         cell_type = "unknown"
     else:
         cell_type = selected.cell_type
-    print("cell type prioer to map: ", cell_type)
+    print("cell type prior to mapping to standard types: ", cell_type)
     if map_cell_name:
         cell_type = map_cell_types.map_cell_type(cell_type)
     print("cell type after map: ", cell_type, map_cell_name)
@@ -622,8 +622,8 @@ def get_cell_pkl_filename(experiment: dict, df: pd.DataFrame, cell_id: str, data
                 datapath2 = Path(
                     experiment["analyzeddatapath"], experiment["directory"], celltype, cname2
                 )
-                CP("m", f"get_cell_pkl_filename: Trying IVs datapath2: {datapath2!s}")
-                CP("m", f"get_cell_pkl_filename exists: {datapath2.is_file()}")
+                CP("g", f"get_cell_pkl_filename: Trying IVs datapath2: {datapath2!s}")
+                CP("g", f"get_cell_pkl_filename exists: {datapath2.is_file()}")
             case "maps":  # file location and name are different
                 pathstr, datestr, slicestr, cellstr = get_path_date_slice_cell(cell_id)
                 pklame = f"{datestr:s}~{slicestr:s}~{cellstr:s}.pkl"
