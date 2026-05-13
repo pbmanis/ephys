@@ -458,7 +458,7 @@ class DataTables:
         self.table.itemDoubleClicked.connect(functools.partial(self.on_double_click, self.table))
         self.table.clicked.connect(functools.partial(self.on_single_click, self.table))
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
-        self.update_assembled_data()
+        self.update_assembled_datatable()
 
         self.DS_table_manager = data_summary_table.TableManager(
             parent=self,
@@ -1951,7 +1951,7 @@ class DataTables:
             FUNCS.textappend(f"Assembled data columns: {self.assembleddata.columns!s}")
             self.status_bar_message(f"Assembled data loaded with {len(self.assembleddata.index):d} entries", color="cyan")
             try:
-                self.update_assembled_data()
+                self.update_assembled_datatable()
             except:
                 FUNCS.textappend(f"Error updating assembled data file ")
                 self.status_bar_message(f"Error updating assembled data table", color="red")
@@ -1962,7 +1962,7 @@ class DataTables:
             self.status_bar_message(f"Error loading assembled data file: {self.assembledfile!s}", color="red")
 
 
-    def update_assembled_data(self):
+    def update_assembled_datatable(self):
         if self.table_manager is not None and self.assembleddata is not None:
             self.table_manager.build_table(
                 self.assembleddata, mode="scan", QtCore=QtCore, QtGui=QtGui
