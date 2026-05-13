@@ -82,6 +82,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
     # print(d2['cell_id'])
     longid = re.compile(r"(?P<date>\d{4}\.\d{2}\.\d{2}_000)/slice_(?P<sn>\d{3})/cell_(?P<cn>\d{3})")
     shortid = re.compile(r"(?P<date>\d{4}\.\d{2}\.\d{2}_000)_S(?P<sn>\d{1,3})C(?P<cn>\d{1,3})")
+    
     def re_id(row):
         cell_id = row['cell_id']
         m = re.match(longid, cell_id)
@@ -90,6 +91,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
         if n:
             row['cell_id'] = cell_idn
         return row
+    
     d1 = d1.apply(re_id, axis=1)
     for cell_id in d1["cell_id"]:
         # continue
