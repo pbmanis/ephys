@@ -31,6 +31,8 @@ from ephys.gui import data_table_functions
 from ephys.plotters import psi_functions as PSIF
 from ephys.tools import fitting, utilities
 from ephys.tools import categorize_ages
+import ephys.tools.check_inclusions_exclusions as CIE
+from ephys.tools.check_df_for_cells_trap import check_df_for_cells_trap
 
 PP = pprint.PrettyPrinter()
 
@@ -803,7 +805,7 @@ class PlotSpikeInfo(QObject):
                 dodge=self.experiment["dodge"][hue_category],
                 # clip_on=False,
             )
-        # ax.set_ylim(self.experiment['ylims']['default'][yname])
+        ax.set_ylim(self.experiment['ylims']['default'][yname])
         angle = 45
         ha = "right"
         if publication_plot_mode:
@@ -1201,15 +1203,17 @@ class PlotSpikeInfo(QObject):
         local_measures = measures.copy()
         print("local_measures: ", local_measures)
         print("representation: ", representation)
-
+        rs_scale = self.experiment.get("Rs_scale", 1e-6)
+        max_rs = self.experiment.get("maximum_access_resistance", 1e8)
+        select_limits = [0, max_rs*rs_scale]
         if representation in ["bestRs", "mean"]:
-            max_rs = self.experiment.get("maximum_access_resistance", 1e8)
+
             df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
                 parameters=local_measures,
                 select_by="Rs",
-                select_limits=[0, max_rs],
+                select_limits=select_limits,
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
@@ -3000,128 +3004,6 @@ class PlotSpikeInfo(QObject):
         # return True if any instances were found, False otherwise
         return len(instances) > 0
 
-    def check_include_exclude(self, df):
-        # Note that prior to this step, excluded IVs may have been analyzed
-        # so that the pdf and pkl files are present. If the analysis was updated,
-        # then the files *may* represent the updated analysis, but there may still be some
-        # excluded IVs on the disk.
-        # Note: this is tricky, as we may also have 'included' partial datasets
-        # Included IVs should *always* take precedence over the exclusion rules,
-        # as they will have partial data that is being "rescued" and should NOT be excluded.
-        # for the same cell and protocol!
-
-        if self.experiment["excludeIVs"] is None or len(self.experiment["excludeIVs"]) == 0:
-            return df
-        re_check_all = re.compile(r"All", re.IGNORECASE)
-        re_day = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})$")
-        re_slice = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})$")
-        re_slicecell = re.compile(
-            r"(\d{4})\.(\d{2})\.(\d{2})\_(\d{3})\/slice_(\d{3})\/cell_(\d{3})$"
-        )
-        # get slice and cell nubmers
-        re_slicecell2 = re.compile(
-            r"^(?P<year>\d{4})\.(?P<month>\d{2})\.(?P<day>\d{2})\_(?P<dayno>\d{3})\/slice_(?P<sliceno>\d{3})\/cell_(?P<cellno>\d{3})$"
-        )
-        if self.experiment["includeIVs"] is not None:
-            includes = list(self.experiment["includeIVs"].keys())
-        else:
-            includes = []
-
-        CP("c", "Parsing/checking excluded and included IV datasets (noise, etc)")
-
-        for filename, key in self.experiment["excludeIVs"].items():
-            # so we should test for inclusion here first, for a cell and it's protocols.
-            # includes are always fully specified day/slice/cell names, with protocols.
-            # includes always take precedence. Note that the analysis will have already excluded the
-            # protocols in the exclude list, so we can skip those here.
-            if filename in includes:
-                FUNCS.textappend(
-                    # "c",
-                    f"   Preprocess_data: {filename:s} is in inclusion list (which takes precedence), so it will not be excluded.",
-                )
-                continue
-            # everything after this relates only to exclusion by day, slice, or cell.
-            fparts = Path(filename).parts
-            fn = str(Path(*fparts[-3:]))
-            # print(fn)
-            # raise ValueError("Stop here")
-
-            if len(fparts) > 3:
-                fnpath = str(Path(*fparts[:-3]))  # just day/slice/cell
-            else:
-                fnpath = None  # no leading path
-            reason = key["reason"]
-            protocols = key["protocols"]
-            # includes will ALWAYS be fully specified day/slice/cell names, with protocols.
-
-            # print("   Preprocess_data: Checking exclude for listed exclusion ", filename)
-            dropped = False
-
-            if re_day.match(fn) is not None:  # specified a day, not a cell:
-                df.drop(df.loc[df.cell_id.str.startswith(fn)].index, inplace=True)
-                FUNCS.textappend(
-                    # "r",
-                    f"   Preprocess_data: dropped DAY {fn:s} from analysis, reason = {reason:s}",
-                )
-                dropped = True
-            elif re_slice.match(fn) is not None:  # specified day and slice
-                fns = re_slice.match(fn)
-                df.drop(df.loc[df.cell_id.str.startswith(fns)].index, inplace=True)
-                FUNCS.textappend(
-                    # "r",
-                    f"   Preprocess_data: dropped SLICE {fn:s} from analysis, reason = {reason:s}",
-                )
-                dropped = True
-            elif re_slicecell.match(fn) is not None:  # specified day, slice and cell
-                fnc = re_slicecell2.match(fn)
-                # generate an id with 1 number for the slice and 1 for the cell,
-                # test variations with _ between S and C as well
-                fn1 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}C{int(fnc['cellno']):1d}"
-                fn1a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):1d}_C{int(fnc['cellno']):1d}"
-                fn2 = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}C{int(fnc['cellno']):02d}"
-                fn2a = f"{fnc['year']:s}.{fnc['month']:s}.{fnc['day']:s}_{fnc['dayno']:s}_S{int(fnc['sliceno']):02d}_C{int(fnc['cellno']):02d}"
-                fns = [fn1, fn1a, fn2, fn2a]
-                # print(df.cell_id.unique())
-                dropped = False
-                for i, f in enumerate(fns):
-                    if fnpath is not None:
-                        fns[i] = str(Path(fnpath, f))  # add back the leading path
-                    if not df.loc[df.cell_id == fns[i]].empty:
-                        if self.check_list_contained(["all"], protocols):
-                            df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
-                            FUNCS.textappend(
-                                "r",
-                                f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
-                            )
-                            dropped = True
-                        # otherwise, the excluded protocols were NOT analyzed in the first place, so we can continue
-                        # df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
-                        # CP(
-                        #     "m",
-                        #     f"   Preprocess_data: dropped CELL {fns[i]:s} from analysis, reason = {reason:s}",
-                        # )
-                        # dropped = True
-                    elif not dropped:
-                        pass
-                        # FUNCS.textappend(
-                        #     # "y",
-                        #     f"   Preprocess_data: CELL {fns[i]:s} not found in data set (may already be excluded by prior analysis)",
-                        # )
-            elif not dropped:
-                FUNCS.textappend(
-                    # "y",
-                    f"   Preprocess_data: {filename:s} not dropped, but was found in exclusion list",
-                )
-            else:
-                FUNCS.textappend(
-                    # "y",
-                    f"   Preprocess_data: No exclusions found for {filename:s}"
-                )
-            # if fn == "2023.09.11_000/slice_001/cell_001":
-            #     print("Dropped: ", dropped)
-            #     raise ValueError("Dropped: ", dropped)
-
-        return df
 
     def preprocess_data(self, df, experiment):
         pd.options.mode.copy_on_write = True
@@ -3155,7 +3037,7 @@ class PlotSpikeInfo(QObject):
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
             print("   (These values are from the metadata for the cells)")
 
-        #  ******************************************************************************
+        check_df_for_cells_trap(df, experiment)
         CP("c", "\n   Preprocess_data: Groups and cells PRIOR to exclusions: ")
         df = df.apply(PSIF.clean_sex_column, axis=1)
         df = df.apply(PSIF.clean_rin, experiment=self.experiment, axis=1)
@@ -3167,7 +3049,10 @@ class PlotSpikeInfo(QObject):
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
         # print("2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        df = df.apply(categorize_ages.categorize_ages, age_categories=self.experiment['age_categories'], axis=1)
+        if 'age_categories' in self.experiment.keys():
+            df = df.apply(categorize_ages.categorize_ages, age_categories=self.experiment['age_categories'], axis=1)
+            df = df.apply(categorize_ages.numeric_age, axis=1)
+
         df["FIRate"] = df.apply(self.get_fi_rate, axis=1)
         df["Group"] = df["Group"].astype("str")
         if "FIMax_4" not in df.columns:
@@ -3179,20 +3064,20 @@ class PlotSpikeInfo(QObject):
         else:
             df = df.apply(PSIF.adjust_AP_thr_V, experiment=self.experiment, axis=1)
         if "AHP_trough_V" not in df.columns:
-            df = np.nan
+            df["AHP_trough_V"] = np.nan
         else:
             df = df.apply(
                 PSIF.adjust_AHP_trough_V, experiment=self.experiment, axis=1
             )
 
         if "AHP_depth_V" not in df.columns:
-            df["AHP_depth_V"] = {}
+            df["AHP_depth_V"] = np.nan
         df = df.apply(PSIF.adjust_AHP_depth_V, experiment=self.experiment, axis=1)
 
         if "AHP_depth_measure" not in df.columns:
             df["AHP_depth_measure"] = "None"
         if "AHP_relative_depth_V" not in df.columns:
-            df["AHP_relative_depth_V"] = {}
+            df["AHP_relative_depth_V"] = np.nan
         df = df.apply(PSIF.compute_AHP_relative_depth, axis=1)
         df = df.apply(PSIF.compute_AHP_trough_time, axis=1)
         # print("preprocessing : df cols: ", df.columns)
@@ -3235,17 +3120,16 @@ class PlotSpikeInfo(QObject):
         FUNCS.textappend(
             f"           Preprocess_data: # Groups found after dropping 'nan' groups: "
             + f"{df.Group.unique()!s}"
-            + f"{len(df.Group.unique()):d}"
+            + f" # groups = {len(df.Group.unique()):d}"
         )
 
-        df = df.apply(categorize_ages.numeric_age, axis=1)
         df['shortdate'] = {}
         df = df.apply(PSIF.make_datetime_date, axis=1)
         df = df.apply(self.flag_date, axis=1)
 
         # Now make sure the excluded IV data is removed from the dataset and that included
         # datasets are properly included.
-        df = self.check_include_exclude(df)
+        df = CIE.check_include_exclude(df, experiment=self.experiment)
         # raise ValueError("Stop here 2")
         # gu = df.Group.unique()
         # print("   Preprocess_data: Groups and cells after exclusions: ")
