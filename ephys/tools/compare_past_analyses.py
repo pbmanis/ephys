@@ -78,9 +78,23 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
 
     if flags.verbose:
         print(f"{'='*80:s}")
+    # print(d1['cell_id'])
+    # print(d2['cell_id'])
+    longid = re.compile(r"(?P<date>\d{4}\.\d{2}\.\d{2}_000)/slice_(?P<sn>\d{3})/cell_(?P<cn>\d{3})")
+    shortid = re.compile(r"(?P<date>\d{4}\.\d{2}\.\d{2}_000)_S(?P<sn>\d{1,3})C(?P<cn>\d{1,3})")
+    def re_id(row):
+        cell_id = row['cell_id']
+        m = re.match(longid, cell_id)
+        n = re.match(shortid, cell_id)
+        cell_idn = f"{n.group('date')}/slice_{int(n.group('sn')):03d}/cell_{int(n.group('cn')):03d}" if n else cell_id
+        if n:
+            row['cell_id'] = cell_idn
+        return row
+    d1 = d1.apply(re_id, axis=1)
     for cell_id in d1["cell_id"]:
-        # if cell_id != "2023.01.23_000_S1C1":
-        #     continue
+        # continue
+        # if not re.match(r"\d{4}\.\d{2}\.\d{2}_000/slice_\d{3}/cell_\d{3}", cell_id):
+        #     cell_id = 
         row1 = d1[d1["cell_id"] == cell_id]
         row2 = d2[d2["cell_id"] == cell_id]
         if len(row1) == 0 or len(row2) == 0:
@@ -116,7 +130,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                         diff_measures.add(col)
                         CP("y", f"        protocols_used: {val1} vs {val2}")
                     continue
-                print("col:, ", col, "val1: ", val1, type(val1), "val2: ", val2, type(val2))
+                # print("col:, ", col, "val1: ", val1, type(val1), "val2: ", val2, type(val2))
 
                 # convert strings of numbers or lists to np arrays
                 if isinstance(val1, str) or isinstance(val2, str):
@@ -240,7 +254,7 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
                                 CP("m", f"    taum = 1: {row1['taum']}\n           2: {row2['taum']}")
                         # print(f"         Age Group: ", row1["age_category"], " vs ", row2["age_category"])
 
-        # print summary
+
     if flags.summary:
         CP("b", f"\n{'='*40}\nSummary of differences between datasets:\n{'='*40}")
         print(f"    {fn1}  (n1={len(set(d1['cell_id']))}), vs {fn2}  (n2={len(set(d2['cell_id']))})")
@@ -255,8 +269,8 @@ def compare_analyses(compare_type: str, files_1: Union[str, Path] = None, files_
         else:
             CP("g", f"    No cells missing in file 2 that are present in file 1.")
 
-        if check_verbose(flags, col, skip):
-            CP("y", f"    Cells with differences: {diff_cells}\n")
+        # if check_verbose(flags, d2.columns, skip):
+        #     CP("y", f"    Cells with differences: {diff_cells}\n")
         print(
             f"    Total cells with differences: {len(diff_cells)}, cells with no differences: {len(set(d1['cell_id']).union(set(d2['cell_id']))) - len(diff_cells)}"
         )
