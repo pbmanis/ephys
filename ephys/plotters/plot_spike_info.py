@@ -357,10 +357,8 @@ def set_ylims(experiment):
     if experiment is not None and "ylims" in experiment.keys():
         ylims = {}
         # the key may be a list of cell types all with the same limits
-        # CP("r", "setting ylims for cell types")
         for limit_group, values in experiment["ylims"].items():
             for ct in experiment["ylims"][limit_group]["celltypes"]:
-                # print("ct: ", ct)
                 if ct not in ylims.keys():
                     ylims[ct] = values
                 else:
@@ -370,12 +368,10 @@ def set_ylims(experiment):
         return ylims
     else:
         # get the table defaults
-        # import ephys.plotters.default_ylims as DY
         if experiment is None:  # may happen on startup
             ylims = [0, 1]
         else:
             ylims = experiment["ylims"]["default"]
-        # ylims = DY.get_default_ylims()
         return ylims
 
 
@@ -628,6 +624,50 @@ class PlotSpikeInfo(QObject):
                 row[data] = np.nan
         return row
 
+    def plot_out_of_bounds_markers(
+        self,
+        df,
+        xname: str,
+        yname: str,
+        logx: bool,
+        logx_base: float,
+        xlims: tuple,
+        plot_order: list,
+        plot_colors: dict,
+        hue_category: str,
+        hue_order: list,
+        hue_palette: dict,
+        out_of_bounds_markers: str,
+        dodge: float,
+        enable_picking: bool,
+        ax: mpl.axes,
+    ):
+        # put "out of bounds markers" on the plot at the top and bottom of the axes
+        ymax = ax.get_ylim()
+        df_outbounds = df[df[yname] > ymax[1]]
+        df_outbounds[yname] = ymax[1] + 0.025 * (ymax[1] - ymax[0])
+
+        sns.stripplot(
+            x=xname,
+            y=yname,
+            hue=hue_category,
+            data=df_outbounds,
+            order=plot_order,
+            hue_order=hue_order,
+            marker=out_of_bounds_markers,
+            dodge=dodge,
+            size=plot_colors["symbol_size"],  # marker_size,
+            edgecolor=plot_colors["symbol_edge_color"],
+            linewidth=plot_colors["symbol_edge_width"],
+            jitter=self.experiment["plot_colors"]["jitter"],
+            alpha=1.0,
+            ax=ax,
+            palette=self.experiment["plot_colors"]["symbol_colors"],
+            picker=enable_picking,
+            zorder=100,
+            clip_on=False,
+        )
+
     def bar_pts(
         self,
         df,
@@ -662,13 +702,10 @@ class PlotSpikeInfo(QObject):
             df_x = df[df["cell_type"] == celltype].copy(deep=True)
         else:
             df_x = df.copy(deep=True)
-        # # print("dfx type 1: ", type(df_x))
-        # CP("y", f"# cells of type: {celltype}:  {len(df_x)}")
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
 
         if plot_colors is None:  # set to defaults
             raise ValueError("Must set plot colors in the configuration file")
-        # df_x.dropna(subset=[groups], inplace=True)  # drop anything unassigned
         df_x[yname] = df_x[yname].astype(float)  # make sure values to be plotted are proper floats
         if df_x[yname].isnull().values.all(axis=0):
             return None
@@ -713,8 +750,6 @@ class PlotSpikeInfo(QObject):
                 if expression in hue_order:
                     hue_order.remove(expression)
 
-        out_of_bounds_markers = "^"  #  for h in hue_order]
-
         # must use scatterplot if you want to use picking.
         if enable_picking:
 
@@ -758,31 +793,24 @@ class PlotSpikeInfo(QObject):
                 zorder=100,
                 clip_on=True,
             )
-            # put "out of bounds markers" on the plot at the top and bottom of the axes
-            ymax = ax.get_ylim()
-            df_outbounds = df_x[df_x[yname] > ymax[1]]
-            df_outbounds[yname] = ymax[1] + 0.025 * (ymax[1] - ymax[0])
-
-            sns.stripplot(
-                x=xname,
-                y=yname,
-                hue=hue_category,
-                data=df_outbounds,
-                order=plot_order,
-                hue_order=hue_order,
-                marker=out_of_bounds_markers,
-                dodge=dodge,
-                size=plot_colors["symbol_size"],  # marker_size,
-                edgecolor=plot_colors["symbol_edge_color"],
-                linewidth=plot_colors["symbol_edge_width"],
-                jitter=self.experiment["plot_colors"]["jitter"],
-                alpha=1.0,
-                ax=ax,
-                palette=self.experiment["plot_colors"]["symbol_colors"],
-                picker=enable_picking,
-                zorder=100,
-                clip_on=False,
-            )
+        out_of_bounds_markers = "^"
+        self.plot_out_of_bounds_markers(
+            df,
+            xname=xname,
+            yname=yname,
+            logx=False,
+            logx_base=10,
+            xlims=None,
+            plot_order=plot_order,
+            plot_colors=plot_colors,
+            hue_category=hue_category,
+            hue_order=hue_order,
+            hue_palette=hue_palette,
+            out_of_bounds_markers=out_of_bounds_markers,
+            dodge=dodge,
+            enable_picking=enable_picking,
+            ax=ax,
+        )
 
         if not all(np.isnan(df_x[yname])):
             df_x = df_x.dropna(subset=[yname])
@@ -805,7 +833,15 @@ class PlotSpikeInfo(QObject):
                 dodge=self.experiment["dodge"][hue_category],
                 # clip_on=False,
             )
-        ax.set_ylim(self.experiment['ylims']['default'][yname])
+        ylims = self.experiment.get("ylims", {}).get("default", {}).get(yname, None)
+        if ylims is not None and yname.endswith("_bestRs"):
+            ysname = yname.replace("_bestRs", "")
+            ylims = self.experiment.get("ylims", {}).get("default", {}).get(ysname, ylims)
+        if ylims is not None:
+            raise ValueError(
+                f"ylims for {yname} are set in the configuration file, but should be set in the 'ylims' entry under the specific cell type or 'default' entry. Please check the configuration file."
+            )
+
         angle = 45
         ha = "right"
         if publication_plot_mode:
@@ -831,7 +867,6 @@ class PlotSpikeInfo(QObject):
             picker_func = Picker(
                 space=2, data=df_x.copy(deep=True), axis=ax
             )  # create a new instance of the picker class
-            # print("Set PICKER data")
         else:
             picker_func = None
         return picker_func
@@ -861,7 +896,7 @@ class PlotSpikeInfo(QObject):
         else:
             return np.nan
 
-    def flag_date(self, row): 
+    def flag_date(self, row):
         if row.shortdate >= after_parsed:
             row.SR = 1
         else:
@@ -958,7 +993,7 @@ class PlotSpikeInfo(QObject):
         rsa = np.mean(row["CNeut"])
         row["CNeut"] = rsa
         return row
-    
+
     def remove_nans(self, row, measure):
         if isinstance(row[measure], list):
             m = [x for x in row[measure]]  #  if not pd.isnull(x)]
@@ -1027,7 +1062,7 @@ class PlotSpikeInfo(QObject):
             "maxHillSlope",
             "I_maxHillSlope",
         ]
-  
+
         df = SAD.populate_columns(
             df,
             configuration=self.experiment,
@@ -1053,12 +1088,12 @@ class PlotSpikeInfo(QObject):
         df = df.reindex(columns=df.columns.union(ensure_cols))
         df_R = df[required_columns]
         select_by = "Rs"
-    
+
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
         if "Rs" in df_R.columns:
             df_R = df_R.apply(self.average_rs, axis=1)
-    
+
         if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_cneut, axis=1)
         if "AP_peak_V" in df_R.columns:
@@ -1169,6 +1204,30 @@ class PlotSpikeInfo(QObject):
             PH.nice_plot(plot_grid.axdict[ax], direction="outward", ticklength=3, position=-0.03)
         return plot_grid, letters, plabels, cols, nrows
 
+    def get_x_scaling_info(self, x_name: str):
+        """get_x_scaling_info Read config info to get
+        x scale information for plot - esp. for log
+        plots.
+        The default return is a linear scale. 
+        If x_measure is specified, the function looks in the experiment configuration
+        for an entry under "xlims" for that measure, and if found, returns the
+        dictionary values regarding how to implement the log scale.
+
+        """
+        x_log_scale = False
+        x_log_base = 10
+        x_log_limits = None
+        if x_name is None:
+            raise ValueError("x_name must be specified to get x scaling info")
+        xlim_data = self.experiment.get("xlims", None)
+        if xlim_data is not None:
+            xlim_info = xlim_data.get(x_name, None)
+            if xlim_info is not None:
+                x_log_limits = xlim_info.get("range", None)
+                x_log_scale = xlim_info.get("scale", False)
+                x_log_base = xlim_info.get("log_base", 10)
+        return x_log_limits, x_log_scale, x_log_base
+
     def compute_calculated_measures(self, df, measures, representation):
         """compute_calculated_measures : From the list of measures, compute
         the calculated measures that are not in the original data set.
@@ -1205,7 +1264,7 @@ class PlotSpikeInfo(QObject):
         print("representation: ", representation)
         rs_scale = self.experiment.get("Rs_scale", 1e-6)
         max_rs = self.experiment.get("maximum_access_resistance", 1e8)
-        select_limits = [0, max_rs*rs_scale]
+        select_limits = [0, max_rs * rs_scale]
         if representation in ["bestRs", "mean"]:
 
             df = SAD.get_best_and_mean(
@@ -1217,7 +1276,7 @@ class PlotSpikeInfo(QObject):
             )
             for i, m in enumerate(measures):
                 local_measures[i] = f"{m:s}_{representation:s}"
-  
+
         # calculated measures based on primary measures
         for icol, measure in enumerate(local_measures):
             # CP("r", f"{icol:3d}:  Measure: {measure:s}")
@@ -1233,8 +1292,12 @@ class PlotSpikeInfo(QObject):
                     # CP("m", "ap peak v computation")
                     if measure not in df.columns:
                         df[measure] = {}
-                    df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [self.experiment["junction_potential"]]*len(df)
-                case str(measure) if "AP_peak_V_re_threshold_bestRs" in measure:  # height is diff from ap thr to peak ap
+                    df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [
+                        self.experiment["junction_potential"]
+                    ] * len(df)
+                case str(measure) if (
+                    "AP_peak_V_re_threshold_bestRs" in measure
+                ):  # height is diff from ap thr to peak ap
                     # CP("m", f"   > matched {measure:s}")
                     if measure not in df.columns:
                         df[measure] = {}
@@ -1258,11 +1321,10 @@ class PlotSpikeInfo(QObject):
 
         return df, local_measures
 
-    def _categorical_figures(self,
-            parent_figure, df, xname, data_class, local_measures, plabels):
-        """_categorical_figures: If parent_figure is not None, 
-        we assume that the figure and axes have already been created, 
-        and we just need to plot into the existing axes. 
+    def _categorical_figures(self, parent_figure, df, xname, data_class, local_measures, plabels):
+        """_categorical_figures: If parent_figure is not None,
+        we assume that the figure and axes have already been created,
+        and we just need to plot into the existing axes.
         If parent_figure is None, then we create a new figure and axes for plotting.
         """
         if parent_figure is None:
@@ -1283,7 +1345,7 @@ class PlotSpikeInfo(QObject):
                 letters = plabels
             nrows = len(self.experiment["celltypes"])
         return P, letters, plabels, nrows, cols
-    
+
     def summary_plot_ephys_parameters_categorical(
         self,
         df_in: pd.DataFrame,
@@ -1300,7 +1362,7 @@ class PlotSpikeInfo(QObject):
         enable_picking=False,
         parent_figure=None,
     ):
-        """summary_plot_ephys_parameters_categorical 
+        """summary_plot_ephys_parameters_categorical
         Plot the measures using a categorical variable on x
 
         Parameters
@@ -1380,7 +1442,7 @@ class PlotSpikeInfo(QObject):
                 CP("c", f"Warning: measure name had duplicate _bestRs suffix, renamed to {measure}")
             if measure.endswith("_bestRs"):
                 CP("c", f"Warning: measure name had _bestRs suffix")
-                                
+
             if plotable_measures is not None and measure not in plotable_measures:
                 CP("y", f"Skipping measure {measure:s} as it is not in the plotable_measures list.")
                 continue
@@ -1391,7 +1453,7 @@ class PlotSpikeInfo(QObject):
 
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
-                    
+
                     axp = P.axdict.get(letters[axind], None)
                     if axp is None:
                         axp = P.axdict[f"{letters[i]:s}{icol+1:d}"]
@@ -1407,8 +1469,10 @@ class PlotSpikeInfo(QObject):
                     if measure not in df.columns:
                         raise ValueError(f"Missing measure: {measure}\nin Columns: {df.columns!s}")
                     if measure.startswith("RMP"):  # put the assumed JP on the plot.
-                        raise ValueError("RMP measures should have been adjusted for JP in compute_calculated_measures.")
-                    
+                        raise ValueError(
+                            "RMP measures should have been adjusted for JP in compute_calculated_measures."
+                        )
+
                     picker_func = self.create_one_plot_categorical(
                         data=df,
                         xname=xname,
@@ -1446,7 +1510,10 @@ class PlotSpikeInfo(QObject):
                 if x_measure not in self.ylims[ycell]:
                     x_measure = measure
                     if x_measure not in self.ylims[ycell]:
-                        CP("r", f"Measure not in y_lims['{ycell}'] in config file - cannot plot! {x_measure:s} from {measure:s}")
+                        CP(
+                            "r",
+                            f"Measure not in y_lims['{ycell}'] in config file - cannot plot! {x_measure:s} from {measure:s}",
+                        )
                         print(f"ylims['{ycell}']: ", self.ylims[ycell].keys())
                         for k in self.ylims[ycell].keys():
                             print(f"    {k:>30s} : {self.ylims[ycell][k]}")
@@ -1545,7 +1612,7 @@ class PlotSpikeInfo(QObject):
         publication_plot_mode: bool = False,
         parent_figure=None,
     ):
-        """summary_plot_ephys_parameters_continuous 
+        """summary_plot_ephys_parameters_continuous
         Create a time-continuous (not grouped) plot of the measures.
 
 
@@ -1562,7 +1629,7 @@ class PlotSpikeInfo(QObject):
         plot_colors : list, optional
             colors for plots, by default None
         xname : str, optional
-            _description_, by default ""
+            x axis category or variable, by default ""
         logx : bool, optional
             time axis is log (True) or linear (False), by default False
         xlims : tuple, optional
@@ -1584,7 +1651,12 @@ class PlotSpikeInfo(QObject):
         tuple (matplotlib.figure.Figure, dict)
             matplotlib figure and dictionary of picker functions
         """
+        CP(
+            "c",
+            f"summary_plot_ephys_parameters_continuous: measures: {measures}, hue_category: {hue_category}, plot_order: {plot_order}, logx: {logx}, xlims: {xlims}, representation: {representation}",
+        )
         axes = None
+        out_of_bounds_markers = "^"  #  for h in hue_order]
         df = df_in.copy(deep=True)  # don't modify the incoming array as we make changes here.
         picker_funcs = {}
         if parent_figure is None:
@@ -1606,11 +1678,11 @@ class PlotSpikeInfo(QObject):
         df = df.apply(categorize_ages.numeric_age, axis=1)
         if "max_age" in self.experiment.keys():
             df = df[(df.Age >= 0) & (df.Age <= self.experiment["max_age"])]
-        df['shortdate'] = {}
+        df["shortdate"] = {}
         df = df.apply(PSIF.make_datetime_date, axis=1)
         df = df.apply(self.flag_date, axis=1)
-        # df.dropna(subset=["age"], inplace=True)
         df = self.rescale_values(df)
+
         if representation in ["bestRs", "mean"]:
             df = SAD.get_best_and_mean(
                 df,
@@ -1634,6 +1706,17 @@ class PlotSpikeInfo(QObject):
                 tf = self.transforms[measure]
             else:
                 tf = None
+            x_log_limits, x_log_scale, x_log_base = self.get_x_scaling_info(
+                x_name=xname,
+            )
+            CP("y", f"xname: {xname}  log: {logx}, x_log_scale: {x_log_scale}, x_log_base: {x_log_base}")
+            if not logx and x_log_scale:
+                CP(
+                    "y",
+                    "Warning: logx is False but x_log_scale is True in config file. Plotting on log scale.",
+                )
+                logx = True
+
             if nrows > 1:
                 for i, celltype in enumerate(self.experiment["celltypes"]):
                     if axes is None:
@@ -1656,10 +1739,12 @@ class PlotSpikeInfo(QObject):
                         yname=measure,
                         ax=axp,
                         celltype=celltype,
-                        logx=False,
+                        logx=logx,
+                        logx_base=x_log_base,
+                        xlim=xlims,
                         ylims=self.ylims[ycell][x_measure],
+                        enable_picking=enable_picking,
                         transform=tf,
-                        xlims=None,
                     )
                     picker_funcs[axp] = picker_func  # each axis has different data...
                     if celltype != self.experiment["celltypes"][-1]:
@@ -1699,18 +1784,21 @@ class PlotSpikeInfo(QObject):
 
                 picker_func = self.create_one_plot_continuous(
                     data=df,
-                    xname="age",
+                    xname=xname,
                     yname=measure,
                     ax=axp,
                     celltype=self.experiment["celltypes"][0],
-                    logx=logx,
                     ylims=self.ylims,
-                    xlims=xlims,
+                    logx=logx,
+                    logx_base=x_log_base,
+                    xlims=x_log_limits,
                     transform=tf,
                     regplot=True,
+                    enable_picking=enable_picking,
                 )
 
                 picker_funcs[axp] = picker_func
+
                 self.relabel_xaxes(axp)
                 self.relabel_yaxes(axp, measure=measure)
                 if publication_plot_mode:
@@ -1789,17 +1877,19 @@ class PlotSpikeInfo(QObject):
     def create_one_plot_continuous(
         self,
         data,
-        xname,
-        yname,
-        ax,
+        xname: str,
+        yname: str,
+        ax: mpl.axis,
         celltype: str,
         edgecolor="k",
         logx=False,
+        logx_base: int = 10,
         ylims=None,
         xlims=None,
         yscale=1,
         transform=None,
         regplot: bool = False,
+        enable_picking: bool = False,
     ):
         """create_one_plot create one plot for a cell type
 
@@ -1821,6 +1911,12 @@ class PlotSpikeInfo(QObject):
             Picker function to use
         logx : bool, optional
             Use log scale on x axis, by default False
+        xlims: tuple, optional
+            limits for x axis, by default None
+        ylims: tuple, optional
+            limits for y axis, by default None
+        transform: function, optional
+            axis transform
         """
         if celltype != "all":
             dfp = data[data["cell_type"] == celltype]
@@ -1829,50 +1925,106 @@ class PlotSpikeInfo(QObject):
         dfp[yname] = dfp[yname] * yscale
         if transform is not None:
             dfp[yname] = dfp[yname].apply(transform, axis=1)
+        # print("logx: ", logx, "logx_base: ", logx_base, xlims)
+        # if logx:
+        #     ax.set_xscale("log", base=logx_base)
+        #     ax.set_xlim(xlims)
+        dfp_x = dfp.dropna(subset=[xname, yname], inplace=False)
+        # print(xname, yname, "logx: ", logx, "logx_base: ", logx_base, "xlims: ", xlims)
+        # print(dfp_x.columns)
+        # print("xname: ", xname, "yname: ", yname)
+        if xname == 'age_category':
+            x_name = 'age'
+        # for i, row in enumerate(dfp_x.itertuples()):
+        #     print(f"   {i:d} {row.cell_id:s}   {x_name:s}:" )#  {row[x_name][0]:.3g}  {yname:s}: {row[yname][0]:.3g}")
         if regplot:
             sns.regplot(
-                data=dfp,
-                x=xname,
+                data=dfp_x,
+                x=x_name,
                 y=yname,
                 ax=ax,
                 logx=logx,
                 scatter_kws={"s": 4, "edgecolor": edgecolor, "facecolor": "k", "alpha": 0.8},
                 line_kws={"color": "b"},
             )
-            model = statsmodels.api.OLS.from_formula(
-                f"{yname:s} ~ {xname:s}", data=dfp, cov_type="robust"
-            )
-            results = model.fit()
-            # results.fvalue is the F statistic
-            # the f_pvalue is the p of the F statistic
-            # These compare the null (slope = 0) to the fit to the data (slope != 0)
-            r2 = r"$r^2$"
-            if results.f_pvalue < 0.001:
-                fp = f"{results.f_pvalue:.3e}"
-            elif results.f_pvalue < 0.05:
-                fp = f"{results.f_pvalue:.3f}"
-            else:
-                fp = f"{results.f_pvalue:.2f}"
-            stat_text = f"{r2:s}={results.rsquared:.3f} F={results.fvalue:.2f} p={fp:s}"
-            stat_text += f"\nd.f.={int(results.df_resid):d},{int(results.df_model):d}"
-            ax.text(
-                0.02,
-                1.00,
-                stat_text,
-                transform=ax.transAxes,
-                ha="left",
-                va="top",
-                fontsize="x-small",
-                color="k",
-            )
+            print("\nafter regplot: ", ax.get_xlim())
+            if logx:
+                ax.set_xscale("log", base=logx_base)
+            ax.set_xlim(xlims)
+
+            if not dfp_x.empty:  # don't try this without data.
+                model = statsmodels.api.OLS.from_formula(
+                    f"{yname:s} ~ {xname:s}", data=dfp_x, cov_type="robust"
+                )
+                results = model.fit()
+                # results.fvalue is the F statistic
+                # the f_pvalue is the p of the F statistic
+                # These compare the null (slope = 0) to the fit to the data (slope != 0)
+                r2 = r"$r^2$"
+                if results.f_pvalue < 0.001:
+                    fp = f"{results.f_pvalue:.3e}"
+                elif results.f_pvalue < 0.05:
+                    fp = f"{results.f_pvalue:.3f}"
+                else:
+                    fp = f"{results.f_pvalue:.2f}"
+                stat_text = f"{r2:s}={results.rsquared:.3f} F={results.fvalue:.2f} p={fp:s}"
+                stat_text += f"\nd.f.={int(results.df_resid):d},{int(results.df_model):d}"
+                ax.text(
+                    0.02,
+                    1.00,
+                    stat_text,
+                    transform=ax.transAxes,
+                    ha="left",
+                    va="top",
+                    fontsize="x-small",
+                    color="k",
+                )
 
         else:
-            ax.scatter(x=dfp[xname], y=dfp[yname], c="b", s=4, picker=True)
-
+            ax.scatter(x=dfp_x[xname], y=dfp_x[yname], c="b", s=4, picker=True)
+        if xname == 'age':
+            xa = "age_category"
+        else:
+            xa = xname
+        hue_category = xa
+        if hue_category in [None, "None"]:
+            hue_category = xname
+        hue_palette = self.experiment["hue_palette"][hue_category]
+        hue_order = self.experiment["plot_order"][hue_category]
+        plot_order = hue_order
+        plot_colors = self.experiment['plot_colors']
+        plot_colors_list = self.experiment['plot_colors']['symbol_colors']
+        dodge = self.experiment["dodge"][xname]
+        out_of_bounds_markers = self.experiment.get("out_of_bounds_markers", "^")
+        x_log_limits, x_log_scale, x_log_base = self.get_x_scaling_info(
+            x_name=xname
+        )
+        self.plot_out_of_bounds_markers(
+            dfp_x,
+            xname=xname,
+            yname=yname,
+            logx=logx,
+            logx_base=x_log_base,
+            xlims=x_log_limits,
+            plot_order=plot_order,
+            plot_colors=plot_colors,  # the dict, 
+            hue_category=hue_category,
+            hue_order=hue_order,
+            hue_palette=hue_palette,
+            out_of_bounds_markers=out_of_bounds_markers,
+            dodge=dodge,
+            enable_picking=enable_picking,
+            ax=ax,
+        )
         if yname.endswith("_bestRs") or yname.endswith("_mean"):
             yname = "_".join([*yname.split("_")[:-1]])  # reassemble without the trailing label
         self.relabel_yaxes(ax, measure=yname)
-        self.relabel_xaxes(ax)
+        # print("xlims: ", xlims, "ax.get_xlim(): ", ax.get_xlim())
+        # if xlims is not None:
+        #     ax.set_xlim(xlims)
+        #     print("after setting xlims: ", ax.get_xlim())
+        if not dfp_x.empty:
+            self.relabel_xaxes(ax)
         if ylims is not None:  # make sure we have some limits
             ax.set_ylim(ylims[celltype][yname])
             # for lim in ylims.keys():  # may be "limits1", etc.
@@ -1881,11 +2033,7 @@ class PlotSpikeInfo(QObject):
             #     ):  # check the list of cell types in the limit group
             #         if yname in ylims[lim].keys():  # check the list of measures in the limit group
             #             ax.set_ylim(ylims[lim][yname])  # finally...
-        print("xlims: ", xlims)
-        if xlims is not None:
-            ax.set_xlim(xlims)
-        else:
-            ax.set_xlim(0, 600)
+
         # PH.do_talbotTicks(ax,axes='x', density=(0.2, 2))
         picker_func = Picker()
         # picker_func.set_data(dfp.copy(deep=True), axis=ax)
@@ -2651,8 +2799,11 @@ class PlotSpikeInfo(QObject):
 
         if len(groups_in_data) == 1 and group_by == "age_category":  # apply new grouping
             # df_clean[group_by] = df_clean.apply(self.rename_group, group_by=group_by, axis=1)
-            df_clean = df_clean.apply(categorize_ages.categorize_ages, 
-                                      age_categories=self.experiment['age_categories'], axis=1)
+            df_clean = df_clean.apply(
+                categorize_ages.categorize_ages,
+                age_categories=self.experiment["age_categories"],
+                axis=1,
+            )
         # print("2: ", df_clean[measure])
         if len(groups_in_data) < 2:  # need 2 groups to compare
             nodatatext = "\n".join(
@@ -3004,7 +3155,6 @@ class PlotSpikeInfo(QObject):
         # return True if any instances were found, False otherwise
         return len(instances) > 0
 
-
     def preprocess_data(self, df, experiment):
         pd.options.mode.copy_on_write = True
         """preprocess_data Clean up the data, add columns, etc., apply junction potential corrections, etc."""
@@ -3031,9 +3181,7 @@ class PlotSpikeInfo(QObject):
                 df["cell_expression"] = "ND"
             else:
                 df["cell_expression"] = ""
-                df = df.apply(
-                    self.get_cell_expression, df_summary=df_summary, axis=1
-                )
+                df = df.apply(self.get_cell_expression, df_summary=df_summary, axis=1)
             print("   Preprocess_data: cell expression values: ", df.cell_expression.unique())
             print("   (These values are from the metadata for the cells)")
 
@@ -3049,8 +3197,12 @@ class PlotSpikeInfo(QObject):
         if "age_category" not in df.columns:
             df["age_category"] = np.nan
         # print("2 ", df['cell_id'].eq("Rig2(MRK)/L23_intrinsic/2024.10.22_000_S0C0").any())
-        if 'age_categories' in self.experiment.keys():
-            df = df.apply(categorize_ages.categorize_ages, age_categories=self.experiment['age_categories'], axis=1)
+        if "age_categories" in self.experiment.keys():
+            df = df.apply(
+                categorize_ages.categorize_ages,
+                age_categories=self.experiment["age_categories"],
+                axis=1,
+            )
             df = df.apply(categorize_ages.numeric_age, axis=1)
 
         df["FIRate"] = df.apply(self.get_fi_rate, axis=1)
@@ -3066,9 +3218,7 @@ class PlotSpikeInfo(QObject):
         if "AHP_trough_V" not in df.columns:
             df["AHP_trough_V"] = np.nan
         else:
-            df = df.apply(
-                PSIF.adjust_AHP_trough_V, experiment=self.experiment, axis=1
-            )
+            df = df.apply(PSIF.adjust_AHP_trough_V, experiment=self.experiment, axis=1)
 
         if "AHP_depth_V" not in df.columns:
             df["AHP_depth_V"] = np.nan
@@ -3123,7 +3273,7 @@ class PlotSpikeInfo(QObject):
             + f" # groups = {len(df.Group.unique()):d}"
         )
 
-        df['shortdate'] = {}
+        df["shortdate"] = {}
         df = df.apply(PSIF.make_datetime_date, axis=1)
         df = df.apply(self.flag_date, axis=1)
 
