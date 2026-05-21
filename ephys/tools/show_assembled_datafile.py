@@ -84,7 +84,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
 
     # handle the case where there is no data, which may be indicated by a single [nan]
     # representing all protocols:
-    verbose = True
+    verbose = False
     verbose_selects = ["Rs"]  #  [None] # ["RMP", "taum", "Rs", "Rin"]
     if verbose:
         print(f"\n{'='*80:s}")
@@ -209,7 +209,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     taums = []  # taum values for CC_taum protocol
     if verbose and (select_by in verbose_selects):
         print("prots: ", prots)
-    print("valid measures: ", valid_measures)
+        print("valid measures: ", valid_measures)
     for i, prot in enumerate(prots):
         if i not in valid_measures:  # no measure for this protocol, so move on
             if verbose:
@@ -275,12 +275,14 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if len(iprots) == 1:
         if isinstance(values, list):
             values = values[0]
-        CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
+        if verbose:
+            CP.cprint("g", f"{parameter:s} Single value: {prots[iprots[0]]!s}, value={values}")
         row[parameter + f"_best{select_by:s}"] = values
         used_prots = f"{parameter:s}:{str(Path(prots[iprots[0]]).name):s}"
     elif len(iprots) > 1:
         used = ",".join([str(Path(prots[i]).name) for i in equal_mins])
-        CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
+        if verbose:
+            CP.cprint("c", f"{parameter:s} Multiple averaged from: {used!s}")
         row[parameter + f"_best{select_by:s}"] = np.mean(values)
         used_prots = f"{parameter:s}:{used:s}"
 
