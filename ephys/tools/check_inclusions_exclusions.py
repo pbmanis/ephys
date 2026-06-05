@@ -41,7 +41,7 @@ from pylibrary.tools import cprint as CP
 from ephys.gui import data_table_functions
 FUNCS = data_table_functions.Functions()  # only needed for check_include_exclude.
 
-def check_list_contained(self, A: list, B: list):
+def check_list_contained(A: list, B: list):
     # check if any of values in A are in B.
     A_str = " ".join(map(str, A))
     B_str = " ".join(map(str, B))
@@ -355,7 +355,7 @@ def check_include_exclude(df: pd.DataFrame, experiment: dict, verbose: bool = Fa
                 if fnpath is not None:
                     fns[i] = str(Path(fnpath, f))  # add back the leading path
                 if not df.loc[df.cell_id == fns[i]].empty:
-                    if check_list_contained(["all"], protocols):
+                    if check_list_contained(A=["all"], B=protocols):
                         df.drop(df.loc[df.cell_id == fns[i]].index, inplace=True)
                         FUNCS.textappend(
                             "r",
