@@ -45,6 +45,7 @@ def main():
     parser.add_argument("--show", action="store_true", help="Show the recording parameters in the most recent file")
     parser.add_argument("--date", type=str, help="Date of the recording parameters file to show (format: YYYY.MM.DD)")
     parser.add_argument("--cellid", type=str, help="Cell ID to show recording parameters for (only used with --show)")
+    parser.add_argument("-m", "--max_rows", type=int, default=20, help="Maximum number of rows to display when using --show (default: 2000)")
     args = parser.parse_args()
     experiment_name = args.experiment_name
 
@@ -76,9 +77,17 @@ def main():
             pd.set_option("display.width", None)  # Don't wrap lines
             pd.set_option("display.max_rows", None)  # Show all rows
             n = 20  # Repeat headers every 20 rows
-            max_rows = 20
+            max_rows = args.max_rows
+            ndisplayed = 0
             for i in range(0, max_rows, n):
+                if i > len(df_recording_pars):
+                    print(f"No more rows to display. Total rows: {len(df_recording_pars)}")
+                    ndisplayed += i-1
+                    break
                 print("\n",df_recording_pars.iloc[i : i + n])
+                ndisplayed += n
+            if i < len(df_recording_pars):
+                print(f"\nDisplayed {ndisplayed} rows out of {len(df_recording_pars)}. Use -m to adjust max_rows in the code.")
         exit()
 
     # go through the datasummary file and extract the relevant parameters for each cell and protocol.
