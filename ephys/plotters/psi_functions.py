@@ -234,7 +234,7 @@ def adjust_AHP_depth_V(row, experiment: dict):
 def compute_ap_peak_v_re_threshold(row, measure: str):
     verbose: bool=True  # flag for debugging print statements
     if verbose:
-        CP("r", f"Computing AP peak v re thr\n    row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
+        CP("m", f"Computing AP peak v re thr\n    row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
     if isinstance(row.AP_peak_V, list):
         ap_pkv = float(row.AP_peak_V[0])
     else:
@@ -248,7 +248,7 @@ def compute_ap_peak_v_re_threshold(row, measure: str):
     else:
         row[measure] = ap_pkv - ap_thr
     if verbose:
-        CP("r", f"Computed {measure:s}: {row[measure]}")
+        CP("m", f"Computed {measure:s}: {row[measure]}")
     return row
 
 def compute_ap_depth_v(row, measure: str):
