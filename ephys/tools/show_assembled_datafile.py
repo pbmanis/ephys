@@ -399,7 +399,7 @@ def populate_columns(
     # print("datap: ", datap.head())
     for p in parameters:
         if p not in datap.columns:
-            CP.cprint("c", f"ADDING {p:s} to data columns")
+            CP.cprint("c", f"show_assembled_datafile: populate_columns: ADDING {p:s} to data columns")
             datap[p] = np.nan
         m_str = p + "_mean"  # add the mean column for this parameter
         if m_str not in datap.columns:
@@ -599,8 +599,10 @@ parameters = [
     "AHP_trough_T",
     "AHP_depth_V",
     "AP_peak_V",
+    "AP_peak_V_re_threshold",
     "dvdt_rising",
     "dvdt_falling",
+    "dvdt_ratio",
     "tauh",
     "Gh",
     "used_protocols",
@@ -645,8 +647,8 @@ def get_best_and_mean(
     """
     # print("get_best_and_mean: 1", data["Group"].unique())
     # check_values(data, halt=False)
-    print("Rs values: ", data["Rs"])
-    print("Rs limits: ", select_limits)
+    # print("Rs values: ", data["Rs"])
+    # print("Rs limits: ", select_limits)
 
     data = populate_columns(
         data,
@@ -716,6 +718,7 @@ def show_best_rs_data(data, experiment, select_limits):
         "dvdt_rising_bestRs",
         "dvdt_rising_mean",
         "AP_peak_V_bestRs",
+        "AP_peak_V_re_threshold_bestRs"
     ]
     f, ax = mpl.subplots(1, len(yx), figsize=(12, 6))
     for i, axi in enumerate(ax):
