@@ -24,6 +24,7 @@ import statsmodels.api as sa
 import statsmodels.formula.api as sfa
 from pylibrary.tools import cprint
 from pyqtgraph.Qt.QtCore import QObject
+from pyqtgraph.Qt import QtGui, QtWidgets
 from statsmodels.stats.multitest import multipletests
 
 import ephys.tools.show_assembled_datafile as SAD
@@ -90,13 +91,23 @@ def concurrent_data_plotting(
     if mode == "categorical":
         df = plot_spikes.preload(filename)
         if group_by in ["nan"] or group_by not in list(experiment["hue_palette"].keys()):
+            # print ("making message")
+            # msg = pg.Qt.QtWidgets.QMessageBox()
+            # infotext = f"Valid group was not selected for categorical plot."
+            # title = f"<center>Valid Group not set</center>"
+            # text = "{}<br><br>{}".format(title, "\n".join(textwrap.wrap(infotext, width=120)))
+            # msg.setText(text)
+            # msg.setFont(QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Normal))
+            # # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
+            # msg.exec()
+
             if status_bar_message is None:
                 raise ValueError("group_by is null: please select group for categorical plot")
             else:
                 status_bar_message.showMessage(
                     "Please select a group for the categorical plot", color="red"
                 )
-                raise ValueError("group_by is null: please select group for categorical plot")
+            raise ValueError("group_by is null: please select group for categorical plot")
         # print("Plot order: ", experiment["plot_order"], "grouped as: ", group_by)
         # print(experiment["plot_order"][group_by])
         (
@@ -1019,19 +1030,49 @@ class PlotSpikeInfo(QObject):
         df: pd.DataFrame,
         xname: str,
         measures: str,
+        measure_type: str,
         hue_category: str,
         filename: Union[str, None] = None,
     ):
         """export_r _summary_
         Export  the relevant data to a csv file to read in R for further analysis.
+        This routine assumes that the data have already been analyzed and are in the dataframe,
+        and that the measure_type (e.g. "bestRs") has already been applied to the measures in the dataframe.
+
+        Params
+        ------
+        df: pandas dataframe with the data to export
+        xname: name of the column to use as x variable in R
+        measures: list of measure names to export (without the measure_type suffix)
+        measure_type: suffix to add to the measure names to specify which version of the measures to export (e.g. "bestRs", "mean", or "")
+        hue_category: name of the column to use as hue variable in R, or None if no hue variable
+        filename: name of the csv file to export to, or None to not export  
+
+
         """
-        print("Export_r: Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures)
+        CP("g", f"\n\n ======  exporting for R ======")
+        print("measure type: ", measure_type)
+        assert measure_type in ["bestRs", "mean", "", None]
+        print("Export_r: Xname: ", xname, "hue_category: ", hue_category, "measures: ", measures, "representation: ", measure_type)
         if hue_category is None or hue_category == "None":
             columns = [xname]
         else:
             columns = [xname, hue_category]
+        if measure_type is not None and measure_type != "":
+            for m in measures:
+                if m.endswith("_" + measure_type):
+                    continue
+                else:
+                    m = m + "_" + measure_type
+                    # update the measures list with the new name
+                    measures[measures.index(m.replace("_" + measure_type, ""))] = m
+        
         columns.extend(measures)
-
+        # check that there are values
+        # print("Checking that measures have values in df: ", measures)
+        # print("AP_peak_V_re_threshold after call\n: ", df["AP_peak_V_re_threshold_bestRs"])
+        # print("AP thr V: ", df["AP_thr_V_bestRs"])
+        # raise ValueError("debug")
         parameters = [
             "Rs",
             "Rin",
@@ -1063,30 +1104,33 @@ class PlotSpikeInfo(QObject):
             "I_maxHillSlope",
         ]
 
-        df = SAD.populate_columns(
-            df,
-            configuration=self.experiment,
-            select_by="Rs",
-            parameters=parameters,
-        )
-        # if "animal identifier" in columns:
-        #     df.rename(columns={"animal identifier": "animal_identifier"}, errors="raise")
-        ensure_cols = [
-            "Group",
+        # df = SAD.populate_columns(
+        #     df,
+        #     configuration=self.experiment,
+        #     select_by="Rs",
+        #     parameters=parameters,
+        # )
+        # this list has all the columns that we need besides the analyzed data
+        ensure_columns = [
+            "cell_id",
+            "Subject",
             "age",
             "sex",
             "cell_type",
             "cell_expression",
-            "cell_id",
+            "Group",
             "Rs",
             "CNeut",
-            "Subject",
             "protocols",
             "used_protocols",
         ]
-        required_columns = list(set(columns + ensure_cols))
-        df = df.reindex(columns=df.columns.union(ensure_cols))
+
+        required_columns = list(dict.fromkeys(ensure_columns + columns))
+        print("All required columns for R export: ", required_columns)
+        df = df.reindex(columns=df.columns.union(ensure_columns))
         df_R = df[required_columns]
+        
+        # define the selection criteria:
         select_by = "Rs"
 
         if "Subject" not in df.columns:
@@ -1096,19 +1140,25 @@ class PlotSpikeInfo(QObject):
 
         if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_cneut, axis=1)
-        if "AP_peak_V" in df_R.columns:
-            df_R = df_R.apply(self.compute_peak_v_re_threshold, axis=1)
+        # if "AP_peak_V_re_threshold" in df_R.columns:
+        # #     print("Checking columns: ", df_R.columns)
+        # #     print("check for AP_peak_V_re_threshold: ", df_R["AP_peak_V_re_threshold_bestRs"])
+        # #     # raise ValueError("debug")
+        #     df_R = df_R.apply(PSIF.compute_peak_v_re_threshold, axis=1)
+        # double check
         for meas in measures:
             if not meas in df_R.columns:
-                print(f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
-                raise ValueError(f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
-        df_R = SAD.perform_selection(
-            select_by=select_by,
-            select_limits=[0, self.experiment.get("maximum_access_resistance", 1e8)],
-            data=df_R,
-            parameters=measures,
-            configuration=self.experiment,
-        )
+                CP("r", f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
+                raise ValueError(f"Required measure {meas!s} not found in df_R columns: {df_R.columns}")
+        # print(f"peak v 1: df_R {measure_type}", df_R[f"AP_peak_V_re_threshold_{measure_type}"])
+        # df_R = SAD.perform_selection(
+        #     select_by=select_by,
+        #     select_limits=[0, self.experiment.get("maximum_access_resistance", 1e8)],
+        #     data=df_R,
+        #     parameters=measures,
+        #     configuration=self.experiment,
+        # )
+        # print(f"df_R['AP_peak_V_re_threshold_{measure_type}'] after selection: ", df_R[f"AP_peak_V_re_threshold_{measure_type}"])
         if filename is not None:
             fn = self.get_stats_dir()
             filename = Path(fn, filename)
@@ -1255,8 +1305,9 @@ class PlotSpikeInfo(QObject):
             voltage, by default False
         Returns
         -------
-        _type_
-            _description_
+        pd.DataFrame, list
+             The dataframe with the calculated measures added, and the updated list of measures including the   
+            calculated measures.
         """
         df = self.rescale_values(df)
         local_measures = measures.copy()
@@ -1295,14 +1346,7 @@ class PlotSpikeInfo(QObject):
                     df["AP_peak_V_bestRs"] = df["AP_peak_V_bestRs"] + [
                         self.experiment["junction_potential"]
                     ] * len(df)
-                case str(measure) if (
-                    "AP_peak_V_re_threshold_bestRs" in measure
-                ):  # height is diff from ap thr to peak ap
-                    # CP("m", f"   > matched {measure:s}")
-                    if measure not in df.columns:
-                        df[measure] = {}
-                    df = df.apply(PSIF.compute_ap_peak_v_re_threshold, measure=measure, axis=1)
-
+                
                 case str(measure) if "AP_depth_V_bestRs" in measure:
                     # CP("m", f"   > matched {measure:s}")
                     # print("AP depth measure: ", measure)
@@ -1318,7 +1362,19 @@ class PlotSpikeInfo(QObject):
                 case _:
                     # CP("r", f"Failed to match measure =  {measure}")
                     pass
+            if "AP_peak_V_re_threshold" in measure:
+            # height is diff from ap thr to peak ap
+                CP("c", f"   > matched {measure:s}")
 
+                if measure not in df.columns:
+                    df[measure] = {}
+                    print("Added column for ", measure)
+                df = df.apply(PSIF.compute_ap_peak_v_re_threshold, measure=measure, axis=1)
+                print("AP peak V re threshold: ", df[measure])
+    
+        # print("Measures after calculation: ", local_measures)
+        # print(df["AP_peak_V_re_threshold_bestRs"])
+        # raise ValueError("Debugging: check AP_peak_V_re_threshold")
         return df, local_measures
 
     def _categorical_figures(self, parent_figure, df, xname, data_class, local_measures, plabels):
@@ -1426,7 +1482,9 @@ class PlotSpikeInfo(QObject):
         df, local_measures = self.compute_calculated_measures(
             df, measures=measures, representation=representation
         )
-
+        print("Measures after calculation: ", local_measures)
+        # print("peak re thr: ", df["AP_peak_V_re_threshold_bestRs"])
+        # raise ValueError("Debugging: check measures after calculation")
         P, letters, plabels, nrows, cols = self._categorical_figures(
             parent_figure=parent_figure,
             df=df,
@@ -1440,8 +1498,8 @@ class PlotSpikeInfo(QObject):
             if measure.endswith("_bestRs_bestRs"):
                 measure = "_".join([*measure.split("_")[:-1]])
                 CP("c", f"Warning: measure name had duplicate _bestRs suffix, renamed to {measure}")
-            if measure.endswith("_bestRs"):
-                CP("c", f"Warning: measure name had _bestRs suffix")
+            # if measure.endswith("_bestRs"):
+            #     CP("c", f"Warning: measure name had _bestRs suffix: {measure}")
 
             if plotable_measures is not None and measure not in plotable_measures:
                 CP("y", f"Skipping measure {measure:s} as it is not in the plotable_measures list.")
@@ -1592,8 +1650,12 @@ class PlotSpikeInfo(QObject):
             )  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
-        print(f"Exporting measures: {measures}\n   to file: {fn!s}")
-        self.export_r(df=df, xname=xname, measures=measures, hue_category=hue_category, filename=fn)
+        print(f"Exporting measures to file: {measures}\n   File: {fn!s}")
+        print(f"Dataframe columns: {df.columns!s}")
+        # print("AP_peak_V_re_threshold_bestRs before call:\n", df["AP_peak_V_re_threshold_bestRs"])
+        # print("AP_peak_V_re_threshold_mean before call:\n", df["AP_peak_V_re_threshold_mean"])
+        # print("AP_peak_V_re_threshold before call:\n", df["AP_peak_V_re_threshold"])
+        self.export_r(df=df, xname=xname, measures=measures, measure_type=representation, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
     def summary_plot_ephys_parameters_continuous(
