@@ -1075,6 +1075,7 @@ class DataTables:
                                         mode="categorical",
                                         title="Spike Data",
                                         data_class="spike_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot Spike Data continuous":
@@ -1083,6 +1084,7 @@ class DataTables:
                                         mode="continuous",
                                         title="Spike Data",
                                         data_class="spike_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
                                 case "Plot Spike Data combined":
                                     self.spike_plot = self.generate_summary_plot(
@@ -1090,6 +1092,7 @@ class DataTables:
                                         mode="combined",
                                         title="Spike Data",
                                         data_class="spike_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot Rmtau Data categorical":
@@ -1098,6 +1101,7 @@ class DataTables:
                                         mode="categorical",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot Rmtau Data continuous":
@@ -1106,6 +1110,7 @@ class DataTables:
                                         mode="continuous",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
                                 case "Plot Rmtau Data combined":
                                     self.rmtau_plot = self.generate_summary_plot(
@@ -1113,6 +1118,7 @@ class DataTables:
                                         mode="combined",
                                         title="RmTau Data",
                                         data_class="rmtau_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot FIData Data categorical":
@@ -1121,6 +1127,7 @@ class DataTables:
                                         mode="categorical",
                                         title="FI Data",
                                         data_class="FI_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot FIData Data continuous":
@@ -1129,6 +1136,7 @@ class DataTables:
                                         mode="continuous",
                                         title="FI Data",
                                         data_class="FI_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
                                 case "Plot FIData Data combined":
                                     self.fidata_plot = self.generate_summary_plot(
@@ -1136,6 +1144,7 @@ class DataTables:
                                         mode="combined",
                                         title="FI Data",
                                         data_class="FI_measures",
+                                        status_bar_message = self.status_bar_message
                                     )
 
                                 case "Plot FICurves":
@@ -1626,6 +1635,7 @@ class DataTables:
         mode: str = "categorical",
         data_class: str = "spike_measures",
         title: str = "My Title",
+        status_bar_message: object = None,
 
     ):
         # data class must be in the experiment configuration file, top level keys.
