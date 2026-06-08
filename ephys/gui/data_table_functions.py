@@ -2590,6 +2590,11 @@ class Functions:
                     & (dotindex_data.protocol == str(Path(protocol).name))
                 ]
                 print("Index row: ", index_row)
+
+                # if len(index_row) == 0 and cell in self.experiment["exclude_IVs"]:
+                #     if protocol in self.experiment["exclude_IVs"][cell]['protocols']:
+                #         CP("y", f"    >>>> Protocol {protocol:s} is excluded for cell {cell:s} according to the exclude_IVs list, skipping.")
+                #         continue
                 if len(index_row) == 0:
                     CP("y", f"    >>>> No index data found for cell: {cell:s} day_slice_cell: {day_slice_cell:s}, protocol: {protocol:s}")
                     with DR.acq4_reader.acq4_reader(fullpath, "MultiClamp1.ma") as AR:
