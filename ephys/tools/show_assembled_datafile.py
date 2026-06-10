@@ -435,7 +435,8 @@ def populate_columns(
         datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
         datap = datap.copy()
         assert isinstance(datap["CC_taum"], pd.Series)
-    datap["used_protocols"] = ""
+    if "used_protocols" not in datap.columns:
+        datap["used_protocols"] = ""
     if age_cats is not None:
         datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
     return datap
