@@ -1,17 +1,20 @@
 """Compare spike shape data across analysis runs"""
 
 import argparse
-from datetime import datetime
 import re
 from ast import literal_eval
+from datetime import datetime
 from pathlib import Path
 from typing import Union
 
+import colorama
 import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
-from ephys.tools import get_configuration
+import tabulate
 from pylibrary.tools import cprint
+
+from ephys.tools import get_configuration
 
 expts = get_configuration.get_configuration("config/experiments.cfg")
 
@@ -74,10 +77,31 @@ def clean_string(val):
     return val
 
 
-def compare_one_measure(
-    row1,
-    row2,
-    col: str,
+def _scalar_rs(row: pd.Series) -> float:
+    """Extract a scalar Rs value from a row Series.
+
+    Claude fixed 2026-06-10: handles both 'Rs_bestRs' and 'Rs' column names, duplicate
+    index entries (which return a Series instead of a scalar), and non-numeric values.
+    """
+    for key in ("Rs_bestRs", "Rs"):
+        if key not in row.index:
+            continue
+        val = row[key]
+        if isinstance(val, pd.Series):
+            val = val.iloc[0]  # duplicate column names produce a Series; take first
+        if val is None or (isinstance(val, float) and np.isnan(val)):
+            return np.nan
+        try:
+            return float(clean_string(val))
+        except (TypeError, ValueError):
+            pass
+    return np.nan
+
+
+def compare_measures(
+    measures: list,
+    row1: pd.Series,
+    row2: pd.Series,
     cell_id: str,
     cell_id_ok: bool,
     flags: argparse.Namespace,
@@ -88,23 +112,13 @@ def compare_one_measure(
     date1: str,
     date2: str,
 ) -> tuple[set, set]:
-    val1 = row1[col]
-    val2 = row2[col]
-    if pd.isna(val1) and pd.isna(val2):
-        return diff_cells, diff_measures  # both are NaN, consider them equal for this check
-    ignore_subject = False
-    # if col == "Subject" and pd.isna(val1) or pd.isna(val2):
-    #     ignore_subject = True  # if Subject is missing in one dataset, we can't compare protocols, so skip this check
-    #     CP(
-    #         "y",
-    #         f"Cell {cell_id} has missing Subject value in one dataset, skipping protocol comparison for this cell.",
-    #     )
-    #     CP("y", f"        {date1} Subject: {val1}, {date2} Subject: {val2}")
+
+    table_data = {}
     # check if protocol list is different
-    val1 = clean_string(val1)
-    val2 = clean_string(val2)
-    if col == "protocols_used" and flags.diffprotocols:
-        if val1 != val2:
+    protocols_1 = clean_string(row1["used_protocols"])
+    protocols_2 = clean_string(row2["used_protocols"])
+    if flags.diffprotocols:
+        if protocols_1 != protocols_2:
             if cell_id_ok:
                 if verbose_flag:
                     CP(
@@ -113,169 +127,221 @@ def compare_one_measure(
                     )
                 cell_id_ok = False
             diff_cells.add(cell_id)
-            diff_measures.add(col)
-            CP("y", f"        protocols_used: {val1} vs {val2}")
-        return (
-            diff_cells,
-            diff_measures,
-        )  # skip further checks for this measure since it's just a protocol difference
+            diff_measures.add("used_protocols")
+            CP("y", f"        used_protocols: {protocols_1} vs {protocols_2}")
+        # return (
+        #     diff_cells,
+        #     diff_measures,
+        # )  # skip further checks for this measure since it's just a protocol difference
 
     # convert strings of numbers or lists to np arrays
-    if isinstance(val1, str) or isinstance(val2, str):
-        if check_verbose(flags, col, skip):
-            print(
-                "str found: col: ",
-                col,
-                "\n   val1: ",
-                val1,
-                type(val1),
-                "\n   val2: ",
-                val2,
-                type(val2),
-            )
-        val1 = convert_string_to_array(val1) if isinstance(val1, str) else val1
-        val2 = convert_string_to_array(val2) if isinstance(val2, str) else val2
-        #     if res1 is None:
-        #         res1 = re.match(re_float, val1)
-        #         val1 = f"[{res1.group(0)}]" if res1 else None  # if it's a single float, convert to list format for consistency
-        #         val1 = val1.replace("np.float64(", "").replace(")", "")
-        # if isinstance(val2, str):
-        #     val2 = val2.replace("np.float64(", "").replace(")", "")
-        #     res2 = re.match(re_list, val2)
-        #     if res2 is None:
-        #         res2 = re.match(re_float, val2)
-        #         val2 = f"[{res2.group(0)}]" if res2 else None  # if it's a single float, convert to list format for consistency
-        #         val2 = val2.replace("np.float64(", "").replace(")", "")
-        # print("After regex check: res1: ", res1, "res2: ", res2)
-        # if res1 and res2:
-        #     val1 = np.array(literal_eval(val1)) if res1 else val1
-        #     val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+    for measure in measures:
+        if measure.startswith("post_"):  # skip post current step spike counts
+            continue
+        val1 = row1[measure] if measure in row1 else None
+        val2 = row2[measure] if measure in row2 else None
 
-        #     val2 = np.array(literal_eval(val2)) if res2 else val2
-        #     val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
-        print("val1: ", type(val1), val1)
-        print("val2: ", type(val2), val2)
-        if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
-            if not np.array_equal(np.sort(val1), np.sort(val2)):
-                if cell_id_ok:
-                    if check_verbose(flags, col, skip):
-                        CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
-                        CP("y", f"         Rs: {float(row1['Rs'])} vs {float(row2['Rs'])}")
-                    cell_id_ok = False
-                diff_cells.add(cell_id)
-                diff_measures.add(col)
+        if isinstance(val1, str) or isinstance(val2, str):
+            val1 = convert_string_to_array(val1) if isinstance(val1, str) else val1
+            val2 = convert_string_to_array(val2) if isinstance(val2, str) else val2
+            print("val1: ", type(val1), val1)
+            print("val2: ", type(val2), val2)
+            if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
+                if not np.array_equal(np.sort(val1), np.sort(val2)):
+                    if cell_id_ok:
+                        if check_verbose(flags, measure, skip):
+                            CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
+                            # Claude fixed 2026-06-10: old code: float(row1['Rs']) / float(row2['Rs'])
+                            CP(
+                                "y",
+                                f"         Rs: {_scalar_rs(row1):.2f} vs {_scalar_rs(row2):.2f}",
+                            )
+                        cell_id_ok = False
+                    diff_cells.add(cell_id)
+                    diff_measures.add(measure)
 
-                try:
-                    if check_verbose(flags, col, skip):
+                    try:
+                        if check_verbose(flags, measure, skip):
+                            CP(
+                                "r",
+                                f"         {measure}: {val1} vs {val2}\n              (diff = {val1-val2})",
+                            )
+                    except Exception as e:
                         CP(
                             "r",
-                            f"         {col}: {val1} vs {val2}\n              (diff = {val1-val2})",
+                            f"         {measure}: {val1} vs {val2}\n              (diff = error: {e})",
                         )
-                except Exception as e:
-                    CP(
-                        "r",
-                        f"         {col}: {val1} vs {val2}\n              (diff = error: {e})",
-                    )
-            else:
-                if check_verbose(flags, col, skip):
-                    CP(
-                        "g",
-                        f"Cell {cell_id} {row1['age_category']} {col}: values are equal",
-                    )
-                    prot1 = row1["used_protocols"] if "used_protocols" in row1 else "unknown"
-                    prot2 = row2["used_protocols"] if "used_protocols" in row2 else "unknown"
-                    CP(
-                        "g",
-                        f"        Protocols used:\n     {date1}:  {prot1}\n     {date2}:  {prot2}",
-                    )
-
-        # print(f"   Age Group: ", row1["age_category"], " vs ", row2["age_category"])
-
-    # compare numbers, with possible NaNs
-    elif np.isnan(val1) or np.isnan(val2):
-        if isinstance(val2, str) and val2 == "nan":
-            val2 = np.nan
-        elif isinstance(val2, str):
-            val2 = float(val2)
-        # if check_verbose(flags, col, skip):
-        #     print("\nval1, val2: ", val1, val2, type(val1), type(val2))
-        if not (np.isnan(val1) and np.isnan(val2)):
-            if cell_id_ok:
-                if not col in ['dvdt_ratio_bestRs', 'AP_max_V_bestRs']:  # we know about these and they can be NaN in one analysis but not the other without it being a real difference
-                    if check_verbose(flags, col, skip):
-                        CP(
-                            "y",
-                            f"\nCell {cell_id} {row1['age_category']} has differences in {col}",
-                        )
-                        # CP("y", f"        {col}: {val1} vs {val2}")
-                        CP(
-                            "y",
-                            f"\nCell {cell_id} {row1['age_category']} has differences in {col}:\n" +
-                            f"    One value is OK and the other is NaN",
-                        )
-                cell_id_ok = False
-            diff_cells.add(cell_id)
-            diff_measures.add(col)
-            if check_verbose(flags, col, skip) and col not in ['dvdt_ratio_bestRs', 'AP_max_V_bestRs']:
-                CP("y", f"        {col}: {date1}: {val1} vs {date2}: {val2}")
-    # compare numbers/arrays
-    else:
-        # print(val1, val2)
-        # if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
-        #     print(val1, val2)
-        #     raise Exception("Debugging: stop here to check values")
-        val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
-        val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
-        if not np.allclose(val1, val2, 1e-6, equal_nan=True):
-            if col.startswith("Rs"):
-                if np.allclose(val1, 1e-6 * val2, 1e-6, equal_nan=True):
-                    if check_verbose(flags, col, skip):
+                else:
+                    if check_verbose(flags, measure, skip):
                         CP(
                             "g",
-                            f"\nCell {cell_id} {row1['age_category']} has differences in {col} but they are likely due to a unit conversion (1e6 factor)",
+                            f"Cell {cell_id} {row1['age_category']} {measure}: values are equal",
                         )
-                        CP("g", f"        {col}: {val1} vs {val2} (val2: {val2*1e-6})")
-                    val2 = val2 * 1e-6
-                    # skip to next column without marking this as a difference
-            if cell_id_ok:
-                if check_verbose(flags, col, skip):
-                    CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
-                    row1["Rs"] = clean_string(row1["Rs"])
-                    row2["Rs"] = clean_string(row2["Rs"])
-                    CP(
-                        "y",
-                        f"        Rs: {float(row1['Rs']):.2f} vs {float(row2['Rs']):.2f} close: {np.allclose(float(row1['Rs']), float(row2['Rs']), 1e-6, equal_nan=True)}",
-                    )
-                    prot1 = row1["used_protocols"] if "used_protocols" in row1 else "unknown"
-                    prot2 = row2["used_protocols"] if "used_protocols" in row2 else "unknown"
-                    CP(
-                        "y",
-                        f"        Protocols used:\n     {date1}:  {prot1}\n     {date2}:  {prot2}",
-                    )
-                    ndiff += 1
-                cell_id_ok = False
-            diff_cells.add(cell_id)
-            diff_measures.add(col)
-            if check_verbose(flags, col, skip):
-                CP("c", f"        {col}: {val1} vs {val2}")
+                        prot1 = row1["used_protocols"] if "used_protocols" in row1 else "unknown"
+                        prot2 = row2["used_protocols"] if "used_protocols" in row2 else "unknown"
+                        CP(
+                            "g",
+                            f"        Protocols used:\n     {date1}:  {prot1}\n     {date2}:  {prot2}",
+                        )
 
-            if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            # print(f"   Age Group: ", row1["age_category"], " vs ", row2["age_category"])
+
+        # compare numbers, with possible NaNs
+        # elif np.isnan(val1) or np.isnan(val2):
+        #     if isinstance(val2, str) and val2 == "nan":
+        #         val2 = np.nan
+        #     elif isinstance(val2, str):
+        #         val2 = float(val2)
+        #     # if check_verbose(flags, col, skip):
+        #     #     print("\nval1, val2: ", val1, val2, type(val1), type(val2))
+        #     if not (np.isnan(val1) and np.isnan(val2)):
+        #         if cell_id_ok:
+        #             if not measure in ['dvdt_ratio_bestRs', 'AP_max_V_bestRs']:  # we know about these and they can be NaN in one analysis but not the other without it being a real difference
+        #                 if check_verbose(flags, measure, skip):
+        #                     CP(
+        #                         "y",
+        #                         f"\nCell {cell_id} {row1['age_category']} has differences in {measure}",
+        #                     )
+        #                     # CP("y", f"        {measure}: {val1} vs {val2}")
+        #                     CP(
+        #                         "y",
+        #                         f"\nCell {cell_id} {row1['age_category']} has differences in {measure}:\n" +
+        #                         f"    One value is OK and the other is NaN",
+        #                     )
+        #             cell_id_ok = False
+        #         diff_cells.add(cell_id)
+        #         diff_measures.add(measure)
+        #         if check_verbose(flags, measure, skip) and measure not in ['dvdt_ratio_bestRs', 'AP_max_V_bestRs']:
+        #             CP("y", f"        {measure}: {date1}: {val1} vs {date2}: {val2}")
+        # compare numbers/arrays
+        else:
+            # print(val1, val2)
+            # if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
+            #     print(val1, val2)
+            #     raise Exception("Debugging: stop here to check values")
+
+            val1 = np.array([float(x) for x in val1]) if isinstance(val1, np.ndarray) else val1
+            val2 = np.array([float(x) for x in val2]) if isinstance(val2, np.ndarray) else val2
+
+            # Normalize None / pandas NA types to np.nan so np.allclose/np.isnan don't crash.
+            def _to_numeric(v):
+                if isinstance(v, np.ndarray):
+                    return v
                 try:
-                    if check_verbose(flags, col, skip):
-                        CP("y", f"             (diff = {val1-val2})")
-                except Exception as e:
-                    CP("y", f"             {col}: {val1} vs {val2} (diff = error: {e})")
-            else:
-                if check_verbose(flags, col, skip):
-                    CP("y", f"             (diff = not numeric)")
-            if check_verbose(flags, col, skip) and col.startswith("Rin"):
-                CP("m", f"    Rin = 1: {row1['Rin']}\n         2: {row2['Rin']}")
-                CP("m", f"    RMP = 1: {row1['RMP']}\n          2: {row2['RMP']}")
-                CP("m", f"    Rs = 1: {row1['Rs']}\n         2: {row2['Rs']}")
-                CP("m", f"    taum = 1: {row1['taum']}\n           2: {row2['taum']}")
+                    return np.nan if (v is None or pd.isna(v)) else float(v)
+                except (TypeError, ValueError):
+                    return np.nan
+
+            val1 = _to_numeric(val1)
+            val2 = _to_numeric(val2)
+            if not np.allclose(val1, val2, 1e-6, equal_nan=True):
+                if measure.startswith("Rs"):
+                    if np.allclose(val1, 1e-6 * val2, 1e-6, equal_nan=True):
+                        if check_verbose(flags, measure, skip):
+                            CP(
+                                "g",
+                                f"\nCell {cell_id} {row1['age_category']} has differences in {measure} but they are likely due to a unit conversion (1e6 factor)",
+                            )
+                            CP("g", f"        {measure}: {val1} vs {val2} (val2: {val2*1e-6})")
+                        val2 = val2 * 1e-6
+                        # skip to next column without marking this as a difference
+                if cell_id_ok:
+                    if check_verbose(flags, measure, skip):
+                        CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
+                        # Claude fixed 2026-06-10: removed row2.rename({'Rs': 'Rs_bestRs'}) —
+                        # normalization is now done at the start of compare_cell_data.
+                        # old code: rs1 = clean_string(row1["Rs_bestRs"]) / float(rs1) — crashed
+                        # when row1["Rs_bestRs"] returned a Series due to duplicate column names.
+                        rs1_val = _scalar_rs(row1)
+                        rs2_val = _scalar_rs(row2)
+                        CP(
+                            "y",
+                            f"        Rs: {rs1_val:.2f} vs {rs2_val:.2f} close: {np.allclose(rs1_val, rs2_val, 1e-6, equal_nan=True)}",
+                        )
+                        prot1 = row1["used_protocols"] if "used_protocols" in row1 else "unknown"
+                        prot2 = row2["used_protocols"] if "used_protocols" in row2 else "unknown"
+                        print("prot1: ", prot1)
+                        print("prot2: ", prot2)
+                        if pd.isna(prot1) or pd.isna(prot2):
+                            prot1 = prot1 if not pd.isna(prot1) else "unknown"
+                            prot2 = prot2 if not pd.isna(prot2) else "unknown"
+                            CP(
+                                "y",
+                                f"        Missing or excluded analysis, no protocols:\n     {date1}:  {prot1}\n     {date2}:  {prot2}",
+                            )
+                            continue
+                        prot1 = [p.strip() for p in prot1.split(",") if p.strip()]
+                        prot2 = [p.strip() for p in prot2.split(",") if p.strip()]
+                        # convert used protocol list to dict of measures: protocols
+                        measure_keys = [x.split(":")[0] + "_bestRs" for x in prot1]
+                        measure_vals = [x.split(":")[1] if ":" in x else "" for x in prot1]
+                        p1 = dict(zip(measure_keys, measure_vals))
+                        p1v = dict(
+                            zip(
+                                measure_keys,
+                                [row1[key] if key in row1 else "missing" for key in measure_keys],
+                            )
+                        )
+                        measure_keys = [
+                            x.split(":")[0] + "_bestRs" for x in prot2 if not x.startswith("CC")
+                        ]
+                        print(f"{date2} measure keys: ", measure_keys)
+                        measure_vals = [
+                            x.split(":")[1] if ":" in x else ""
+                            for x in prot2
+                            if not x.startswith("CC")
+                        ]
+                        p2 = dict(zip(measure_keys, measure_vals))
+                        p2v = dict(
+                            zip(
+                                measure_keys,
+                                [row2[key] if key in row2 else "missing" for key in measure_keys],
+                            )
+                        )
+                        # Combine the dictionaries into rows
+                        table_data = [
+                            [
+                                key,
+                                p1[key],
+                                p2[key],
+                                p1v[key],
+                                p2v[key],
+                                (
+                                    p1v[key] - p2v[key]
+                                    if isinstance(p1v[key], (int, float))
+                                    and isinstance(p2v[key], (int, float))
+                                    else "N/A"
+                                ),
+                            ]
+                            for key in p2 if not key.startswith('post_')
+                        ]
+
+                        # Print using a grid layout
+                        # print(tabulate.tabulate(table_data, headers=["Measure", date1, date2, f"{date1} Value", f"{date2} Value", "Difference"], tablefmt="grid"))
+                        ndiff += 1
+                    cell_id_ok = False
+                diff_cells.add(cell_id)
+                diff_measures.add(measure)
+            # if check_verbose(flags, col, skip):
+            #     CP("c", f"        {col}: {val1} vs {val2}")
+
+            # if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            #     try:
+            #         if check_verbose(flags, col, skip):
+            #             CP("y", f"             (diff = {val1-val2})")
+            #     except Exception as e:
+            #         CP("y", f"             {col}: {val1} vs {val2} (diff = error: {e})")
+            # else:
+            #     if check_verbose(flags, col, skip):
+            #         CP("y", f"             (diff = not numeric)")
+            # if check_verbose(flags, col, skip) and col.startswith("Rin"):
+            #     CP("m", f"    Rin = 1: {row1['Rin']}\n         2: {row2['Rin']}")
+            #     CP("m", f"    RMP = 1: {row1['RMP']}\n          2: {row2['RMP']}")
+            #     CP("m", f"    Rs = 1: {row1['Rs']}\n         2: {row2['Rs']}")
+            #     CP("m", f"    taum = 1: {row1['taum']}\n           2: {row2['taum']}")
             # print(f"         Age Group: ", row1["age_category"], " vs ", row2["age_category"])
 
-    return diff_cells, diff_measures
+    return diff_cells, diff_measures, table_data
 
 
 def compare_cell_data(
@@ -288,7 +354,7 @@ def compare_cell_data(
     diff_measures: set,
     date1: str,
     date2: str,
-) -> int:
+) -> tuple[int, set, set]:
     """compare_cell_data Compare the data between 2 cells in different analysis tables.
 
     Parameters
@@ -314,8 +380,9 @@ def compare_cell_data(
 
     Returns
     -------
-    int
-        Number of cells not found in both datasets.
+    tuple[int, set, set]
+        Number of cells not found in both datasets, set of cell IDs with differences,
+        set of measure names with differences.
 
     Raises
     ------
@@ -323,12 +390,24 @@ def compare_cell_data(
         Raised if a required column is not found in both datasets.
     """
 
-    not_found:int = 0
-    ndiff:int = 0
+    not_found: int = 0
+    ndiff: int = 0
+    # diff_cells and diff_measures are local per-cell sets; caller accumulates them.
+    # Old code reassigned the passed-in parameters here, then never returned them —
+    # so compare_analyses always saw empty sets and reported "no differences found".
     diff_cells = set()
     diff_measures = set()
-    # print("flags: ", flags)
 
+    # Claude fixed 2026-06-10: normalize Rs column name before extracting rows.
+    # New CSVs have "Rs" (renamed from Rs_bestRs in export_r); old CSVs may have "Rs_bestRs".
+    # Renaming after row extraction (the old approach at line ~369 below) could not affect
+    # already-extracted row Series, and also created duplicate columns when d1 already had
+    # Rs_bestRs, causing row["Rs_bestRs"] to return a Series instead of a scalar.
+    for _df in [d1, d2]:
+        if "Rs" in _df.columns and "Rs_bestRs" not in _df.columns:
+            _df.rename(columns={"Rs": "Rs_bestRs"}, inplace=True)
+
+    # match the cells in the two data sets by cell_id
     row1 = d1[d1["cell_id"] == cell_id]
     row2 = d2[d2["cell_id"] == cell_id]
     if len(row1) == 0 or len(row2) == 0:
@@ -340,46 +419,65 @@ def compare_cell_data(
         # print(f"    Cells in file 2: {set(d2['cell_id'])}")
         # raise ValueError(f"Cell {cell_id} not found in both datasets")
         not_found += 1
-        return not_found
-    row1 = row1.iloc[0]
-    row2 = row2.iloc[0]
-    cell_id_ok = True
-    for col in d1.columns:
+        return not_found, diff_cells, diff_measures
 
-        # print(col)
-        if not col.endswith("_bestRs"):
+    row1_x = row1.iloc[0]
+    row2_x = row2.iloc[0]
+    cell_id_ok = True
+    table_data = {}
+    measures = []
+    for col in d1.columns:
+        if not col.endswith("_bestRs"):  # only compare data for bestRs
             continue
         # CP("c", f"   Checking column: {col}")
-        if any(col.startswith(s) for s in skip):
+        if any(
+            col.startswith(s) for s in skip
+        ):  # skip the columns that we are not interested in comparing
             continue
-        if col not in d2.columns or col not in d1.columns:
-            # CP("y", f"Column {col} not found in both datasets")
-            if col in ["AP_max_V_bestRs", "dvdt_ratio_bestRs"]:  # we know about these
-                continue           
-            if col in d1.columns:
+        if col in [
+            "AP_max_V_bestRs",
+            "dvdt_ratio_bestRs",
+            "AP_SS_HW_bestRs",
+        ]:  # we know about these (old, recalc, other analysis)
+            continue
+        if col not in d2.columns or col not in d1.columns:  # check columns.
+            if col == "Rs_bestRs":
+                # Claude fixed 2026-06-10: normalization is now done at the top of this function
+                # (before row extraction), so no rename is needed here.
+                # old code: d1.rename(columns={"Rs": "Rs_bestRs"}, inplace=True)
+                pass
+            elif col in d1.columns:
                 CP("y", f"\nColumn {col} found in file 1: {date1} but not in file 2: {date2}")
             else:
                 CP("y", f"\nColumn {col} found in file 2: {date2} but not in file 1: {date1}")
-            # CP("y", f"\nColumns in file 1: {date1}: {set(d1.columns)}")
-            # CP("y", f"\nColumns in file 2: {date2}: {set(d2.columns)}")
             print(f"{'-'*40}")
-
+        if col not in d2.columns and col not in d1.columns:
             raise ValueError(f"Column {col} not found in both datasets.")
-        diff_cells, diff_measures = compare_one_measure(
-            row1,
-            row2,
-            col,
-            cell_id=cell_id,
-            cell_id_ok= cell_id_ok,
-            flags=flags,
-            skip=skip,
-            ndiff=ndiff,
-            diff_cells=diff_cells,
-            diff_measures=diff_measures,
-            date1=date1,
-            date2=date2,
+        measures.append(col)
+
+    diff_cells, diff_measures, table_data = compare_measures(
+        measures,
+        row1_x,
+        row2_x,
+        cell_id=cell_id,
+        cell_id_ok=cell_id_ok,
+        flags=flags,
+        skip=skip,
+        ndiff=ndiff,
+        diff_cells=diff_cells,
+        diff_measures=diff_measures,
+        date1=date1,
+        date2=date2,
+    )
+    if len(table_data) > 0:
+        print(
+            tabulate.tabulate(
+                table_data,
+                headers=["Measure", date1, date2, f"{date1} Value", f"{date2} Value", "Difference"],
+                tablefmt="grid",
+            )
         )
-    return not_found
+    return not_found, diff_cells, diff_measures
 
 
 def compare_analyses(
@@ -431,7 +529,7 @@ def compare_analyses(
     print(f"Entries in d1, d2: {len(d1)}, {len(d2)}")
     not_found = 0
     for icell, cell_id in enumerate(d1["cell_id"]):
-        not_found += compare_cell_data(
+        n, cell_diffs, measure_diffs = compare_cell_data(
             cell_id,
             d1=d1,
             d2=d2,
@@ -442,6 +540,9 @@ def compare_analyses(
             date1=date1,
             date2=date2,
         )
+        not_found += n
+        diff_cells.update(cell_diffs)
+        diff_measures.update(measure_diffs)
 
     if not_found > 0:
         CP("m", f"Total cells not found in both datasets: {not_found}")
@@ -492,8 +593,13 @@ def compare_analyses(
                 uprot1 = sorted([p for p in uprot1 if len(p) > 0])
                 uprot2 = sorted([p for p in uprot2 if len(p) > 0])
                 if set(uprot1) != set(uprot2):
-                    print(f"   Protocols 1: {uprot1 if 'used_protocols' in row1 else 'unknown'}")
-                    print(f"   Protocols 2: {uprot2 if 'used_protocols' in row2 else 'unknown'}")
+                    CP("m", f"Protocols are not matched in the two analyses!")
+                    print(
+                        f"   Protocols 1 ({date_1}): {uprot1 if 'used_protocols' in row1 else 'unknown'}"
+                    )
+                    print(
+                        f"   Protocols 2 ({date_2}): {uprot2 if 'used_protocols' in row2 else 'unknown'}"
+                    )
                 else:
                     CP("g", f"           Protocols used are the same in both analyses")
             diff_msg = {}
@@ -569,7 +675,13 @@ def compare_analyses(
     }
     if len(diff_cells) == 0:
         CP("g", f"\nNo differences found between datasets {fn1} and {fn2}!")
-    print(summary_data["n_cells_no_diffs"], "cells with no differences, out of total ", summary_data["n_cells_1"], " and ", summary_data["n_cells_2"])
+    print(
+        summary_data["n_cells_no_diffs"],
+        "cells with no differences, out of total ",
+        summary_data["n_cells_1"],
+        " and ",
+        summary_data["n_cells_2"],
+    )
     return summary_data
 
 
