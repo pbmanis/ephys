@@ -2661,7 +2661,7 @@ class Functions:
             "cell_type": df_tmp.cell_type.values[0],
             "protocol": protname,
             "important": important,
-            "protocols": list(df_cell.IV),
+            "protocols": protocols, # list(df_cell.Spikes.keys()), # claude suggested error is here (was: list(df_cell.IV),
             "sample_rate": srs,
             "delay": delay,
             "duration": duration,
