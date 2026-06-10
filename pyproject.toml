@@ -108,6 +108,7 @@ dependencies = [
     "hdf5plugin>=6.0.0",
     # "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
     # "allensdk>=0.16.3",
+    "tabulate>=0.10.0",
 ]
 
 [dependency-groups]
