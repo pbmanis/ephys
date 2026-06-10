@@ -1075,6 +1075,7 @@ class PlotSpikeInfo(QObject):
         # raise ValueError("debug")
         parameters = [
             "Rs",
+            "Rs_bestRs"
             "Rin",
             "CNeut",
             "RMP",
@@ -1111,6 +1112,8 @@ class PlotSpikeInfo(QObject):
         #     parameters=parameters,
         # )
         # this list has all the columns that we need besides the analyzed data
+        # Claude fixed 2026-06-10: use Rs_bestRs (lowest Rs protocol) instead of Rs (mean across protocols).
+        # old code used "Rs" here, then called average_rs() below which replaced it with np.nanmean(row["Rs"]).
         ensure_columns = [
             "cell_id",
             "Subject",
@@ -1119,7 +1122,7 @@ class PlotSpikeInfo(QObject):
             "cell_type",
             "cell_expression",
             "Group",
-            "Rs",
+            "Rs_bestRs",
             "CNeut",
             "protocols",
             "used_protocols",
@@ -1129,27 +1132,28 @@ class PlotSpikeInfo(QObject):
         print("All required columns for R export: ", required_columns)
         df = df.reindex(columns=df.columns.union(ensure_columns))
         df_R = df[required_columns]
-        
+
         # define the selection criteria:
         select_by = "Rs"
 
         if "Subject" not in df.columns:
             df_R = df_R.apply(self.make_subject_name, axis=1)
-        if "Rs" in df_R.columns:
-            df_R = df_R.apply(self.average_rs, axis=1)
 
         if "CNeut" in df_R.columns:
             df_R = df_R.apply(self.average_cneut, axis=1)
-        # if "AP_peak_V_re_threshold" in df_R.columns:
-        # #     print("Checking columns: ", df_R.columns)
-        # #     print("check for AP_peak_V_re_threshold: ", df_R["AP_peak_V_re_threshold_bestRs"])
-        # #     # raise ValueError("debug")
-        #     df_R = df_R.apply(PSIF.compute_peak_v_re_threshold, axis=1)
-        # double check
+
+        # double check that all required measures are present before any renaming
         for meas in measures:
             if not meas in df_R.columns:
                 CP("r", f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
                 raise ValueError(f"Required measure {meas!s} not found in df_R columns: {df_R.columns}")
+
+        # Claude fixed 2026-06-10: rename Rs_bestRs → Rs so downstream R scripts see the same column name.
+        # Must happen AFTER the measures check above, because measures may contain "Rs_bestRs".
+        # old code: if "Rs" in df_R.columns: df_R = df_R.apply(self.average_rs, axis=1)
+        if "Rs_bestRs" in df_R.columns:
+            df_R = df_R.rename(columns={"Rs_bestRs": "Rs"})
+
         # print(f"peak v 1: df_R {measure_type}", df_R[f"AP_peak_V_re_threshold_{measure_type}"])
         # df_R = SAD.perform_selection(
         #     select_by=select_by,
@@ -1317,11 +1321,13 @@ class PlotSpikeInfo(QObject):
         max_rs = self.experiment.get("maximum_access_resistance", 1e8)
         select_limits = [0, max_rs * rs_scale]
         if representation in ["bestRs", "mean"]:
-
+            # Claude fixed 2026-06-10: ensure "Rs" is always included so Rs_bestRs is computed,
+            # even when the caller's measures list contains only spike/FI/rmtau parameters.
+            params_for_selection = local_measures if "Rs" in local_measures else ["Rs"] + local_measures
             df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
-                parameters=local_measures,
+                parameters=params_for_selection,
                 select_by="Rs",
                 select_limits=select_limits,
             )
@@ -1746,10 +1752,13 @@ class PlotSpikeInfo(QObject):
         df = self.rescale_values(df)
 
         if representation in ["bestRs", "mean"]:
+            # Claude fixed 2026-06-10: same as compute_calculated_measures — ensure "Rs" is included
+            # so Rs_bestRs is computed even when measures contains only FI/rmtau parameters.
+            params_for_selection = measures if "Rs" in measures else ["Rs"] + measures
             df = SAD.get_best_and_mean(
                 df,
                 experiment=self.experiment,
-                parameters=measures,
+                parameters=params_for_selection,
                 select_by="Rs",
                 select_limits=[0, self.experiment.get("maximum_access_resistance", 1e8)],
             )
