@@ -235,8 +235,11 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
             select_value = row[select_by]
         else:
             # print("I, selectby: ", i, row[select_by])
-            if i < len(row[select_by]):
-                select_value = row[select_by][i]
+            # Claude fixed this 2026-06-10: use selector_values (range-filtered) instead of
+            # raw row[select_by][i], so protocols with Rs outside select_limits are excluded.
+            # old code: if i < len(row[select_by]): select_value = row[select_by][i]
+            if i < len(selector_values):
+                select_value = selector_values[i]  # NaN if outside select_limits
 
         value = params[i]
         if np.isnan(value):
@@ -244,10 +247,10 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         # this will be set on the first run if min_val is correctly initialized
         # print(select_by, "select_value: ", select_value, "min val: ", min_val)
         if select_value < min_val:
-            min_val = value  # set the value
+            min_val = select_value  # set the value (claude correction; old was min_val = value)
             equal_mins = [i]  # reset the list of equal minima
             iprots = [i]  # set the index of the protocol with the minimum value
-            values.append(value)  # set the value
+            values = [value]  # claude correction, old was: values.append(value)  # set the value
 
         elif select_value == min_val:
             if i not in equal_mins:
@@ -256,16 +259,20 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
                 iprots.append(i)
             # equal_mins.append(i)
             if not p.startswith("CC_taum"):
-                values.append(params[i])
+                pass  # claude says this is double append; was: values.append(params[i])
             else:
                 taums.append(params[i])
 
     if verbose and (select_by in verbose_selects):
         print("iprot, eq_mins, values, taums: ", iprots, equal_mins, values, taums)
     if len(iprots) == 0:
+        # Claude fixed 2026-06-10: row[select_by] is a list when multiple protocols exist;
+        # the old :.2f format spec crashed with TypeError for list values.
+        # old code: f"... ({row[select_by]:.2f}) ..."
+        _sel_display = f"{row[select_by]:.2f}" if isinstance(row[select_by], (float, np.float64)) else str(row[select_by])
         CP.cprint(
             "r",
-            f"No minimum value found for: {row.cell_id!s}, selector: {select_by:s} on {parameter:s} ({row[select_by]:.2f}) {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
+            f"No minimum value found for: {row.cell_id!s}, selector: {select_by:s} on {parameter:s} ({_sel_display:s}) {params!s}, {valid_measures!s}, {iprots!s}, {equal_mins!s}",
         )
         if verbose and (select_by in verbose_selects):
             print("    protocols: ", row[select_by])
@@ -435,8 +442,8 @@ def populate_columns(
         datap = datap.apply(transfer_cc_taum, excludes=excludes, axis=1)
         datap = datap.copy()
         assert isinstance(datap["CC_taum"], pd.Series)
-    if "used_protocols" not in datap.columns:
-        datap["used_protocols"] = ""
+    # if "used_protocols" not in datap.columns:
+    datap["used_protocols"] = ""
     if age_cats is not None:
         datap = datap.apply(lambda row: CatAge.categorize_ages(row, age_cats), axis=1)
     return datap
