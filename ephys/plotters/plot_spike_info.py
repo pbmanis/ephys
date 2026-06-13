@@ -1167,6 +1167,42 @@ class PlotSpikeInfo(QObject):
             fn = self.get_stats_dir()
             filename = Path(fn, filename)
             CP("g", f"Exporting analyzed data to {filename!s}")
+
+            # Round and scale columns for cleaner CSV output.
+            # Strip _bestRs suffix from column name to look up the rule.
+            _scale = {"CNeut": 1e12}  # multiply before rounding (F → pF)
+            _decimals = {  # None = cast to int
+                "Rs": 1, "Rs_bestRs": 1,
+                "CNeut": 2,
+                "RMP": 1, "Rin": 1, "taum": 1, "CC_taum": 1,
+                "tauh": 1, "tauh_bovera": 1, "Gh": 1,
+                "dvdt_rising": 1, "dvdt_falling": 1,
+                "AP_HW": 1, "AP_SS_HW": 1,
+                "AP_thr_V": 1, "AP_thr_T": 1,
+                "AHP_trough_V": 1, "AHP_depth_V": 1, "AHP_relative_depth_V": 1,
+                "AHP_trough_T": 1,
+                "AP_peak_V": 1, "AP_peak_V_re_threshold": 1,
+                "dvdt_ratio": 2,
+                "AdaptRatio": 2, "AdaptIndex": 5, "AdaptIndex2": 5,
+                "maxHillSlope": 1, "I_maxHillSlope": 3,
+                "FIMax_1": None, "FIMax_4": None,
+                "poststimulus_spikes": None, "post_spike_count": None,
+                "Post_latency": 2, "post_latency": 2,
+                "post_durations": 1,
+            }
+            df_R = df_R.copy()
+            for col in df_R.columns:
+                base = col[: -len("_bestRs")] if col.endswith("_bestRs") else col
+                if base in _scale:
+                    df_R[col] = pd.to_numeric(df_R[col], errors="coerce") * _scale[base]
+                if base in _decimals:
+                    n = _decimals[base]
+                    numeric = pd.to_numeric(df_R[col], errors="coerce")
+                    if n is None:
+                        df_R[col] = numeric.round(0).astype("Int64")
+                    else:
+                        df_R[col] = numeric.round(n)
+
             df_R.to_csv(filename, index=False)
             # now remove brackets from the csv data, then rewrite
             with open(filename, "r", encoding="utf-8") as file:
