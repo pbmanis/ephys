@@ -19,6 +19,10 @@ from ephys.ephys_analysis.analysis_common import Analysis
 from ephys.datareaders.acq4_reader import acq4_reader
 from ephys.ephys_analysis.rm_tau_analysis import RmTauAnalysis
 from ephys.ephys_analysis.spike_analysis import SpikeAnalysis
+try:
+    import ephys.ephys_analysis.spike_analysis_fast as _SAF
+except ImportError:
+    _SAF = None
 import ephys.tools.filename_tools as filename_tools
 from ephys.tools import check_inclusions_exclusions as CIE
 
@@ -932,7 +936,10 @@ class IVAnalysis(Analysis):
         self.SP.analyzeSpikes(track=track)
         if full_spike_analysis:
             print("    Analyzing spike shapes", end=" ")
-            self.SP.analyzeSpikeShape(max_spike_shape=max_spike_shape)
+            if self.experiment.get("use_fast_spike_analysis", False) and _SAF is not None:
+                _SAF.analyzeSpikeShape_fast(self.SP, max_spike_shape=max_spike_shape)
+            else:
+                self.SP.analyzeSpikeShape(max_spike_shape=max_spike_shape)
             # self.SP.analyzeSpikes_brief(mode="evoked")
             self.SP.analyzeSpikes_brief(mode="baseline")
             self.SP.analyzeSpikes_brief(mode="poststimulus")
