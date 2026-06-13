@@ -13,6 +13,11 @@ from pylibrary.tools import cprint
 from pylibrary.plotting import plothelpers as PH
 
 CP = cprint.cprint
+
+try:
+    import ephys.ephys_analysis.spike_analysis_fast as _SAF
+except ImportError:
+    _SAF = None
 nr = 0
 cell_types = ['pyramidal', 'cartwheel', 'tuberculoventral']
 
@@ -69,7 +74,7 @@ def build_protocols(cellname, df):
     pass
 
 
-def get_spont_protocol(row, prottype, pdf_pages:Union[object, None] = None):
+def get_spont_protocol(row, prottype, pdf_pages:Union[object, None] = None, experiment:Union[dict, None] = None):
     """Get the IV protocol from this dataframe example
 
     Args:
@@ -122,7 +127,10 @@ def get_spont_protocol(row, prottype, pdf_pages:Union[object, None] = None):
     )
     IVA.SP.analyzeSpikes()
     if full_spike_analysis:
-        IVA.SP.analyzeSpikeShape()
+        if experiment is not None and experiment.get("use_fast_spike_analysis", False) and _SAF is not None:
+            _SAF.analyzeSpikeShape_fast(IVA.SP)
+        else:
+            IVA.SP.analyzeSpikeShape()
         IVA.SP.analyzeSpikes_brief(mode="baseline")
         IVA.SP.analyzeSpikes_brief(mode="poststimulus")
         # self.SP.fitOne(function='fitOneOriginal')
