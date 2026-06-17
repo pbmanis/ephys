@@ -109,7 +109,7 @@ def check_remote_index_files(remote_path, daydir):
 
     # 2. Set Host Key Policy 
     # Note: AutoAddPolicy is useful for testing but not recommended for production
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
     # 3. Connect to the server
     client.connect(hostname=config["remote_ip"], port=22, username=config["username"], password=config["password"])
