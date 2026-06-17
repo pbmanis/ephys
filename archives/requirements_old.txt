@@ -10,13 +10,13 @@ mypy==1.13.0
 sphinx==8.2.3
 sphinx-automodapi
 sphinx-rtd-theme
-pytest
+pytest==9.0.3
 
 refurb==1.13.0
 jupyterlab>=4.4.0
 # plotnine>=0.9.0
 pyperclip
-pytest==7.3.1
+pytest==9.0.3==7.3.1
 gitpython
 Cython==3.0.12
 dill==0.3.8
