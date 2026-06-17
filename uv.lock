@@ -2928,8 +2928,8 @@ wheels = [
 
 [[package]]
 name = "pylibrary"
-version = "0.5.2"
-source = { git = "https://github.com/pbmanis/pylibrary#e84ca63a9f6d0c001ddffa3d075135e38e42594f" }
+version = "0.5.3"
+source = { git = "https://github.com/pbmanis/pylibrary#d0d07616da7f8eca916ffebe5915e3f0f27318cc" }
 dependencies = [
     { name = "cycler" },
     { name = "kiwisolver" },
