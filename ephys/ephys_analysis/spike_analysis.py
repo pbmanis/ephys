@@ -205,8 +205,8 @@ class SpikeAnalysis:
             Set true to get lots of print out while running - used
             mostly for debugging.
         """
-        if experiment is None:
-            raise ValueError("Experiment must be defined")
+        # if experiment is None:
+        #     raise ValueError("Experiment must be defined")
         self.experiment = experiment
         if clamps is None or threshold is None:
             raise ValueError("Spike Analysis requires defined clamps and threshold")
@@ -1230,9 +1230,11 @@ class SpikeAnalysis:
         if i_inj is None:  # use class data
             i_inj = self.analysis_summary["FI_Curve"][0]
             spike_count = self.analysis_summary["FI_Curve"][1]
-        if experiment["FI_maximum_current_by_celltype"] is not None:
+        if experiment is not None and experiment.get("FI_maximum_current_by_celltype", None) is not None:
             if cell_type in experiment["FI_maximum_current_by_celltype"].keys():
-                max_current = experiment["FI_maximum_current_by_celltype"][cell_type]*1e-9
+                max_current = experiment.get("FI_maximum_current_by_celltype", {}).get(cell_type, None)
+                if max_current is not None:
+                    max_current *= 1e-9
                 # print("cell_type: ", cell_type)
                 # print("max current is: ", max_current)
                 # print("max i_inj is: ", np.max(i_inj))

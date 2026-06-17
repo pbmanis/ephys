@@ -110,7 +110,7 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
 
     testdata  = get_testdata()
     spike_analyzer = SA.SpikeAnalysis()
-    spike_analyzer.setup(clamps = testdata, threshold=-0.030, verbose=True)
+    spike_analyzer.setup(clamps = testdata, threshold=-0.030, experiment=None, verbose=True)
     spike_analyzer.set_detector("Kalluri") # Kalluri is probably the best detector
     spike_analyzer.analyzeSpikes()
     testresult = spike_analyzer.analysis_summary
@@ -118,6 +118,7 @@ def run_FI_tester(method="FIGrowthExpBreak", plot:bool=False):
     spksh = spike_analyzer.spikeShapes
     if method != "slope":
         spike_analyzer.fitOne(
+            experiment=None,
             i_inj=testresult["FI_Curve"][0],
             spike_count=testresult["FI_Curve"][1],
             pulse_duration = spike_analyzer.analysis_summary["pulseDuration"],
