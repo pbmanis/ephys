@@ -10,7 +10,7 @@ authors = [
     {name = "Paul Manis", email = "pmanis@med.unc.edu"},
     {name = "Paul B. Manis", email = "pmanis@med.unc.edu"},
 ]
-requires-python = "==3.13.7"
+requires-python = "==3.13.8"
 readme = "README.md"
 license = "MIT"
 classifiers = [
@@ -36,7 +36,7 @@ dependencies = [
     "imreg-dft>=2.0",
     "isodate>=0.6.1",
     "jinja2>=3.1.6",
-    "jupyterlab>=4.4.0",
+    "jupyterlab>=4.5.8",
     "lmfit>=1.3.3",
     "matplotlib>=3.10.0",
     "matplotlib-scalebar>=0.8.1",
@@ -56,7 +56,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=2.2.3",
     "pandas-parallel-apply==2.2",
-    "paramiko>=2.8.1",
+    "paramiko>=5.0.0",
     "pingouin==0.5.4",
     "pint>=0.24.4",
     "pre-commit>=4.2.0",
@@ -96,7 +96,7 @@ dependencies = [
     "xlsxwriter>=3.0",
     "pylibrary @ git+https://github.com/pbmanis/pylibrary.git@main#egg=main",
     # "pyqt5>=5.15.11",
-    "streamlit>=1.50.0",
+    # "streamlit>=1.50.0",  # this is probably not needed except for abrs.
     "pyautogui>=0.9.54",
     "imagecodecs>=2025.8.2",
     "awkward>=2.8.10",
