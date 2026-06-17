@@ -10,7 +10,7 @@ from ephys.tools import get_configuration
 from ephys.datareaders import acq4_reader
 import pytest
 
-@pytest.mark.skip(reason="Not testable in current environment - must be run from an experiment diretory")
+@pytest.mark.skip(reason="Not testable in current environment - must be run from an experiment directory")
 def test_vc():
     experiment_name = "DCN_IC_inj"
 
