@@ -375,4 +375,4 @@ def analyzeSpikeShape_fast(
         sa.getClassifyingInfo()
     else:
         sa.analysis_summary["LowestCurrentSpike"] = None
-    print("\n\nLowest current spike info: ", sa.analysis_summary["LowestCurrentSpike"])
+    print("\n\nLowest current spike info (fast): ", sa.analysis_summary["LowestCurrentSpike"])

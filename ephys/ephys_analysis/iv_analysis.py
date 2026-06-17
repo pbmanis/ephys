@@ -937,7 +937,9 @@ class IVAnalysis(Analysis):
         if full_spike_analysis:
             print("    Analyzing spike shapes", end=" ")
             if self.experiment.get("use_fast_spike_analysis", False) and _SAF is not None:
+                print("Using Fast analysis")
                 _SAF.analyzeSpikeShape_fast(self.SP, max_spike_shape=max_spike_shape)
+
             else:
                 self.SP.analyzeSpikeShape(max_spike_shape=max_spike_shape)
             # self.SP.analyzeSpikes_brief(mode="evoked")
