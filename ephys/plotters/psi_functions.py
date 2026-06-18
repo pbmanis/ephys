@@ -123,9 +123,10 @@ def set_subject(row):
     _type_pandas_dataframe_row
         _description_
     """
-    # print("row subj: ", row["Subject"])
+    if row.cell_id is None:
+        return row
     if row["Subject"] in ["", " ", None]:
-        subj = Path(row.cell_id).name
+        subj = Path(row.cell_id).parts[0]
         # print("   subj: ", subj, subj[:10])
         row["Subject"] = subj[:10]
     if row["Subject"] is None:
