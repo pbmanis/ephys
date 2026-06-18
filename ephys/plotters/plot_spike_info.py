@@ -86,6 +86,7 @@ def concurrent_data_plotting(
         publication_plot_mode=publication_plot_mode,
         representation=representation,
         textbox=textbox,
+        export_flag=True,
     )
 
     if mode == "categorical":
@@ -526,7 +527,9 @@ class PlotSpikeInfo(QObject):
         publication_plot_mode: bool = False,
         representation: str = "all",
         textbox: object = None,
+        export_flag: bool = True,  # allow block of export when making figures.
     ):
+        self.export_flag = export_flag
         self.textbox = textbox
         self.set_experiment(dataset, experiment)
         self.transforms = {
@@ -942,13 +945,12 @@ class PlotSpikeInfo(QObject):
                 and len(row[measure]) > 0
                 and row[measure] != [np.nan]
             ):
-                # print(row[measure], measure)
                 try:
                     row[measure] = np.nanmean(row[measure]) * scale
-                except Warning as e:
-                    print(f"Warning in rescale_values_apply for measure {measure} {cell_id}: {e}")
+                except RuntimeWarning as e:
+                    CP("m", f"Warning in rescale_values_apply for measure {measure} {cell_id}: {e}")
                 except Exception as e:
-                    print(f"Error in rescale_values_apply for measure {measure} {cell_id}: {e}")
+                    CP("r", f"Error in rescale_values_apply for measure {measure} {cell_id}: {e}")
             elif isinstance(row[measure], list) and len(row[measure]) == 0:
                 row[measure] = [np.nan]
             else:
@@ -1671,7 +1673,10 @@ class PlotSpikeInfo(QObject):
         i = 0
         icol = 0
         axp = P.axdict[f"{plabels[i]:s}"]
-        axp.legend(
+        # print((axp.legend().legend_handles))
+        handles, labels = axp.get_legend_handles_labels()
+        if handles:
+            axp.legend(
             fontsize=7, bbox_to_anchor=(0.95, 0.90), bbox_transform=P.figure_handle.transFigure
         )
         datestring = datetime.datetime.now().strftime("%d-%b-%Y")
@@ -1692,12 +1697,14 @@ class PlotSpikeInfo(QObject):
             )  # "firing_parameters.csv"
         elif any(c.startswith("RMP") for c in measures):
             fn = Path(f"rmtau_{self.experiment['directory']:s}_{subset_text:s}{datestring}.csv")
-        print(f"Exporting measures to file: {measures}\n   File: {fn!s}")
-        print(f"Dataframe columns: {df.columns!s}")
+        if self.export_flag:
+            print(f"Exporting measures to file: {measures}\n   File: {fn!s}")
+            # print(f"Dataframe columns: {df.columns!s}")
         # print("AP_peak_V_re_threshold_bestRs before call:\n", df["AP_peak_V_re_threshold_bestRs"])
         # print("AP_peak_V_re_threshold_mean before call:\n", df["AP_peak_V_re_threshold_mean"])
         # print("AP_peak_V_re_threshold before call:\n", df["AP_peak_V_re_threshold"])
-        self.export_r(df=df, xname=xname, measures=measures, measure_type=representation, hue_category=hue_category, filename=fn)
+        if self.export_flag:
+            self.export_r(df=df, xname=xname, measures=measures, measure_type=representation, hue_category=hue_category, filename=fn)
         return P, picker_funcs
 
     def summary_plot_ephys_parameters_continuous(
