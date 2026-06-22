@@ -275,7 +275,18 @@ class TableManager:
         # print("data for update: ", data)
         # print("data complete: ", data[:]['data_complete'])
         self.table.setData(data)
-        style = "section:: {font-size: 4pt; color:black; font:TimesRoman;}"
+        # Read the system active-highlight colour and use it for both focus states so
+        # the selection row stays visually identical when the table loses focus.
+        hl = QtWidgets.QApplication.palette().color(
+            QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight
+        ).name()
+        hl_text = QtWidgets.QApplication.palette().color(
+            QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.HighlightedText
+        ).name()
+        style = (
+            "section:: {font-size: 4pt; color:black; font:TimesRoman;}"
+            f"QTableWidget::item:selected {{ background-color: {hl}; color: {hl_text}; }}"
+        )
         self.table.setStyleSheet(style)
         # if QtCore is not None:
         #     # print('sorting by a column')
@@ -378,18 +389,18 @@ class TableManager:
         look it up.
 
         """
-        ind = self.get_table_data_index(selected_row)
-        
-        for i, td in enumerate(self.table_data):
-            if self.table_data[ind-1].cell_id == td.cell_id:
-                # print("  found: ", i, ind, self.table_data[i].cell_id, td.cell_id)
-                return self.table_data[ind-1]
-        return None
-
-        if ind is not None:
-            return self.table_data[ind]
-        else:
+        # Read cell_id from the table widget at the visual row — correct after any sort
+        # because pg.TableWidget physically moves items when sorted.
+        # Previously used self.table_data[visual_row] directly, which broke when sorted.
+        visual_row = selected_row.row()
+        item = self.table.item(visual_row, 0)
+        if item is None:
             return None
+        cell_id = item.text()
+        for td in self.table_data:
+            if td.cell_id == cell_id:
+                return td
+        return None
 
     def get_table_data_by_cell_id(self, cell_id):
         """get_table_data_by_cell_id
@@ -420,12 +431,16 @@ class TableManager:
         Returns
         -------
         int
-            row, or None
+            visual row selected, or None
         """
-        for i, td in enumerate(self.table_data):
-            if cell_id == td[i].cell_id:
-                self.table.selectRow(i)
-                return i
+        # Scan the visual table for cell_id in column 0 — correct after any sort
+        # because pg.TableWidget physically moves items. Previously used table_data
+        # index which diverges from visual row after sort, and had td[i] typo (td IS the item).
+        for visual_row in range(self.table.rowCount()):
+            item = self.table.item(visual_row, 0)
+            if item is not None and item.text() == cell_id:
+                self.table.selectRow(visual_row)
+                return visual_row
         return None
 
     def select_row_by_row(self, irow: int):

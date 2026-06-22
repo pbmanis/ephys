@@ -272,13 +272,18 @@ class TableManager:
         Index_data.cell_type = str(row.cell_type)
         if "slice_mosaic" in row.keys():
             Index_data.slice_mosiac = str(row.slice_mosaic)
-        else: 
+        else:
             Index_data.slice_mosiac = ""
 
         if "cell_mosaic" in row.keys():
             Index_data.cell_mosiac = str(row.cell_mosaic)
         else:
             Index_data.cell_mosiac = ""
+
+        if "slice_slice" in row.keys():
+            Index_data.slice_slice = str(row.slice_slice)
+        if "cell_cell" in row.keys():
+            Index_data.cell_cell = str(row.cell_cell)
         Index_data.sex = str(row.sex)
         Index_data.weight = str(row.weight)
         # Index_data.temperature = str(row.temperature)
@@ -490,7 +495,21 @@ class TableManager:
     def update_table(self, data, QtCore=None, QtGui=None):
         cprint("g", f"Updating IV data table from {self.experiment['datasummaryFilename']:s} with {len(data):d} rows")
         self.table.setData(data)
-        style = "section:: {font-size: 4pt; color:black; font:TimesRoman;}"
+        # Read the system active-highlight colour and use it for both focus states so
+        # the selection row stays visually identical when the table loses focus.
+        from pyqtgraph.Qt import QtWidgets as _QtWidgets
+        _pal = _QtWidgets.QApplication.palette()
+        if QtGui is not None:
+            hl = _pal.color(
+                QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Highlight
+            ).name()
+            hl_text = _pal.color(
+                QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.HighlightedText
+            ).name()
+            sel_rule = f"QTableWidget::item:selected {{ background-color: {hl}; color: {hl_text}; }}"
+        else:
+            sel_rule = ""
+        style = "section:: {font-size: 4pt; color:black; font:TimesRoman;}" + sel_rule
         self.table.setStyleSheet(style)
         # if QtCore is not None:
         #     # print('sorting by a column')
@@ -605,28 +624,28 @@ class TableManager:
         Regardless of the sort, read the current index row and map it back to
         the data in the table.
         """
-        # print("get_table_data")
-        # print("  index row: ", index_row)
-        # print(dir(index_row))
-        # print(index_row.data())
-        ind = self.get_table_data_index(index_row)
-        # print("  ind: ", ind)
-        for i in range(len(self.table_data)):
-            if index_row.data() == self.table_data[i].cell_id:
-                # print("  found: ", i)
-                return self.table_data[i]
-
-        if ind is not None:
-            return self.table_data[ind]
-        else:
+        # Read cell_id from the table widget at the visual row — correct after any sort
+        # because pg.TableWidget physically moves items when sorted.
+        # Previously fell back to self.table_data[visual_row] which broke when sorted.
+        visual_row = index_row.row()
+        item = self.table.item(visual_row, 0)
+        if item is None:
             return None
+        cell_id = item.text()
+        for td in self.table_data:
+            if td.cell_id == cell_id:
+                return td
+        return None
 
     def select_row_by_cell_id(self, cell_id):
-        for i in range(len(self.table_data)):
-            # print("i: ", i, cell_id, self.table_data[i].cell_id)
-            if cell_id == self.table_data[i].cell_id:
-                self.table.selectRow(i)
-                return i
+        # Scan the visual table for cell_id in column 0 — correct after any sort
+        # because pg.TableWidget physically moves items. Previously used table_data
+        # index as the selectRow argument, which diverges from visual row after sort.
+        for visual_row in range(self.table.rowCount()):
+            item = self.table.item(visual_row, 0)
+            if item is not None and item.text() == cell_id:
+                self.table.selectRow(visual_row)
+                return visual_row
         return None
 
     def select_row_by_row(self, irow: int):
