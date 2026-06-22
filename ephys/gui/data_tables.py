@@ -86,7 +86,6 @@ import functools
 import pprint
 import sys
 from pathlib import Path
-import multiprocessing
 import textwrap
 import concurrent.futures
 import time
@@ -196,6 +195,24 @@ tdir = Path.cwd()
 sys.path.append(str(Path(tdir, "src")))  # add to sys path in order to fix imports.
 sys.path.append(str(Path(tdir, "src/util")))  # add to sys path in order to fix imports.
 # multiprocessing.set_start_method('fork')
+
+
+class _SelectionRestoreFilter(QtCore.QObject):
+    """Event filter that re-selects a tracked cell_id when the watched table gains focus.
+    Uses cell_id (not row index) so re-sorts don't cause the wrong row to be highlighted.
+    """
+    def __init__(self, get_cell_id, select_fn, parent=None):
+        super().__init__(parent)
+        self._get_cell_id = get_cell_id   # callable → current cell_id str or None
+        self._select_fn = select_fn        # callable(cell_id) → selects the row
+
+    def eventFilter(self, a0, a1):
+        if a1 is not None and a1.type() == QtCore.QEvent.Type.FocusIn:
+            cell_id = self._get_cell_id()
+            if cell_id:
+                self._select_fn(cell_id)
+        return False  # never consume the event
+
 
 class DataTables:
     """
@@ -351,6 +368,8 @@ class DataTables:
         style = "::section {background-color: darkblue; }"
         self.selected_index_row = None  # for single selection mode
         self.selected_index_rows = None  # for multirow selection mode
+        self._ds_selected_cell_id: str = ""   # last cell_id selected in DataSummary table
+        self._iv_selected_cell_id: str = ""   # last cell_id selected in IV Assembled Data table
         self.table.horizontalHeader().setStyleSheet(style)
         self.model = None
         # self.table.sortingEnabled(True)
@@ -455,7 +474,9 @@ class DataTables:
         )
         self.table.setSelectionMode(pg.QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(QtWidgets.QTableView.SelectionBehavior.SelectRows)
-        self.table.itemDoubleClicked.connect(functools.partial(self.on_double_click, self.table))
+        self.table.cellDoubleClicked.connect(
+            lambda row, col: self.on_double_click(row, col)
+        )
         self.table.clicked.connect(functools.partial(self.on_single_click, self.table))
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
         self.update_assembled_datatable()
@@ -474,40 +495,72 @@ class DataTables:
         if self.datasummary is None:
             self.load_data_summary()
             # self.Dock_DataSummary.raiseDock()
+        # Pass signal's (row, col) directly so the handler doesn't need currentIndex()
         self.DS_table.cellDoubleClicked.connect(
-            functools.partial(self.DSTable_show_cell_on_double_click, self.DS_table)
+            lambda row, col: self.DSTable_show_cell_on_double_click(self.DS_table, row, col)
         )
 
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
         self.table_manager.update_table(self.table_manager.data, QtCore=QtCore, QtGui=QtGui)
+
+        # Restore the highlighted selection by cell_id whenever a table regains focus,
+        # so the row stays obvious regardless of which dock is currently raised.
+        self._ds_filter = _SelectionRestoreFilter(
+            get_cell_id=lambda: self._ds_selected_cell_id,
+            select_fn=lambda cid: self.DS_table_manager.select_row_by_cell_id(cid)
+                if self.DS_table_manager is not None else None,
+        )
+        self.DS_table.installEventFilter(self._ds_filter)
+
+        self._iv_filter = _SelectionRestoreFilter(
+            get_cell_id=lambda: self._iv_selected_cell_id,
+            select_fn=lambda cid: self.table_manager.select_row_by_cell_id(cid)
+                if self.table_manager is not None else None,
+        )
+        self.table.installEventFilter(self._iv_filter)
+
         FUNCS.set_status_bar(self.win.statusBar())
         self.status_bar_message("Ready", color="green", weight="bold")
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
         # through the command_dispatcher.
 
-    def on_double_click(self, w):
+    def on_double_click(self, row: int, col: int):
         """
-        Double click gets the selected row and then displays the associated PDF (IV or Map)
+        Double click gets the selected row and then displays the associated PDF (IV or Map).
+        row and col come from the cellDoubleClicked signal directly — no currentIndex() lag.
+        Gets IndexData from the IV table's own table_manager and never routes through the
+        DS table, because the two datasets may not share the same cell_id format.
         """
-        index = w.selectionModel().currentIndex()
-
+        if self.table_manager is None:
+            return
         modifiers = QtWidgets.QApplication.keyboardModifiers()
-        print("Modifiers: ", modifiers)
         mode = "IV"
         if modifiers == QtCore.Qt.KeyboardModifier.MetaModifier:
             mode = "maps"
-        # elif modifiers == QtCore.Qt.ControlModifier:
-        #     print('Control+Click')
-        # elif modifiers == (QtCore.Qt.ControlModifier |
-        #                    QtCore.Qt.ShiftModifier):
-        #     print('Control+Shift+Click')
-        # handle sorted table: use cell_id to get row key
-        i_row = index.row()  # clicked index row
+        self.selected_index_row = row
 
-        self.selected_index_row = i_row
-        self.display_from_table_by_row(i_row, mode=mode)
+        # Get IndexData directly from the IV table's own manager.
+        model = self.table.model()
+        if model is None:
+            return
+        mi = model.index(row, 0)
+        selected = self.table_manager.get_table_data(mi)
+        if selected is None:
+            print(f"on_double_click: no IV data at visual row {row}")
+            return
+
+        # Ensure slice_slice / cell_cell are populated; parse from cell_id if missing.
+        if not selected.slice_slice or not selected.cell_cell:
+            for part in Path(selected.cell_id).parts:
+                if part.startswith("slice_") and not selected.slice_slice:
+                    selected.slice_slice = part
+                elif part.startswith("cell_") and not selected.cell_cell:
+                    selected.cell_cell = part
+
+        self._iv_selected_cell_id = selected.cell_id  # remember for focus-restore
+        self.display_from_table(mode=mode, selected=selected)
 
     def on_single_click(self, w):
         """
@@ -556,36 +609,47 @@ class DataTables:
         self.selected_index_row = i_row
         self.display_from_table_by_row(i_row, mode="maps", pickable=True)
 
-    def DSTable_show_cell_on_double_click(self, w):
+    def DSTable_show_cell_on_double_click(self, w, row: int = -1, col: int = -1):
         """
         Double click gets the selected row and cell and then displays the full contents
-        of the cell in a QMessageBox
+        of the cell in a QMessageBox. row and col come from the cellDoubleClicked signal
+        and are used directly to avoid currentIndex() being one click stale.
         """
+        if self.DS_table_manager is None:
+            return
         modifier = QtWidgets.QApplication.keyboardModifiers()
         mode = "IV"
-        row = w.selectionModel().currentIndex().row()
-        col = w.selectionModel().currentIndex().column()
+        # Use signal-supplied row/col when available; fall back to currentIndex() only
+        # as a last resort (currentIndex() can lag one click behind).
+        if row < 0:
+            row = w.selectionModel().currentIndex().row()
+        if col < 0:
+            col = w.selectionModel().currentIndex().column()
         if modifier == QtCore.Qt.KeyboardModifier.AltModifier:
             mode = "maps"
         elif modifier == QtCore.Qt.KeyboardModifier.ControlModifier:
             mode = "IVs"
+        elif modifier == QtCore.Qt.KeyboardModifier.MetaModifier:  # Command (⌘) on macOS
+            mode = "IVs"
         elif modifier == QtCore.Qt.KeyboardModifier.NoModifier:
             msg = pg.QtWidgets.QMessageBox()
-
             colname = self.DS_table_manager.table.horizontalHeaderItem(col).text()
             infotext = f"{colname:s}:<br><br>{self.DS_table_manager.table.item(row, col).text():s}"
             title = f"<center>{self.DS_table_manager.table.item(row, 0).text()!s}</center>"
             text = "{}<br><br>{}".format(title, "\n".join(textwrap.wrap(infotext, width=120)))
             msg.setText(text)
             msg.setFont(QtGui.QFont("Arial", 11, QtGui.QFont.Weight.Normal))
-            # msg.setInformativeText(f"{colname:s} = {self.DS_table_manager.table.item(row, col).text():s}")
             msg.exec()
             return
         else:
             return
-        cell_id = self.DS_table_manager.get_table_data(w.selectionModel().currentIndex()).cell_id
-        print("cell_id: ", cell_id)
-        self.display_from_table_by_row(row, mode=mode)
+        # Get data directly from DS table model index — bypasses selectedRows() re-read
+        # which can return stale/empty results on the first click after a restart.
+        mi = self.DS_table_manager.table.model().index(row, 0)
+        selected = self.DS_table_manager.get_table_data(mi)
+        if selected is not None:
+            self._ds_selected_cell_id = selected.cell_id  # remember for focus-restore
+        self.display_from_table(mode=mode, selected=selected)
         return
 
     def show_message_box(self, title, message):
@@ -2066,30 +2130,33 @@ class DataTables:
             return
         self.PLT.plot_VC(self.selected_index_rows)
 
-    def display_from_table(self, mode="IVs"):
+    def display_from_table(self, mode="IVs", selected=None):
         """
-        display the data in the PDF dock
+        display the data in the PDF dock.
+        If selected is provided it is used directly; otherwise the current DS table
+        selection is read (the normal DS-table path).
         """
         match mode:
             case "IV" | "IVs" | "iv" | "ivs":
-                self.selected_index_rows = self.DS_table.selectionModel().selectedRows()
-                if self.selected_index_rows is None:
-                    return
-                index_row = self.selected_index_rows[0]
-                selected = self.DS_table_manager.get_table_data(index_row)  # table_data[index_row]
                 modename = "IVs"
-                # build the filename for the IVs, format = "2018_06_20_S4C0_pyramidal_IVs.pdf"
-                # the first part is based on the selected cell_id from the table, and the rest
-                # just makes life easier when looking at the directories.
             case "Map" | "map" | "Maps" | "maps":
-                self.selected_index_rows = self.DS_table.selectionModel().selectedRows()
-                if self.selected_index_rows is None:
-                    return
-                index_row = self.selected_index_rows[0]
-                selected = self.DS_table_manager.get_table_data(index_row)
                 modename = "maps"
             case _:
                 raise ValueError(f"Invalid mode: {mode!s}")
+
+        if selected is None:
+            # Read selection from DS table (DataSummary dock path).
+            if self.DS_table_manager is None:
+                return
+            self.selected_index_rows = self.DS_table.selectionModel().selectedRows()
+            if not self.selected_index_rows:  # selectedRows() returns [] not None when empty
+                print("display_from_table: DS table has no selection")
+                return
+            index_row = self.selected_index_rows[0]
+            selected = self.DS_table_manager.get_table_data(index_row)
+            if selected is None:
+                print(f"display_from_table: get_table_data returned None for row {index_row.row()}")
+                return
 
         cell_type = selected.cell_type
         if cell_type == " " or len(cell_type) == 0:
@@ -2121,28 +2188,7 @@ class DataTables:
         self.Dock_PDFView.raiseDock()
 
 
-def main():
-    # Entry point. Why do I do this ? It keeps sphinxdoc from running the
-    # code...
-    print(config_file_path)
-    datasets = {}
-    experiments = {}
-    if Path(config_file_path).is_file():
-        (
-            datasets,
-            experiments,
-        ) = GETCONFIG.get_configuration(
-            config_file_path
-        )  # retrieves the configuration file from the running directory
-    else:
-        print(f"Configuration file not found at: {config_file_path!s}")
-        raise ValueError(f"Configuration file not found at: {config_file_path!s}")
-    D = DataTables(datasets, experiments)  # must retain a pointer to the class, else we die!
-    if (sys.flags.interactive != 1) or not hasattr(QtCore, "PYQT_VERSION"):
-        QtWidgets.QApplication.instance().exec()
-
-
-if __name__ == "__main__":
-    # if plotform.system() == "Darwin":
-    multiprocessing.set_start_method("forkserver") # ("spawn")
-    main()
+# Entry point and __main__ block have moved to data_tables_main.py so that
+# pyqtgraph.reload.reloadAll() can hot-patch this module while the GUI is
+# running.  Run the application via:  datatable   (the installed console
+# script) or:  python -m ephys.gui.data_tables_main
