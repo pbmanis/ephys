@@ -83,7 +83,9 @@ Distributed under MIT/X11 license. See LICENSE.txt for more infomation.
 
 import datetime
 import functools
+import importlib.metadata
 import pprint
+import subprocess
 import sys
 from pathlib import Path
 import textwrap
@@ -522,6 +524,22 @@ class DataTables:
 
         FUNCS.set_status_bar(self.win.statusBar())
         self.status_bar_message("Ready", color="green", weight="bold")
+        try:
+            _ver = importlib.metadata.version("ephys")
+        except importlib.metadata.PackageNotFoundError:
+            _ver = "?"
+        try:
+            _hash = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(__file__).parent,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except Exception:
+            _hash = "?"
+        _ver_label = QtWidgets.QLabel(f"ephys V{_ver}  #{_hash}")
+        _ver_label.setStyleSheet("color: #aaaaaa; padding-right: 8px;")
+        self.win.statusBar().addPermanentWidget(_ver_label)
         # Ok, we are in the loop - anything after this is menu-driven and
         # handled either as part of the TableWidget, the Traces widget, or
         # through the command_dispatcher.
