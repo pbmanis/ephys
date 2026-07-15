@@ -1193,6 +1193,16 @@ def plot_ss_hws(experiment, ax=None):
 
 if __name__ == "__main__":
 
+    message = """
+    Analyze spike half-width time course through IV protocols.
+    This was developed for the CBA_Age experiment, but can be adapted for other experiments with similar data structure.
+    This is NOT the current version used for making the supplemental figure for that paper,
+    but for an earlier versoin of the paper. 
+     Are you sure you want to run this script? (y/n): """
+    ans = input(message)
+    if ans.lower() != "y":
+        print("Exiting script.")
+        exit()
     parser = argparse.ArgumentParser(
         description="Analyze spike half-width time course through IV protocols"
     )
