@@ -34,6 +34,9 @@ import pyqtgraph as pg
 import ephys.tools.exp_estimator_lmfit as exp_estimator_lmfit
 import warnings  # use to catch poor polynomial fits for Rin
 
+def poly3_deriv(pf, x):
+    y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
+    return y
 
 class RmTauAnalysis:
     """
@@ -63,6 +66,7 @@ class RmTauAnalysis:
         self.taum_current_range = [0, -200e-12]  # in A
         self.analysis_summary = {}
         self.rin_current_limit:float = np.nan  # no limit, should be in A
+        self._bridge_applied = False  # 2026-07-15: prevent cumulative bridge adjustment
 
     def setup(
         self,
@@ -115,10 +119,11 @@ class RmTauAnalysis:
         self.tauh_voltage = tauh_voltage
         self.tauh_vss_tolerance = tauh_vss_tolerance
         self.rin_current_limit = rin_current_limit
+        self.analysis_summary = {}  # 7/15/2026 pbm - clean here for each run.
         self.analysis_summary["holding"] = self.Clamps.holding
         self.analysis_summary["WCComp"] = self.Clamps.WCComp
         self.analysis_summary["CCComp"] = self.Clamps.CCComp
-        if self.bridge_offset != 0.0:
+        if self.bridge_offset != 0.0 and not self._bridge_applied:
             self.bridge_adjust()
         self.analysis_summary["BridgeAdjust"] = self.bridge_offset  # save the bridge offset value
 
@@ -130,6 +135,7 @@ class RmTauAnalysis:
         self.Clamps.traces = (
             self.Clamps.traces - self.Clamps.cmd_wave.view(np.ndarray) * self.bridge_offset
         )
+        self._bridge_applied = True
 
     def analyze(
         self,
@@ -748,7 +754,7 @@ class RmTauAnalysis:
                     bounds=[(vbl[k] - 0.005, vbl[k] + 0.005), (0, 0.05), (taubounds)],
                     capture_error=True,
                 )
-                debug = True
+                debug = False
                 if debug:
                     pw = pg.plot(
                         self.Clamps.time_base,
@@ -930,14 +936,10 @@ class RmTauAnalysis:
                     print(f"*********** Polyfit in ivss_analysis: Warning: {w[0].message}")
                     print("     We do not use the fits if they are poorly conditioned, returning")
                     return
-                
-                def pderiv(pf, x):
-                    y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
-                    return y
 
                 # pval = np.polyval(pf, self.ivss_cmd)
 
-                slope = pderiv(
+                slope = poly3_deriv(
                     pf, np.array(self.ivss_cmd)
                 )  # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 imids = np.array((self.ivss_cmd[1:] + self.ivss_cmd[:-1]) / 2.0)
@@ -1041,14 +1043,8 @@ class RmTauAnalysis:
                     print(f"*********** Polyfit in ivpk_analysis: Warning: {w[0].message}")
                     print("     We do not use the fits if they are poorly conditioned, returning")
                     return
-                
-                def pderiv(pf, x):
-                    y = 3 * pf[0] * x**2 + 2 * pf[1] * x + pf[2]
-                    return y
 
-                # pval = np.polyval(pf, self.ivss_cmd)
-
-                slope = pderiv(pf, np.array(self.ivpk_cmd))
+                slope = poly3_deriv(pf, np.array(self.ivpk_cmd))
                 # np.diff(pval[iasort]) / np.diff(self.ivss_cmd[iasort])  # local slopes
                 # pval = np.polyval(pf, self.ivpk_cmd)
                 # slope = np.diff(pval) / np.diff(self.ivpk_cmd)
