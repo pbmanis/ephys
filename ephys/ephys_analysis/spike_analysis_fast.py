@@ -32,17 +32,22 @@ from typing import Any, Union
 import numpy as np
 from numba import jit  # type: ignore[import]
 
-from ephys.ephys_analysis.spike_analysis import (
-    OneSpike,
-    SpikeAnalysis,
-)
+_USE_NUMBA_CACHE = not bool(os.environ.get("EPHYS_NO_NUMBA_CACHE", ""))
+# Claude fixed 2026-07-15: concurrent first-run compilation races on the shared .nbc file
+# Set EPHYS_NO_NUMBA_CACHE=1 in CI or when running tests in parallel to disable
+
+# from ephys.ephys_analysis.spike_analysis import (
+#     OneSpike,
+#     SpikeAnalysis,
+# )
+import ephys.ephys_analysis.spike_analysis as SA  # 2026-07-15: change import so that module reference stays live after hot-reload
 
 
 # ---------------------------------------------------------------------------
 # Numba-compiled helpers
 # ---------------------------------------------------------------------------
 
-@jit(nopython=True, cache=True)
+@jit(nopython=True, cache=_USE_NUMBA_CACHE)
 def _backward_scan(
     trace: np.ndarray,
     kpeak: int,
@@ -75,7 +80,7 @@ def _backward_scan(
     return min_point
 
 
-@jit(nopython=True, cache=True)
+@jit(nopython=True, cache=_USE_NUMBA_CACHE)
 def interpolate_halfwidth_fast(
     tr: np.ndarray,
     xr: np.ndarray,
@@ -123,7 +128,7 @@ def interpolate_halfwidth_fast(
 # ---------------------------------------------------------------------------
 
 def analyze_one_spike_fast(
-    sa: SpikeAnalysis,
+    sa: SA.SpikeAnalysis,
     trace_number: int,
     spike_number: int,
     spike_begin_dV: float,
@@ -131,7 +136,7 @@ def analyze_one_spike_fast(
     dvdt: np.ndarray,    # Phase 1: pre-computed for this trace
     tr_arr: np.ndarray,  # Phase 2: typed float64 view of the trace
     std_tr: float,       # Phase 2: pre-computed std of the trace
-) -> OneSpike:
+) -> SA.OneSpike:
     """Like SpikeAnalysis.analyze_one_spike with three pre-computed inputs.
 
     dvdt    — computed once per trace (Phase 1)
@@ -145,7 +150,7 @@ def analyze_one_spike_fast(
     # cannot infer Clamps attributes — the Any cast bypasses those false errors.
     clamps: Any = sa.Clamps
 
-    thisspike = OneSpike(trace=trace_number, AP_number=spike_number)
+    thisspike = SA.OneSpike(trace=trace_number, AP_number=spike_number)
     thisspike.current = clamps.values[trace_number] - sa.iHold_i[trace_number]
     thisspike.iHold = sa.iHold_i[trace_number]
     thisspike.pulseDuration = clamps.tend - clamps.tstart
@@ -208,13 +213,13 @@ def analyze_one_spike_fast(
     one_ms = int(1e-3 / dt)
     thisspike.dvdt_rising = np.max(dvdt[thisspike.AP_beginIndex : thisspike.AP_peakIndex])
     thisspike.dvdt_falling = np.min(dvdt[thisspike.AP_peakIndex : thisspike.AP_endIndex])
-    thisspike.dvdt = dvdt[thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms]
+    thisspike.dvdt = dvdt[thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + one_ms].copy()
     thisspike.V = tr_arr[
         thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + five_ms
-    ].view(np.ndarray)
+    ].copy()
     thisspike.Vtime = clamps.time_base[
         thisspike.AP_beginIndex - four_ms : thisspike.AP_endIndex + five_ms
-    ].view(np.ndarray)
+    ].copy()
 
     if (
         thisspike.AP_beginIndex is not None
@@ -271,7 +276,7 @@ def analyze_one_spike_fast(
 # ---------------------------------------------------------------------------
 
 def analyze_one_trace_fast(
-    sa: SpikeAnalysis,
+    sa: SA.SpikeAnalysis,
     trace_number: int,
     begin_dV: float = 12.0,
     max_spike_shape: Union[int, None] = 5,
@@ -314,8 +319,9 @@ def analyze_one_trace_fast(
         )
         if thisspike is not None:
             trspikes[spike_number] = thisspike
-    sa.spikeShapes[trace_number] = trspikes
-    return sa.spikeShapes[trace_number]
+ #  just return this trace, let caller write dictionary.
+ #  old: sa.spikeShapes[trace_number] = trspikes
+    return trspikes
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +329,7 @@ def analyze_one_trace_fast(
 # ---------------------------------------------------------------------------
 
 def analyzeSpikeShape_fast(
-    sa: SpikeAnalysis,
+    sa: SA.SpikeAnalysis,
     spike_begin_dV: float = 12.0,
     max_spike_shape: Union[int, None] = 5,
     printSpikeInfo: bool = False,
@@ -344,19 +350,27 @@ def analyzeSpikeShape_fast(
     sa.rmps    = np.zeros(ntr)
     sa.iHold_i = np.zeros(ntr)
 
+    # results are collected into a list, merged serially to make thread-safe
+    # 7/15/2026 pbm
     traces_with_spikes = [tr for tr in range(ntr) if len(sa.spikes[tr]) > 0]
     if n_workers <= 1:
         for tr in traces_with_spikes:
-            analyze_one_trace_fast(sa, tr, spike_begin_dV, max_spike_shape, printSpikeInfo)
+            result = analyze_one_trace_fast(sa, tr, spike_begin_dV, max_spike_shape, printSpikeInfo)
+            if result is not None:  # 7/15/2026: fix for analyze_one_trace_fast new return
+                sa.spikeShapes[tr] = result
     else:
+        _results: list = [None] * ntr   # pre-allocated; each thread writes a unique index
+        def _worker(tr):
+            _results[tr] = analyze_one_trace_fast(
+                sa, tr, spike_begin_dV, max_spike_shape, printSpikeInfo
+            )
         _nw = min(n_workers, len(traces_with_spikes), os.cpu_count() or 1)
         with ThreadPoolExecutor(max_workers=_nw) as pool:
-            pool.map(
-                lambda tr: analyze_one_trace_fast(
-                    sa, tr, spike_begin_dV, max_spike_shape, printSpikeInfo
-                ),
-                traces_with_spikes,
-            )
+            pool.map(_worker, traces_with_spikes)
+        # Merge serially — no concurrent access
+        for tr in traces_with_spikes:
+            if _results[tr] is not None:
+                sa.spikeShapes[tr] = _results[tr]
 
     sa.iHold = np.mean(sa.iHold_i)
     sa.analysis_summary["spikes"] = sa.spikeShapes
