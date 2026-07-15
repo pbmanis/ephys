@@ -210,6 +210,9 @@ class SpikeAnalysis:
         self.experiment = experiment
         if clamps is None or threshold is None:
             raise ValueError("Spike Analysis requires defined clamps and threshold")
+        self.analysis_summary = {}
+        self.analysis_summary["FI_Growth"] = []   # matches _reset_analysis initializtion       
+
         self.Clamps = clamps
         assert data_time_units in ["s", "ms"]
         assert data_volt_units in ["V", "mV"]
@@ -286,7 +289,7 @@ class SpikeAnalysis:
             "%m/%d/%Y, %H:%M:%S"
         )
         # CP.cprint("r", "AnalyzeSpikes: 1")
-        self.U = utilities.Utility()
+        # self.U = utilities.Utility() 7/15/2026
 
         ntraces = len(self.Clamps.traces)
         self.spikecount = np.zeros(ntraces)
@@ -1302,6 +1305,7 @@ class SpikeAnalysis:
         xp = xp - ibreak0 - dx
         yp = spike_rate[fire_points]  # save data with responses
         testMethod = "simplex"  #  'SLSQP'  # L-BFGS-B simplex, SLSQP, 'TNC', 'COBYLA'
+        fitter = fitting.Fitting()  # single instance of fitter 
         if firing_rate_break - 2 >= 0:
             x0 = firing_rate_break - 2
         else:
@@ -1313,7 +1317,7 @@ class SpikeAnalysis:
 
         if self.FIGrowth == "fitOneOriginal":
             res = []
-            fitter = fitting.Fitting()  # make sure we always work with the same instance
+            # fitter = fitting.Fitting()  # make sure we always work with the same instance
 
             for i in range(0, int(len(i_inj) / 2)):  # allow breakpoint to move, but only in steps
                 if firing_rate_break + i + 1 > len(i_inj) - 1:
@@ -1376,7 +1380,8 @@ class SpikeAnalysis:
             names = res[minerr]["names"]
             error = res[minerr]["error"]
 
-            fitter_func = fitting.Fitting().fitfuncmap[function]
+            # fitter_func = fitting.Fitting().fitfuncmap[function]
+            fitter_func = fitter.fitfuncmap[function]  # 7/15/2026 single fitter instance
             yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
 
         elif self.FIGrowth == "FIGrowthExp":  # FIGrowth is 2, Exponential from 0 rate
@@ -1394,9 +1399,9 @@ class SpikeAnalysis:
                 spike_rate_max * pulse_duration / np.max(i_inj),
             ]
             function = "FIGrowthExp"
-            f = fitting.Fitting().fitfuncmap[function]
+            f = fitter.fitfuncmap[function]
             # now fit the full data set
-            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
+            (fpar, xf, yf, names) = fitter.FitRegion(
                 [1.0],
                 0,
                 i_inj,
@@ -1409,8 +1414,8 @@ class SpikeAnalysis:
                 fixedPars=None,
                 method=testMethod,
             )
-            error = fitting.Fitting().getFitErr()
-            fitter_func = fitting.Fitting().fitfuncmap[function]
+            error = fitter.getFitErr()
+            fitter_func = fitter.fitfuncmap[function]
             yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
             imap = [-1, 0, -1, 1, 2]
@@ -1424,9 +1429,9 @@ class SpikeAnalysis:
             initpars = [0.0, spike_rate_max, 0.5 * np.mean(i_inj[x1]), 1.0]
             bounds = [(0.0, 200.0), (0.0, spike_rate_max * 2.0), (0.0, np.max(i_inj)), (0.0, 10.0)]
             function = "Hill"
-            f = fitting.Fitting().fitfuncmap[function]
+            f = fitter.fitfuncmap[function]
             # now fit the full data set
-            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
+            (fpar, xf, yf, names) = fitter.FitRegion(
                 [1],
                 0,
                 i_inj,
@@ -1439,8 +1444,8 @@ class SpikeAnalysis:
                 fixedPars=None,
                 method=testMethod,
             )
-            error = fitting.Fitting().getFitErr()
-            fitter_func = fitting.Fitting().fitfuncmap[function]
+            error = fitter.getFitErr()
+            fitter_func = fitter.fitfuncmap[function]
             yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
             print("spikeanalysis: Hill fit results: ", fpar)
@@ -1477,9 +1482,9 @@ class SpikeAnalysis:
             )
 
             function = "piecewiselinear3"
-            f = fitting.Fitting().fitfuncmap[function]
+            f = fitter.fitfuncmap[function]
             # now fit the full data set
-            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
+            (fpar, xf, yf, names) = fitter.FitRegion(
                 [1],
                 0,
                 i_inj,
@@ -1493,8 +1498,8 @@ class SpikeAnalysis:
                 fixedPars=None,
                 method=testMethod,
             )
-            error = fitting.Fitting().getFitErr()
-            fitter_func = fitting.Fitting().fitfuncmap[function]
+            error = fitter.getFitErr()
+            fitter_func = fitter.fitfuncmap[function]
             yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
             self.FIKeys = f[6]
 
@@ -1524,7 +1529,7 @@ class SpikeAnalysis:
             #
             function = "FIGrowthPower"
             # now fit the full data set
-            (fpar, xf, yf, names) = fitting.Fitting().FitRegion(
+            (fpar, xf, yf, names) = fitter.FitRegion(
                 [1],
                 0,
                 xna,
@@ -1538,8 +1543,8 @@ class SpikeAnalysis:
                 fixedPars=None,
                 method=testMethod,
             )
-            error = fitting.Fitting().getFitErr()
-            fitter_func = fitting.Fitting().fitfuncmap[function]
+            error = fitter.getFitErr()
+            fitter_func = fitter.fitfuncmap[function]
             yfit = fitter_func[0](fpar[0], x=i_inj, C=None)
 
             self.FIKeys = f[6]
