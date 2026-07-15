@@ -1729,6 +1729,20 @@ class DataTables:
         assert data_class in self.experiment.keys()
         fn = self.assemble_dataset.get_assembled_filename(self.experiment, mode="read")
         group_by = self.ptreedata.child("Plotting").child("Group By").value()
+        _valid_groups = list(self.experiment.get("hue_palette", {}).keys())
+        if group_by in ["nan"] or group_by not in _valid_groups:
+            _valid_str = "\n".join(f"  • {g}" for g in _valid_groups) if _valid_groups else "  (none defined)"
+            _msg = QtWidgets.QMessageBox(self.win)
+            _msg.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+            _msg.setWindowTitle("Invalid Group By Selection")
+            _msg.setText("Invalid Group By Selection")
+            _msg.setInformativeText(
+                f"'{group_by}' is not a valid group for this plot.\n\n"
+                f"Valid selections are:\n{_valid_str}\n\n"
+                f"Please choose one using the 'Group By' selector in the Plotting panel."
+            )
+            _msg.exec()
+            return
         plot_order = self.experiment["plot_order"][group_by]
         hue_category = self.ptreedata.child("Plotting").child("2nd Group By").value()
         # if hue_category == "None":
