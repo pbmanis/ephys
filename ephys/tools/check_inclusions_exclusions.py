@@ -68,7 +68,7 @@ def include_exclude(
             print(f"     Exclusions: {exclusions[cell_id]}")
         else:
             print(f"     Exclusions: None")
-        if cell_id in list(inclusions.keys()):
+        if inclusions is not None and cell_id in list(inclusions.keys()):
             print(f"     Inclusions: {inclusions[cell_id]}")
         else:
             print(f"     Inclusions: None")
