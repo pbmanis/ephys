@@ -211,7 +211,9 @@ def concurrent_data_plotting(
             publication_plot_mode=publication_plot_mode,
             parent_figure=cat_figure,
         )
-        dfc = plot_spikes.preload(filename)
+        # dfc = plot_spikes.preload(filename)
+        dfc = df  # no need to load again? 
+
         (
             cc2_plot,
             picker_funcs1,
@@ -267,6 +269,8 @@ def concurrent_data_plotting(
         )
     cc_plot.figure_handle.show()
     mpl.show()
+    mpl.close(cat_figure.figure_handle)  # close the figure to avoid memory leaks
+    mpl.close(cont_figure.figure_handle)
     return cc_plot
 
 
@@ -712,10 +716,12 @@ class PlotSpikeInfo(QObject):
             Stripplot and boxplot palettes should be a dictionary mapping hue levels to matplotlib colors.
 
         """
-        if celltype != "all":
-            df_x = df[df["cell_type"] == celltype].copy(deep=True)
-        else:
-            df_x = df.copy(deep=True)
+        # if celltype != "all":
+        #     df_x = df[df["cell_type"] == celltype].copy(deep=True)
+        # else:
+        #     df_x = df.copy(deep=True)
+        # replaced the above with this: (filtered array before copy - less memory usage)
+        df_x = df[df["cell_type"] == celltype].copy() if celltype != "all" else df.copy()
         df_x = df_x.apply(self.apply_scale, axis=1, measure=yname, scale=sign * scale)
 
         if plot_colors is None:  # set to defaults
@@ -2209,13 +2215,16 @@ class PlotSpikeInfo(QObject):
         logx : bool, optional
             Use log scale on x axis, by default False
         """
-        dfp = data.copy(deep=True)
         if plot_order == []:
             raise ValueError("Empty plot order")
 
-        if celltype != "all":
-            dfp = dfp[dfp["cell_type"] == celltype]
+        # dfp = data.copy(deep=True)
+        # if celltype != "all":
+        #     dfp = dfp[dfp["cell_type"] == celltype]
+        # replace above lines with memory-saving filter first.
+        dfp = data[data["cell_type"] == celltype].copy() if celltype != "all" else data.copy()
         dfp = dfp.apply(self.apply_scale, axis=1, measure=yname, scale=yscale)
+
         if transform is not None:
             dfp[yname] = dfp[yname].apply(transform)
         # if hue_category is None:
@@ -2523,8 +2532,7 @@ class PlotSpikeInfo(QObject):
             cdd = df[df["cell_type"] == celltype].copy(deep=True)
         else:
             cdd = df.copy(deep=True)
-        # print("CDD: ", cdd.columns)
-        # print("CDD groups: ", cdd[group_by].unique())
+        fi_rows = []  # accumulate rows and concatenat at end of loop
         for index in cdd.index:  # go through the individual cells
             group = cdd[group_by][index]
             # print("index, group: ", index, group)
@@ -2643,7 +2651,11 @@ class PlotSpikeInfo(QObject):
                         },
                         index=[0],
                     )
-                    self.FI_Data = pd.concat([self.FI_Data, ds], ignore_index=True)
+                    fi_rows.append(ds)
+                    # self.FI_Data = pd.concat([self.FI_Data, ds], ignore_index=True)
+            if fi_rows:
+                self.FI_Data = pd.concat([self.FI_Data] + fi_rows, ignore_index=True)
+
             elif ptype == "mean":
                 # while in this loop, build up the arrays for the mean
                 if group in FIy_all.keys():
