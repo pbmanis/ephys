@@ -10,7 +10,9 @@ CP = cprint.cprint
 Helper functions for plot_spike_info module.
 
 """
-
+_EPOCH_OFFSET = datetime.datetime.timestamp(
+        datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
+    )
 
 def get_plot_order(experiment):
     """get_plot_order get the order of the groups to plot
@@ -164,10 +166,8 @@ def make_datetime_date(row):
     date = date.split("_", maxsplit=1)[0]
     shortdate = datetime.datetime.strptime(date, "%Y.%m.%d")
     shortdate = datetime.datetime.timestamp(shortdate)
-    st = datetime.datetime.timestamp(
-        datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
-    )
-    row.shortdate = shortdate - st
+
+    row.shortdate = shortdate - _EPOCH_OFFSET
     if pd.isnull(row.shortdate):
         raise ValueError("row.shortdate is null ... in make_datetime_date")
 
@@ -205,11 +205,14 @@ def clean_rin(row, experiment: dict):
             print("Using default Rin min")
             print(experiment["data_inclusion_criteria"].keys())
             min_Rin = experiment["data_inclusion_criteria"]["default"]["Rin_min"]
-    if isinstance(row.Rin, float):
-        row.Rin = [row.Rin]
-    for i, rin in enumerate(row.Rin):
-        if row.Rin[i] < min_Rin:
-            row.Rin[i] = np.nan
+    # if isinstance(row.Rin, float):  # replace innter loops with numpy
+    #     row.Rin = [row.Rin]
+    # for i, rin in enumerate(row.Rin):
+    #     if row.Rin[i] < min_Rin:
+    #         row.Rin[i] = np.nan
+    rin_arr = np.atleast_1d(row.Rin, dtype=float)
+    rin_arr[rin_arr < min_Rin] = np.nan
+    row.Rin = rin_arr.tolist()
     return row
 
 
@@ -233,7 +236,7 @@ def adjust_AHP_depth_V(row, experiment: dict):
     return row
 
 def compute_ap_peak_v_re_threshold(row, measure: str):
-    verbose: bool=True  # flag for debugging print statements
+    verbose: bool=False  # flag for debugging print statements
     if verbose:
         CP("m", f"Computing AP peak v re thr\n    row.cell_id: {row.cell_id}, AP_peak_V: {row.AP_peak_V}, AP_thr_V: {row.AP_thr_V}")
     if isinstance(row.AP_peak_V, list):
@@ -310,14 +313,19 @@ def compute_AHP_relative_depth(row):
         if isinstance(row.AP_thr_V, float):
             row.AP_thr_V = [row.AP_thr_V]
         rel_depth_V = [np.nan] * len(row.AHP_depth_V)
-        for i, apv in enumerate(row.AHP_trough_V):
-            rel_depth_V[i] = (
-                row.AP_thr_V[i] - row.AHP_depth_V[i]
-            )  # note sign is positive ... consistent with LCS in spike analysis
-            # but rescale and change sign for plotting
-            rel_depth_V[i] = -1.0 * rel_depth_V[i] * 1e3  # convert to mV
-            if rel_depth_V[i] > 0:
-                rel_depth_V[i] = np.nan
+        # for i, apv in enumerate(row.AHP_trough_V):
+        #     rel_depth_V[i] = (
+        #         row.AP_thr_V[i] - row.AHP_depth_V[i]
+        #     )  # note sign is positive ... consistent with LCS in spike analysis
+        #     # but rescale and change sign for plotting
+        #     rel_depth_V[i] = -1.0 * rel_depth_V[i] * 1e3  # convert to mV
+        #     if rel_depth_V[i] > 0:
+        #         rel_depth_V[i] = np.nan
+        thr = np.array(row.AP_thr_V, dtype=float)  # replace loop with np array
+        depth = np.array(row.AHP_depth_V, dtype=float)
+        rel_depth_V = -1.0e3 * (thr - depth)  # convert to mV
+        rel_depth_V[rel_depth_V > 0] = np.nan
+        rel_depth_V = rel_depth_V.tolist()
         row.AHP_depth_measure = "Multiple spikes"
         row.AHP_relative_depth_V = rel_depth_V
     return row  # single measure
@@ -341,16 +349,22 @@ def compute_AHP_trough_time(row):
             CP("y", f"Warning: length of AP_thr_T and AHP_trough_T do not match for cell_id: {row.cell_id}")
             print("   AP_thr_T: ", row.AP_thr_T, "AHP_trough_T: ", row.AHP_trough_T)
         n_ok = min(len(row.AP_thr_T), len(row.AHP_trough_T))
-    for i in range(n_ok):  # base index on threshold measures
-        if verbose:
-            print("   i: ", i, "AP_thr_T: ", row.AP_thr_T[i], "AP_trough_T: ", row.AHP_trough_T[i])
-        if np.isnan(row.AHP_trough_T[i]):
-            continue
-        if verbose:
-            print("   trough_t, thrt: ", row.AHP_trough_T[i], row.AP_thr_T[i])  # units: AP_thr_t: ms, AHP_trough_T: s
-        row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
-        if row.AHP_trough_T[i] < 0:
-            row.AHP_trough_T[i] = np.nan
+    # for i in range(n_ok):  # base index on threshold measures
+    #     if verbose:
+    #         print("   i: ", i, "AP_thr_T: ", row.AP_thr_T[i], "AP_trough_T: ", row.AHP_trough_T[i])
+    #     if np.isnan(row.AHP_trough_T[i]):
+    #         continue
+    #     if verbose:
+    #         print("   trough_t, thrt: ", row.AHP_trough_T[i], row.AP_thr_T[i])  # units: AP_thr_t: ms, AHP_trough_T: s
+    #     row.AHP_trough_T[i] = row.AHP_trough_T[i] - row.AP_thr_T[i] * 1e-3
+    #     if row.AHP_trough_T[i] < 0:
+    #         row.AHP_trough_T[i] = np.nan
+    trough = np.array(row.AHP_trough_T[:n_ok], dtype=float)
+    thr_t  = np.array(row.AP_thr_T[:n_ok],    dtype=float)
+    trough = trough - thr_t * 1e-3
+    trough[trough < 0] = np.nan
+    row.AHP_trough_T[:n_ok] = trough.tolist()
+
     return row
 
 
