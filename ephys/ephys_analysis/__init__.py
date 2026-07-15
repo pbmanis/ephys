@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # init for ephys
 # Use Semantic Versioning, http://semver.org/
-version_info = (0, 7, 0, 'a')
+version_info = (0, 8, 6, '0')
 __version__ = "%d.%d.%d%s" % version_info
 
 from ..tools import data_plan
