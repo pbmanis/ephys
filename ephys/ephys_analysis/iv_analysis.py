@@ -4,6 +4,7 @@ Compute IV Information
 
 """
 
+import atexit
 import datetime
 import concurrent.futures
 import gc
@@ -25,6 +26,7 @@ except ImportError:
     _SAF = None
 import ephys.tools.filename_tools as filename_tools
 from ephys.tools import check_inclusions_exclusions as CIE
+import matplotlib.pyplot as mpl
 
 color_sequence = ["k", "r", "b"]
 colormap = "snshelix"
@@ -68,6 +70,7 @@ log_formatter = logging.Formatter(
 logging_fh.setFormatter(log_formatter)
 logging_sh.setFormatter(CustomFormatter())  # log_formatter)
 Logger.addHandler(logging_fh)
+atexit.register(logging_fh.close)
 # Logger.addHandler(logging_sh)
 # setFileConfig(filename="iv_analysis.log", encoding='utf=8')
 
@@ -117,7 +120,8 @@ class IVAnalysis(Analysis):
         gc.collect()
 
     def reset_analysis(self):
-        self.IVFigure = None
+        if self.IVFigure is not None:
+            mpl.close(self.IVFigure)
         self.mode = "acq4"
         self.AR: object = acq4_reader()
         self.RM: object = RmTauAnalysis()
@@ -338,8 +342,19 @@ class IVAnalysis(Analysis):
             _cleanup_ivdata(newrow)
             return newrow
 
-        self.df["IV"] = self.df.apply(cleanIVs, axis=1)
-        self.df["Spikes"] = self.df.apply(cleanSpikes, axis=1)
+        # self.df["IV"] = self.df.apply(cleanIVs, axis=1)
+        # self.df["Spikes"] = self.df.apply(cleanSpikes, axis=1)
+        # do inline cleanIVs here. The apply functions did entire dataframe unnecessarily
+        iv_data = self.df.at[icell, "IV"]
+        if isinstance(iv_data, dict):
+            iv_new = {str(k): iv_data[k] for k in iv_data}
+            _cleanup_ivdata(iv_new)
+            self.df.at[icell, "IV"] = iv_new
+        sp_data = self.df.at[icell, "Spikes"]
+        if isinstance(sp_data, dict):
+            sp_new = {str(k): sp_data[k] for k in sp_data}
+            _cleanup_ivdata(sp_new)
+            self.df.at[icell, "Spikes"] = sp_new
 
         nfiles = 0
         allivs = []
@@ -434,7 +449,7 @@ class IVAnalysis(Analysis):
             try:
                 print(f"iv_analysis: parallel mode is 'cell', # tasks={len(tasks)}")
                 results: dict = {}
-                tasks = dict(zip(range(len(validivs)), validivs))
+                tasks = validivs  # dict(zip(range(len(validivs)), validivs))
                 result = [None] * len(tasks)
                 riv = {}  # iv result, keys are protocols (validiv names)
                 rsp = {}  # ditto for spikes.
@@ -464,7 +479,8 @@ class IVAnalysis(Analysis):
                         for i, x in enumerate(tasks)
                     ]
                     for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                        result, nfiles = future.result()
+                        result, _ = future.result()
+                        nfiles += 1
                         # print(result.keys())
                         # print(result['protocol'])
                         results[result['protocol']] = result
@@ -561,8 +577,8 @@ class IVAnalysis(Analysis):
                 self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="w")
             else:
                 self.df.iloc[icell].to_hdf(self.iv_analysisFilename, key=keystring, mode="a")
-            # self.df.at[icell, "IV"] = None
-            # self.df.at[icell, "Spikes"] = None
+            self.df.at[icell, "IV"] = None
+            self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
             gc.collect()
 
