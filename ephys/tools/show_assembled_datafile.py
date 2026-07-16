@@ -234,8 +234,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         if isinstance(row[select_by], float):
             select_value = row[select_by]
         else:
-            # print("I, selectby: ", i, row[select_by])
-            # Claude fixed this 2026-06-10: use selector_values (range-filtered) instead of
+            # Use selector_values (range-filtered) instead of
             # raw row[select_by][i], so protocols with Rs outside select_limits are excluded.
             # old code: if i < len(row[select_by]): select_value = row[select_by][i]
             if i < len(selector_values):
@@ -266,7 +265,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
     if verbose and (select_by in verbose_selects):
         print("iprot, eq_mins, values, taums: ", iprots, equal_mins, values, taums)
     if len(iprots) == 0:
-        # Claude fixed 2026-06-10: row[select_by] is a list when multiple protocols exist;
+        # row[select_by] is a list when multiple protocols exist;
         # the old :.2f format spec crashed with TypeError for list values.
         # old code: f"... ({row[select_by]:.2f}) ..."
         _sel_display = f"{row[select_by]:.2f}" if isinstance(row[select_by], (float, np.float64)) else str(row[select_by])
