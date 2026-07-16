@@ -307,6 +307,14 @@ class SpikeAnalysis:
         # maxspk = int(maxspkrate * twin)  # scale max dount by range of spike counts
         if track:
             print("    In analyze spikes")
+
+        # Claude fixed 2026-07-15: hoist window indices and time_base reference once;
+        # threshold-check each trace before running the Cython spike scan so that
+        # sub-threshold traces (common in lower-current IV steps) skip findspikes entirely.
+        time_base = self.Clamps.time_base
+        _i0 = int(np.searchsorted(time_base, self.Clamps.tstart))
+        _i1 = int(np.searchsorted(time_base, self.Clamps.tend, side="right"))
+
         for trace_number in range(
             ntraces
         ):  # this is where we would parallelize the analysis for spikes
@@ -314,10 +322,14 @@ class SpikeAnalysis:
             # The question is whether this would be faster?
             if track:
                 CP.cprint("r", f"    AnalyzeSpikes: 2: trace: {trace_number:04d}", end="\r")
+            v_raw = self.Clamps.traces[trace_number]
+            if float(np.asarray(v_raw)[_i0:_i1].max()) < self.threshold:
+                CP.cprint("b", f"    No spikes found, tr: {trace_number:04d}", end="\r")
+                continue
             spikes = self.U.findspikes(
             # spikes = spike_finder.FindSpikesNumba().findspikes(
-                x=self.Clamps.time_base,
-                v=np.array(self.Clamps.traces[trace_number]),
+                x=time_base,
+                v=np.array(v_raw),
                 t0=self.Clamps.tstart,
                 t1=self.Clamps.tend,
                 dt=self.Clamps.sample_interval,
@@ -435,16 +447,42 @@ class SpikeAnalysis:
         ntr = len(self.Clamps.traces)
         allspikes = [[] for i in range(ntr)]
 
+        # 2026-07-15: pre-compute window slice indices once before
+        # looping. Adds a threshold pre-check so that findspikes is
+        # skipped for traces whose window never reaches threshold.
+        #  his avoids
+        #  Note: we still pass the full
+        # time_base and v to findspikes because the Kalluri detector
+        # (box_spike_find) computes spike times as index×dt from the start of
+        # the passed array and would produce wrong times if given a pre-sliced
+        # array starting at twin[0] > 0.
+        time_base = self.Clamps.time_base
+        dt = self.Clamps.sample_interval
+        i0 = int(np.searchsorted(time_base, twin[0]))
+        i1 = int(np.searchsorted(time_base, twin[1], side="right"))
+
+        spike_window = [float(t) for t in twin]
+
+        if i0 >= i1:
+            # Window is empty (e.g. tstart == 0 leaves baseline zero-length)
+            self.analysis_summary[mode + "_spikes"] = allspikes
+            self.analysis_summary[mode + "_spike_window"] = spike_window
+            return
+
         for trace_number in range(ntr):
+            v_raw = self.Clamps.traces[trace_number]
+            # Threshold pre-check on the windowed slice only (zero-copy view)
+            if float(np.asarray(v_raw)[i0:i1].max()) < self.threshold:
+                continue
             spikes = self.U.findspikes(
-                x=self.Clamps.time_base,
-                v=np.array(self.Clamps.traces[trace_number]),
+                x=time_base,
+                v=np.array(v_raw),
                 t0=twin[0],
                 t1=twin[1],
-                dt=self.Clamps.sample_interval,
-                mode=self.mode,  # mode to use for finding spikes
+                dt=dt,
+                mode=self.mode,
                 interpolate=self.interpolate,
-                threshold = self.threshold,
+                threshold=self.threshold,
                 detector=self.spike_detector,
                 refract=self.refractory,
                 peakwidth=self.peakwidth,
@@ -455,10 +493,10 @@ class SpikeAnalysis:
             if len(spikes) == 0:
                 continue
             allspikes[trace_number] = spikes
-        spike_window = [float(t) for t in twin]
+
         self.analysis_summary[mode + "_spikes"] = allspikes
-        self.analysis_summary[mode + '_spike_window'] = spike_window
-        if mode == 'evoked':
+        self.analysis_summary[mode + "_spike_window"] = spike_window
+        if mode == "evoked":
             self.spikecount = allspikes
             self.spikes_counted = True
             self.nospk = np.where(self.spikecount == 0)
