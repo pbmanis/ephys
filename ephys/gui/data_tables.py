@@ -216,6 +216,25 @@ class _SelectionRestoreFilter(QtCore.QObject):
         return False  # never consume the event
 
 
+class VerifyDiffDialog(QtWidgets.QDialog):
+    """Non-modal dialog shown by 'Verify Intermediate' when analysis results differ from the existing per-cell pkl."""
+
+    def __init__(self, cell_id: str, diff_text: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Verify Intermediate — {cell_id}")
+        layout = QtWidgets.QVBoxLayout()
+        text_edit = QtWidgets.QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setFont(QtGui.QFont("Courier", 10))
+        text_edit.setPlainText(diff_text)
+        layout.addWidget(text_edit)
+        btn = QtWidgets.QPushButton("Dismiss")
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+        self.setLayout(layout)
+        self.resize(700, 450)
+
+
 class DataTables:
     """
     Main entry point for building the table and operating on the data
@@ -238,6 +257,7 @@ class DataTables:
         self.publication_plot_mode = False  # set True to use publication mode when available.
         self.dry_run = False
         self.parallel_mode = "cell"
+        self.verify_intermediate = False
         self.exclude_unimportant = False
 
         self.computer_name = get_computer()
@@ -480,6 +500,7 @@ class DataTables:
             lambda row, col: self.on_double_click(row, col)
         )
         self.table.clicked.connect(functools.partial(self.on_single_click, self.table))
+        self.table.clicked.connect(self._iv_track_single_click)
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
         self.update_assembled_datatable()
 
@@ -501,6 +522,7 @@ class DataTables:
         self.DS_table.cellDoubleClicked.connect(
             lambda row, col: self.DSTable_show_cell_on_double_click(self.DS_table, row, col)
         )
+        self.DS_table.clicked.connect(self._ds_track_single_click)
 
         if self.datasummary is not None:
             self.DS_table_manager.build_table(self.datasummary, mode="scan")
@@ -590,6 +612,24 @@ class DataTables:
             self.selected_index_rows = None
         # for index in selrows: self.selected_index_row = index.row()
         #     self.analyze_from_table(index.row())
+
+    def _iv_track_single_click(self, index: QtCore.QModelIndex) -> None:
+        """Keep _iv_selected_cell_id in sync with single-clicks in the IV Assembled Data table."""
+        if self.table_manager is None:
+            return
+        mi = self.table.model().index(index.row(), 0)
+        selected = self.table_manager.get_table_data(mi)
+        if selected is not None:
+            self._iv_selected_cell_id = selected.cell_id
+
+    def _ds_track_single_click(self, index: QtCore.QModelIndex) -> None:
+        """Keep _ds_selected_cell_id in sync with single-clicks in the DataSummary table."""
+        if self.DS_table_manager is None:
+            return
+        mi = self.DS_table_manager.table.model().index(index.row(), 0)
+        selected = self.DS_table_manager.get_table_data(mi)
+        if selected is not None:
+            self._ds_selected_cell_id = selected.cell_id
 
     def display_from_table_by_row(self, i_row, mode="IV"):
         match mode:
@@ -1534,6 +1574,8 @@ class DataTables:
 
                 case "Tools":
                     match path[1]:
+                        case "Verify Intermediate":
+                            self.verify_intermediate = data
                         case "Reload":
                             # set reload button to red.
 
@@ -1669,6 +1711,8 @@ class DataTables:
         )
         print("\n" * 2)
         CP.cprint("g", "=" * 80)
+        args.verify_intermediate = self.verify_intermediate
+        self.IVAnalysis.verify_callback = self._show_verify_diff
         self.IVAnalysis.reset(args)
         self.IVAnalysis.set_experiment(self.experiment)
         CP.cprint("c", " datatables: experiment set")
@@ -1710,6 +1754,23 @@ class DataTables:
             "r", f"Then try the plotting functions to plot summaries and get statistical results"
         )
         CP.cprint("r", "=" * 80)
+
+    def _show_verify_diff(self, cell_id: str, diff_text: str) -> None:
+        """Callback invoked by IVAnalysis.analyze_ivs when verify_intermediate is True.
+        Shows a status-bar note if clean, or a non-modal dialog when differences exist.
+        """
+        if not diff_text:
+            self.status_bar_message(
+                f"Verify Intermediate: {cell_id} — no differences", color="green"
+            )
+        else:
+            dlg = VerifyDiffDialog(cell_id=cell_id, diff_text=diff_text, parent=None)
+            dlg.show()
+            # Keep a reference so the dialog is not garbage-collected before dismissal.
+            if not hasattr(self, "_verify_dialogs"):
+                self._verify_dialogs = []
+            self._verify_dialogs.append(dlg)
+            dlg.finished.connect(lambda: self._verify_dialogs.remove(dlg))
 
     def generate_summary_plot(
         self,
