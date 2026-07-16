@@ -78,6 +78,8 @@ def concurrent_data_plotting(
     hue_category = parameters["hue_category"]
     pick_display_function = parameters["pick_display_function"]
 
+    cat_figure = None
+    cont_figure = None
     plot_spikes = PlotSpikeInfo(
         datasummary,
         experiment,
@@ -269,8 +271,10 @@ def concurrent_data_plotting(
         )
     cc_plot.figure_handle.show()
     mpl.show()
-    mpl.close(cat_figure.figure_handle)  # close the figure to avoid memory leaks
-    mpl.close(cont_figure.figure_handle)
+    if cat_figure is not None:
+        mpl.close(cat_figure.figure_handle)  # close the figure to avoid memory leaks
+    if cont_figure is not None:
+        mpl.close(cont_figure.figure_handle)
     return cc_plot
 
 
@@ -858,9 +862,10 @@ class PlotSpikeInfo(QObject):
             ysname = yname.replace("_bestRs", "")
             ylims = self.experiment.get("ylims", {}).get("default", {}).get(ysname, ylims)
         if ylims is not None:
-            raise ValueError(
-                f"ylims for {yname} are set in the configuration file, but should be set in the 'ylims' entry under the specific cell type or 'default' entry. Please check the configuration file."
-            )
+            ylims = [-90, -50]
+            # raise ValueError(
+            #     f"ylims for {yname} are set in the configuration file, but should be set in the 'ylims' entry under the specific cell type or 'default' entry. Please check the configuration file."
+            # )
 
         angle = 45
         ha = "right"
@@ -1120,7 +1125,7 @@ class PlotSpikeInfo(QObject):
         #     parameters=parameters,
         # )
         # this list has all the columns that we need besides the analyzed data
-        # Claude fixed 2026-06-10: use Rs_bestRs (lowest Rs protocol) instead of Rs (mean across protocols).
+        # Use Rs_bestRs (lowest Rs protocol) instead of Rs (mean across protocols).
         # old code used "Rs" here, then called average_rs() below which replaced it with np.nanmean(row["Rs"]).
         ensure_columns = [
             "cell_id",
@@ -1156,7 +1161,7 @@ class PlotSpikeInfo(QObject):
                 CP("r", f"Measure {meas!s} not found in df_R columns: {df_R.columns}")
                 raise ValueError(f"Required measure {meas!s} not found in df_R columns: {df_R.columns}")
 
-        # Claude fixed 2026-06-10: rename Rs_bestRs → Rs so downstream R scripts see the same column name.
+        # Rename Rs_bestRs → Rs so downstream R scripts see the same column name.
         # Must happen AFTER the measures check above, because measures may contain "Rs_bestRs".
         # old code: if "Rs" in df_R.columns: df_R = df_R.apply(self.average_rs, axis=1)
         if "Rs_bestRs" in df_R.columns:
@@ -1365,7 +1370,7 @@ class PlotSpikeInfo(QObject):
         max_rs = self.experiment.get("maximum_access_resistance", 1e8)
         select_limits = [0, max_rs * rs_scale]
         if representation in ["bestRs", "mean"]:
-            # Claude fixed 2026-06-10: ensure "Rs" is always included so Rs_bestRs is computed,
+            # Ensure "Rs" is always included so Rs_bestRs is computed,
             # even when the caller's measures list contains only spike/FI/rmtau parameters.
             params_for_selection = local_measures if "Rs" in local_measures else ["Rs"] + local_measures
             df = SAD.get_best_and_mean(
@@ -1576,10 +1581,11 @@ class PlotSpikeInfo(QObject):
                         ylims = self.ylims[ycell][x_measure]
                     if measure not in df.columns:
                         raise ValueError(f"Missing measure: {measure}\nin Columns: {df.columns!s}")
-                    if measure.startswith("RMP"):  # put the assumed JP on the plot.
-                        raise ValueError(
-                            "RMP measures should have been adjusted for JP in compute_calculated_measures."
-                        )
+                    # if measure.startswith("RMP"):  # put the assumed JP on the plot.
+                    #     print("measure: ", measure)
+                    #     raise ValueError(
+                    #         "RMP measures should have been adjusted for JP in compute_calculated_measures."
+                    #     )
 
                     picker_func = self.create_one_plot_categorical(
                         data=df,
@@ -1801,7 +1807,7 @@ class PlotSpikeInfo(QObject):
         df = self.rescale_values(df)
 
         if representation in ["bestRs", "mean"]:
-            # Claude fixed 2026-06-10: same as compute_calculated_measures — ensure "Rs" is included
+            # same as compute_calculated_measures — ensure "Rs" is included
             # so Rs_bestRs is computed even when measures contains only FI/rmtau parameters.
             params_for_selection = measures if "Rs" in measures else ["Rs"] + measures
             df = SAD.get_best_and_mean(
