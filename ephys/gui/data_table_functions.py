@@ -2489,17 +2489,19 @@ class Functions:
         """
         check_cell = "2023.10.17_000/slice_000/cell_000"
 
+        # Claude fixed 2026-07-16: compute cell slice once; avoids 4-6 repeated O(N) scans
+        _df_cell_rows = df[df.cell_id == cell]
         if self.status_bar is not None:
             self.status_bar.showMessage(
-                f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}  Group {df[df.cell_id == cell].Group.values[0]!s}"
+                f"\n{'='*80:s}\nCell: {cell!s}, {_df_cell_rows.cell_type.values[0]:s}  Group {_df_cell_rows.Group.values[0]!s}"
             )
-        CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {df[df.cell_id == cell].cell_type.values[0]:s}")
-        CP("g", f"     Group {df[df.cell_id == cell].Group.values[0]!s}")
-        cell_group = df[df.cell_id == cell].Group.values[0]
+        CP("g", f"\n{'='*80:s}\nCell: {cell!s}, {_df_cell_rows.cell_type.values[0]:s}")
+        CP("g", f"     Group {_df_cell_rows.Group.values[0]!s}")
+        cell_group = _df_cell_rows.Group.values[0]
         if (
-            pd.isnull(cell_group) and len(df[df.cell_id == cell].Group.values) > 1
+            pd.isnull(cell_group) and len(_df_cell_rows.Group.values) > 1
         ):  # incase first value is nan
-            cell_group = df[df.cell_id == cell].Group.values[1]
+            cell_group = _df_cell_rows.Group.values[1]
         try:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
         except ValueError:
