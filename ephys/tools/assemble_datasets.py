@@ -39,6 +39,12 @@ from ephys.tools.check_df_for_cells_trap import check_df_for_cells_trap
 CP = cprint.cprint
 FUNCS = data_table_functions.Functions()
 
+# Claude fixed 2026-07-16: epoch offset is a fixed constant — compute once at import time
+# rather than recomputing inside make_datetime_date on every row via df.apply.
+_EPOCH_OFFSET: float = datetime.datetime.timestamp(
+    datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
+)
+
 
 def make_datetime_date(row, colname="date"):
     if colname == "date" and "Date" in row.keys():
@@ -51,10 +57,10 @@ def make_datetime_date(row, colname="date"):
     date = date.split("_", maxsplit=1)[0]
     shortdate = datetime.datetime.strptime(date, "%Y.%m.%d")
     shortdate = datetime.datetime.timestamp(shortdate)
-    st = datetime.datetime.timestamp(
-        datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
-    )
-    row.shortdate = shortdate - st
+    # st = datetime.datetime.timestamp(  # Claude fixed 2026-07-16: use module-level constant
+    #     datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
+    # )
+    row.shortdate = shortdate - _EPOCH_OFFSET
     if pd.isnull(row.shortdate):
         raise RuntimeError("row.shortdate is null ... in make_datetime_date")
 
@@ -218,7 +224,17 @@ class AssembleDatasets:
 
         if "protocol" not in df.columns:
             df["protocol"] = ""
-        df = df.apply(self._data_complete_to_series, axis=1)
+        # df = df.apply(self._data_complete_to_series, axis=1)  # Claude fixed 2026-07-16: replaced with vectorised version below
+        # Vectorised replacement: split on comma, strip whitespace, keep only CCIV entries.
+        # Result is a list per row; df.explode() below converts to one-row-per-protocol.
+        df["protocol"] = (
+            df["data_complete"]
+            .str.split(",")
+            .apply(lambda parts: [
+                p.strip() for p in (parts or [])
+                if p.strip() != "nan" and "cciv" in p.strip().lower()
+            ])
+        )
         # print(len(df), " rows after data complete to series")
 
         # now make a new dataframe that has a separate row for each protocol
@@ -468,9 +484,11 @@ class AssembleDatasets:
           
         else:
             check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combinebycell, before combining by cell (serial)")
+            # Claude fixed 2026-07-16: collect rows in a list; concat once after loop to avoid O(n²) copies
+            _rows = []
             # do each cell in the database
             for icell, cell in enumerate(cell_list):
-                print("icell: ", icell)
+                # print("icell: ", icell)  # Claude fixed 2026-07-16: per-cell debug print removed
                 if not isinstance(ilimit, list):
                     if ilimit is not None and icell > ilimit:
                         break
@@ -484,13 +502,16 @@ class AssembleDatasets:
                     "c", f"    Computing FI_Fits for cell: {cell:s}"
                 )  # df[df.cell_id==cell].cell_type)
                 datadict = FUNCS.combine_measures_and_FI_Fits(
-                    self.experiment, df, cell, protodurs=self.experiment["FI_protocols"], 
+                    self.experiment, df, cell, protodurs=self.experiment["FI_protocols"],
                     dotindex_data=dotindex_data
                 )
                 if datadict is None:
                     print("    datadict is none for cell: ", cell)
                     continue
-                df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)
+                # df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)  # Claude fixed 2026-07-16: moved below
+                _rows.append(pd.Series(datadict).to_frame().T)
+            if _rows:
+                df_new = pd.concat([df_new] + _rows, ignore_index=True)
         check_df_for_cells_trap(df_new, self.experiment, message="AssembleDatasets:combinebycell, after combining measures (df_new)")
         return df_new
 
@@ -524,6 +545,21 @@ class AssembleDatasets:
         print("coded groups: ", df_coding.Group.unique())
         coding_name = self.experiment.get("coding_name", "Group")
         # print("coding name: ", coding_name)
+        # Claude fixed 2026-07-16: pre-build groupby dicts so each per-row lookup is O(1)
+        # rather than a full boolean scan of df_coding on every iteration.
+        _coding_by_date = {k: v for k, v in df_coding.groupby("date")}
+        _coding_by_subject = (
+            {k: v for k, v in df_coding.groupby("subject")}
+            if "subject" in df_coding.columns else {}
+        )
+        _coding_by_slice = (
+            {k: v for k, v in df_coding.groupby(["date", "slice_slice"])}
+            if "slice_slice" in df_coding.columns else {}
+        )
+        _coding_by_cell = (
+            {k: v for k, v in df_coding.groupby(["date", "slice_slice", "cell_cell"])}
+            if all(c in df_coding.columns for c in ["slice_slice", "cell_cell"]) else {}
+        )
         for index in df.index:
             # print("INDEX: ", index)
             row = df.loc[index]
@@ -533,55 +569,37 @@ class AssembleDatasets:
             if id_name not in df.columns:
                 id_name = "animal identifier"
 
-            print(row.date, df_coding.date.values)
-            # print("date in the date values: ", row.date, row.date in df_coding.date.values)
             # Here we apply what is in the CODING file to the combined file.
-            # print("row in coding: ", row.date in df_coding.date.values)
-            if row.date in df_coding.date.values:
-                # print("   ok, found date: ", row.date)
+            # Claude fixed 2026-07-16: use pre-built dict lookups (O(1)) instead of
+            # repeated df_coding[df_coding.date == row.date] boolean scans (O(M)) per row.
+            _cdf = _coding_by_date.get(row.date)  # None if date not in coding file
+            if _cdf is not None:
                 if "sex" in df_coding.columns:  # update sex? Should be in main table.
-                    df.at[index, "sex"] = (
-                        df_coding[df_coding.date == row.date].sex.astype(str).values[0]
-                    )
+                    df.at[index, "sex"] = _cdf.sex.astype(str).values[0]
                 if "cell_expression" in df_coding.columns:
-                    df.at[index, "cell_expression"] = (
-                        df_coding[df_coding.date == row.date].cell_expression.astype(str).values[0]
-                    )
+                    df.at[index, "cell_expression"] = _cdf.cell_expression.astype(str).values[0]
 
                 # how to assign groups: by date or subject or cell?
-                print("Coding Level: ", level.lower())
+                # print("Coding Level: ", level.lower())  # Claude fixed 2026-07-16: removed per-row debug print
                 if level.casefold() == "date".casefold():
-                    # print("    row.date match/level::: ", row.date,  "code: ", df_coding[df_coding.date == row.date][coding_name].astype(str).values[0])
-                    df.at[index, "Group"] = (
-                        df_coding[df_coding.date == row.date][coding_name].astype(str).values[0]
-                    )
-                    # print("    df assigned code: ", df.loc[index, "Group"])
+                    df.at[index, "Group"] = _cdf[coding_name].astype(str).values[0]
                     if pd.isnull(df.loc[index, "Group"]):
                         CP("r",
-                            f"     df.at[index, 'Group']: {df.at[index, "Group"]!s}, is Nan, but wanted: " +
+                            f"     df.at[index, 'Group']: {df.at[index, 'Group']!s}, is Nan, but wanted: " +
                             f"{row[coding_name]:s} from coding file column: {coding_name:s}",
                         )
                 elif level.casefold() == "subject".casefold():
-                    mask = df_coding.subject == row['animal identifier']
-                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.casefold() == "slice".casefold() or level.casefold() == "slice_slice".casefold():
-                    mask = (df_coding.date == row.date) & (df_coding.slice_slice == row.slice_slice)
-                    df.at[index, "Group"] = df_coding[mask][coding_name].astype(str).values[0]
-                elif level.casefold() == "cell".casefold() or level.casefold() == "cell_cell".casefold():
-                    mask = (
-                        (df_coding.date == row.date)
-                        & (df_coding.slice_slice == row.slice_slice)
-                        & (df_coding.cell_cell == row.cell_cell)
-                    )
-                    print("mask: ", mask)
-                    print("df_coding.date: ", row.date)
-                    print("df_coding.slice_slice: ", row.slice_slice)
-                    print("df_coding.cell_cell: ", row.cell_cell)
-                    print("coding name: ", coding_name)
-                    dmask = df_coding[mask][coding_name].astype(str)
-                    print("Mask: ", dmask)
-                    if len(dmask.values) > 0:
-                        df.at[index, "Group"] = dmask.values[0]
+                    _sdf = _coding_by_subject.get(row[id_name])
+                    if _sdf is not None:
+                        df.at[index, "Group"] = _sdf[coding_name].astype(str).values[0]
+                elif level.casefold() in ("slice".casefold(), "slice_slice".casefold()):
+                    _sldf = _coding_by_slice.get((row.date, row.slice_slice))
+                    if _sldf is not None:
+                        df.at[index, "Group"] = _sldf[coding_name].astype(str).values[0]
+                elif level.casefold() in ("cell".casefold(), "cell_cell".casefold()):
+                    _cldf = _coding_by_cell.get((row.date, row.slice_slice, row.cell_cell))
+                    if _cldf is not None and len(_cldf) > 0:
+                        df.at[index, "Group"] = _cldf[coding_name].astype(str).values[0]
                     else:
                         df.at[index, "Group"] = self.experiment.get("no_data_marker", "ND")
             else:
