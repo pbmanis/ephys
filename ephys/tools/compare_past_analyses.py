@@ -80,7 +80,7 @@ def clean_string(val):
 def _scalar_rs(row: pd.Series) -> float:
     """Extract a scalar Rs value from a row Series.
 
-    Claude fixed 2026-06-10: handles both 'Rs_bestRs' and 'Rs' column names, duplicate
+    handles both 'Rs_bestRs' and 'Rs' column names, duplicate
     index entries (which return a Series instead of a scalar), and non-numeric values.
     """
     for key in ("Rs_bestRs", "Rs"):
@@ -151,7 +151,6 @@ def compare_measures(
                     if cell_id_ok:
                         if check_verbose(flags, measure, skip):
                             CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
-                            # Claude fixed 2026-06-10: old code: float(row1['Rs']) / float(row2['Rs'])
                             CP(
                                 "y",
                                 f"         Rs: {_scalar_rs(row1):.2f} vs {_scalar_rs(row2):.2f}",
@@ -248,8 +247,7 @@ def compare_measures(
                 if cell_id_ok:
                     if check_verbose(flags, measure, skip):
                         CP("y", f"\nCell {cell_id} {row1['age_category']} has differences:")
-                        # Claude fixed 2026-06-10: removed row2.rename({'Rs': 'Rs_bestRs'}) —
-                        # normalization is now done at the start of compare_cell_data.
+                        # normalization is done at the start of compare_cell_data.
                         # old code: rs1 = clean_string(row1["Rs_bestRs"]) / float(rs1) — crashed
                         # when row1["Rs_bestRs"] returned a Series due to duplicate column names.
                         rs1_val = _scalar_rs(row1)
@@ -398,9 +396,9 @@ def compare_cell_data(
     diff_cells = set()
     diff_measures = set()
 
-    # Claude fixed 2026-06-10: normalize Rs column name before extracting rows.
-    # New CSVs have "Rs" (renamed from Rs_bestRs in export_r); old CSVs may have "Rs_bestRs".
-    # Renaming after row extraction (the old approach at line ~369 below) could not affect
+    # normalize Rs column name before extracting rows.
+    # Newer CSVs have "Rs" (renamed from Rs_bestRs in export_r); old CSVs may have "Rs_bestRs".
+    # Renaming after row extraction (the old approach) could not affect
     # already-extracted row Series, and also created duplicate columns when d1 already had
     # Rs_bestRs, causing row["Rs_bestRs"] to return a Series instead of a scalar.
     for _df in [d1, d2]:
@@ -442,7 +440,7 @@ def compare_cell_data(
             continue
         if col not in d2.columns or col not in d1.columns:  # check columns.
             if col == "Rs_bestRs":
-                # Claude fixed 2026-06-10: normalization is now done at the top of this function
+                # Normalization is now done at the top of this function
                 # (before row extraction), so no rename is needed here.
                 # old code: d1.rename(columns={"Rs": "Rs_bestRs"}, inplace=True)
                 pass
