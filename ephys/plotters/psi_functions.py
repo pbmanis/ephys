@@ -210,7 +210,7 @@ def clean_rin(row, experiment: dict):
     # for i, rin in enumerate(row.Rin):
     #     if row.Rin[i] < min_Rin:
     #         row.Rin[i] = np.nan
-    rin_arr = np.atleast_1d(row.Rin, dtype=float)
+    rin_arr = np.atleast_1d(row.Rin)
     rin_arr[rin_arr < min_Rin] = np.nan
     row.Rin = rin_arr.tolist()
     return row
