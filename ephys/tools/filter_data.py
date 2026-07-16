@@ -142,13 +142,17 @@ class FilterDataset:
                 msg = f"    Filtering out group: {group:s}"
                 CP.cprint("y", msg)
                 FUNCS.textappend(msg)
-                df.drop(df.loc[df["Group"] == group].index, inplace=True)
+                # df.drop(df.loc[df["Group"] == group].index, inplace=True)  # Claude fixed 2026-07-16: moved to single mask below
+            # Claude fixed 2026-07-16: one boolean mask instead of N df.drop() copies
+            df = df[~df["Group"].isin(remove_groups)]
         if remove_expression is not None:
             for expr in remove_expression:
                 msg = f"    Filtering out expression: {expr:s}"
                 CP.cprint("y", msg)
                 FUNCS.textappend(msg)
-                df.drop(df.loc[df["cell_expression"] == expr].index, inplace=True)
+                # df.drop(df.loc[df["cell_expression"] == expr].index, inplace=True)  # Claude fixed 2026-07-16: moved to single mask below
+            # Claude fixed 2026-07-16: one boolean mask instead of N df.drop() copies
+            df = df[~df["cell_expression"].isin(remove_expression)]
 
         df["cell_id2"] = df.apply(self.make_cell_id2, axis=1)
         if excludeIVs is None:
