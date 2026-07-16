@@ -36,10 +36,6 @@ _USE_NUMBA_CACHE = not bool(os.environ.get("EPHYS_NO_NUMBA_CACHE", ""))
 # Claude fixed 2026-07-15: concurrent first-run compilation races on the shared .nbc file
 # Set EPHYS_NO_NUMBA_CACHE=1 in CI or when running tests in parallel to disable
 
-# from ephys.ephys_analysis.spike_analysis import (
-#     OneSpike,
-#     SpikeAnalysis,
-# )
 import ephys.ephys_analysis.spike_analysis as SA  # 2026-07-15: change import so that module reference stays live after hot-reload
 
 
