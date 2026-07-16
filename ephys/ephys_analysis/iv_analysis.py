@@ -75,6 +75,88 @@ atexit.register(logging_fh.close)
 # setFileConfig(filename="iv_analysis.log", encoding='utf=8')
 
 
+def _compare_iv_dicts(
+    new: Union[dict, None],
+    old: Union[dict, None],
+    label: str,
+    tol: float = 1e-4,
+) -> list:
+    """Compare two IV/Spikes analysis-summary dicts (keyed by protocol name).
+
+    Returns a list of human-readable difference strings.
+    Scalars (float/int/bool) and short 1-D arrays (≤ 100 elements) are checked
+    with numpy allclose.  Large or complex structures (e.g. 'spikes',
+    'taum_fitted') are skipped with a note.
+    """
+    # Keys whose values are too large or structurally complex to diff usefully.
+    _SKIP_KEYS = frozenset(
+        ["spikes", "taum_fitted", "tauh_fitted", "FI_Curve",
+         "ivss_cmd", "ivss_v", "ivpk_cmd", "ivpk_v",
+         "Irmp", "RMPs", "taupars"]
+    )
+
+    lines: list = []
+    if new is None and old is None:
+        return lines
+    if new is None:
+        lines.append(f"[{label}] new result is None but old exists")
+        return lines
+    if old is None:
+        lines.append(f"[{label}] no previous data in pkl to compare against")
+        return lines
+
+    # Normalise protocol keys to basenames so that full-path keys from serial
+    # mode ('2022.01.01_000/slice_000/cell_000/CCIV_long_HK_000') match the
+    # basename keys from parallel mode ('CCIV_long_HK_000').
+    # Path(k).name is a no-op when k is already a plain basename.
+    new = {Path(k).name: v for k, v in new.items()}
+    old = {Path(k).name: v for k, v in old.items()}
+
+    new_prots = set(new.keys())
+    old_prots = set(old.keys())
+    for p in sorted(new_prots - old_prots):
+        lines.append(f"[{label}] protocol in new but not in old: {p}")
+    for p in sorted(old_prots - new_prots):
+        lines.append(f"[{label}] protocol in old but not in new: {p}")
+
+    for prot in sorted(new_prots & old_prots):
+        new_d = new[prot]
+        old_d = old[prot]
+        if not isinstance(new_d, dict) or not isinstance(old_d, dict):
+            continue
+        all_keys = set(new_d.keys()) | set(old_d.keys())
+        for k in sorted(all_keys):
+            if k in _SKIP_KEYS:
+                continue
+            if k not in new_d:
+                lines.append(f"[{label}] {prot}: key '{k}' missing in new")
+                continue
+            if k not in old_d:
+                lines.append(f"[{label}] {prot}: key '{k}' missing in old")
+                continue
+            nv, ov = new_d[k], old_d[k]
+            # Convert scalars
+            if isinstance(nv, (int, float, bool)) and isinstance(ov, (int, float, bool)):
+                if not np.isclose(float(nv), float(ov), rtol=tol, atol=1e-9, equal_nan=True):
+                    lines.append(
+                        f"[{label}] {prot}: {k}  new={nv!r}  old={ov!r}"
+                    )
+            elif isinstance(nv, np.ndarray) and isinstance(ov, np.ndarray):
+                if nv.shape != ov.shape:
+                    lines.append(
+                        f"[{label}] {prot}: {k}  shape new={nv.shape} old={ov.shape}"
+                    )
+                elif nv.ndim == 1 and nv.size <= 100:
+                    if not np.allclose(nv, ov, rtol=tol, atol=1e-9, equal_nan=True):
+                        lines.append(
+                            f"[{label}] {prot}: {k}  arrays differ "
+                            f"(max |Δ|={float(np.nanmax(np.abs(nv - ov))):.3g})"
+                        )
+                # large arrays: skip silently
+            # other types (lists, dicts, None, str): skip silently
+    return lines
+
+
 def concurrent_iv_analysis(
     ivanalysis: object,
     icell: int,
@@ -106,6 +188,9 @@ class IVAnalysis(Analysis):
             super().__init__(args)
         else:
             super().__init__()
+        self.IVFigure = None  # must exist before reset_analysis() checks it
+        self.verify_intermediate = False
+        self.verify_callback = None  # set by GUI before run() to receive diff reports
         self.reset_analysis()
         Logger.info("Instantiating IVAnalysis class")
 
@@ -118,6 +203,40 @@ class IVAnalysis(Analysis):
         del self.SP
         del self.RM
         gc.collect()
+
+    def __getstate__(self):
+        import pickle as _pickle
+        state = self.__dict__.copy()
+        # Claude fixed 2026-07-15: AR/SP/RM may hold non-picklable state
+        # (file handles, C-extension caches) after getData(); analyze_iv
+        # re-initialises them via setProtocol/getData/setup in the subprocess.
+        # IVplotter, MA, AM are parent-side objects never used by analyze_iv.
+        # pdf_pages / status_bar are GUI/file objects not needed in subprocess.
+        for key in ('AR', 'SP', 'RM', 'IVplotter', 'MA', 'AM',
+                    'pdf_pages', 'status_bar', 'verify_callback'):
+            if key in state:
+                state[key] = None
+        # Auto-detect any remaining non-picklable attributes so the subprocess
+        # call never silently falls back to serial.
+        for key in list(state.keys()):
+            if state[key] is None:
+                continue
+            try:
+                _pickle.dumps(state[key])
+            except Exception as exc:
+                Logger.warning(
+                    f"IVAnalysis.__getstate__: excluding {key!r} "
+                    f"({type(state[key]).__name__}): {exc}"
+                )
+                state[key] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Re-create fresh instances so analyze_iv can call setProtocol/setup
+        self.AR = acq4_reader()
+        self.RM = RmTauAnalysis()
+        self.SP = SpikeAnalysis()
 
     def reset_analysis(self):
         if self.IVFigure is not None:
@@ -378,16 +497,12 @@ class IVAnalysis(Analysis):
             return  # no matching protocols.
         # next remove specific protocols that are targeted to be excluded
         print("iv_analysis:analyze_ivs: allivs: ", allivs)
-        # validivs = CIE.check_exclusions(cell_id, self.exclusions, allivs)
         validivs, additional_ivs, additional_iv_records = CIE.include_exclude(
             cell_id, inclusions=self.inclusions, exclusions=self.exclusions, allivs=allivs
         )
         print("Include/exclude returns: ", validivs, additional_ivs, additional_iv_records)
         if len(additional_ivs) > 0:
             validivs.extend(additional_ivs)
-        # print("validivs: ", validivs)
-        # print("additional ivs: ", additional_ivs)
-        # print("additional iv records: ", additional_iv_records)
 
         CP.cprint("m", f"Valid IVs: {validivs!s}")
 
@@ -481,8 +596,6 @@ class IVAnalysis(Analysis):
                     for i, future in enumerate(concurrent.futures.as_completed(futures)):
                         result, _ = future.result()
                         nfiles += 1
-                        # print(result.keys())
-                        # print(result['protocol'])
                         results[result['protocol']] = result
                     if len(results) == 0 or self.dry_run:
                         return
@@ -504,6 +617,7 @@ class IVAnalysis(Analysis):
                 self.df.at[icell, "Spikes"] = rsp  # everything in the SP analysus_summary structure
 
             except Exception as e:
+                raise RuntimeError(f"Error in parallel processing: {e!s}") from e
                 CP.cprint("r", f"Error in parallel processing: {e!s}")
                 CP.cprint("r", "Trying serial processing")
                 # do with non-parallel processing. Slower, but gets the job done.
@@ -554,6 +668,52 @@ class IVAnalysis(Analysis):
         self.df["expUnit"] = self.df.apply(clean_exp_unit, axis=1)
         # self.df["expUnit"] = self.df["expUnit"].astype(int)
 
+        # ── Verify Intermediate ───────────────────────────────────────────────
+        # When enabled: compare new results against the existing per-cell pkl,
+        # show differences via verify_callback, then return WITHOUT writing.
+        CP.cprint("c", f"Verify intermediate: flag={self.verify_intermediate}, len(allivs)={len(allivs)}, dry_run={self.dry_run}, callback={'set' if self.verify_callback else 'None'}")
+        if self.verify_intermediate and len(allivs) > 0 and not self.dry_run:
+            _cell_id = self.df.at[icell, "cell_id"]
+            # Claude fixed 2026-07-15: map_cell_names=True so search matches the written path
+            _pkl_path = filename_tools.get_cell_pkl_filename(
+                self.experiment, self.df, _cell_id, map_cell_names=True
+            )
+            if _pkl_path is None or not Path(_pkl_path).is_file():
+                CP.cprint("y", f"Verify Intermediate: no pkl for {_cell_id} — nothing to compare")
+                if self.verify_callback is not None:
+                    self.verify_callback(_cell_id, "")
+            else:
+                _df_cell = None
+                try:
+                    with open(_pkl_path, "rb") as _fh:
+                        _df_cell = pd.read_pickle(
+                            _fh,
+                            compression={"method": "gzip", "compresslevel": 5, "mtime": 1},
+                        )
+                except Exception:
+                    try:
+                        _df_cell = pd.read_pickle(_pkl_path)
+                    except Exception as _exc:
+                        CP.cprint("r", f"Verify Intermediate: could not read {_pkl_path}: {_exc}")
+                if _df_cell is not None:
+                    _old_iv = _df_cell["IV"] if "IV" in _df_cell.index else None
+                    _old_sp = _df_cell["Spikes"] if "Spikes" in _df_cell.index else None
+                    _diffs = _compare_iv_dicts(self.df.at[icell, "IV"], _old_iv, "IV")
+                    _diffs += _compare_iv_dicts(self.df.at[icell, "Spikes"], _old_sp, "Spikes")
+                    if _diffs:
+                        CP.cprint("r", f"Verify Intermediate: {_cell_id} — {len(_diffs)} difference(s):")
+                        for _line in _diffs:
+                            CP.cprint("r", f"  {_line}")
+                    else:
+                        CP.cprint("g", f"Verify Intermediate: {_cell_id} — no differences found")
+                    if self.verify_callback is not None:
+                        self.verify_callback(_cell_id, "\n".join(_diffs))
+            self.df.at[icell, "IV"] = None
+            self.df.at[icell, "Spikes"] = None
+            gc.collect()
+            return
+        # ─────────────────────────────────────────────────────────────────────
+
         if (
             len(allivs) > 0
             and self.iv_analysisFilename is not None
@@ -580,6 +740,11 @@ class IVAnalysis(Analysis):
             self.df.at[icell, "IV"] = None
             self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
+            # Claude fixed 2026-07-15: clear local result refs before gc.collect() so
+            # refcounting frees large arrays immediately; gc then only handles cycles.
+            results = {}  # serial-mode result dict
+            riv = {}      # parallel-mode IV dict (no-op local assign in serial mode)
+            rsp = {}      # parallel-mode Spikes dict (no-op local assign in serial mode)
             gc.collect()
 
         elif len(allivs) > 0 and Path(self.iv_analysisFilename).suffix == ".pkl":

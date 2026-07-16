@@ -290,6 +290,7 @@ class CommandParams:
                 "expanded": False,
                 "children": [
                     {"name": "Reload", "type": "action"},
+                    {"name": "Verify Intermediate", "type": "bool", "value": False},
                     {"name": "View IndexFile", "type": "action"},
                     {"name": "Print File Info", "type": "action"},
                     {"name": "Export Brief Table", "type": "action"},

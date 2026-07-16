@@ -27,7 +27,7 @@ from typing import Union, List, Dict, Tuple
 import MetaArray
 
 import dateutil.parser as DUP
-import matplotlib
+import matplotlib.pyplot as mpl
 import numpy as np
 import pandas as pd
 
@@ -122,6 +122,7 @@ class cmdargs:
     map_flag: bool = False
     merge_flag: bool = False
     dry_run: bool = False
+    verify_intermediate: bool = False
     verbose: bool = False
     autoout: bool = False
     excel: bool = False
@@ -234,6 +235,7 @@ class Analysis:
         self.merge_flag = args.merge_flag
 
         self.dry_run = args.dry_run
+        self.verify_intermediate = args.verify_intermediate
         self.nworkers = args.nworkers
         self.verbose = args.verbose
         self.autoout = args.autoout
@@ -381,7 +383,9 @@ class Analysis:
                 self.pdfFilename = Path(
                     self.analyzeddatapath, self.experiment["pdfFilename"]
                 ).with_suffix(".pdf")
-                self.pdfFilename.unlink(missing_ok=True)
+                # Claude fixed 2026-07-15: preserve existing PDF in verify mode
+                if not self.verify_intermediate:
+                    self.pdfFilename.unlink(missing_ok=True)
             else:
                 self.pdfFilename = None
 
@@ -642,7 +646,7 @@ class Analysis:
             cell_ok = self.do_cell(icell, pdf=None, mode=mode)
             # generate pdf files from the pkl files
             if cell_ok:
-                if mode == "IV":
+                if mode == "IV" and not self.verify_intermediate:  # Claude fixed 2026-07-15: skip plot in verify mode
                     self.plot_data(icell)
                 elif mode == "MAP":
                     PMD.plot_map_data(icell)
@@ -653,7 +657,7 @@ class Analysis:
             cell_ok = self.do_cell(icell, pdf=None, mode=mode)
             # generate pdf files from the pkl files
             if cell_ok:
-                if mode == "IV":
+                if mode == "IV" and not self.verify_intermediate:  # Claude fixed 2026-07-15: skip plot in verify mode
                     self.plot_data(icell)
                 elif mode == "MAP":
                     pass # was done already, I think
@@ -753,6 +757,11 @@ class Analysis:
             self.df.to_pickle(str(self.inputFilename))
 
     def plot_data(self, icell: int):
+        # Claude fixed 2026-07-15: close previous IVFigure before replacing
+        # plotter to prevent matplotlib Gcf accumulation across cells.
+        if getattr(self, 'IVplotter', None) is not None:
+            if getattr(self.IVplotter, 'IVFigure', None) is not None:
+                mpl.close(self.IVplotter.IVFigure)
         self.IVplotter = EP.iv_plotter.IVPlotter(
             experiment=self.experiment,
             file_out_path=Path(self.analyzeddatapath),
@@ -1386,6 +1395,9 @@ class Analysis:
             self.analyze_ivs(icell=icell, allprots=self.allprots, celltype=celltype, pdf=pdf)
             if self.dry_run:
                 return True
+            # Claude fixed 2026-07-15: verify_intermediate is read-only; skip all writes.
+            if self.verify_intermediate:
+                return True
             # print("do_cell: self.analyzeddatapath: ", self.analyzeddatapath)
             # print("do_cell: self.directory: ", self.directory)
             # store pandas db analysis of this cell in a pickled file:
@@ -1507,7 +1519,7 @@ class Analysis:
         -------
         Nothing - generates pdfs and updates the pickled database file.
         """
-        import matplotlib.pyplot as mpl
+
 
         celltype = filenametools.check_celltype(self.df.iloc[icell].cell_type)
         self.df.iloc[icell].cell_type = celltype
