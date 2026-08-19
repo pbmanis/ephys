@@ -33,10 +33,10 @@ import numpy as np
 from numba import jit  # type: ignore[import]
 
 _USE_NUMBA_CACHE = not bool(os.environ.get("EPHYS_NO_NUMBA_CACHE", ""))
-# Claude fixed 2026-07-15: concurrent first-run compilation races on the shared .nbc file
+# Concurrent first-run compilation races on the shared .nbc file.
 # Set EPHYS_NO_NUMBA_CACHE=1 in CI or when running tests in parallel to disable
 
-import ephys.ephys_analysis.spike_analysis as SA  # 2026-07-15: change import so that module reference stays live after hot-reload
+import ephys.ephys_analysis.spike_analysis as SA  # change import so that module reference stays live after hot-reload
 
 
 # ---------------------------------------------------------------------------

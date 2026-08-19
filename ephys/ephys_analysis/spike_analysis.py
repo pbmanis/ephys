@@ -308,9 +308,6 @@ class SpikeAnalysis:
         if track:
             print("    In analyze spikes")
 
-        # Claude fixed 2026-07-15: hoist window indices and time_base reference once;
-        # threshold-check each trace before running the Cython spike scan so that
-        # sub-threshold traces (common in lower-current IV steps) skip findspikes entirely.
         time_base = self.Clamps.time_base
         _i0 = int(np.searchsorted(time_base, self.Clamps.tstart))
         _i1 = int(np.searchsorted(time_base, self.Clamps.tend, side="right"))

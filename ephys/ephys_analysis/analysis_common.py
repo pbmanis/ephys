@@ -383,7 +383,6 @@ class Analysis:
                 self.pdfFilename = Path(
                     self.analyzeddatapath, self.experiment["pdfFilename"]
                 ).with_suffix(".pdf")
-                # Claude fixed 2026-07-15: preserve existing PDF in verify mode
                 if not self.verify_intermediate:
                     self.pdfFilename.unlink(missing_ok=True)
             else:
@@ -646,7 +645,7 @@ class Analysis:
             cell_ok = self.do_cell(icell, pdf=None, mode=mode)
             # generate pdf files from the pkl files
             if cell_ok:
-                if mode == "IV" and not self.verify_intermediate:  # Claude fixed 2026-07-15: skip plot in verify mode
+                if mode == "IV" and not self.verify_intermediate:  # skip plot when verifying
                     self.plot_data(icell)
                 elif mode == "MAP":
                     PMD.plot_map_data(icell)
@@ -657,7 +656,7 @@ class Analysis:
             cell_ok = self.do_cell(icell, pdf=None, mode=mode)
             # generate pdf files from the pkl files
             if cell_ok:
-                if mode == "IV" and not self.verify_intermediate:  # Claude fixed 2026-07-15: skip plot in verify mode
+                if mode == "IV" and not self.verify_intermediate:  # skip plot when verifying
                     self.plot_data(icell)
                 elif mode == "MAP":
                     pass # was done already, I think
@@ -757,8 +756,8 @@ class Analysis:
             self.df.to_pickle(str(self.inputFilename))
 
     def plot_data(self, icell: int):
-        # Claude fixed 2026-07-15: close previous IVFigure before replacing
-        # plotter to prevent matplotlib Gcf accumulation across cells.
+        # Close previous IVFigure so that matplotlib
+        # does not accumulate GCF between cells.
         if getattr(self, 'IVplotter', None) is not None:
             if getattr(self.IVplotter, 'IVFigure', None) is not None:
                 mpl.close(self.IVplotter.IVFigure)
@@ -1395,17 +1394,14 @@ class Analysis:
             self.analyze_ivs(icell=icell, allprots=self.allprots, celltype=celltype, pdf=pdf)
             if self.dry_run:
                 return True
-            # Claude fixed 2026-07-15: verify_intermediate is read-only; skip all writes.
+            # verify_intermediate should not write/overwrite.
             if self.verify_intermediate:
                 return True
-            # print("do_cell: self.analyzeddatapath: ", self.analyzeddatapath)
-            # print("do_cell: self.directory: ", self.directory)
-            # store pandas db analysis of this cell in a pickled file:
 
+            # store pandas DB analysis of this cell in a pickled file:
             self.cell_pklFilename, celltype = filenametools.get_pickle_filename_from_row(
                 self.df.iloc[icell], map_cell_name=True
             )
-            # celltype = map_cell_types.map_cell_type(celltype)
             if celltype == "no data":
                 celltype = "unknown"
                 self.cell_pklFilename = Path(str(self.cell_pklFilename).replace("no data", "unknown"))

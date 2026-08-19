@@ -10,7 +10,9 @@ from typing import Union
 # Usage example:
 # detector = FindSpikesNumba()
 # spikes = detector.findspikes(x, v, t0, t1, threshold=threshold_val)
-# Recomposed by Claude Sonnet 4.0 from utility.findspikes
+# Recomposed with help from Claude Sonnet 4.0, from utility.findspikes
+# to speed up the detection process.
+# Identity with the original was confirmed with testing. 
 
 # Numba-optimized helper functions
 @njit

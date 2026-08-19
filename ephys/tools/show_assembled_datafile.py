@@ -246,10 +246,10 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
         # this will be set on the first run if min_val is correctly initialized
         # print(select_by, "select_value: ", select_value, "min val: ", min_val)
         if select_value < min_val:
-            min_val = select_value  # set the value (claude correction; old was min_val = value)
+            min_val = select_value  # set the value
             equal_mins = [i]  # reset the list of equal minima
             iprots = [i]  # set the index of the protocol with the minimum value
-            values = [value]  # claude correction, old was: values.append(value)  # set the value
+            values = [value]  # previously was: values.append(value)  # set the value
 
         elif select_value == min_val:
             if i not in equal_mins:
@@ -258,7 +258,7 @@ def apply_select_by(row, parameter: str, select_by: str, select_limits: list):
                 iprots.append(i)
             # equal_mins.append(i)
             if not p.startswith("CC_taum"):
-                pass  # claude says this is double append; was: values.append(params[i])
+                pass  # do not double append.
             else:
                 taums.append(params[i])
 

@@ -39,8 +39,7 @@ from ephys.tools.check_df_for_cells_trap import check_df_for_cells_trap
 CP = cprint.cprint
 FUNCS = data_table_functions.Functions()
 
-# Claude fixed 2026-07-16: epoch offset is a fixed constant — compute once at import time
-# rather than recomputing inside make_datetime_date on every row via df.apply.
+# The epoch offset is precomputed for speed
 _EPOCH_OFFSET: float = datetime.datetime.timestamp(
     datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
 )
@@ -57,9 +56,6 @@ def make_datetime_date(row, colname="date"):
     date = date.split("_", maxsplit=1)[0]
     shortdate = datetime.datetime.strptime(date, "%Y.%m.%d")
     shortdate = datetime.datetime.timestamp(shortdate)
-    # st = datetime.datetime.timestamp(  # Claude fixed 2026-07-16: use module-level constant
-    #     datetime.datetime.strptime("1970-01-01T00:00:00", "%Y-%m-%dT%H:%M:%S")
-    # )
     row.shortdate = shortdate - _EPOCH_OFFSET
     if pd.isnull(row.shortdate):
         raise RuntimeError("row.shortdate is null ... in make_datetime_date")
@@ -224,9 +220,8 @@ class AssembleDatasets:
 
         if "protocol" not in df.columns:
             df["protocol"] = ""
-        # df = df.apply(self._data_complete_to_series, axis=1)  # Claude fixed 2026-07-16: replaced with vectorised version below
-        # Vectorised replacement: split on comma, strip whitespace, keep only CCIV entries.
-        # Result is a list per row; df.explode() below converts to one-row-per-protocol.
+        # Vectorised: split on comma, strip whitespace, keep only CCIV entries.
+        # Result is a list per row; df.explode() then converts to one-row-per-protocol.
         df["protocol"] = (
             df["data_complete"]
             .str.split(",")
@@ -484,11 +479,10 @@ class AssembleDatasets:
           
         else:
             check_df_for_cells_trap(df, self.experiment, message="AssembleDatasets:combinebycell, before combining by cell (serial)")
-            # Claude fixed 2026-07-16: collect rows in a list; concat once after loop to avoid O(n²) copies
+            # Collect rows in a list then concat once after loop (much faster)
             _rows = []
             # do each cell in the database
             for icell, cell in enumerate(cell_list):
-                # print("icell: ", icell)  # Claude fixed 2026-07-16: per-cell debug print removed
                 if not isinstance(ilimit, list):
                     if ilimit is not None and icell > ilimit:
                         break
@@ -508,7 +502,6 @@ class AssembleDatasets:
                 if datadict is None:
                     print("    datadict is none for cell: ", cell)
                     continue
-                # df_new = pd.concat([df_new, pd.Series(datadict).to_frame().T], ignore_index=True)  # Claude fixed 2026-07-16: moved below
                 _rows.append(pd.Series(datadict).to_frame().T)
             if _rows:
                 df_new = pd.concat([df_new] + _rows, ignore_index=True)
@@ -544,9 +537,7 @@ class AssembleDatasets:
             df["Group"] = ""
         print("coded groups: ", df_coding.Group.unique())
         coding_name = self.experiment.get("coding_name", "Group")
-        # print("coding name: ", coding_name)
-        # Claude fixed 2026-07-16: pre-build groupby dicts so each per-row lookup is O(1)
-        # rather than a full boolean scan of df_coding on every iteration.
+        # Pre-build groupby dicts to speed up lookups.
         _coding_by_date = {k: v for k, v in df_coding.groupby("date")}
         _coding_by_subject = (
             {k: v for k, v in df_coding.groupby("subject")}
@@ -570,8 +561,6 @@ class AssembleDatasets:
                 id_name = "animal identifier"
 
             # Here we apply what is in the CODING file to the combined file.
-            # Claude fixed 2026-07-16: use pre-built dict lookups (O(1)) instead of
-            # repeated df_coding[df_coding.date == row.date] boolean scans (O(M)) per row.
             _cdf = _coding_by_date.get(row.date)  # None if date not in coding file
             if _cdf is not None:
                 if "sex" in df_coding.columns:  # update sex? Should be in main table.
@@ -580,7 +569,6 @@ class AssembleDatasets:
                     df.at[index, "cell_expression"] = _cdf.cell_expression.astype(str).values[0]
 
                 # how to assign groups: by date or subject or cell?
-                # print("Coding Level: ", level.lower())  # Claude fixed 2026-07-16: removed per-row debug print
                 if level.casefold() == "date".casefold():
                     df.at[index, "Group"] = _cdf[coding_name].astype(str).values[0]
                     if pd.isnull(df.loc[index, "Group"]):

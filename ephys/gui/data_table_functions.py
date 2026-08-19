@@ -2489,7 +2489,7 @@ class Functions:
         """
         check_cell = "2023.10.17_000/slice_000/cell_000"
 
-        # Claude fixed 2026-07-16: compute cell slice once; avoids 4-6 repeated O(N) scans
+        # Compute cell slice once and avoid repeated scans
         _df_cell_rows = df[df.cell_id == cell]
         if self.status_bar is not None:
             self.status_bar.showMessage(
@@ -2500,7 +2500,7 @@ class Functions:
         cell_group = _df_cell_rows.Group.values[0]
         if (
             pd.isnull(cell_group) and len(_df_cell_rows.Group.values) > 1
-        ):  # incase first value is nan
+        ):  # i ncase first value is nan
             cell_group = _df_cell_rows.Group.values[1]
         try:
             df_cell, df_tmp = filename_tools.get_cell(experiment, df, cell_id=cell)
@@ -2663,7 +2663,7 @@ class Functions:
             "cell_type": df_tmp.cell_type.values[0],
             "protocol": protname,
             "important": important,
-            "protocols": protocols, # list(df_cell.Spikes.keys()), # claude suggested error is here (was: list(df_cell.IV),
+            "protocols": protocols,
             "sample_rate": srs,
             "delay": delay,
             "duration": duration,

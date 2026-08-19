@@ -207,17 +207,15 @@ class IVAnalysis(Analysis):
     def __getstate__(self):
         import pickle as _pickle
         state = self.__dict__.copy()
-        # Claude fixed 2026-07-15: AR/SP/RM may hold non-picklable state
-        # (file handles, C-extension caches) after getData(); analyze_iv
-        # re-initialises them via setProtocol/getData/setup in the subprocess.
-        # IVplotter, MA, AM are parent-side objects never used by analyze_iv.
-        # pdf_pages / status_bar are GUI/file objects not needed in subprocess.
+        # Acq4Read, SpikeAnalysis and RmTauAnalysis can have non-picklable state 
+        # and data, such as file handles and C extension caches. We simply set to None
+        # as this is information we do not need to save here.
         for key in ('AR', 'SP', 'RM', 'IVplotter', 'MA', 'AM',
                     'pdf_pages', 'status_bar', 'verify_callback'):
             if key in state:
                 state[key] = None
-        # Auto-detect any remaining non-picklable attributes so the subprocess
-        # call never silently falls back to serial.
+        # Auto-detect remaining non-picklable attributes so the subprocess
+        # call never falls back to serial.
         for key in list(state.keys()):
             if state[key] is None:
                 continue
@@ -674,7 +672,6 @@ class IVAnalysis(Analysis):
         CP.cprint("c", f"Verify intermediate: flag={self.verify_intermediate}, len(allivs)={len(allivs)}, dry_run={self.dry_run}, callback={'set' if self.verify_callback else 'None'}")
         if self.verify_intermediate and len(allivs) > 0 and not self.dry_run:
             _cell_id = self.df.at[icell, "cell_id"]
-            # Claude fixed 2026-07-15: map_cell_names=True so search matches the written path
             _pkl_path = filename_tools.get_cell_pkl_filename(
                 self.experiment, self.df, _cell_id, map_cell_names=True
             )
@@ -740,8 +737,8 @@ class IVAnalysis(Analysis):
             self.df.at[icell, "IV"] = None
             self.df.at[icell, "Spikes"] = None
             self.n_analyzed += 1
-            # Claude fixed 2026-07-15: clear local result refs before gc.collect() so
-            # refcounting frees large arrays immediately; gc then only handles cycles.
+            # clear local result references before gc.collect() so that
+            # refcounting frees large arrays immediately.
             results = {}  # serial-mode result dict
             riv = {}      # parallel-mode IV dict (no-op local assign in serial mode)
             rsp = {}      # parallel-mode Spikes dict (no-op local assign in serial mode)
