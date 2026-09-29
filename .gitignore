@@ -54,6 +54,9 @@ untitled*
 # C extensions
 *.so
 
+# test data for datareaders
+ephys/datareaders/test_data
+
 # parts of documentation
 doc/api/
 
