@@ -13,6 +13,7 @@ GetClamps does the transformation.
 
 """
 
+import datetime
 import os
 import pprint
 from collections import OrderedDict
@@ -62,19 +63,75 @@ def flatten(data):
 
 
 class GetClamps:
-    def __init__(self, datac):
+    def __init__(self, datac=None, pathtoprotocol=None, dataname=None, defaults=None):
         """
         Set up clamps.
+        This class aspires to provide acq4-API parity (path-based construction,
+        synthetic index, extra attributes).  Backward compatible: GetClamps(datac)
+        with an integer setProtocol still behaves exactly as before.
 
         Parameters
         ----------
-        datac : object
-            The DatacFile instance of the matdatac file
+        datac : object (default None)
+            The DatacFile instance of the matdatac file.  Optional: when a
+            ``pathtoprotocol`` is given instead, the DatacFile is opened
+            internally (see :meth:`setProtocol`), giving this class the same
+            path-based construction as acq4_reader/ephus_reader.
+        pathtoprotocol : str | Path | int (default None)
+            A matdatac protocol path (``<file.mat>/<NNN>_<type>``), a bare
+            ``<file.mat>`` (first data block), or -- for backward
+            compatibility -- an integer item index into ``datac.items``.
+        dataname : str (default None)
+            Accepted for acq4 parity; the primary (membrane) channel is always
+            used regardless of this value.
+        defaults : dict (default None)
+            Reserved for parity with the other readers (no matdatac-specific
+            defaults at present).
         """
-        self.datac = datac
-        self.protocol = None
 
-    def getData(self, chmap=None, debug=False):
+        self.datac = datac
+        self.protocol = None            # integer item index into datac.items
+        self.protocol_path = None       # the caller-supplied protocol path
+        self._datac_cache = {}          # matpath (str) -> DatacFile
+        if datac is not None:
+            try:
+                self._datac_cache[str(Path(datac.fname))] = datac
+            except Exception:  # noqa: BLE001
+                pass
+        self.last_protocol = None
+        self.last_dirs = []
+        self.error_info = None
+        self.importantFlag = False
+        self.mode = None
+        self.lb = "\n"
+        self.pre_process_filters = {"LPF": None, "Notch": []}
+        self.defaults = dict(defaults) if defaults else {}
+        self.dataname = "MultiClamp1.ma"
+        self.shortdname = "MultiClamp1"
+        self.clampInfo = {"dirs": [], "missingData": []}
+
+        # known clamp devices (mirrors acq4_reader so callers recognize the
+        # synthesized device names)
+        maxclamps = 4
+        clamps = []
+        self.clampdevices = []
+        for nc in range(maxclamps):
+            cno = nc + 1
+            clamps.extend([("Clamp%d" % cno, "Pulse_amplitude"),
+                           ("MultiClamp%d" % cno, "Pulse_amplitude")])
+            self.clampdevices.extend(["Clamp%d" % cno, "MultiClamp%d" % cno])
+        clamps.extend([("AxoPatch200", "Pulse_amplitude"), ("AxoProbe", "Pulse_amplitude")])
+        self.clampdevices.extend(["AxoPatch200", "AxoProbe"])
+        self.clamps = clamps
+        self.datac_device = "MultiClamp1"
+
+        if dataname is not None:
+            self.setDataName(dataname)
+        if pathtoprotocol is not None:
+            self.setProtocol(pathtoprotocol)
+
+    def getData(self, pos=1, check=False, allow_partial=False, record_list=[],
+                downsample=1, silent=True, chmap=None, debug=False):
         """
         create a Clamp structure for use in SpikeAnalysis and RMTauAnalysis from acq4.
         Fills in the fields that are returned by PatchEPhys getClamps:
@@ -130,6 +187,16 @@ class GetClamps:
             if debug:
                 print("No items in protocol")
             return False
+        # Claude added 2026-09-29: acq4-parity 'check' flag -- report whether a
+        # readable data block is present without loading it.
+        if check:
+            try:
+                return (
+                    self.datac is not None
+                    and self.datac.items[item].type not in ("HFILE", "NOTE")
+                )
+            except (IndexError, AttributeError, TypeError):
+                return False
         # print('item: ', item)
         # print('len datac items: ', len(self.datac.items))
         protocol = self.datac.items[item].type
@@ -160,6 +227,10 @@ class GetClamps:
             )
         data_mode = self.getDataMode()
         self.data_mode = data_mode[0]
+        # Claude added 2026-09-29: expose acq4-style clamp mode ('VC'/'IC') and
+        # primary/secondary units (acq4_reader sets these via parseClampInfo).
+        self.mode = "VC" if str(self.data_mode).lower() in ("vc",) else "IC"
+        self.units = ["A", "V"] if self.mode == "VC" else ["V", "A"]
         self.time_base = np.arange(points) * dt
         datac_traces = np.zeros((len(recs), nchannels + 1, points))
         self.recs = recs
@@ -216,7 +287,17 @@ class GetClamps:
         self.sample_interval = dt  # in seconds
         self.sample_rate = (1.0 / dt) * np.ones(len(recs))
         self.RSeriesUncomp = 0.0
-        self.cmd_wave = np.squeeze(self.traces[:, 0, :]) * 1e-12
+        # self.cmd_wave = np.squeeze(self.traces[:, 0, :]) * 1e-12
+        # Claude fixed 2026-09-29: physical channels are fixed (ch0=current in pA,
+        # ch1=voltage in mV) in BOTH modes; only the primary(recorded)-vs-command
+        # ROLE flips. For IC/CC the command is the injected current (ch0); for VC
+        # the command is the holding/step voltage (ch1). The original code always
+        # used ch0 as the command, which switched current/voltage for VC data.
+        # Keep CC byte-identical; use the voltage channel for the VC command.
+        if self.mode == "VC":
+            self.cmd_wave = np.squeeze(self.traces[:, 1, :])  # command = voltage (V, already *1e-3)
+        else:
+            self.cmd_wave = np.squeeze(self.traces[:, 0, :]) * 1e-12  # command = current (A)
         if self.cmd_wave.ndim == 1:
             self.cmd_wave = np.expand_dims(self.cmd_wave, 0)
         self.protoTimes = {
@@ -339,7 +420,21 @@ class GetClamps:
         ]
         self.WCComp = self.parseClampWCCompSettings(info)
         self.CCComp = self.parseClampCCCompSettings(info)
-        self.traces = np.squeeze(self.traces[:, 1, :])
+        # self.traces = np.squeeze(self.traces[:, 1, :])
+        # Claude fixed 2026-09-29 (two fixes):
+        #  (1) primary = the RECORDED signal: voltage (ch1, V) for IC/CC, current
+        #      (ch0, A) for VC.  The original code always used ch1, which put the
+        #      command voltage (not the recorded current) into traces for VC data
+        #      -- i.e. current/voltage appeared switched.  CC path is unchanged.
+        #  (2) for single-record blocks (e.g. VCmini) np.squeeze collapses traces
+        #      to 1-D, which cannot carry the 3-element MetaArray info list; the
+        #      expand_dims below restores a leading axis (mirrors the cmd_wave guard).
+        if self.mode == "VC":
+            self.traces = np.squeeze(self.traces[:, 0, :]) * 1e-12  # recorded current (A)
+        else:
+            self.traces = np.squeeze(self.traces[:, 1, :])          # recorded voltage (V)
+        if self.traces.ndim == 1:
+            self.traces = np.expand_dims(self.traces, 0)
         print("MatdatacRead: Shape of traces: ", self.traces.shape)
 
         self.traces = MA.MetaArray(self.traces, info=info)
@@ -371,12 +466,28 @@ class GetClamps:
 
     def setProtocol(self, pathtoprotocol):
         """
-        Parameters
-        ----------
-        pathtoprotocol str (default: None)
-            Path to the protocol directory to set for this instance of the reader
+        Set the protocol to read.
+
+        ``pathtoprotocol`` may be:
+        * an integer item index into ``self.datac.items`` (legacy behavior;
+          requires a DatacFile already assigned to ``self.datac``);
+        * a matdatac protocol path ``<file.mat>/<NNN>_<type>``;
+        * a bare ``<file.mat>`` (selects the first data block);
+        * a synthetic per-sweep path ``<file.mat>/<NNN>_<type>/<sss>``.
         """
-        self.protocol = pathtoprotocol
+        # Claude added 2026-09-29: accept a path (block) in addition to the
+        # legacy integer item index.
+        self.protocol_path = pathtoprotocol
+        self.last_protocol = None
+        if isinstance(pathtoprotocol, (int, np.integer)):
+            self.protocol = int(pathtoprotocol)  # legacy: index into self.datac
+            return
+        matpath, item, _sweep, _explicit = self._parse_protocol_path(pathtoprotocol)
+        if matpath is None:
+            self.protocol = None
+            return
+        self.datac = self._open_datac(matpath)
+        self.protocol = item
 
     def setDataName(self, dataname):
         """
@@ -439,6 +550,355 @@ class GetClamps:
                 "CCPipetteOffset": 0.0,
                 "CCLPF": 10000.0,
             }
+
+    # =======================================================================
+    # A matdatac ".mat" file
+    # is treated as a CELL that contains N data BLOCKS (protocols); each block
+    # is addressed by a synthetic path "<file.mat>/<NNN>_<type>", and its sweeps
+    # by "<file.mat>/<NNN>_<type>/<sss>".  These methods let data_summary.py and
+    # the ephys_analysis pipeline drive the reader through the same interface as
+    # acq4_reader / ephus_reader.  Existing behavior (GetClamps(datac) + integer
+    # setProtocol + getData) is unchanged.
+    # =======================================================================
+    def setImportant(self, flag: bool = False) -> None:
+        self.importantFlag = flag
+
+    def set_pre_process(self, LPF=None, Notch=None):
+        self.pre_process_filters["LPF"] = LPF
+        self.pre_process_filters["Notch"] = Notch
+
+    def set_defaults(self, **kwargs) -> None:
+        self.defaults.update(kwargs)
+
+    # -- low-level resolution -----------------------------------------------
+    def _open_datac(self, matpath):
+        """Open (and cache) a DatacFile for a .mat path, or return None."""
+        if matpath is None:
+            return None
+        key = str(Path(matpath))
+        if key not in self._datac_cache:
+            try:
+                self._datac_cache[key] = DatacFile(key)
+            except Exception as exc:  # noqa: BLE001
+                self.error_info = f"Failed to open matdatac file {key}: {exc}"
+                print(self.error_info)
+                return None
+        return self._datac_cache[key]
+
+    def data_block_indices(self, matpath=None):
+        """Item indices of the data blocks (protocols) in a matdatac file
+        (everything that is not an HFILE or NOTE)."""
+        datac = self._open_datac(matpath) if matpath is not None else self.datac
+        if datac is None:
+            return []
+        return [k for k, it in enumerate(datac.items) if it.type not in ("HFILE", "NOTE")]
+
+    def _block_type(self, datac, item) -> str:
+        try:
+            return str(datac.items[item].type)
+        except (IndexError, AttributeError, TypeError):
+            return ""
+
+    def _block_nrecs(self, datac, item) -> int:
+        if datac is None or item is None:
+            return 0
+        try:
+            _rate, recs = datac.items[item].data()
+            return len(recs)
+        except Exception:  # noqa: BLE001
+            return 0
+
+    @staticmethod
+    def _item_from_token(token: str):
+        """Parse the block index from a path token like 'NNN_type' or 'NNN'."""
+        head = str(token).split("_", 1)[0]
+        try:
+            return int(head)
+        except ValueError:
+            return None
+
+    def _parse_protocol_path(self, path):
+        """Resolve a protocol path into (matpath, item_index, sweep, explicit_block).
+
+        ``explicit_block`` is True when the path names a block after the .mat
+        component (i.e. a protocol), False for a bare .mat (a cell).
+        """
+        p = Path(path)
+        parts = p.parts
+        mat_idx = None
+        for i, part in enumerate(parts):
+            if part.lower().endswith(".mat"):
+                mat_idx = i
+                break
+        if mat_idx is None:
+            return None, None, None, False
+        matpath = Path(*parts[: mat_idx + 1])
+        rest = parts[mat_idx + 1:]
+        item = None
+        sweep = None
+        explicit = False
+        if len(rest) >= 1:
+            item = self._item_from_token(rest[0])
+            explicit = item is not None
+        if len(rest) >= 2:
+            try:
+                sweep = int(rest[1])
+            except ValueError:
+                sweep = None
+        if item is None:  # bare .mat -> first data block
+            blocks = self.data_block_indices(matpath)
+            item = blocks[0] if blocks else None
+        return matpath, item, sweep, explicit
+
+    # -- clamp-state helpers -------------------------------------------------
+    def _clampparams(self, lpf=20000.0):
+        return {
+            "OutputZeroEnable": 0, "PipetteOffset": 0.0, "Holding": 0.0,
+            "PrimarySignalHPF": 0.0, "BridgeBalResist": 0.0, "PrimarySignalLPF": lpf,
+            "RsCompBandwidth": 0.0, "WholeCellCompResist": 0.0, "WholeCellCompEnable": 0,
+            "LeakSubResist": 0.0, "HoldingEnable": 0, "FastCompTau": 0.0,
+            "SlowCompCap": 0.0, "WholeCellCompCap": 0.0, "LeakSubEnable": 0,
+            "NeutralizationCap": 0.0, "BridgeBalEnable": 0, "RsCompCorrection": 0.0,
+            "NeutralizationEnable": 0, "RsCompEnable": 0, "OutputZeroAmplitude": 0.0,
+            "FastCompCap": 0.0, "SlowCompTau": 0.0,
+        }
+
+    def _clampstate_for(self, datac, item):
+        mode, lpf, sr = "IC", 20000.0, 10000.0
+        try:
+            dfile = datac.items[item].dfile
+            dm = str(dfile["Data_Mode"]["v"]).lower()
+            mode = "VC" if dm in ("vc",) else "IC"
+            nch = len(dfile["Channels"]["v"])
+            sr = 1.0 / (float(dfile["Sample_Rate"]["v"]) * 1e-6 * max(nch, 1))
+        except Exception:  # noqa: BLE001
+            pass
+        primary_units = "A" if mode == "VC" else "V"
+        secondary_units = "V" if mode == "VC" else "A"
+        return {
+            "mode": mode,
+            "primarySignal": "Membrane Current" if mode == "VC" else "Membrane Potential",
+            "secondarySignal": "Command Voltage" if mode == "VC" else "Command Current",
+            "primaryUnits": primary_units, "secondaryUnits": secondary_units,
+            "primaryGain": 1.0, "secondaryGain": 1.0, "holding": 0.0,
+            "ClampParams": self._clampparams(lpf),
+            "DAQ": {
+                "primary": {"rate": sr, "numPts": 0, "startTime": 0.0},
+                "command": {"rate": sr, "numPts": 0, "startTime": 0.0},
+                "secondary": {"rate": sr, "numPts": 0, "startTime": 0.0},
+            },
+        }
+
+    def parseClampInfo(self, info):
+        self.trClampInfo = info
+        cs = info[1]["ClampState"]
+        self.mode = cs["mode"]
+        self.units = [cs["primaryUnits"], cs["secondaryUnits"]]
+        self.samp_rate = cs["DAQ"]["primary"]["rate"]
+
+    def parseClampHoldingLevel(self, info):
+        try:
+            return info[1]["ClampState"]["holding"]
+        except (KeyError, IndexError, TypeError):
+            return 0.0
+
+    def getDataInfo(self, filename=None, silent: bool = False):
+        assert filename is not None
+        if isinstance(filename, (int, np.integer)):
+            datac, item = self.datac, int(filename)
+        else:
+            matpath, item, _sweep, _explicit = self._parse_protocol_path(filename)
+            datac = self._open_datac(matpath) if matpath is not None else self.datac
+        if datac is None or item is None:
+            if not silent:
+                print(f"matdatac_reader.getDataInfo: no data block at {str(filename)}")
+            return None
+        clampstate = self._clampstate_for(datac, item)
+        info = [{"name": "Time", "units": "s"}, {"ClampState": clampstate, "startTime": 0.0}]
+        self.parseClampInfo(info)
+        return info
+
+    # -- synthesized directory / index --------------------------------------
+    def subDirs(self, p):
+        """Synthetic per-sweep subdirectories for a matdatac protocol block."""
+        pp_ = Path(p)
+        if self.last_protocol == pp_:
+            return self.last_dirs
+        matpath, item, _sweep, _explicit = self._parse_protocol_path(p)
+        datac = self._open_datac(matpath) if matpath is not None else self.datac
+        n = self._block_nrecs(datac, item)
+        dirs = [pp_ / f"{i:03d}" for i in range(n)]
+        self.last_dirs, self.last_protocol = dirs, pp_
+        return dirs
+
+    def _synthesize_protocol_index(self, datac, item):
+        cs = self._clampstate_for(datac, item)
+        return {
+            ".": {
+                "dirType": "ProtocolSequence",
+                "__timestamp__": 0.0,
+                "notes": "",
+                "description": self._block_type(datac, item),
+                "devices": {
+                    self.datac_device: {
+                        "mode": cs["mode"], "holdingCheck": False,
+                        "holdingSpin": 0.0, "primaryUnits": cs["primaryUnits"],
+                    },
+                },
+                "sequenceParams": {("protocol", "repetitions"): [0]},
+            }
+        }
+
+    def _synthesize_sweep_index(self, sweep):
+        return {".": {"dirType": "Protocol", "__timestamp__": 0.0, "sweep": sweep}}
+
+    def _synthesize_cell_index(self, datac):
+        species = age = sex = ""
+        for it in getattr(datac, "items", []):
+            if it.type == "HFILE":
+                species = str(getattr(it, "species", ""))
+                age = str(getattr(it, "age", ""))
+                sex = str(getattr(it, "sex", ""))
+                break
+        return {
+            ".": {
+                "dirType": "Cell", "notes": "", "type": "",
+                "species": species, "age": age, "sex": sex, "important": False,
+            }
+        }
+
+    def readDirIndex(self, currdir=None):
+        self._dirindex = None
+        if currdir is None:
+            currdir = self.protocol_path
+        if currdir is None:
+            return None
+        if isinstance(currdir, (int, np.integer)):
+            self._dirindex = self._synthesize_protocol_index(self.datac, int(currdir))
+            return self._dirindex
+        matpath, item, sweep, explicit = self._parse_protocol_path(currdir)
+        if matpath is None:
+            print(f"matdatac_reader.readDirIndex: no matdatac data recognized at {str(currdir)}")
+            return None
+        datac = self._open_datac(matpath)
+        if datac is None:
+            return None
+        if sweep is not None:
+            self._dirindex = self._synthesize_sweep_index(sweep)
+        elif explicit:
+            self._dirindex = self._synthesize_protocol_index(datac, item)
+        else:  # bare .mat -> a cell
+            self._dirindex = self._synthesize_cell_index(datac)
+        return self._dirindex
+
+    def getIndex(self, currdir=None, lineend="\n"):
+        self.lb = lineend
+        self._index = self.readDirIndex(currdir if currdir is not None else self.protocol_path)
+        return self._index["."] if self._index is not None else None
+
+    def _readIndex(self, currdir=None):
+        self._index = self.readDirIndex(currdir if currdir is not None else self.protocol_path)
+        return self._index
+
+    def convert_timestamp(self, fts) -> str:
+        return datetime.datetime.fromtimestamp(fts).strftime("%Y-%m-%d  %H:%M:%S %z")
+
+    def printIndex(self, index):
+        print(pprint.pformat(index))
+
+    def getIndex_text(self, index):
+        return pprint.pformat(index)
+
+    def file_cell_protocol(self, filename=None):
+        assert filename is not None
+        matpath, item, sweep, explicit = self._parse_protocol_path(filename)
+        proto = Path(filename).name if explicit else ""
+        cell = matpath.stem if matpath is not None else Path(filename).stem
+        date = matpath.parent.name if matpath is not None else ""
+        parent = matpath.parent if matpath is not None else Path(filename).parent
+        return (date, "slice_000", cell, proto, parent)
+
+    def getClampDevices(self, currdir=None, verbose: bool = False):
+        info = self.getIndex(currdir=currdir)
+        devs = []
+        if info is not None and "devices" in info:
+            for d in info["devices"]:
+                if d in self.clampdevices:
+                    devs.append(d)
+        return devs
+
+    def header_metadata(self, filename=None):
+        src = filename if filename is not None else self.protocol_path
+        if src is not None and not isinstance(src, (int, np.integer)):
+            matpath, _item, _sweep, _explicit = self._parse_protocol_path(src)
+        else:
+            matpath = None
+        datac = self._open_datac(matpath) if matpath is not None else self.datac
+        meta = {}
+        if datac is not None:
+            for it in datac.items:
+                if it.type == "HFILE":
+                    meta = {
+                        "species": str(getattr(it, "species", "")),
+                        "age": str(getattr(it, "age", "")),
+                        "sex": str(getattr(it, "sex", "")),
+                    }
+                    break
+            meta["nblocks"] = len(
+                self.data_block_indices(matpath) if matpath is not None else self.data_block_indices()
+            )
+            meta["file"] = str(matpath) if matpath is not None else str(
+                getattr(datac, "fname", "")
+            )
+        return meta
+
+    # -- protocol checking (minimal parity) ---------------------------------
+    def checkProtocol(self, protocolpath=None, allow_partial=False) -> bool:
+        src = protocolpath if protocolpath is not None else self.protocol_path
+        if src is None:
+            return False
+        if isinstance(src, (int, np.integer)):
+            return self.datac is not None and 0 <= int(src) < len(self.datac.items)
+        matpath, item, _sweep, _explicit = self._parse_protocol_path(src)
+        datac = self._open_datac(matpath) if matpath is not None else None
+        return datac is not None and item is not None
+
+    def checkProtocolImportantFlags(self, protocolpath=None) -> bool:
+        return True
+
+    def checkProtocolImportant(self, protocol) -> bool:
+        return True
+
+    def listSequenceParams(self, dh=None):
+        return {}
+
+    # -- LSPS / imaging: no matdatac equivalent -> honest stubs -------------
+    def getStim(self, stimname: str = "Stim"):
+        return {"start": [], "duration": [], "amplitude": [], "npulses": [], "period": []}
+
+    def getLaserBlueTimes(self):
+        return False
+
+    def getLaserBlueCommand(self):
+        return False
+
+    def getLaserBlueShutter(self):
+        return False
+
+    def getLEDCommand(self):
+        return False
+
+    def getPhotodiode(self):
+        return False
+
+    def getScannerPositions(self, dataname: str = "Laser-Blue-raw.ma"):
+        return False
+
+    def getImage(self, filename=None):
+        return None
+
+    def getAverageScannerImages(self, dataname: str = "Camera/frames.ma", mode: str = "average", **kwargs):
+        return None
 
 
 class DatacFile(object):
@@ -807,6 +1267,12 @@ def plot_blocks(fn, pdfpath=None):
         mpl.savefig(Path(pdfpath, fn.stem).with_suffix(".pdf"))
     else:
         mpl.show()
+
+
+# Claude added 2026-09-29: expose GetClamps under the module-name alias that
+# datareaders.get_reader.get_reader() dispatches to for matdatac files.  The
+# path-based, acq4-API-compatible construction lives in GetClamps itself.
+matdatac_reader = GetClamps
 
 
 def main():
