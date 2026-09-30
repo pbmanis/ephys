@@ -16,6 +16,9 @@ untitled*.*
 # test data files (Allen SDK test data)
 cell_types/*
 
+# test plots during map analysis
+ephys/mapanalysistools/test_plots/
+
 *.p 
 # database (pickled python) files
 *.pkl 
