@@ -201,7 +201,10 @@ class Mini_Event_Summary:
     )
     artifact_event_list: Union[
         List, None
-    ] = field(  
+    ] = field(
+        default_factory=def_empty_list
+    )
+    direct_responses: Union[List, None] = field(  # per-trace list of DirectResponseRecord
         default_factory=def_empty_list
     )
 
@@ -259,6 +262,75 @@ def def_analysis_window():
 
 
 @dataclass
+class DirectSeparationPars:
+    """
+    Parameters controlling optional separation of direct (non-synaptic) responses
+    from synaptic events. Design (revised from the original ephys-jl per-event
+    classifier after benchmarking showed AJ/CB correctly detect fast synaptic
+    events riding on a slow baseline without confusing them for it -- the direct
+    response is a trace-level slow background, not itself a detected event):
+
+      1. Detect fast events normally (AJ/CB, unchanged).
+      2. Subtract every detected event's own contribution from the trace using
+         the detector's own template, scaled to each event's measured amplitude.
+      3. Fit the stimulus-locked window of what remains (now dominated by any
+         slow direct component plus noise, fast content already removed).
+      4. Subtract that fit from the ORIGINAL trace (not the event-subtracted
+         residual) in the stimulus window.
+      5. Re-run detection on the corrected trace for final measurements.
+
+    Inactive unless AnalysisPars.direct_separation.enabled is True.
+    """
+    enabled: bool = False
+    detect_hpf: float = 100.0  # Hz; high-pass cutoff applied ONLY to the event-detection
+    # step so AJ/CB do not fire on the slow direct response (0 disables). The slow direct is
+    # below this; synaptic PSC content is above it. Validated: same-sign spurious detections
+    # 24->4 with spontaneous/evoked recall preserved.
+    direct_window_start: float = 0.0  # seconds after stimulus to start the fit window
+    direct_window_duration: float = 0.120  # seconds; long enough for a typical direct response
+    # to decay within the window (a shorter window leaves a step discontinuity at the window
+    # edge where the un-decayed direct response is cut off); tune to the data's direct kinetics.
+    fit_mode: str = "spline"  # or "template"
+    mindy: float = 7.5e-8  # derivative threshold (A/s); see estimate_robust_derivative
+    derivative_window_points: int = 9  # ~0.18 ms at dt=20 us; tune relative to tau1
+    spline_smooth_factor: float = 1.0  # multiplies the noise-estimated spline smoothing factor
+    # template fit_mode ("template") parameters:
+    risepower: int = 2  # exponent n on the (1-exp(-t/tau_rise)) rising phase
+    template_ndecay: int = 1  # number of decay time constants (1 or 2) in the direct template
+    min_direct_charge: float = 1.0e-14  # A*s; fits below this magnitude are not recorded as a direct response
+    # --- Phase 2: multi-trace (cross-trace) direct-template estimation ---
+    multitrace: bool = False  # if True, estimate a direct-shape template across a map's traces
+    # and fit only its amplitude(+shift) per trace, instead of a free per-trace fit
+    use_qr_selection: bool = False  # select direct-containing traces by evoked charge Qr
+    # (Phase 2 future); when False, select by the per-trace fitted-direct charge
+    direct_select_charge_factor: float = 3.0  # k: a trace is "direct" if its fitted-direct
+    # charge exceeds median + k*MAD across the map's traces
+    n_shape_groups: int = 1  # number of direct-shape clusters/templates (1 = single template)
+    template_form: str = "data"  # "data" (averaged waveform) or "parametric" (fit to the average)
+
+
+def def_empty_list_of_lists():
+    return [[]]
+
+
+@dataclass
+class DirectResponseRecord:
+    """
+    Records a fitted direct (non-synaptic) response for a single stimulus on
+    a single trace, kept for downstream use (e.g. as training/guidance data
+    for a future ML-based direct/synaptic separation classifier) beyond just
+    correcting the trace in-place.
+    """
+    trace: int = 0  # index of the trace (map spot) this record belongs to
+    stim_index: int = 0  # which stimulus in stimtimes this record corresponds to
+    onset_time: float = np.nan  # seconds, absolute (window start = stim + direct_window_start)
+    duration: float = np.nan  # seconds, length of the fitted window actually used
+    charge: float = np.nan  # A*s, integral of the fitted direct waveform over its window
+    peak_amplitude: float = np.nan  # A, peak value of the fitted direct waveform
+    fit_mode: str = ""
+
+
+@dataclass
 class AnalysisPars:
     """
     Data class that holds most of the analysis parameters
@@ -268,6 +340,9 @@ class AnalysisPars:
 
     dt_seconds: float = 2e-5  # sample rate in seconds
     spotsize: float = 42e-6  # spot size in meters
+    direct_separation: object = field(
+        default_factory=DirectSeparationPars
+    )  # optional direct/synaptic response separation; inert unless .enabled is True
     baseline_flag: bool = False
     baseline_subtracted: bool = False
     filters: object = field(default_factory=Filtering)

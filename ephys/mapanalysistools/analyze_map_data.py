@@ -38,6 +38,7 @@ import ephys.tools.functions as functions
 from ephys.mapanalysistools import compute_scores
 from ephys.mapanalysistools import plot_map_data as PMD
 from ephys.mini_analyses import minis_methods
+from ephys.mini_analyses import direct_response_separation as DRS
 AnalysisPars = MEDC.AnalysisPars  # make analysispars available for other programs
 # when reading pickled output....
 
@@ -235,6 +236,20 @@ class AnalyzeMap(object):
 
     def set_artifact_filename(self, filename):
         self.Pars.artifact_filename = filename
+
+    def set_direct_separation(self, pars: Union[MEDC.DirectSeparationPars, None] = None, enabled: bool = False):
+        """Configure optional separation of direct (non-synaptic) responses
+        from synaptic events (see ephys.mini_analyses.direct_response_separation).
+        Inert (existing detection pipeline unchanged) unless enabled=True.
+        """
+        if pars is None:
+            pars = MEDC.DirectSeparationPars()
+        if not isinstance(enabled, bool):
+            raise ValueError(
+                "analyzeMapData: direct response separation enable flag must be True or False"
+            )
+        pars.enabled = enabled
+        self.Pars.direct_separation = pars
 
     def readProtocol(
         self, protocolFilename, records=None, sparsity=None, getPhotodiode=False
@@ -657,6 +672,107 @@ class AnalyzeMap(object):
             "average": avgevents,
         }
 
+    def _apply_direct_separation(
+        self, data: np.ndarray, method: object, summary: MEDC.Mini_Event_Summary
+    ) -> MEDC.Mini_Event_Summary:
+        """
+        Optional post-processing step, run per spot: subtract every detected
+        event's own contribution (using the detector's template scaled to
+        its measured amplitude), fit the stimulus-locked window of what
+        remains, subtract that fit from the original trace, and re-detect
+        for final measurements. Mutates `data[itrace]` in place to the
+        corrected trace (so the not-yet-run average_events()/
+        average_trial_events() steps see corrected data), and records any
+        fitted direct response into summary.direct_responses[itrace] for
+        later use. Only called when self.Pars.direct_separation.enabled is
+        True; leaves a spot untouched if no window's fit exceeds
+        dsp.min_direct_charge.
+        """
+        dsp = self.Pars.direct_separation
+        idmax = int(self.Pars.analysis_window[1] * self.rate)
+        dt_seconds = 1.0 / self.rate
+        t = self.Data.timebase
+        stim_starts = self.Pars.stimtimes["starts"]
+        detector_cls = type(method)
+        detector_kwargs = dict(
+            dt_seconds=dt_seconds,
+            risepower=self.Pars.risepower if self.methodname == "cb" else 4.0,
+            tau1=self.Pars.taus[0],
+            tau2=self.Pars.taus[1],
+            tau3=self.Pars.taus[2],
+            tau4=self.Pars.taus[3],
+            template_tmax=(
+                self.Pars.template_tmax if self.methodname == "aj" else 5.0 * self.Pars.taus[1]
+            ),
+            template_pre_time=self.Pars.template_pre_time,
+            delay=0.0,
+            sign=self.Pars.sign,
+            threshold=self.Pars.threshold,
+            filters=self.filters,
+            engine=getattr(self, "engine", None),
+        )
+
+        idata = data.view(np.ndarray)
+        summary.direct_responses = [[] for _ in range(data.shape[0])]
+
+        if dsp.multitrace:
+            # Multi-trace: estimate the direct-response shape template(s) across
+            # all spots of the map, then fit only amplitude(+shift) per spot.
+            # Uses the first stimulus window (typical for LSPS: one flash/spot).
+            traces_2d = np.array([idata[k][:idmax] for k in range(data.shape[0])])
+            mapres = DRS.separate_direct_response_map(
+                traces_2d=traces_2d,
+                t=t,
+                dt_seconds=dt_seconds,
+                stim_starts=stim_starts,
+                template=method.template,
+                template_amax=method.template_amax,
+                detector_cls=detector_cls,
+                detector_kwargs=detector_kwargs,
+                pars=dsp,
+            )
+            for itrace, pt in enumerate(mapres["per_trace"]):
+                corrected, ons, pk, smpk, smpks, amps, records = pt
+                summary.onsets[itrace] = ons
+                summary.peakindices[itrace] = pk
+                summary.smpkindex[itrace] = smpk
+                summary.smoothed_peaks[itrace] = smpks
+                summary.amplitudes[itrace] = amps
+                for r in records:
+                    r.trace = itrace
+                summary.direct_responses[itrace] = records
+                idata[itrace][:idmax] = corrected
+            return summary
+
+        for itrace in range(data.shape[0]):
+            if len(summary.onsets[itrace]) == 0:
+                continue
+            raw_trace = idata[itrace][:idmax]
+            (
+                corrected,
+                summary.onsets[itrace],
+                summary.peakindices[itrace],
+                summary.smpkindex[itrace],
+                summary.smoothed_peaks[itrace],
+                summary.amplitudes[itrace],
+                records,
+            ) = DRS.separate_direct_response(
+                raw_trace=raw_trace,
+                t=t,
+                dt_seconds=dt_seconds,
+                summary=summary,
+                itrace=itrace,
+                stim_starts=stim_starts,
+                template=method.template,
+                template_amax=method.template_amax,
+                detector_cls=detector_cls,
+                detector_kwargs=detector_kwargs,
+                pars=dsp,
+            )
+            idata[itrace][:idmax] = corrected
+            summary.direct_responses[itrace] = records
+        return summary
+
     def analyze_one_trial(
         self, data: np.ndarray, pars: dict, datatype: str
     ) -> dict:
@@ -712,6 +828,8 @@ class AnalyzeMap(object):
         # )
         # summary.ok_onsets = ok_onsets
         summary.spont_dur = [self.Pars.stimtimes["starts"][0]] * data.shape[0]
+        if self.Pars.direct_separation.enabled:
+            summary = self._apply_direct_separation(data=data, method=method, summary=summary)
         summary = method.average_events(
             traces=range(data.shape[0]), data=data, summary=summary
         )

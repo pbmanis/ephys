@@ -19,6 +19,7 @@ from pypdf import PdfReader, PdfWriter
 from ephys.tools import get_computer
 
 import ephys.mapanalysistools as mapanalysistools
+import ephys.mini_analyses.mini_event_dataclasses as MEDC
 import ephys.tools.filename_tools as filename_tools
 from ephys.ephys_analysis.analysis_common import Analysis
 
@@ -855,6 +856,20 @@ class MAP_Analysis(Analysis):
         self.AM.set_artifact_scale(self.AM.Pars.artifact_scale)
         self.AM.set_taus(self.AM.Pars.taus)  # [1, 3.5]
         self.AM.set_zscore_threshold(self.AM.Pars.zscore_threshold)
+
+        direct_sep_cfg = self.experiment.get("direct_response_separation", {})
+        if direct_sep_cfg.get("enabled", False):
+            CP.cprint("c", "    Direct/synaptic response separation: enabled")
+            dsp = MEDC.DirectSeparationPars()
+            # copy any recognized DirectSeparationPars field present in the config
+            for key, value in direct_sep_cfg.items():
+                if key == "enabled":
+                    continue
+                if hasattr(dsp, key):
+                    setattr(dsp, key, value)
+                else:
+                    CP.cprint("y", f"    (ignoring unknown direct_response_separation key: {key})")
+            self.AM.set_direct_separation(pars=dsp, enabled=True)
 
         if self.recalculate_events:
             CP.cprint(
