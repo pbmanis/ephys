@@ -45,6 +45,31 @@ Key files that interact frequently:
 - A subset of functions/routines are tested in the main "test.py"
 - `uv` is used for dependency management (`uv.lock`, `pyproject.toml`).
 - Python 3.13 is required (pinned in `pyproject.toml`).
+
+## Testing convention — REQUIRED after analysis code changes
+After editing any file in the following modules, run the relevant tests
+before reporting a task complete:
+
+  Affected modules:
+    `ephys/ephys_analysis/`  (iv_analysis, analysis_common, map_analysis,
+                              rm_tau_analysis, spike_analysis,
+                              spike_analysis_fast, vc_analysis)
+    `ephys/psc_analysis/`
+    `ephys/mini_analyses/`
+    `ephys/mapanalysistools/`
+
+  Commands:
+    - Spike / IV / RM tests only:
+        `pytest ephys/ephys_analysis/tests/ -v --tb=short`
+    - Full suite (all of the above):
+        `python test.py`
+
+  Rules:
+    - NEVER pass `--audit` to pytest; audit mode is for human use only
+      at the terminal.
+    - If any test fails, investigate and fix before declaring done.
+    - `test_spike_analysis_fast.py` must pass whenever `spike_analysis.py`
+      or `spike_analysis_fast.py` is changed.
 - 
 ## Data pipeline (current-clamp spike analysis)
 1. **Assembly** (`assemble_datasets.py` → `combine_by_cell`): per-protocol
