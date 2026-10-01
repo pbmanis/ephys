@@ -42,8 +42,6 @@ dependencies = [
     "matplotlib-scalebar>=0.8.1",
     "meegkit==0.1.9",
     "metaarray==2.2.2",
-    # "metaarray @ git+https://github.com/pbmanis/metaarray.git@nparray-fix#egg=metaarray",  # forked from Martin Chase directly
-    # "metaarray @ file:/Users/pbmanis/Desktop/Python/metaarray#egg=metaarray",  # forked from Martin Chase directly
     # "montage",
     "nest-asyncio==1.2.0",
     "networkx>=2.0",
