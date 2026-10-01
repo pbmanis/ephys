@@ -326,7 +326,13 @@ class SpikeAnalysis:
             spikes = self.U.findspikes(
             # spikes = spike_finder.FindSpikesNumba().findspikes(
                 x=time_base,
-                v=np.array(v_raw),
+                # v=np.array(v_raw),
+                # MetaArray.__array__ does not accept
+                # numpy 2.0's copy kwarg, so np.array(v_raw) raises a
+                # DeprecationWarning. .view(np.ndarray).copy() yields an
+                # independent plain-ndarray copy (same semantics) without
+                # invoking MetaArray.__array__.  So, this:
+                v=v_raw.view(np.ndarray).copy(),
                 t0=self.Clamps.tstart,
                 t1=self.Clamps.tend,
                 dt=self.Clamps.sample_interval,
@@ -473,7 +479,8 @@ class SpikeAnalysis:
                 continue
             spikes = self.U.findspikes(
                 x=time_base,
-                v=np.array(v_raw),
+                # v=np.array(v_raw),
+                v=v_raw.view(np.ndarray).copy(),
                 t0=twin[0],
                 t1=twin[1],
                 dt=dt,
