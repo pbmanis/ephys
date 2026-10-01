@@ -301,7 +301,8 @@ def compute_adaptation_index(
 
         # clip spike latencies to the window
         spk_lat -= trace_delay
-        spk_lat = spk_lat[spk_lat < trace_duration and spk_lat >= 0.0]
+        # spk_lat = spk_lat[spk_lat < trace_duration and spk_lat >= 0.0]
+        spk_lat = spk_lat[(spk_lat < trace_duration) & (spk_lat >= 0.0)]
         n_spikes = len(spk_lat)
         if n_spikes < minimum_spikes:
             continue
