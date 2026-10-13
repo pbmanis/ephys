@@ -4,18 +4,26 @@ Give "stated objective", "actual objective"
 
 ('objective', '4x 0.1na ACHROPLAN')
 
+This is a tool for ephys. 
+
 """
 
+import copy
 import datetime
+import html
+import inspect
 import os
 import pprint
+import re
 import sys
-import tomllib as toml
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
+import ephys
+import MetaArray as EM  # acq4 video (.ma) reader
 import numpy as np
+import tifffile  # acq4 image (.tif) reader
 import pylibrary.tools.cprint as CP
 import pyqtgraph as pg
 import pyqtgraph.dockarea as PGD
@@ -25,14 +33,40 @@ from pyqtgraph import configfile
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
+# The experiment configuration (config/experiments.cfg) supplies the raw-data
+# directory. The configuration is imported under an alias so it does not 
+# collide with the local
+# objective-config loader get_configuration() below.
+from ephys.tools.get_configuration import get_configuration as get_experiment_configuration
+
 pp = pprint.PrettyPrinter(indent=4)
+# acq4 "day" directory names are stuctured as 2025.01.10_000. This re is used to
+# shorten recent-file labels to the path tail starting at the day directory.
+_DATEDIR_RE = re.compile(r"\d{4}\.\d{2}\.\d{2}_\d{3}")
 
 
-def get_configuration(configfile):
-    cpath = Path(Path().absolute(), configfile)
-    print("Getting Configuration file from: ", str(cpath))
-    config = pg.configfile.readConfigFile(cpath)
-    return config
+def _ephys_config_dir() -> Path:
+    """Return the packaged ephys/config directory (independent of cwd)."""
+    return Path(inspect.getfile(ephys)).parent / "config"
+
+
+# The objective-config loader is independent of the working directory.
+def get_configuration(configfile_name: Union[str, Path, None] = None):
+    candidates = []
+    if configfile_name is not None:
+        candidates.append(Path(configfile_name))
+        candidates.append(Path(Path().absolute(), configfile_name))
+    candidates.append(_ephys_config_dir() / "fix_objective_data.cfg")
+    for cpath in candidates:
+        try:
+            if cpath is not None and Path(cpath).is_file():
+                CP.cprint("g", f"fix_objscale: reading objective config from: {cpath!s}")
+                cfg = configfile.readConfigFile(str(cpath))
+                return cfg, Path(cpath)
+        except Exception as exc:  # noqa: BLE001 - fall through to next candidate
+            CP.cprint("y", f"fix_objscale: could not read {cpath!s}: {exc}")
+    CP.cprint("y", "fix_objscale: objective config not found; using built-in defaults")
+    return copy.deepcopy(objective_data), None
 
 
 # default dict for objective data:
@@ -76,19 +110,150 @@ class Changer:
 
 
 class FixObjective(pg.QtWidgets.QWidget):
-    def __init__(self, objective_data=None, app=None):
+    def __init__(self, objective_data=None, objective_config_path=None,
+                 datasets=None, experiments=None, app=None):
         super(FixObjective, self).__init__()
         self.objective_data = objective_data
+        # save where the objective config was loaded from
+        # so the recent-files list can be written back to it.
+        self.objective_config_path = objective_config_path
+        # Experiment configuration (config/experiments.cfg),
+        # is used to derive the raw-data directory.
+        self.datasets = list(datasets) if datasets else []
+        self.experiments = experiments if experiments else {}
         self.app = app
         self.write = False
-        self.datadir = "/Volumes/Pegasus_002/ManisLab_Data3/Kasten_Michael/NF107Ai32_Het"
         self.objdata = Changer()
-        self.filelistpath = "../fixobjective.toml"
         self.last_file = None
         self.selected_camera = "RetigaR1"
         self.selected_cinescale = "1.0"
-        self.ptreewid = 250
+        self.ptreewid = 300  # params panel width
+        self._recent_param = None  # set in build_ptree
+        self._suppress_recent = False  # guard against reload on programmatic update
+        self.status_path = None  # status-bar label for the protocol path (set in set_window)
+        # image/video display state
+        self._file_param = None  # the "File" dropdown (set in build_ptree)
+        self._suppress_file = False  # guard against display on programmatic update
+        self._cur_frames = None  # ndarray [nframes, H, W] for the current file
+        self._cur_rect = None  # (width_um, height_um) of the current image
+        self._cur_pxum = None  # pixel size in microns (for the FFT frequency axis)
+        self.day_tree = None  # day-directory browser (set in set_window)
+        self._current_file = None  # file currently shown (for .index highlight)
+        # normalize LastFile to a 10-deep most-recent list and
+        # resolve the data directory from the experiment configuration.
+        self._normalize_recent()
+        self.selected_dataset = self.datasets[0] if self.datasets else None
+        self.datadir = self._resolve_datadir()
         self.update_camera_settings()
+
+    # ------------------------------------------------------------------
+    # recent-files (LastFile) management and data-dir
+    # resolution. The recent list livesin fix_objective_data.cfg
+    # ------------------------------------------------------------------
+    def _normalize_recent(self):
+        """Coerce LastFile into a list of at most 10 entries, newest first."""
+        lf = self.objective_data.get("LastFile", [])
+        if isinstance(lf, str):
+            lf = [lf] if lf else []
+        elif lf is None:
+            lf = []
+        else:
+            lf = list(lf)
+        self.objective_data["LastFile"] = lf[:10]
+
+    def _resolve_datadir(self):
+        """Pick the data directory: selected experiment dataset if its
+        rawdatapath/directory exists, else the newest existing recent entry,
+        else the user's home directory."""
+        ds = self.selected_dataset
+        if ds is not None and ds in self.experiments:
+            expt = self.experiments[ds]
+            try:
+                d = Path(expt["rawdatapath"], expt["directory"])
+                if d.is_dir():
+                    return str(d)
+            except Exception:  # noqa: BLE001 - missing keys / offline volume
+                pass
+        for r in self.objective_data.get("LastFile", []):
+            rp = Path(r)
+            if rp.exists():
+                return str(rp if rp.is_dir() else rp.parent)
+        return str(Path.home())
+
+    def _save_objective_config(self):
+        """Persist the recent-files list back to the config file.
+
+        Only the single ``LastFile:`` line is rewritten; the
+        rest of the file (comments, objectives, cameras, cinescales, and any
+        hand edits) is preserved. This avoids comment loss and
+        churn of pyqtgraph's whole-file writeConfigFile.
+        """
+        if self.objective_config_path is None:
+            CP.cprint("y", "fix_objscale: no config path known; recent list not saved")
+            return
+        path = Path(self.objective_config_path)
+        recents = self.objective_data.get("LastFile", [])
+        new_line = f"LastFile: {recents!r}\n"
+        try:
+            lines = path.read_text().splitlines(keepends=True) if path.is_file() else []
+            out, replaced = [], False
+            for ln in lines:
+                if not replaced and re.match(r"^\s*LastFile\s*:", ln):
+                    out.append(new_line)
+                    replaced = True
+                else:
+                    out.append(ln)
+            if not replaced:
+                if out and not out[-1].endswith("\n"):
+                    out[-1] += "\n"
+                out.append(new_line)
+            path.write_text("".join(out))
+        except Exception as exc:  # noqa: BLE001
+            CP.cprint("r", f"fix_objscale: failed to save recent list: {exc}")
+
+    def _push_recent(self, path):
+        """Push a protocol directory onto the most-recent stack (newest first,
+        de-duplicated, capped at 10) and persist it."""
+        path = str(path)
+        lst = self.objective_data.get("LastFile", [])
+        if isinstance(lst, str):
+            lst = [lst] if lst else []
+        lst = [p for p in lst if p != path]
+        lst.insert(0, path)
+        self.objective_data["LastFile"] = lst[:10]
+        self._update_recent_dropdown()
+        self._save_objective_config()
+
+    # shorten the recent-file labels to keep the left panel sane.
+    def _recent_label(self, path):
+        parts = Path(path).parts
+        for i, part in enumerate(parts):
+            if _DATEDIR_RE.fullmatch(part):
+                return str(Path(*parts[i:]))
+        return str(Path(*parts[-3:])) if len(parts) >= 3 else str(path)
+
+    def _recent_items(self):
+        """Ordered {display_label: full_path} for the recent stack (unique labels)."""
+        items = {}
+        for p in self.objective_data.get("LastFile", []):
+            label = self._recent_label(p)
+            base, n = label, 2
+            while label in items:  # disambiguate collisions
+                label, n = f"{base} ({n})", n + 1
+            items[label] = p
+        return items
+
+    def _update_recent_dropdown(self):
+        if self._recent_param is None:
+            return
+        items = self._recent_items()
+        limits = items if items else {"(none)": "(none)"}
+        self._suppress_recent = True
+        try:
+            self._recent_param.setLimits(limits)
+            self._recent_param.setValue(list(limits.values())[0])
+        finally:
+            self._suppress_recent = False
 
     def update_camera_settings(self):
         self.camera = self.objective_data["Cameras"][self.selected_camera]
@@ -99,26 +264,348 @@ class FixObjective(pg.QtWidgets.QWidget):
             -(1.0 / self.cinescale) * self.pixelsize,
         ]
 
-    def getProtocolDir(self, reload_last=False):
-        current_filename = None
-        if not reload_last:
-            sel = FS.FileSelector(dialogtype="dir", startingdir=self.datadir)
-            current_filename = sel.fileName
-            if Path(current_filename).is_file():
-                self.datadir = Path(current_filename)
+    # Image / video display with a scale grid.
+    # and a 2-D spectral amplitude spectrum. 
+    # ------------------------------------------------------------------
+    def _build_image_dock(self):
+        pg.setConfigOptions(imageAxisOrder="row-major")  # arrays are [row=y, col=x]
+        container = QtWidgets.QWidget()
+        vlayout = QtWidgets.QVBoxLayout()
+        vlayout.setContentsMargins(0, 0, 0, 0)
+        container.setLayout(vlayout)
+
+        # objective / binning / scale for the displayed file,
+        # shown above the image.
+        self.obj_label = QtWidgets.QLabel("(no image)")
+        self.obj_label.setWordWrap(True)
+        self.obj_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        vlayout.addWidget(self.obj_label, stretch=0)
+
+        self.image_glw = pg.GraphicsLayoutWidget()
+        self.image_plot = self.image_glw.addPlot(row=0, col=0)
+        self.image_plot.setTitle("Image")
+        self.image_plot.setAspectLocked(True)
+        self.image_plot.invertY(True)  # row 0 of the image at the top
+        self.image_plot.setLabel("bottom", "X", units="µm")
+        self.image_plot.setLabel("left", "Y", units="µm")
+        self.image_plot.showGrid(x=True, y=True, alpha=0.6)
+        self.image_item = pg.ImageItem()
+        self.image_plot.addItem(self.image_item)
+
+        # intensity (min/max level) control to the right of the
+        # image - a histogram with draggable min & max level handles.
+        self.hist = pg.HistogramLUTItem()
+        self.hist.setImageItem(self.image_item)
+        self.image_glw.addItem(self.hist, row=0, col=1)
+
+        self.fft_plot = self.image_glw.addPlot(row=0, col=2)
+        self.fft_plot.setTitle("2-D amplitude spectrum (log)")
+        self.fft_plot.setAspectLocked(True)
+        self.fft_plot.setLabel("bottom", "fx", units="1/µm")
+        self.fft_plot.setLabel("left", "fy", units="1/µm")
+        self.fft_item = pg.ImageItem()
+        self.fft_plot.addItem(self.fft_item)
+
+        vlayout.addWidget(self.image_glw, stretch=1)
+
+        # frame slider (enabled only for videos)
+        hbox = QtWidgets.QHBoxLayout()
+        self.frame_label = QtWidgets.QLabel("Frame: -")
+        self.frame_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.frame_slider.setMinimum(0)
+        self.frame_slider.setMaximum(0)
+        self.frame_slider.setEnabled(False)
+        self.frame_slider.valueChanged.connect(self._on_frame_changed)
+        hbox.addWidget(self.frame_label)
+        hbox.addWidget(self.frame_slider, stretch=1)
+        sliderw = QtWidgets.QWidget()
+        sliderw.setLayout(hbox)
+        vlayout.addWidget(sliderw, stretch=0)
+
+        self.Dock_Image.addWidget(container)
+
+    def _populate_file_dropdown(self, select_name=None):
+        """List image_*.tif / video_*.ma in the current protocol directory and
+        display one (``select_name`` if present, else the first)."""
+        if self._file_param is None:
+            return
+        d = Path(self.objdata.filename)
+        files = []
+        if d.is_dir():
+            files = sorted(
+                p.name
+                for p in d.iterdir()
+                if p.name.startswith(("image_", "video_"))
+                and p.suffix.lower() in (".tif", ".tiff", ".ma")
+            )
+        vals = files if files else ["(none)"]
+        chosen = select_name if (select_name in vals) else (vals[0] if files else "(none)")
+        self._suppress_file = True
+        try:
+            self._file_param.setLimits(vals)
+            self._file_param.setValue(chosen)
+        finally:
+            self._suppress_file = False
+        if files:
+            self._display_file(chosen)
+
+    def _load_image_data(self, path: Path):
+        """Return (frames[nframes, H, W] as float, total_frame_count). Videos are
+        truncated to the first 100 frames."""
+        suf = path.suffix.lower()
+        if suf in (".tif", ".tiff"):
+            arr = np.asarray(tifffile.imread(str(path)))
+        elif suf == ".ma":
+            arr = np.asarray(EM.MetaArray(file=str(path)))
         else:
-            current_filename = self.objective_data["LastFile"]
-            # if self.filelistpath.is_file():
-            #     file_dict = toml.load(self.filelistpath)
-            #     current_filename = file_dict["MostRecent"]
-            # else:
-            #     print("No Previous Files Found")
-            #     return
+            raise ValueError(f"unsupported file type: {suf}")
+        arr = np.squeeze(arr)
+        if arr.ndim == 2:
+            return arr.astype(float)[np.newaxis, :, :], 1
+        if arr.ndim == 3:
+            if arr.shape[-1] in (3, 4) and arr.shape[0] > 4:  # single RGB(A) image
+                return arr.mean(axis=-1).astype(float)[np.newaxis, :, :], 1
+            total = int(arr.shape[0])  # acq4 stores the frame ('Time') axis first
+            frames = arr[:100] if total > 100 else arr
+            return frames.astype(float), total
+        raise ValueError(f"unexpected image dimensionality: {arr.ndim}")
+
+    def _compute_scale_um(self, name: str, W: int, H: int):
+        """Physical extent (width_um, height_um) and x pixel size (um) from the
+        .index transform scale (meters/pixel). Falls back to 1 px == 1 unit."""
+        try:
+            scale = self.index[name]["transform"]["scale"]
+            sx, sy = abs(float(scale[0])), abs(float(scale[1]))
+            w_um, h_um, px_um = sx * 1e6 * W, sy * 1e6 * H, sx * 1e6
+            if w_um > 0 and h_um > 0:
+                return w_um, h_um, px_um
+        except Exception:  # noqa: BLE001 - missing index entry / unusable scale
+            pass
+        CP.cprint("y", f"fix_objscale: no usable scale for {name}; showing pixels")
+        return float(W), float(H), 1.0
+
+    @staticmethod
+    def _nice_step(span: float, target_divs: int = 10) -> float:
+        """A 1-2-5-rounded grid step closest to span/target_divs (so e.g. a ~1 mm
+        image yields a 100 um grid -> about a 10x10 grid)."""
+        if span <= 0:
+            return 1.0
+        raw = span / float(target_divs)
+        mag = 10.0 ** np.floor(np.log10(raw))
+        candidates = [m * mag for m in (1.0, 2.0, 5.0, 10.0)]
+        return float(min(candidates, key=lambda c: abs(c - raw)))
+
+    def _display_file(self, name: str):
+        path = Path(self.objdata.filename, name)
+        try:
+            frames, total = self._load_image_data(path)
+        except Exception as exc:  # noqa: BLE001
+            CP.cprint("r", f"fix_objscale: could not load {path!s}: {exc}")
+            return
+        nframes = frames.shape[0]
+        if total > nframes:  # video was truncated
+            QtWidgets.QMessageBox.information(
+                self.win,
+                "Large video truncated",
+                f"'{name}' contains {total} frames.\n"
+                f"Only the first {nframes} will be loaded and displayed.",
+            )
+        H, W = int(frames.shape[1]), int(frames.shape[2])
+        w_um, h_um, px_um = self._compute_scale_um(name, W, H)
+        self._cur_frames = frames
+        self._cur_rect = (w_um, h_um)
+        self._cur_pxum = px_um
+        is_video = nframes > 1
+        self.frame_slider.blockSignals(True)
+        self.frame_slider.setMaximum(max(0, nframes - 1))
+        self.frame_slider.setValue(0)
+        self.frame_slider.setEnabled(is_video)
+        self.frame_slider.blockSignals(False)
+        self.image_plot.setTitle(name)
+        # Remember the current file, update the objective
+        # banner above the image, auto-scale intensity for the new file, and
+        # refresh the .index table so the row is highlighted.
+        self._current_file = name
+        self._update_objective_label(name)
+        self._show_frame(0, auto_levels=True)
+        self.show_index()
+
+    def _update_objective_label(self, name: str):
+        entry = {}
+        try:
+            entry = self.index.get(name, {})
+        except Exception:  # noqa: BLE001 - index not loaded
+            entry = {}
+        objn = entry.get("objective", "?")
+        binn = entry.get("binning", "?")
+        scale = entry.get("transform", {}).get("scale", "?") if isinstance(entry, dict) else "?"
+        self.obj_label.setText(
+            f"<b>{html.escape(str(name))}</b> &nbsp;|&nbsp; Objective: "
+            f"<b>{html.escape(str(objn))}</b> &nbsp;|&nbsp; binning: {html.escape(str(binn))} "
+            f"&nbsp;|&nbsp; scale (m/px): {html.escape(str(scale))}"
+        )
+
+    def _on_frame_changed(self, value: int):
+        # keep the user's intensity levels while scrubbing
+        self._show_frame(value, auto_levels=False)
+
+    def _show_frame(self, idx: int, auto_levels: bool = True):
+        if self._cur_frames is None:
+            return
+        idx = int(np.clip(idx, 0, self._cur_frames.shape[0] - 1))
+        frame = self._cur_frames[idx]
+        w_um, h_um = self._cur_rect
+        # use mm once the field of view reaches 1 mm, and
+        # microns only below 1 mm. This also avoids pyqtgraph's SI auto-prefix
+        # turning 1000 µm into "1 kµm".
+        if max(w_um, h_um) >= 1000.0:
+            unit, uf = "mm", 1.0e-3  # microns -> millimeters
+        else:
+            unit, uf = "µm", 1.0
+        w_disp, h_disp = w_um * uf, h_um * uf
+
+        # image (row-major: array[y, x]); invertY keeps row 0 at the top.
+        # auto_levels only on a new file; preserve the user's min/max while
+        # scrubbing video frames.
+        self.image_item.setImage(frame, autoLevels=auto_levels)
+        self.image_item.setRect(QtCore.QRectF(0.0, 0.0, w_disp, h_disp))
+        step = self._nice_step(max(w_disp, h_disp), target_divs=10)
+        for axname, label in (("bottom", "X"), ("left", "Y")):
+            ax = self.image_plot.getAxis(axname)
+            self.image_plot.setLabel(axname, label, units=unit)
+            ax.enableAutoSIPrefix(False)  # show the unit verbatim (mm or µm)
+            ax.setTickSpacing(step, step / 5.0)
+        self.image_plot.setXRange(0.0, w_disp, padding=0.02)
+        self.image_plot.setYRange(0.0, h_disp, padding=0.02)
+
+        # 2-D amplitude spectrum (log), centered at zero frequency; frequency in
+        # cycles per the same length unit as the image.
+        spec = np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(frame))))
+        self.fft_item.setImage(spec, autoLevels=True)
+        px_disp = (self._cur_pxum or 1.0) * uf  # pixel size in display units
+        f_nyq = 1.0 / (2.0 * px_disp)  # Nyquist (cycles per display unit)
+        self.fft_item.setRect(QtCore.QRectF(-f_nyq, -f_nyq, 2.0 * f_nyq, 2.0 * f_nyq))
+        for axname, label in (("bottom", "fx"), ("left", "fy")):
+            ax = self.fft_plot.getAxis(axname)
+            self.fft_plot.setLabel(axname, label, units="1/" + unit)
+            ax.enableAutoSIPrefix(False)
+        self.fft_plot.setXRange(-f_nyq, f_nyq, padding=0.02)
+        self.fft_plot.setYRange(-f_nyq, f_nyq, padding=0.02)
+
+        n = self._cur_frames.shape[0]
+        self.frame_label.setText(f"Frame: {idx}" + (f" / {n - 1}" if n > 1 else ""))
+
+    # ------------------------------------------------------------------
+    # collapsible day-directory browser (below the Quit
+    # button). Shows the whole directory tree for the current acq4 "day", pruned
+    # to the branches that contain images/videos, so files are easy to pick.
+    # ------------------------------------------------------------------
+    def _day_dir(self, path):
+        """Return the acq4 day directory (…/YYYY.MM.DD_NNN) containing ``path``."""
+        parts = Path(path).parts
+        for i, part in enumerate(parts):
+            if _DATEDIR_RE.fullmatch(part):
+                return str(Path(*parts[: i + 1]))
+        return None
+
+    def _populate_day_tree(self):
+        if self.day_tree is None:
+            return
+        self.day_tree.clear()
+        day = self._day_dir(self.objdata.filename)
+        if day is None or not Path(day).is_dir():
+            self.day_tree.setHeaderLabels(["Day directory (none)"])
+            return
+        self.day_tree.setHeaderLabels([Path(day).name])
+        root = QtWidgets.QTreeWidgetItem([Path(day).name])
+        root.setData(0, QtCore.Qt.ItemDataRole.UserRole, {"type": "dir", "path": str(day)})
+        self.day_tree.addTopLevelItem(root)
+        self._add_dir_children(root, Path(day), depth=0)
+        root.setExpanded(True)
+
+    def _add_dir_children(self, parent_item, dirpath: Path, depth: int = 0) -> bool:
+        """Add image/video files and media-bearing subdirectories under
+        ``dirpath``. Returns True if anything was added (so empty branches are
+        pruned). Subdirectories start collapsed."""
+        if depth > 6:
+            return False
+        try:
+            entries = sorted(dirpath.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+        except (OSError, PermissionError):
+            return False
+        added = False
+        role = QtCore.Qt.ItemDataRole.UserRole
+        for e in entries:
+            if e.is_dir():
+                if e.name.startswith("."):
+                    continue
+                item = QtWidgets.QTreeWidgetItem([e.name])
+                item.setData(0, role, {"type": "dir", "path": str(e)})
+                if self._add_dir_children(item, e, depth + 1):
+                    parent_item.addChild(item)
+                    item.setExpanded(False)  # closed by default (> toggle)
+                    added = True
+            elif e.name.startswith(("image_", "video_")) and e.suffix.lower() in (
+                ".tif",
+                ".tiff",
+                ".ma",
+            ):
+                item = QtWidgets.QTreeWidgetItem([e.name])
+                item.setData(0, role, {"type": "file", "path": str(e)})
+                parent_item.addChild(item)
+                added = True
+        return added
+
+    def _on_day_tree_item(self, item, _col):
+        """Clicking an image/video in the day tree navigates to its protocol
+        directory and displays it (without pushing onto the recent stack)."""
+        data = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
+        if not data or data.get("type") != "file":
+            return
+        fpath = Path(data["path"])
+        protodir = fpath.parent
+        self.objdata.filename = str(protodir)
+        try:
+            self.read_index(objective=self.objdata, write=False)
+        except (FileNotFoundError, KeyError) as exc:
+            CP.cprint("r", f"fix_objscale: could not read .index in {protodir!s}: {exc}")
+            return
+        self._set_status(str(protodir))
+        self.show_index()
+        self._populate_file_dropdown(select_name=fpath.name)
+
+    def getProtocolDir(self, reload_last=False, recent_path=None):
+        # Three entry points now - an explicit recent_path
+        # (from the Recent dropdown), reload_last (newest on the stack), or a
+        # directory chooser. On a successful .index read the directory is pushed
+        # onto the most-recent stack.
+        current_filename = None
+        if recent_path is not None:
+            current_filename = recent_path
+        elif reload_last:
+            recents = self.objective_data.get("LastFile", [])
+            if len(recents) == 0:
+                CP.cprint("y", "fix_objscale: no previous files found")
+                return
+            current_filename = recents[0]  # newest on top
+        else:
+            sel = FS.FileSelector(dialogtype="dir", startingdir=str(self.datadir))
+            current_filename = sel.fileName
+        if current_filename is None:
+            return
         print("Current Filename: ", current_filename)
 
         self.objdata.filename = current_filename
-        self.read_index(objective=self.objdata, write=False)
+        try:
+            self.read_index(objective=self.objdata, write=False)
+        except (FileNotFoundError, KeyError) as exc:
+            CP.cprint("r", f"fix_objscale: could not read .index in {current_filename!s}: {exc}")
+            return
+        self._push_recent(current_filename)
+        self._set_status(current_filename)
         self.show_index()
+        self._populate_file_dropdown()
+        self._populate_day_tree()
 
     def rewrite_index(self, index: dict, index_file: Union[str, Path]):
         configfile.writeConfigFile(index, index_file)
@@ -188,25 +675,39 @@ class FixObjective(pg.QtWidgets.QWidget):
     #     ulist["Videos"].setLimits(videolist)
 
     def show_index(self):
-        print("self.index: ")
-        # print(self.index)
-        self.textbox.setCurrentFont(QtGui.QFont("Courier New"))
-        text = []  # ["<font color='red' size='3' font-family='monospace'>Hello PyQt5!\nHello"]
-        # ["<font-family:'Courier New' color='blue' size='10'>"]
+        # Remember the current file, update the objective
+        col = {"file": 20, "objective": 28, "binning": 12}
+        header = (
+            f"{'file':<{col['file']}s}{'objective':<{col['objective']}s}"
+            f"{'binning':<{col['binning']}s}scale (m/px)"
+        )
+        rows = [html.escape(header)]
         for k in self.index.keys():
-            print("index is: ", k)
-            if k.startswith("image"):
-                text.append(
-                    f" {k:16s}: {self.index[k]['objective']:24s}, {str(self.index[k]['binning']):8s}"
-                    + f" {str(self.index[k]['transform']['scale']):s}<br>"
+            if not (k.startswith("image") or k.startswith("video")):
+                continue
+            entry = self.index[k]
+            objn = str(entry.get("objective", "") if isinstance(entry, dict) else "")
+            binn = str(entry.get("binning", "") if isinstance(entry, dict) else "")
+            try:
+                scale = str(entry.get("transform", {}).get("scale", ""))
+            except Exception:  # noqa: BLE001
+                scale = ""
+            line = (
+                f"{k:<{col['file']}s}{objn:<{col['objective']}s}"
+                f"{binn:<{col['binning']}s}{scale}"
+            )
+            line = html.escape(line.ljust(96))  # pad so the highlight spans the row
+            if self._current_file is not None and k == self._current_file:
+                line = (
+                    "<span style=\"background-color:#ffe680; color:#000;\">"
+                    f"{line}</span>"
                 )
-            if k.startswith("video"):
-                text.append(
-                    f" {k:16s}: {self.index[k]['objective']:24s}, {str(self.index[k]['binning']):8s}"
-                    + f" {str(self.index[k]['transform']['scale']):s}<br>"
-                )
-
-        self.textbox.setHtml("\n".join([t for t in text]))
+            rows.append(line)
+        body = "\n".join(rows)
+        self.textbox.setHtml(
+            "<pre style=\"font-family:'Courier New',Menlo,monospace; font-size:10pt; "
+            f"line-height:1.1;\">{body}</pre>"
+        )
 
     def set_new_objective(self, data):
         self.objdata.to_objective = data
@@ -320,10 +821,40 @@ class FixObjective(pg.QtWidgets.QWidget):
         cameras = list(self.objective_data["Cameras"].keys())
         objectives = list(self.objective_data["Objectives"].keys())
         cinescales = list(self.objective_data["CineScales"].keys())
+        # dataset chooser (from experiments.cfg) and a
+        # most-recent-protocols dropdown (from fix_objective_data.cfg).
+        datasets = self.datasets if self.datasets else ["(none)"]
+        # Recent items use {short_label: full_path} so the dropdown
+        # shows the day-dir tail while still carrying the full path as its value.
+        recent_items = self._recent_items()
+        recent_limits = recent_items if recent_items else {"(none)": "(none)"}
+        recent_value = list(recent_limits.values())[0]
         self.params = [
             # {"name": "Pick Cell", "type": "list", "values": cellvalues, "value": cellvalues[0]},
+            {
+                "name": "Dataset",
+                "type": "list",
+                "limits": datasets,
+                "value": datasets[0],
+                "renamable": False,
+            },
             {"name": "Set Directory/Protocol", "type": "action"},
             {"name": "Reload Last Protocol", "type": "action"},
+            {
+                "name": "Recent",
+                "type": "list",
+                "limits": recent_limits,
+                "value": recent_value,
+                "renamable": False,
+            },
+            # Three entry points now - an explicit recent_path
+            {
+                "name": "File",
+                "type": "list",
+                "limits": ["(none)"],
+                "value": "(none)",
+                "renamable": False,
+            },
             {"name": "Images", "type": "str", "value": ""},
             {"name": "Videos", "type": "str", "value": ""},
             {
@@ -364,8 +895,12 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.ptreedata = Parameter.create(name="Commands", type="group", children=self.params)
 
         self.ptree.setParameters(self.ptreedata)
-        self.ptree.setMaximumWidth(self.ptreewid)
+        # Keep a handle to the Recent dropdown so it can be
+        # refreshed as the most-recent stack changes.
+        self._recent_param = self.ptreedata.param("Recent")
+        self._file_param = self.ptreedata.param("File")
         self.ptree.setMinimumWidth(self.ptreewid)
+        self.ptree.setColumnWidth(0, 150)
 
     def command_dispatcher(self, param, changes):
         """
@@ -382,6 +917,18 @@ class FixObjective(pg.QtWidgets.QWidget):
                 self.quit()
             elif path[0] == "View .index":
                 self.show_index()
+            elif path[0] == "Dataset":
+                # switch experiment dataset -> data directory
+                self.selected_dataset = data
+                self.datadir = self._resolve_datadir()
+                CP.cprint("c", f"fix_objscale: data directory set to {self.datadir!s}")
+            elif path[0] == "Recent":
+                # load a directory chosen from the recent stack
+                if not self._suppress_recent and data not in (None, "(none)"):
+                    self.getProtocolDir(recent_path=data)
+            elif path[0] == "File":
+                if not self._suppress_file and data not in (None, "(none)"):
+                    self._display_file(data)
             elif path[0] == "Set Directory/Protocol":
                 self.getProtocolDir()
             elif path[0] == "Reload Last Protocol":
@@ -430,33 +977,79 @@ class FixObjective(pg.QtWidgets.QWidget):
         # Initial Dock Arrangment
 
         self.Dock_Params = PGD.Dock("Params", size=(self.ptreewid, win_ht))
-        self.Dock_Params.addWidget(self.ptree)
-        self.Dock_Report = PGD.Dock("Reporting", size=(win_wid - self.ptreewid, win_ht))
-        self.Dock_Help = PGD.Dock("Help", size=(win_wid - self.ptreewid, win_ht))
-        self.Dock_Changes = PGD.Dock("Changes", size=(win_wid - self.ptreewid, win_ht))
+        # the Params dock stacks the command tree on top and a
+        # collapsible day-directory browser below the Quit button (in a splitter
+        # so the divide is draggable).
+        params_split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        params_split.addWidget(self.ptree)
+        self.day_tree = QtWidgets.QTreeWidget()
+        self.day_tree.setHeaderLabels(["Day directory"])
+        self.day_tree.setRootIsDecorated(True)   # show the >/v expand toggles
+        self.day_tree.setItemsExpandable(True)
+        self.day_tree.setUniformRowHeights(True)
+        self.day_tree.setMinimumWidth(self.ptreewid)
+        self.day_tree.itemClicked.connect(self._on_day_tree_item)
+        params_split.addWidget(self.day_tree)
+        params_split.setStretchFactor(0, 0)
+        params_split.setStretchFactor(1, 1)
+        self.Dock_Params.addWidget(params_split)
 
+        # the image and its 2-D spectrum live in one
+        # dock (top-right); the .index text, day-spectra plot, changes and help are
+        # tabbed docks beneath it.
+        self.Dock_Image = PGD.Dock("Image + Spectrum", size=(win_wid - self.ptreewid, win_ht))
+        self._build_image_dock()
+
+        self.Dock_Report = PGD.Dock("Reporting (.index)", size=(win_wid - self.ptreewid, 320))
         self.textbox = QtWidgets.QTextEdit()
         self.textbox.setReadOnly(True)
         self.textbox.setText("(.index file)")
         self.Dock_Report.addWidget(self.textbox)
-        
-        self.help_text = QtWidgets.QTextEdit()
-        self.help_text.setReadOnly(True)
-        self.help_text.setText("Help")
-        
+
+        # 1-D radial spectra for a day dir (not implemented)
+        self.Dock_DaySpectra = PGD.Dock("Day Spectra", size=(win_wid - self.ptreewid, 320))
+        self.day_spectra_plot = pg.PlotWidget()
+        self.day_spectra_plot.setLabel("bottom", "Spatial frequency", units="1/µm")
+        self.day_spectra_plot.setLabel("left", "Power (log)")
+        self.day_spectra_plot.addLegend()
+        self.Dock_DaySpectra.addWidget(self.day_spectra_plot)
+
+        self.Dock_Changes = PGD.Dock("Changes", size=(win_wid - self.ptreewid, 320))
         self.change_text = QtWidgets.QTextEdit()
         self.change_text.setReadOnly(True)
         self.change_text.setText("Changes")
         self.Dock_Changes.addWidget(self.change_text)
 
+        self.Dock_Help = PGD.Dock("Help", size=(win_wid - self.ptreewid, 320))
+        self.help_text = QtWidgets.QTextEdit()
+        self.help_text.setReadOnly(True)
+        self.help_text.setText("Help")
         self.Dock_Help.addWidget(self.help_text)
+
         self.DockArea.addDock(self.Dock_Params, "left")
-        self.DockArea.addDock(self.Dock_Report, "right", self.Dock_Params)
-        self.DockArea.addDock(self.Dock_Help, "bottom", self.Dock_Report)
-        self.DockArea.addDock(self.Dock_Changes, "bottom", self.Dock_Help)
+        self.DockArea.addDock(self.Dock_Image, "right", self.Dock_Params)
+        self.DockArea.addDock(self.Dock_Report, "bottom", self.Dock_Image)
+        self.DockArea.addDock(self.Dock_DaySpectra, "below", self.Dock_Report)
+        self.DockArea.addDock(self.Dock_Changes, "below", self.Dock_DaySpectra)
+        self.DockArea.addDock(self.Dock_Help, "below", self.Dock_Changes)
+        self.Dock_Report.raiseDock()  # show the .index tab first
         self.ptreedata.sigTreeStateChanged.connect(self.command_dispatcher)
+        # Status bar at the bottom shows the full protocol
+        self.status_path = QtWidgets.QLabel("No protocol selected")
+        try:
+            self.status_path.setTextInteractionFlags(
+                QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+        except Exception:  # noqa: BLE001 - enum path differs across Qt bindings
+            pass
+        self.win.statusBar().addWidget(self.status_path, 1)
         self.put_help()
         self.win.show()
+
+    def _set_status(self, msg: str):
+        """Show a message (typically the current protocol path) in the status bar."""
+        if self.status_path is not None:
+            self.status_path.setText(str(msg))
 
     def quit(self):
         exit(0)
@@ -471,7 +1064,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         <p> For example, if you want to change images 1, 2, and 3, you would enter '1;3' in the 'Images' field.
         if you wnat to change images 1, 3, and 5, enter '1,3,5' in the image field. Note that the image and video numbers start at 0.
         </p>
-        <p> YOu can then view the proposed changes by selecting the 'View proposed changes' button.</p>
+        <p> You can then view the proposed changes by selecting the 'View proposed changes' button.</p>
         <p>It is also important to select the correct objective for the data you are working with.</p>
         <p>Once you have selected the camera, cine scale, and the images or videos you wish to correct, you can select the new objective and apply the changes.</p>
         <p> If you are satisfied with the changes, you can apply them by selecting the 'Apply changes' button.</p>
@@ -482,10 +1075,33 @@ class FixObjective(pg.QtWidgets.QWidget):
         """
         self.help_text.setHtml(help_text)
 
-def main(objective_data):
+def main():
     app = pg.mkQApp()
     app.setStyle("fusion")
-    FO = FixObjective(app=app, objective_data=objective_data)
+
+    # Load the objective config (working directory-independent)
+    # and, if available, the experiment configuration for the raw-data
+    # directory. A missing/offline experiments.cfg is non-fatal.
+    objective_cfg, objective_cfg_path = get_configuration("ephys/config/fix_objective_data.cfg")
+    datasets, experiments = None, None
+    try:
+        datasets, experiments = get_experiment_configuration(
+            "config/experiments.cfg", check_completeness=False
+        )
+    except Exception as exc:  # noqa: BLE001 - missing file / offline data volume
+        CP.cprint(
+            "y",
+            f"fix_objscale: experiments.cfg not loaded ({exc}); "
+            "falling back to the most-recent directory.",
+        )
+
+    FO = FixObjective(
+        app=app,
+        objective_data=objective_cfg,
+        objective_config_path=objective_cfg_path,
+        datasets=datasets,
+        experiments=experiments,
+    )
     app.aboutToQuit.connect(
         FO.quit
     )  # prevent python exception when closing window with system control
@@ -494,24 +1110,5 @@ def main(objective_data):
     if (sys.flags.interactive != 1) or not hasattr(pg.QtCore, "PYQT_VERSION"):
         pg.QtWidgets.QApplication.instance().exec()
 
-
-# old command line version
-# def main():
-#     parser = argparse.ArgumentParser(description="Fix the objective")
-#     parser.add_argument(
-#         "-w",
-#         "--write",
-#         action="store_true",
-#         dest="write",
-#         help="Rewrite the .index file (otherwise, we just do a dry run)",
-#     )
-#
-#     args = parser.parse_args()
-#
-#     read_indexes(bp, changeList, args.write)
-
-
 if __name__ == "__main__":
-    objective_data = get_configuration("ephys/config/fix_objective_data.cfg")
-    main(objective_data)
-    # FixObjective(objective_data=objective_data)
+    main()
