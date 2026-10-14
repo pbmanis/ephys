@@ -316,6 +316,29 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.frame_slider.setMaximum(0)
         self.frame_slider.setEnabled(False)
         self.frame_slider.valueChanged.connect(self._on_frame_changed)
+        # Claude 2026-10-13: enlarge the handle - 2x taller, 1.5x wider than the
+        # style default (scaled from the actual Qt style metrics).
+        try:
+            _style = self.frame_slider.style()
+            _PM = QtWidgets.QStyle.PixelMetric
+            _base_len = _style.pixelMetric(_PM.PM_SliderLength) or 14  # along-axis (width)
+            _base_thick = _style.pixelMetric(_PM.PM_SliderThickness) or 18  # across-axis
+        except Exception:  # noqa: BLE001 - metric/enum differences across bindings
+            _base_len, _base_thick = 14, 18
+        _handle_w = int(round(_base_len * 1.5))
+        _handle_h = int(round(_base_thick * 2.0))
+        _groove_h = max(6, _base_thick // 3)
+        _margin = -((_handle_h - _groove_h) // 2)  # let the handle extend past the groove
+        self.frame_slider.setStyleSheet(
+            "QSlider::groove:horizontal {"
+            f" height: {_groove_h}px; background: palette(mid);"
+            f" border-radius: {_groove_h // 2}px; }}"
+            "QSlider::handle:horizontal {"
+            f" width: {_handle_w}px; height: {_handle_h}px; margin: {_margin}px 0px;"
+            f" border-radius: {min(_handle_w, _handle_h) // 4}px;"
+            " background: palette(button); border: 1px solid palette(dark); }"
+        )
+        self.frame_slider.setMinimumHeight(_handle_h + 6)
         hbox.addWidget(self.frame_label)
         hbox.addWidget(self.frame_slider, stretch=1)
         sliderw = QtWidgets.QWidget()
@@ -351,7 +374,8 @@ class FixObjective(pg.QtWidgets.QWidget):
 
     def _load_image_data(self, path: Path):
         """Return (frames[nframes, H, W] as float, total_frame_count). Videos are
-        truncated to the first 100 frames."""
+        truncated to the first 100 frames, and rotated 90 deg clockwise so they
+        match the orientation of the still images."""
         suf = path.suffix.lower()
         if suf in (".tif", ".tiff"):
             arr = np.asarray(tifffile.imread(str(path)))
@@ -361,14 +385,23 @@ class FixObjective(pg.QtWidgets.QWidget):
             raise ValueError(f"unsupported file type: {suf}")
         arr = np.squeeze(arr)
         if arr.ndim == 2:
-            return arr.astype(float)[np.newaxis, :, :], 1
-        if arr.ndim == 3:
+            frames, total = arr.astype(float)[np.newaxis, :, :], 1
+        elif arr.ndim == 3:
             if arr.shape[-1] in (3, 4) and arr.shape[0] > 4:  # single RGB(A) image
-                return arr.mean(axis=-1).astype(float)[np.newaxis, :, :], 1
-            total = int(arr.shape[0])  # acq4 stores the frame ('Time') axis first
-            frames = arr[:100] if total > 100 else arr
-            return frames.astype(float), total
-        raise ValueError(f"unexpected image dimensionality: {arr.ndim}")
+                frames, total = arr.mean(axis=-1).astype(float)[np.newaxis, :, :], 1
+            else:
+                total = int(arr.shape[0])  # acq4 stores the frame ('Time') axis first
+                frames = (arr[:100] if total > 100 else arr).astype(float)
+        else:
+            raise ValueError(f"unexpected image dimensionality: {arr.ndim}")
+        # Claude 2026-10-13: acq4 videos (.ma) are stored rotated 90 deg relative
+        # to the still images; rotate each frame clockwise (k=-1) so they match,
+        # then flip left-right to undo the mirror that rotation leaves.
+        if suf == ".ma":
+            frames = np.rot90(frames, k=-1, axes=(1, 2))  # clockwise
+            frames = frames[:, :, ::-1]  # undo L-R mirror
+            frames = np.ascontiguousarray(frames)
+        return frames, total
 
     def _compute_scale_um(self, name: str, W: int, H: int):
         """Physical extent (width_um, height_um) and x pixel size (um) from the
@@ -427,6 +460,7 @@ class FixObjective(pg.QtWidgets.QWidget):
         # refresh the .index table so the row is highlighted.
         self._current_file = name
         self._update_objective_label(name)
+        self.update_from_objective()  # sync "Original Objective" to this file
         self._show_frame(0, auto_levels=True)
         self.show_index()
 
@@ -705,7 +739,7 @@ class FixObjective(pg.QtWidgets.QWidget):
             rows.append(line)
         body = "\n".join(rows)
         self.textbox.setHtml(
-            "<pre style=\"font-family:'Courier New',Menlo,monospace; font-size:10pt; "
+            "<pre style=\"font-family:'Courier New',Menlo,monospace; font-size:12pt; "
             f"line-height:1.1;\">{body}</pre>"
         )
 
@@ -713,16 +747,17 @@ class FixObjective(pg.QtWidgets.QWidget):
         self.objdata.to_objective = data
 
     def update_from_objective(self):
-        fns = self.get_imagefilenames(self.objdata)  # get for the current
-        print("image file names: ", fns)
-        # print('self.index: ', self.index)
-        for fn in fns:
-            objname = self.index[fn]["objective"]
-            if objname not in list(self.objective_data["Objectives"].keys()):
-                print(f"Objective {objname:s} not found in list of known objectives.")
-                continue
-            print("objective(s) found: ", objname)
-            self.ptreedata.param("Original Objective").setValue(objname)
+        # Reflect the objective actually recorded for the displayed file in the
+        # "Original Objective" field.
+        name = self._current_file
+        if not name or name not in self.index:
+            return
+        objname = self.index[name].get("objective")
+        if objname not in self.objective_data["Objectives"]:
+            print(f"fix_objscale: objective {objname!s} not in known objectives.")
+            return
+        self.objdata.from_objective = objname
+        self.ptreedata.param("Original Objective").setValue(objname)
 
     def get_original_objective(self):
         pass
@@ -752,70 +787,60 @@ class FixObjective(pg.QtWidgets.QWidget):
         return imagefiles
 
     def change_scale(self, objective: object = None, write: bool = False):
-        print("change scale objective: ", objective)
-        imagefiles = self.get_imagefilenames(objective)
-        if len(imagefiles) == 0:
+        # Operate on the file currently shown in the window (the "File"
+        # dropdown selection). The legacy Images/Videos seqparse fields are no
+        # longer used to drive the rescale.
+        name = self._current_file
+        if not name or name not in self.index:
+            CP.cprint("y", "fix_objscale: no current file selected; nothing to rescale")
+            self._set_status("No image/video selected -- pick a File first")
             return
-        text = []
-        text.append(f"Changescale: imagefiles: {imagefiles}")
+        entry = self.index[name]
+        # Target objective is whatever the "New Objective" dropdown shows.
+        new_objective = self.ptreedata.param("New Objective").value()
+        old_objective = entry["objective"]
+        magnification = float(self.objective_data["Objectives"][new_objective])
+        old_scale = entry.get("transform", {}).get("scale")
+        new_scale = (
+            entry["binning"][0] * self.refscale[0] / magnification,
+            entry["binning"][1] * self.refscale[1] / magnification,
+            1.0,
+        )
 
-        text.append(f"\nindex keys:  {self.index.keys()}")
-        for imagefile in imagefiles:
-            if imagefile not in self.index.keys():
-                text.append(f"File {imagefile:s} not found in {str(list(self.index.keys())):s}")
-                continue
-            text.append(f"Index imagefile:  {imagefile}")
-            text.append(f"Old objective: {self.objdata.from_objective}")  # self.index[imagefile]["objective"]
-            # pp.pprint(index[imagefile] )
-            old_objective = self.index[imagefile]["objective"]
-            pp.pprint("   Old transform: ")
-            pp.pprint(self.index[imagefile]["transform"])
-            pp.pprint("   Old device transform,: ")
-            pp.pprint(self.index[imagefile]["deviceTransform"])
-            binning = self.index[imagefile]["binning"]
-            new_objective = objective.to_objective  # string name
-            magnification_new_objective = float(
-                self.objective_data["Objectives"][new_objective]
-            )  # new magnification
-            self.index[imagefile]["transform"]["scale"] = (
-                binning[0] * self.refscale[0] / magnification_new_objective,
-                binning[1] * self.refscale[1] / magnification_new_objective,
-                1.0,
+        # Update the in-memory transforms so the window can re-render at the new
+        # scale for both preview and apply. The scale is recomputed from
+        # refscale/binning/magnification, so repeating this is idempotent.
+        entry["transform"]["scale"] = new_scale
+        entry["deviceTransform"]["scale"] = new_scale
+
+        text = [
+            f"File: {name}",
+            f"Objective: {old_objective}  ->  {new_objective}",
+            f"binning: {entry['binning']}",
+            f"Old scale (m/px): {old_scale}",
+            f"New scale (m/px): {new_scale}",
+        ]
+        index_filename = Path(objective.filename, ".index")
+        if write:
+            dstr = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry["objective"] = new_objective
+            entry["note"] = (
+                f"Objective scale corrected from {old_objective:s} to "
+                f"{new_objective:s} on {dstr:s} by PBM"
             )
-            self.index[imagefile]["deviceTransform"]["scale"] = (
-                binning[0] * self.refscale[0] / magnification_new_objective,
-                binning[1] * self.refscale[1] / magnification_new_objective,
-                1.0,
-            )
-            d = datetime.datetime.now()
-            dstr = d.strftime("%Y-%m-%d %H:%M:%S")
-            self.index[imagefile]["objective"] = objective.to_objective
-            self.index[imagefile]["note"] = f"Objective scale corrected from {old_objective:s}"
-            self.index[imagefile]["note"] += f" to {new_objective:s} on {dstr:s} by PBM"
-            print(
-                "New objective: ", self.index[imagefile]["objective"]
-            )  # pp.pprint(index[imagfile] )
-            print("   New transform: ")
-            pp.pprint(self.index[imagefile]["transform"])
-            print("   New device transform: ")
-            pp.pprint(self.index[imagefile]["deviceTransform"])
-            print("   Added Note: ", self.index[imagefile]["note"])
-            print("----------------------------")
+            self.rewrite_index(self.index, index_filename)
+            text.append(f"\n.index updated: {index_filename}")
+            text.append(f"note: {entry['note']}")
+            CP.cprint("g", f"fix_objscale: .index updated for {name}")
+        else:
+            text.append("\nDry run: .index NOT modified (preview only)")
+            text.append(f"would modify: {index_filename}")
+            CP.cprint("y", f"fix_objscale: dry run for {name} (no write)")
 
-            print("read_index write: ", write)
-            index_filename = Path(objective.filename, ".index")
-            if write:
-                self.rewrite_index(self.index, index_filename)
-                CP.cprint("g", ".index file has been updated")
-
-            else:
-                print("Dry Run: .index file was NOT modified")
-                print(f" file to modify is: {str(index_filename):s}")
-        # then update index file display
-        text.append(f"\n\nChanges made to {str(imagefiles):s}")
-        self.change_text.setHtml("\n".join([t for t in text]))
-
-        self.show_index()
+        self.change_text.setHtml("<br>".join(html.escape(t) for t in text))
+        # Re-render the displayed file so it shows at the new scale (and refresh
+        # the .index table highlight).
+        self._display_file(name)
 
     def build_ptree(self):
         cameras = list(self.objective_data["Cameras"].keys())
