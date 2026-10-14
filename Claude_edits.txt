@@ -1,0 +1,699 @@
+================================================================================
+Claude Code session log — performance audit and pipeline improvements
+Dates: 2026-07-13 through 2026-07-15
+File: Claude_edits.txt
+================================================================================
+
+Continues from: Claude_edits_spike_analysis_2026.07613.txt
+  (Sessions 2026-06-12 and 2026-06-13: spike_analysis_fast.py creation,
+   Phase 1/2 optimisation, test_spikes.py diagnostics, compare_past_analyses fix,
+   export_r rounding/scaling)
+
+────────────────────────────────────────────────────────────────────────────────
+SESSION 3 (2026-07-13) — Phase 3 parallelism + pipeline integration
+────────────────────────────────────────────────────────────────────────────────
+
+──── 3.1  Phase 3 — thread parallelism in spike_analysis_fast.py ────────────
+
+Added n_workers parameter to analyzeSpikeShape_fast(). When n_workers > 1,
+traces are dispatched to a concurrent.futures.ThreadPoolExecutor.  numpy and
+numba release the GIL so threads provide genuine concurrency on trace arrays.
+
+Changes:
+  ephys/ephys_analysis/spike_analysis_fast.py
+    — Added n_workers parameter (default 1 = serial, same as before)
+    — Parallel path collects per-trace results into a pre-allocated list,
+      then merges into sa.spikeShapes serially after the pool joins
+      (avoids the dict-write race that would exist if threads wrote directly)
+    — Sequential path unchanged
+
+  ephys/ephys_analysis/tests/test_spikes.py
+    — Added --workers CLI flag
+    — run_fast() accepts and passes n_workers
+
+──── 3.2  Integration into main analysis pipeline ───────────────────────────
+
+spike_analysis_fast is now selected via experiment["use_fast_spike_analysis"]
+boolean flag in the experiment TOML/YAML config.  Falls back to the original
+SpikeAnalysis path if the flag is absent or False, or if the module fails to
+import.
+
+Changes:
+  ephys/ephys_analysis/iv_analysis.py
+    — Added guarded import: _SAF (None if unavailable)
+    — full_spike_analysis block checks flag and calls analyzeSpikeShape_fast
+
+  ephys/tools/util/analyze_spont_firing.py
+    — Added experiment: Union[dict, None] = None parameter to get_spont_protocol
+    — Conditional call to fast or original analyzeSpikeShape
+
+──── 3.3  Version bump ───────────────────────────────────────────────────────
+
+  pyproject.toml: version bumped from 0.8.4.0 to 0.8.5.0
+
+──── 3.4  GUI: version display in status bar ────────────────────────────────
+
+  ephys/gui/data_tables.py
+    — Added: import importlib.metadata, import subprocess
+    — Reads version via importlib.metadata.version("ephys") and short git hash
+      via subprocess ("git rev-parse --short HEAD")
+    — Permanent QLabel widget added to status bar (right-aligned):
+      "ephys V0.8.5.0  #<hash>"
+    — Uses addPermanentWidget() so it is unaffected by showMessage() calls
+
+──── 3.5  GUI: QMessageBox for missing group_by ─────────────────────────────
+
+  ephys/gui/data_tables.py
+    — generate_summary_plot: added group_by validation before executor spawns
+    — Invalid (null) group_by triggers instance-based QMessageBox with bold
+      banner title via setText() (macOS bold-banner behaviour) and body text
+      in setInformativeText() listing valid groups
+    — Applies to ALL plot modes (categorical, continuous, combined)
+    — On dismiss, returns without launching the plot executor
+
+──── 3.6  Test infrastructure ───────────────────────────────────────────────
+
+  ephys/ephys_analysis/tests/test_spike_analysis_fast.py  — created
+    7 pytest tests:
+      4 × test_fast_matches_original[method]  (Kalluri, argrelmax, find_peaks,
+                                               threshold)
+      3 × test_parallel_matches_sequential[n_workers]  (1, 2, 4)
+    All tests passed in 29.60 s.
+    Imports helpers from test_spikes.py to avoid duplication.
+    Skipped automatically if spike_analysis_fast is unavailable.
+
+  CLAUDE.md — added "Testing convention — REQUIRED after analysis code changes"
+    section.  Specifies affected modules, pytest commands, and explicit rule:
+    NEVER pass --audit to pytest (audit mode is for human use only).
+
+  TODO_missing_tests.md  — created at repo root
+    Prioritised list of missing test coverage for data-analysis modules
+    (rm_tau_analysis, adaptation_indices, compute_scores, burst_analysis,
+     psc_analysis/functions, poisson_score, shuffler, psc_analyzer,
+     make_clamps, vc_analysis).  Excludes gui/, plotters/, tools/.
+
+──── 3.7  Memory / bottleneck audit ─────────────────────────────────────────
+
+Conducted a full audit of six files for memory leaks, performance bottlenecks,
+and concurrency defects:
+  ephys/ephys_analysis/iv_analysis.py
+  ephys/ephys_analysis/rm_tau_analysis.py
+  ephys/ephys_analysis/spike_analysis.py
+  ephys/ephys_analysis/spike_analysis_fast.py
+  ephys/plotters/plot_spike_info.py
+  ephys/plotters/psi_functions.py
+
+Findings classified as CRITICAL (C), HIGH (H), MEDIUM (M), LOW (L) with
+specific file:line references and fix suggestions.  Results recorded in the
+plan at: /Users/pbmanis/.claude/plans/velvety-mapping-pillow.md
+
+────────────────────────────────────────────────────────────────────────────────
+SESSION 4 (2026-07-15) — Bottleneck and memory fixes
+────────────────────────────────────────────────────────────────────────────────
+
+All fixes in this session implement recommendations from the §3.7 audit.
+Fix labels (C/H/M/L + number) refer to the audit plan above.
+
+──── 4.1  Changes MADE ──────────────────────────────────────────────────────
+
+C3  iv_analysis.py
+    Fixed broken nfiles counter in ProcessPoolExecutor as_completed loop:
+    Changed "result, nfiles = future.result()" to "result, _ = future.result()"
+    and "nfiles += 1", so the parent accumulates the count correctly instead
+    of always ending at 1.
+
+M1  iv_analysis.py
+    tasks = validivs plain list (was dict(zip(range(len(validivs)), validivs))).
+    The loop "for i, x in enumerate(tasks)" now correctly yields (index, protocol)
+    rather than (index, dict-key), which was only correct by coincidence.
+
+M2  iv_analysis.py
+    Uncommented self.df.at[icell, "IV"] = None and
+    self.df.at[icell, "Spikes"] = None after HDF5 write, so large result dicts
+    do not accumulate in memory for the full run.
+
+M3  rm_tau_analysis.py
+    Added _bridge_applied flag to reset() and set in bridge_adjust(); guard in
+    setup() prevents the bridge correction from being applied cumulatively when
+    setup() is called more than once on the same instance.
+
+M5  psi_functions.py
+    compute_ap_peak_v_re_threshold: changed verbose: bool = True to False.
+    Was emitting two CP() calls per row during df.apply(); silenced.
+
+M6  spike_analysis.py
+    Single fitter = fitting.Fitting() created before the FIGrowth if-elif
+    chain in fitOne(). Replaced all per-branch fitting.Fitting() instantiations
+    with the shared fitter (was 4–6 objects per call depending on branch).
+
+M8  psi_functions.py
+    _EPOCH_OFFSET = datetime.datetime.timestamp(datetime.datetime(...)) promoted
+    to module-level constant. Was being reconstructed on every row inside
+    make_datetime_date().
+
+M9  psi_functions.py
+    Replaced inner Python loops with numpy vectorisation in:
+      clean_rin: rin_arr[rin_arr < min_Rin] = np.nan
+      compute_AHP_relative_depth (else branch): numpy array arithmetic
+        thr - depth, sign flip, NaN masking
+      compute_AHP_trough_time: numpy array subtraction and NaN masking
+    Each was a Python for-loop inside df.apply(axis=1) — doubly-nested Python
+    iteration.
+
+H2  plot_spike_info.py
+    concurrent_data_plotting, combined mode: replaced second
+    "dfc = plot_spikes.preload(filename)" with "dfc = df" (line 215).
+    Eliminates one full disk read + preprocess pass per combined plot.
+
+H3  plot_spike_info.py
+    plot_fi_curve: replaced pd.concat([self.FI_Data, ds], ...) inside the
+    per-row loop with fi_rows list accumulation; single pd.concat after the
+    outer loop.  Was O(n²) copies; now O(n).
+
+H5  iv_analysis.py
+    analyze_ivs: replaced self.df.apply(cleanIVs, axis=1) and
+    self.df.apply(cleanSpikes, axis=1) (full-table scans called once per cell
+    = O(N²) total) with targeted self.df.at[icell, "IV/Spikes"] single-row
+    operations.
+
+L1a iv_analysis.py
+    reset_analysis(): added guard "if self.IVFigure is not None: mpl.close(self.IVFigure)"
+    before setting self.IVFigure = None.
+
+L1b plot_spike_info.py
+    concurrent_data_plotting, combined mode: added
+    mpl.close(cat_figure.figure_handle) and mpl.close(cont_figure.figure_handle)
+    after the combined plot is displayed, removing figures from mpl's registry.
+
+L1c rm_tau_analysis.py
+    Dead branch (USE_OLD_FIT = False): changed "debug = True" to "debug = False"
+    at the pg.plot() block. The branch is never entered, but the flag was
+    misleadingly True.
+
+L2  iv_analysis.py
+    Added atexit.register(logging_fh.close) immediately after the module-level
+    FileHandler is attached.  The handler was previously leaked on process exit.
+
+L3  spike_analysis_fast.py
+    analyze_one_spike_fast: changed .view(np.ndarray) to .copy() for
+    thisspike.dvdt, thisspike.V, and thisspike.Vtime. Views pinned the full
+    per-trace arrays (typically 20 000+ samples) inside each spike object for
+    the lifetime of the analysis. Copies allow the trace arrays to be freed
+    once the spike loop completes.
+
+L4 (partial)  rm_tau_analysis.py
+    poly3_deriv(pf, x) promoted to module level (computes derivative of
+    np.polyfit degree-3 output).  ivss_analysis now calls poly3_deriv().
+    ivpk_analysis still has a nested "def pderiv" at line 1047 — not yet
+    updated.
+
+L5  spike_analysis.py
+    analyzeSpikes(): commented out redundant self.U = utilities.Utility()
+    (line 292).  self.U is already assigned in _reset_analysis(); the extra
+    instantiation on every analyzeSpikes() call was redundant.
+
+L6  plot_spike_info.py
+    bar_pts() and create_one_plot_categorical(): replaced copy-then-filter
+    (df.copy(deep=True) followed by [mask]) with filter-then-copy
+    (df[mask].copy()). Reduces peak memory when these functions are called
+    N×M times (N measures × M cell types).
+
+L7  spike_analysis_fast.py
+    Added _USE_NUMBA_CACHE = not bool(os.environ.get("EPHYS_NO_NUMBA_CACHE", ""))
+    module-level flag. Both @jit decorators now use cache=_USE_NUMBA_CACHE.
+    Set EPHYS_NO_NUMBA_CACHE=1 in CI or parallel-test environments to prevent
+    concurrent first-run JIT compilation from racing on the shared .nbc cache.
+
+Pickle / hot-reload fix  spike_analysis_fast.py
+    data_tables.py uses pyqtgraph.reload.reloadAll() for hot-reload, which
+    creates new class objects for @dataclass classes (including OneSpike).
+    The previous "from ephys.ephys_analysis.spike_analysis import (OneSpike,
+    SpikeAnalysis,)" left a stale binding after reload, causing:
+      _pickle.PicklingError: Can't pickle OneSpike: it's not the same object
+    Fix: changed to "import ephys.ephys_analysis.spike_analysis as _SA".
+    All type annotations updated to _SA.SpikeAnalysis and _SA.OneSpike;
+    runtime instantiation changed to _SA.OneSpike(...). Module reference stays
+    live after hot-reload because pyqtgraph updates module __dict__ in-place.
+
+──── 4.2  Changes NOT made ──────────────────────────────────────────────────
+
+H1  spike_analysis.py
+    dvdt/trace hoisting in original analyze_one_spike(): explicitly declined
+    by user.
+
+H4  iv_analysis.py
+    Refactor concurrent_iv_analysis to avoid pickling full self (IVAnalysis
+    instance includes self.df for all N cells, self.AR/SP/RM live objects):
+    not implemented.  Deferred — requires before/after correctness testing.
+
+H6  plot_spike_info.py
+    Consolidate 15 apply(axis=1) passes in preprocess_data() into fewer
+    vectorised operations: not implemented.  Deferred — requires before/after
+    testing.
+
+L4 (remaining)  rm_tau_analysis.py
+    ivpk_analysis still has nested "def pderiv" at line 1047.  Only the
+    ivss_analysis occurrence was resolved.
+
+M4  spike_analysis.py
+    np.std(tr) computed twice per spike in interpolate_halfwidth() (lines 95,
+    111).  Already eliminated in the fast path; original path left unchanged.
+
+M7  plot_spike_info.py / psi_functions.py
+    make_datetime_date called twice on the same DataFrame — once in
+    summary_plot_ephys_parameters_continuous (line ~1799) and once in
+    preprocess_data (line ~3403).  Not removed.
+
+────────────────────────────────────────────────────────────────────────────────
+SESSION 4 (2026-09-18 → 2026-09-22) — Direct (non-synaptic) response
+separation for LSPS map data   [branch: lsps_direct]
+Model: Claude Code (Sonnet 5, switched to Opus 4.8 mid-session via /model)
+────────────────────────────────────────────────────────────────────────────────
+
+Goal: separate slow "direct" (non-synaptic, e.g. photocurrent) responses from
+synaptic PSCs at LSPS map spots, so synaptic events riding on a direct
+response are detected/measured accurately. Considered (a) calling the existing
+Julia code (pbmanis/ephys-jl), (b) porting to Python, (c) template approach.
+Read the Julia source: the "separation" is a rule-based windowing + derivative-
+masked spline/template fit-and-subtract, NOT an exotic method — so ported to
+native Python. All work is OPT-IN and OFF BY DEFAULT; existing behavior
+unchanged. Full design/progress log also at:
+  ~/.claude/plans/in-the-ephys-mapanalysistools-we-linked-shannon.md
+
+──── 4.1  Data structures ────────────────────────────────────────────────────
+
+  ephys/mini_analyses/mini_event_dataclasses.py
+    — New DirectSeparationPars: enabled, detect_hpf, direct_window_start/
+      duration, fit_mode ("spline"|"template"), mindy, derivative_window_points,
+      spline_smooth_factor, risepower, template_ndecay, min_direct_charge, and
+      (Phase 2) multitrace, use_qr_selection, direct_select_charge_factor,
+      n_shape_groups, template_form.
+    — New DirectResponseRecord: trace, stim_index, onset_time, duration,
+      charge, peak_amplitude, fit_mode (kept for later ML/analysis use).
+    — AnalysisPars gained direct_separation (a DirectSeparationPars);
+      Mini_Event_Summary gained direct_responses (per-trace list of records).
+
+──── 4.2  New module: direct_response_separation.py (single-trace, Phase 1) ───
+
+  ephys/mini_analyses/direct_response_separation.py  (NEW, self-contained)
+    Pipeline: detect events normally -> subtract_detected_events (subtract each
+    detected event's own template scaled to its LOCAL baseline-relative
+    amplitude; NOT summary.amplitudes, which is baseline-inclusive) -> fit the
+    stimulus window of the residual (fit_direct_component: derivative-masked
+    spline with noise-estimated smoothing s, worked in pA/ms; or a normalized
+    parametric rise/decay template with adjustable risepower n and 1-2 decays)
+    -> subtract the fit from the ORIGINAL trace -> re-detect. Records a
+    DirectResponseRecord. separate_direct_response() orchestrates per trace.
+    Bugs found+fixed during dev via smoke tests: (i) mindy units (SI vs the
+    pA/ms-scaled Julia default) masked nothing; (ii) derivative smoothing
+    window must be a fixed small timescale, not scaled to window length; (iii)
+    UnivariateSpline smoothing factor is unit-dependent -> set s from an
+    estimated noise sigma; (iv) fit window widened (0.12 s) so the direct
+    decays within it (removes end-of-window step). measure_events() in
+    minis_methods_common.py is NOT used (it reads self.data, unset with
+    prepare_data=False, and is otherwise dead) — this module computes its own
+    half-width locally to stay self-contained.
+
+──── 4.3  Root-cause fix: HPF-before-detection ───────────────────────────────
+
+  Finding (user insight): AJ/CB detect the slow direct response itself when it
+  is the SAME sign as PSCs -> many spurious onsets on the direct's rising
+  phase; opposite-sign directs are ignored (explains a sign asymmetry).
+  Raising the AJ threshold barely helps (large direct = broad tall criterion).
+  Fix: high-pass the trace ONLY for the detection step (DirectSeparationPars.
+  detect_hpf, default 100 Hz); amplitudes still measured on the unfiltered
+  trace. Same-sign spurious detections 24->4, sign asymmetry gone, spontaneous
+  + evoked recall preserved. _highpass() + _detect() helpers added; detection
+  onsets now come from the HPF copy in separate_direct_response.
+
+──── 4.4  Phase 2: multi-trace (cross-trace) template estimation ─────────────
+
+  ephys/mini_analyses/direct_response_separation.py
+    — estimate_direct_templates(): per trace, event-subtract + take the stim
+      window; select direct-containing traces by |window charge| >
+      median + k*MAD (k = direct_select_charge_factor; use_qr_selection flag
+      reserved for Qr-based selection later, default off). Normalize each
+      selected window by its signed peak (canonicalizes scale AND sign),
+      average into template(s); optional n_shape_groups clustering (KMeans) and
+      "parametric" fit to the average.
+    — _robust_amplitude(): Huber IRLS scalar amplitude fit (PSCs/mismatch
+      down-weighted).
+    — apply_direct_template(): fit template amplitude (+small latency shift) to
+      a trace's event-free window, subtract from the raw trace, re-detect.
+    — separate_direct_response_map(): two-pass orchestration over a map's
+      traces; application gated to direct-flagged traces.
+
+──── 4.5  Production integration ─────────────────────────────────────────────
+
+  ephys/mapanalysistools/analyze_map_data.py
+    — set_direct_separation(pars, enabled) setter (mirrors set_artifact_*).
+    — _apply_direct_separation(): per-spot (single-trace) path AND a multitrace
+      branch (separate_direct_response_map across all spots) selected by
+      pars.direct_separation.multitrace. Writes corrected data back in place
+      and records into summary.direct_responses. Guarded call added in
+      analyze_one_trial() before average_events(); inert unless enabled.
+    — import direct_response_separation as DRS.
+
+  ephys/ephys_analysis/map_analysis.py
+    — Reads optional experiment["direct_response_separation"] sub-table and
+      copies any recognized DirectSeparationPars field (generic passthrough);
+      fixed a latent bug (referenced the removed "classifier" field).
+    — import mini_event_dataclasses as MEDC.
+
+  Note: multitrace handles the first stimulus window only; charge selector
+  assumes direct responses are a minority of spots (true for real LSPS maps).
+
+──── 4.6  Benchmark + robustness harness (NEW, not pass/fail) ────────────────
+
+  ephys/mini_analyses/tests/benchmark_direct_separation.py
+    — Synthetic map generator: spontaneous PSCs (Poisson), stimulus-evoked
+      "response" PSCs (inhomogeneous Poisson, decaying rate, p_evoked), and an
+      independent slow direct response (p_direct, direct_amp_range,
+      direct_sign_choices). All parameters in BenchPars; nothing hard-coded.
+    — score_recovery/match_events, run_condition (both modes via
+      pars.multitrace), sweep_oat (one-at-a-time over synaptic/direct shape &
+      amplitude and SNR), run_benchmark/run_population_benchmark.
+    — Validation (p_direct=0.3): multi-trace lifts recall on direct spots
+      (~0.96 vs ~0.94) and amplitude accuracy; cost = false positives confined
+      to the 0-30 ms direct window. Data-vs-parametric template negligible on
+      synthetic -> data-driven default. All-same-sign(negative) directs (the
+      harder case) still clean (precision ~0.98).
+
+──── 4.7  Diagnostic figures ─────────────────────────────────────────────────
+
+  ephys/mapanalysistools/make_test_plots.py  (NEW)
+    — 2D map grid (boxless, shared pA scale bar at left, ms time base on bottom
+      row; raw colored by direct polarity blue=+/red=-/grey=none; corrected in
+      black; ground-truth green; per-spot recall corner number with "+n" false
+      positives; false-positive cells shaded). Latency histograms (correct vs
+      false) with a stats panel (recall, precision, F1, direct-spot recall, FP
+      in direct window). Mode-aware: emits single-trace (plain) and multi-trace
+      (_MT) PDFs. Captions include date, git hash (read from .git, no git exec
+      per project rule), and generating model.
+  ephys/mapanalysistools/test_plots/  (NEW)
+    — map_grid.pdf, map_grid_MT.pdf, latency_hist.pdf, latency_hist_MT.pdf
+    — (two stale .png files from an early PNG pass remain; delete when
+      convenient — assistant does not delete files per project rule)
+
+──── 4.8  Tests / status ─────────────────────────────────────────────────────
+
+  Baseline guardrail (ephys/mini_analyses/tests/test_minis.py) green
+  throughout. Full suite `python test.py`: 24 passed, 1 skipped. Both single-
+  and multi-trace production branches smoke-tested end-to-end on synthetic maps.
+
+──── 4.9  Known limitations / future ─────────────────────────────────────────
+
+  — A PSC coincident with the direct's steep rising phase is ill-posed for a
+    single map (multiple trials' latency jitter, or the planned ML step, would
+    resolve it). Multi-trace reduces but does not eliminate it.
+  — multitrace: first stimulus window only; charge selector assumes direct is a
+    minority of spots.
+  — Phase 3 (future): ML-based direct/synaptic classifier; Qr-based selection
+    (use_qr_selection); multi-stimulus support.
+
+────────────────────────────────────────────────────────────────────────────────
+HANDOFF / STATE (saved 2026-09-22, before conversation clear)
+────────────────────────────────────────────────────────────────────────────────
+
+Where we are on branch lsps_direct (direct/synaptic response separation):
+
+  Phase 1 (single-trace)  — DONE + validated. Key win: HPF-before-detection
+    (DirectSeparationPars.detect_hpf, default 100 Hz) stops AJ/CB detecting the
+    slow direct response; amplitudes still measured on the unfiltered trace.
+  Phase 2 (multi-trace)   — DONE + validated + wired into analyze_map_data
+    (opt-in, off by default). estimate_direct_templates (charge-based selection,
+    median+k*MAD; use_qr_selection flag off), apply_direct_template (Huber-robust
+    amplitude+shift), separate_direct_response_map. Lifts recall/amplitude on
+    direct spots; residual FPs confined to the direct window.
+  Tests: baseline test_minis.py green; full `python test.py` 24 passed/1 skipped;
+    both production branches smoke-tested.
+
+NEXT STEP = Phase 3: ML. Use ML to clean up separation further, especially the
+  ill-posed coincident-PSC-on-direct-rise case that rule-based single/multi-trace
+  cannot fully resolve. Phase 1/2 provide the substrate: DirectResponseRecord +
+  per-trace onsets + synthetic ground truth from benchmark_direct_separation.py.
+
+USER-OWNED FILES (do not overwrite/revert; re-read before touching):
+  ephys/mini_analyses/tests/benchmark_direct_separation.py
+  ephys/mapanalysistools/make_test_plots.py
+  User is editing these to explore a range of event shapes (already changed
+  BenchPars: direct_tau_rise=0.005, direct_tau_decay=0.050, direct_sign_choices).
+
+Full design/progress log:
+  ~/.claude/plans/in-the-ephys-mapanalysistools-we-linked-shannon.md
+Housekeeping: two stale .png files in ephys/mapanalysistools/test_plots/ to
+  delete (map_grid.png, latency_hist.png); current deliverables are the PDFs.
+
+
+════════════════════════════════════════════════════════════════════════════════
+SESSION — Ephus / XSG LSPS reader + interactive viewer  (branch: lsps_direct)
+Dates: 2026-09-28 / 2026-09-29
+════════════════════════════════════════════════════════════════════════════════
+
+Goal: add support for the ephus / XSG laser-scanning-photostimulation (LSPS)
+data format so it can eventually be summarized by tools/data_summary.py like
+acq4 data, and drive analysis. Ephus first, as a standalone reader + test GUI.
+
+Constraints (user): ephus data is READ ONLY; NO existing repo file was modified —
+all work is in two NEW files.
+
+NEW FILES (only files touched):
+  ephys/datareaders/ephus_reader.py   — ephus_reader class, full acq4_reader API parity
+  ephys/datareaders/ephus_viewer.py   — PyQt6 + pyqtgraph read-only test GUI
+
+Example data: /Volumes/Pegasus_004/ManisLab_Data3/pbmlsps/031609pbm
+Reference MATLAB code (same dir's parent, pbmlsps/): lsps_readfile.m,
+  lsps_analysis.m, image_register.m, DCNexcel.m, allexpts2.m.
+
+──── ephus_reader.py ────────────────────────────────────────────────────────
+- One .xsg (MATLAB v5, scipy.io.loadmat) = one whole map; data.ephys.trace_1 is
+  ALL sweeps concatenated. Split by actual trace length / (sampleRate*traceLength),
+  NOT the header positionNumber (stale for flashes/aborted runs; pk0007=11 not 10).
+- Presents one xsg as N synthetic per-spot subdirs (subDirs -> mapdir/000..) and
+  synthesizes an acq4-style .index dict (devices incl. MultiClamp1/Scanner/
+  Photodiode, sequenceParams[(Scanner,targets)]).
+- getData -> traces MetaArray + data_array + time_base + mode + WCComp/CCComp.
+  Trace already in pA (VC) -> x1e-12 = A (matches acq4). Verified: detected-spot
+  amplitudes match reference lsps_result.current_maximum.
+- Recording mode + gains from amplifierSettings.Amp_700B_1 (V-Clamp/I-Clamp/I=0).
+- Filtering (LPF) and holding are NOT stored -> configurable self.defaults
+  (LPF=2000Hz, holding_VC=-60mV) via ctor defaults=/set_defaults(); fill the
+  synthesized ClampParams. amplifier_info() exposes mode/gains/LPF/holding.
+- header_metadata(): captures headerGUI (species/age/sex/cellType/brainArea/
+  region/somaZ/vRest/solutions) + xsg identity (initials/expNum/setID/acqNum/
+  timestamp) + autonotes notes-file pointer. (Mostly blank in this dataset.)
+- Map placement replicates lab lsps_readfile.m EXACTLY (0px error vs reference):
+  mp=mapPatternArray'; mapx=(r-nrows/2)*xSpacing; mapy=(ncols/2-c)*ySpacing;
+  rotate spatialRotation; +x/yPatternOffset; px=W/2+loc_x*imscalex-Xoff;
+  py=H/2-loc_y*imscaley-Yoff; imscalex=W/yMicrons, imscaley=H/xMicrons;
+  Xoff/Yoff=map_x/y_offset_px defaults 50/-50. map_pixels()/soma_pixels().
+- Soma = mapper.soma1Coordinates (manual registration via lab image_register.m
+  yellow draggable star); empty (pk0001,pk0008) -> unregistered, soma_pixels=None.
+- "photodiode1" acquirer channel is NOT Vm and has NO laser pulse; its DC ~= 10x
+  the VC holding. Confirmed vs pk0008.txt notes ("Back to -60 mV","inhibitory
+  map") giving clean -60/0 mV; pk0001 anomalous (-367 mV). acquirer_dc(),
+  putative_holding() (=dc/acquirer_holding_gain, default 10). Acquirer has its own
+  sampleRate/traceLength/sweep count (pk0007: 1 acquirer sweep vs 11 ephys).
+- Decisive channel test: in the one I=0 recording the ephys channel shows Vm
+  activity (std 1.56 mV) while acquirer stays flat (std 3e-4) -> acquirer != Vm.
+- Honest stubs (no ephus equivalent): getLaserBlueCommand, getLEDCommand,
+  getAverageScannerImages.
+
+──── ephus_viewer.py ────────────────────────────────────────────────────────
+- Left: full data-path label + cell/map tree + "Charge measure" ParameterTree +
+  "click to set map center" checkbox + info panel.
+- Right: video image with translucent map-grid overlay (pxMode=False so spots
+  scale WITH the image) + soma cross (only if registered) + stacked sweeps +
+  acquirer trace. Red vertical line = actual laser (shutter) onset (98 ms) on
+  both the trace and acquirer plots. (VC test pulse at 300 ms is a separate
+  thing, not the stimulus.)
+- Charge measure: per-sweep baseline-subtracted charge integrated over
+  [laser+start, laser+end], femtocoulombs. Spots AND traces colored together:
+  grey@0 -> red(+, outward/IPSC) / blue(-, inward/EPSC); |Q|>threshold -> white
+  (clipped). ParameterTree: start_after_stim(0.008), end_after_stim(0.100),
+  threshold_fC(1e4 = 100pA*100ms), spot_opacity(0-1), spot_size_scale(0.1-2x);
+  all recolor/resize live.
+- Run: python ephys/datareaders/ephus_viewer.py <experiment_dir>
+
+──── PLAN: ephus -> data_summary column mapping (NOT yet implemented) ─────────
+Reuse the EXACT acq4 data_summary column names (day_defs/slice_defs/cell_defs/
+data_defs) so nothing downstream changes. Source per column:
+
+  date            <- day dir 031609pbm -> 2009.03.16 (NEEDS name translation for
+                     data_summary daytype regex, which wants YYYY.MM.DD_NNN and
+                     names starting with "20")
+  description     <- header pulseSetName / blank
+  notes           <- per-cell .txt (autonotes)
+  species         <- headerGUI.speciesStrain / .m Speciestrain
+  strain,genotype <- headerGUI.transgenicLine / construct
+  age             <- headerGUI.animalAge / .m Age  (data_summary ISO8601_age fmt)
+  sex             <- headerGUI.gender ("not noted" -> U)
+  weight          <- (none) blank
+  solution        <- headerGUI.bathSolutionType (+Drugs)
+  internal        <- headerGUI.intracellularSolutionType (+Drugs)
+  temperature     <- headerGUI.temp
+  slice_slice     <- synth "slice_000"  (ephus has no slice level)
+  slice_*         <- blank/defaults
+  cell_cell       <- "cell_000"  (pkNNNN)
+  cell_notes      <- per-cell .txt
+  cell_type       <- headerGUI.cellType1
+  cell_location   <- brainArea1 + region1 + subregion1
+  cell_layer      <- region/subregion parse (parse_layers)
+  cell_id         <- date/slice/cell path
+  data_complete   <- comma-separated MAP NAMES "map02, map03, ..." (the special
+                     parsed string; ephus is single-type -> refer to maps by
+                     file-hierarchy name)
+  data_incomplete <- "" (maps present or absent; no partial-sweep concept)
+  data_images     <- count of images/videoImg_*.tif
+  annotated       <- False
+  data_directory  <- base dir
+Per-map putative holding (acquirer/10) rides along per map — encode into the map
+name in data_complete or a side note (TBD at wiring time).
+Hierarchy: ephus day/cell/map -> acq4 day / synth slice_000 / cell / protocol.
+Reference: DCNexcel.m drives the old workflow from an Excel table
+  (DCNpbmpok.xls) with columns Disk/Date/Basepath/Cell/Protocol/Map/RunNo/
+  maptype/videoimage/stimdelay/direct/postdelay/acquisition — a template for the
+  export. lsps_analysis.m analyzes only data.ephys.trace_1.
+
+──── PLAN: redirect direct acq4_reader() calls (NOT yet implemented) ──────────
+~30 direct acq4_reader.acq4_reader() sites in ephys_analysis/ (analysis_common,
+iv_analysis, vc_analysis, iv_plotter, vc_summary/traceplot) and tools/. Proposed:
+a datareaders.get_reader(path) factory that sniffs the source (acq4 .index/.ma
+vs ephus .xsg) and returns the matching reader; update call sites starting with
+analysis_common.py (most inherit self.AR from it). TOUCHES EXISTING FILES ->
+needs explicit go-ahead before implementing.
+
+NEXT STEP: either (a) datareaders.get_reader() factory + analysis_common wiring,
+or (b) implement the ephus data_summary export using the column map above.
+
+════════════════════════════════════════════════════════════════════════════════
+SESSION — Multi-format datareaders (get_reader factory) + standalone data viewer
+Dates: 2026-09-29 / 2026-09-30   (branch: lsps_direct)
+════════════════════════════════════════════════════════════════════════════════
+
+Goal: let a single get_reader() dispatch ANY ephys source to a reader with the
+acq4_reader API — adding Axon ABF, matdatac, and the raw DATAC format to the
+existing acq4 + ephus — plus a standalone, VIEW-ONLY GUI to display them all.
+Wiring get_reader() into the analysis/intake pipeline (analysis_common.py /
+tools/data_summary.py, ~30 direct acq4_reader() sites) is DESIGNED but ON HOLD
+per the user — those existing files were NOT modified.
+
+Test data is now LOCAL and NOT tracked in git: ephys/datareaders/test_data/
+  datac:    7DEC90D.PBM(+.NOT), 2DEC88C.PBM, 3NOV88A.PBM, 6DEC88A.PBM,
+            6JAN87A.PBM, 28MAR89A.JAW, 01DEC95F.JSR(+.TXT), 04NOV92C.PBM(+.NOT,
+            mode 2), 03JAN97C.HWF(+.NOT, header-only/no data)
+  matdatac: 04aug11a.mat        abf: 17JUN11a-Bushy-sumRec1_20.ABF
+
+FILES TOUCHED
+  NEW  ephys/datareaders/get_reader.py     — factory (sniff + dispatch)
+  NEW  ephys/datareaders/data_viewer.py    — standalone view-only PyQt/pyqtgraph GUI
+  EDIT ephys/datareaders/abf_reader.py     — added abf_reader class (demo kept)
+  EDIT ephys/datareaders/matdatac_reader.py— extended GetClamps + module alias
+  EDIT ephys/datareaders/datac_reader.py   — NEW datac_reader API class + fixes
+  (acq4_reader.py and ephus_reader.py unchanged; __init__.py NOT modified.)
+
+──── get_reader.py (factory) ─────────────────────────────────────────────────
+- sniff_format(path) -> acq4|ephus|abf|matdatac|datac|unknown; get_reader(path,
+  dataname=, defaults=, fmt=) returns the matching reader instance. Additive:
+  importing it changes nothing; acq4 paths still route to acq4_reader.
+- Precedence: ephus(.xsg, or lsps_result.mat) > acq4(.index/.ma) > abf(.abf) >
+  matdatac(.mat, excl. lsps_result.mat). BFS, shallow markers win.
+- datac has arbitrary extensions (recordist initials: .PBM/.HWF/.JSR/.JAW), so it
+  is detected by a CONTENT sniff _is_datac() (validates the 128-byte header:
+  nr_points, mode, channel count, integral record count) used ONLY as a last
+  resort so it never overrides the other formats.
+- _is_datac also accepts a HEADER-ONLY datac file (size==128 with a plausible
+  nr_points and a text/NUL comment region) so empty/aborted recordings (e.g.
+  03JAN97C.HWF) are reported as datac, not "unknown".
+
+──── abf_reader.abf_reader  (NEW class; uses pyabf) ───────────────────────────
+- Full acq4_reader API parity. One .abf FILE = one protocol; sweeps = traces;
+  synthetic per-sweep subdirs <file.abf>/NNN + synth .index. LSPS/imaging methods
+  are honest stubs.
+- SI scaling from unit strings (pA->A, mV->V). Clamp mode from adcUnits (current
+  -> VC, voltage -> IC). Holding read from holdingCommand[0]; NaN guarded.
+- Robust to a CORRUPT/blank ADC-units field (some files store '\x00\x00\x00\x00'):
+  falls back to the command (DAC) units for mode (command voltage -> VC), and
+  assumes the conventional primary unit (pA for VC / mV for IC) so scaling stays
+  correct. Tested: 3 gapfree VC files + a Bushy IC/VC .abf.
+
+──── matdatac_reader  (extended GetClamps + alias matdatac_reader = GetClamps) ─
+- One .mat = a CELL of N data BLOCKS (protocols). Block path <file.mat>/NNN_<type>,
+  sweeps .../SSS. Added path-based ctor/setProtocol, subDirs, readDirIndex/getIndex
+  (Cell/ProtocolSequence/Protocol), getDataInfo, parseClampHoldingLevel,
+  getClampDevices, header_metadata (from HFILE), widened getData(check=,...), and
+  set self.mode/self.units. Legacy GetClamps(datac)+int setProtocol unchanged.
+- Fixed pre-existing getData bugs: (1) single-record blocks (e.g. VCmini) left
+  traces 3-D + bad values shape -> guarded; (2) VC current/voltage were SWITCHED
+  — physical channels are fixed (ch0=current, ch1=voltage), only the primary/
+  command ROLE flips by mode; getData was hardcoded to the CC assignment. Now
+  mode-aware. Tested on real cciv2 (IC) + VCmini (VC) blocks.
+
+──── datac_reader.datac_reader  (NEW class, SEPARATE from ReadDatac/GetClamps) ─
+Per user: keep the low-level ReadDatac/GetClamps intact; the new class only
+ADAPTS them to the acq4 API. Reference MATLAB: mat_datac/source/datac2mat.m
+(reader) and scaledat.m (the definitive physical scaling).
+- Model: one DATAC file = a CELL of BLOCKS. Blocks come from an optional sidecar
+  note file, .TXT OR .NOT (_find_note_file; .TXT preferred).
+    .TXT = tab table (SLTN STIM RB RE Ra Ru Cm pred corr lag JP G lpf gL bL eL Vr
+      FILE), one row/block -> blocks (RB..RE) + amp params: mode inferred VC when
+      Cm/pred/corr/Vr set, holding=Vr, LPF=lpf, Cm; surfaced in header_metadata.
+    .NOT (newer '>g STM:' format) -> ReadDatac.expInfo blocks. OLDER free-form .NOT
+      (timestamped [R:n] + Lev/Vo + "Average of N"): _parse_not builds a reliable
+      record->command-level table (marker-delta model: records = m-n; the repeated
+      marker before "Average of N" is the UPCOMING record). _not_auto_blocks is a
+      BEST-EFFORT segmenter (sweep resets + condition comments; labels R<a>-<b>) —
+      approximate for aborted/averaged runs.
+    No note file -> one "000_all" block (all records).
+- Reliable EXACT control: an explicit record-range protocol path <file>/R<a>-<b>
+  selects records a..b (setProtocol/getData/subDirs/readDirIndex honor it).
+- SCALING now follows scaledat.m exactly (was ad-hoc constants). CHANNEL-based
+  (ch0=voltage, ch1=current; getClampData picks primary/command by mode); SI out.
+    mode 0/1/2 (Manis/Bertrand board): KEY FIX = the ADC value is the LOWER 12
+      BITS only (bitand(raw,0xfff)); upper bits are logic flags. V=(masked-2048)/
+      refvg*MB_CAL/vgain*1e-3 + jp;  I=(masked-2048)/refig*MB_CAL/igain*1e-12
+      (refvg=gain[0,0]*10, refig=gain[0,1] from matrix.h header; MB_CAL=2.441406
+      mV/count). This turned the mode-0 current from a ~36 nA offset into ±1 nA
+      tracking the .NOT levels.
+    mode 3/9 (Digidata 1200): kept role-based scaling (vcmd_scale=133.9 + a 1e-3
+      fix so the VC command voltage is V not mV — fixed the "1000x too large"
+      holding; -63 mV). scaledat's mode-3 path needs header gain[0,0] which reads
+      0 for 01DEC95F.
+- More fixes (new mode-0 test files): mode-2 (04NOV92C) crashed on unset ndbytes
+  — readrecords now gates the OLD layout on mode<2 and the 256-byte-header layout
+  on mode>=2 (per datac2mat); mode-0/1 records_in_file used the wrong (256-header)
+  stride -> overcounted (176 vs ~91) -> now floor((flen-128)/ndbytes); last mode-0
+  record hit EOF (read asks ndbytes*2 but strides ndbytes) -> unpack the int16
+  actually read; mode-0 switching-amp membrane V was ~2x too big -> configurable
+  DEFAULTS["vgain_mode0"]=2.0 (7DEC90D now -47.6 mV); added the mode-0 max(...,0)
+  clamp (datac2mat).  Sample rate: header rate (NOT /channels) for mode>=2 (per-
+  block: 01DEC95F 'i'=10 kHz, 'iv'=50 kHz); mode-0/1 fall back to configurable
+  DEFAULTS["sample_rate_hz"]=10000 (10 kHz/ch). All follow the # Claude fixed
+  YYYY-MM-DD convention (low-level edits kept minimal, most logic in the wrapper).
+
+──── data_viewer.py  (NEW, standalone, VIEW-ONLY — no analysis) ───────────────
+- Opens any source via get_reader(); lists its protocols; two linked pyqtgraph
+  plots (primary + command) labeled by clamp mode (VC: current pA / command
+  voltage mV; IC: voltage mV / command current pA).
+- Presets point at the LOCAL test_data via Path(__file__).parent (no /Volumes),
+  existence-filtered; Open file / Open folder for anything else.
+- Persists the last opened directory in a structured TOML at
+  ~/Library/Application Support/Ephys/data_viewer/settings.toml ([paths] last_dir);
+  next run's dialogs reopen there (ignored if the dir is gone). Reads via tomllib,
+  writes via a tiny built-in TOML writer; only Open dialogs update last_dir.
+- Scrollable, monospaced NOTES panel under the plots showing the .NOT/.TXT sidecar
+  (>=24 lines; "(none)" if absent).
+- NO-DATA alert: a source with 0 readable protocols (e.g. header-only datac
+  03JAN97C.HWF) shows a red "NO DATA RECORDS (header only)" in the info panel +
+  plot title, and still displays the sidecar notes.
+
+STATUS: all readers + viewer tested on the local test_data (all 4 formats,
+mode 0/1/2/3, header-only, VC/IC). OUTSTANDING (on hold): get_reader() wiring into
+analysis_common.py / data_summary.py. Notes: 6JAN87A = AC-coupled field potential
+(~0 mV, expected); 04NOV92C mixes CC/VC across records (needs per-block mode);
+fully reconstructing protocols/units for the oldest datac data would need
+per-block auxiliary metadata.
+
+════════════════════════════════════════════════════════════════════════════════
+End of log
+════════════════════════════════════════════════════════════════════════════════

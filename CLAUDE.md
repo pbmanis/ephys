@@ -3,8 +3,10 @@
 
 ## Project overview
 Python package (v0.8.x, requires Python 3.13) for analysis of patch-clamp
-electrophysiology data recorded with acq4. Not a general-use library — it is
-actively developed for a single lab's workflow. Configuration-file-driven: most
+electrophysiology data recorded with acq4, and possibly other acquisition
+packages (pClamp, Datac, Acq3). This is not a general-use library — it is
+actively developed for a single lab's workflow.
+The project is configuration-file-driven: most
 free parameters (paths, cell-type lists, selection thresholds, plot parameters)
 live in a project-specific TOML/YAML experiment config, not in the code.
 
