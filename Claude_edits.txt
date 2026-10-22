@@ -695,5 +695,147 @@ fully reconstructing protocols/units for the oldest datac data would need
 per-block auxiliary metadata.
 
 ════════════════════════════════════════════════════════════════════════════════
+SESSION — Cochlear-nucleus alignment: section-view fixes  (branch: lsps_direct)
+         (2026-10-20 → 2026-10-21)
+════════════════════════════════════════════════════════════════════════════════
+Scope: ephys/tools/cochlear_nucleus_alignment.py + ephys/tools/cn_atlas/. The
+2D section plate (section_view.py), the Kim viewer (kim_viewer.py), and the atlas
+sampler (kim.py). No automated suite covers this GUI code; verified by byte-compile
++ standalone numeric checks of the orientation/label math. All edits follow the
+# Claude fixed/added YYYY-MM-DD convention (originals commented out, not deleted).
+
+──── Region labels on hover after a slice/reslice  (section_view.py) ──────────
+- _on_hover early-returned whenever a section line had endpoints (to preserve the
+  line readout), which suppressed region names after a slice/reslice. Commented
+  out that return so hover falls through to the region-name lookup again; the
+  line's angle summary still shows in the right-panel line_help.
+
+──── Fiducial-line pierce marker on the slice  (section_view.py) ──────────────
+- NEW _line_spot (ScatterPlotItem, pxMode=False so size is in data units): a
+  50 um, bright translucent blue disk marking where the drawn line pierces the
+  current slice. After "Reslice ⊥ line" the line is normal to the plane, so it
+  is seen end-on as this single dot (sits at the plane center). _refresh_line_spot
+  intersects the two world endpoints with the plane (t = (c-w0)·n / d·n, shown
+  only when 0<=t<=1); hidden when the line lies in-plane (curve shows it there).
+  Cleared in _clear_line_items. (Started at 25 um/dim; bumped to 50 um/bright.)
+
+──── L-R orientation of the 2D plate  (section_view.py) ───────────────────────
+- First tried a display-only ML mirror (vb.invertX for Coronal/Horizontal). It
+  flipped the picture but reversed the draw->3D correspondence (drawing on the
+  slice's left landed on the 3D right), because invertX does not change the
+  (u,v)<->world mapping. REVERTED to invertX(False): plate-right = +X. There is
+  no sign error in the draw/sample math; the apparent flip was a 2D-vs-3D
+  viewpoint convention.
+- NEW anatomical edge labels (R/L/A/P/D/V TextItems) placed from the section
+  basis in _update_edge_labels: right=+u, left=-u, top=+v, bottom=-v. World map
+  +X=Right, +Y=Anterior, +Z=Dorsal. _anat_label returns a COMPOSITE (e.g. 'R-D',
+  'P-V') when a direction is diagonal (secondary axis > 0.35*primary), so the
+  labels signal an oblique (non-cardinal) plane; cardinal edges stay single-letter.
+  User confirmed cardinal mapping correct (A up, P down, L left, R right).
+
+──── Oblique reslice orientation  (kim_viewer.py _oblique_basis_from_line) ────
+- OLD: in-plane axes from a fixed dorsal cross-product (up x n), which put A-P on
+  the horizontal axis and rotated the resliced view.
+- NEW: project the SOURCE (cardinal) plate's u, v onto the plane (Gram-Schmidt),
+  so the resliced view is a minimally-rotated continuation of the plate the line
+  was drawn on. From Horizontal: Anterior stays UP, +X/lateral toward the RIGHT.
+  Verified numerically (v(up)==+Y; u(right)·+X > 0). User-confirmed target.
+
+──── Tilt-angle readout  (kim_viewer.py) ──────────────────────────────────────
+- NEW read-only QLabels (tilt_u_val / tilt_v_val) in line to the RIGHT of each
+  tilt spin-box, filled by _update_tilt_readout/_effective_tilts with the plane
+  normal's actual A-P / M-L tilt vs the selected cardinal orientation. This is
+  the only place the oblique-reslice angles are reported (the spin-boxes no
+  longer drive the plane once oblique). Updated from _update_section.
+
+──── Anterior cutoff of the cut plane (2D + 3D)  (kim.py, kim_viewer.py) ──────
+- The 2D grid (sample_section) and 3D quad (_update_plane_indicator) were built
+  symmetrically (±half about the plane center) but the half-span was measured
+  from the BRAIN center. Fine for cardinal planes (center == brain center) but an
+  oblique plane is centered on the line midpoint, so it overshot the near side and
+  was CLIPPED on the far (anterior) side.
+- NEW KimAtlas._plane_bounds(u,v,center): asymmetric (umin,umax,vmin,vmax) from the
+  bbox corners relative to the ACTUAL plane center. sample_section uses it for the
+  a/b grid + "extent"; _update_plane_indicator builds the quad corners from it.
+
+──── Section sheet independent of the Kim model  (kim_viewer._set_kim_visible) ─
+- Plane indicator + drawn section line + endpoint markers were gated on the Kim
+  master toggle, so they vanished when "Kim brain + regions" was switched off for
+  a Muniak-only view. Re-gated on the Section toggle only (section_cb + the line-
+  presence flags), so the sheet persists over Muniak-only and through the Kim/
+  Muniak alternation flashing. Brain outline / groups / tree meshes still follow
+  the Kim master.
+
+STATUS: all four files byte-compile; orientation/label math checked standalone.
+Confirmed-correct by user: 3D view, cardinal section view + markers + L/R/A/P
+labels. To visually verify next run: oblique reslice reads Anterior-up with the
+pierce dot centered, composite edge labels, populated tilt readouts, no anterior
+clipping, and the section sheet staying over a Muniak-only view.
+
+════════════════════════════════════════════════════════════════════════════════
+SESSION — Cochlear-nucleus alignment: slice zoom/scroll + ground-truth overlay
+         (branch: lsps_direct)   (2026-10-21)
+════════════════════════════════════════════════════════════════════════════════
+Scope: ephys/tools/cn_atlas/ — the 2D section plate (section_view.py), the Kim
+viewer (kim_viewer.py), and plane geometry (section.py). No automated suite covers
+this GUI code; verified by byte-compile + a standalone numeric check of the
+normal-canonicalization. All edits follow the # Claude fixed/added YYYY-MM-DD
+convention (originals commented out, not deleted). GUI-visible changes still need a
+visual confirm in the viewer (not yet run end-to-end).
+
+──── Preserve zoom while scrolling position/thickness  (section_view.py, kim_viewer.py)
+- BUG: scrolling the Position slider (or arrow keys) refit the slice to the whole
+  brain on the first step. The old guard compared the absolute in-plane extent
+  (a0,a1,b0,b1) and called vb.autoRange() when it changed — but since 2026-10-21's
+  _plane_bounds measures the in-plane bounds from the MOVING plane center, a tilted/
+  oblique plane's extent shifts every position step, so autoRange fired constantly.
+- FIX (explicit fit flag, chosen over a span-comparison heuristic): set_section()
+  gained fit: bool=False and now refits only when `fit or not self._shown`; the
+  self._extent tracking was replaced by a self._shown first-display flag.
+  _update_section(_, fit=False) threads the flag to set_section. The five basis-
+  change / first-display call sites pass fit=True (orientation change, tilt change,
+  section toggle-on, oblique reslice _apply_oblique_from_line, _exit_oblique); the
+  signal-connected scroll handlers (pos, thick, outlines, smooth) keep fit=False, so
+  mouse zoom holds until an explicit basis change.
+
+──── Arrow/slider scroll direction: "up = dorsal" for every orientation  (section.py)
+- BUG: on an oblique reslice, up-arrow moved the plane VENTRALLY (down-arrow dorsally).
+  position maps as plane_center = center + position*n; the oblique normal's sign is
+  arbitrary (derived from the drawn line w0->w1), so scrolling felt inverted.
+- FIX (orientation-aware, user-chosen over a global flip): NEW section._canonical_normal(n)
+  flips the normal so its DOMINANT anatomical component points Dorsal(+Z), else
+  Anterior(+Y), else Right(+X) (exact ties favor D/V > A/P > M/L). Applied in
+  Section.basis() for both the computed (cardinal+tilt) and basis_override (oblique)
+  paths. Cardinal normals are already canonical -> unchanged; only tilted/oblique
+  planes are corrected. Flipping n reverses only the scroll direction, not the image
+  (the plate is defined by u,v; the slab average is symmetric in n). Verified
+  standalone: Coronal/Horizontal/Sagittal unchanged; ventral/posterior/left normals
+  flip to dorsal/anterior/right.
+
+──── Ground-truth contours superimposed on off-plane slices (ghost overlay)  (section_view.py)
+- Prior behavior: GT contours drew ONLY on the plate they were drawn on (gated by
+  descriptor_matches); landmarks already projected onto the current plane within
+  LANDMARK_TOL (150 um).
+- NEW near-term "ghost" overlay (chosen first; the volume approach is deferred): an
+  off-plane GT contour whose nearest point is within CONTOUR_GHOST_TOL (300 um) of
+  the slice is drawn as a faded, dashed, READ-ONLY curve — orthographic projection
+  via world_to_plane, per-region color at alpha 110, zValue 5. On-plane contours stay
+  editable PolyLineROIs. New self._gt_ghosts list, cleared alongside _gt_rois in
+  _clear_gt_rois.
+- DESIGN NOTE (deferred): a single off-plane contour's true intersection with a
+  differently-oriented plane is 0-2 points, not an outline — so real intersection
+  contours need GT regions as VOLUMES. Agreed path: voxelize/loft GT region contours
+  into a label volume, then reuse the existing kim.sample_section + section.region_contours
+  pipeline (same one that draws atlas outlines) so arbitrary-plane GT outlines fall
+  out for free. Meshes (marching-cubes shells) are the alternative (better for the 3D
+  view, needs a mesh∩plane slicer).
+
+STATUS: section_view.py, section.py, kim_viewer.py byte-compile; normal math checked
+standalone. To visually verify next run: (a) zoom in, scroll position -> zoom holds;
+(b) oblique reslice, up-arrow -> moves dorsally; (c) draw a GT contour on one plane,
+scroll a few hundred um away -> it appears dashed/faded. CONTOUR_GHOST_TOL (300 um)
+is a first guess — tune if ghosts clutter or disappear too soon.
+
+════════════════════════════════════════════════════════════════════════════════
 End of log
 ════════════════════════════════════════════════════════════════════════════════
