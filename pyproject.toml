@@ -107,6 +107,7 @@ dependencies = [
     # "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git"
     # "allensdk>=0.16.3",
     "tabulate>=0.10.0",
+    "scikit-image>=0.26.0",
 ]
 
 [dependency-groups]
@@ -152,9 +153,9 @@ distribution = false
 
 [tool.setuptools]
 packages = ['ephys', 'ephys.gui', 'ephys.mapanalysistools', 'ephys.tools']
-# ext_modules = [
-#     {module = "ephys.tools.c_deriv", sources = ["ephys/tools/c_deriv.pyx"]},
-# ]   
+# Cython extension modules are declared in setup.py (setuptools cannot run
+# Cython from this table). setup.py cythonizes ephys/tools/c_deriv.pyx so it is
+# compiled at build/install time instead of JIT-compiled by pyximport at runtime.
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"]}
