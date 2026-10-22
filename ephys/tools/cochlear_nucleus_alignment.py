@@ -114,6 +114,13 @@ class CNAlignmentWindow(QtWidgets.QMainWindow):
                 self.panels.addWidget(self.viewers[name].panel)
         lv.addWidget(self.panels, stretch=1)
 
+        # Claude added 2026-10-22: launch the acq4 mosaic importer (separate
+        # window). Lazy import so the main tool starts without it.
+        self.mosaic_btn = QtWidgets.QPushButton("Mosaic importer…")
+        self.mosaic_btn.clicked.connect(self._open_mosaic_importer)
+        lv.addWidget(self.mosaic_btn)
+        self._mosaic_win = None
+
         if not self.viewers:
             lv.addWidget(QtWidgets.QLabel(
                 "<span style='color:#f66'>No atlas found. Mount the drive or "
@@ -147,6 +154,15 @@ class CNAlignmentWindow(QtWidgets.QMainWindow):
             self._missing.append("Muniak")
         if kim_root is None:
             self._missing.append("Kim")
+
+    def _open_mosaic_importer(self):
+        # Claude added 2026-10-22: open (or re-show) the mosaic importer window.
+        from ephys.tools.cn_atlas.mosaic.browser import MosaicBrowserWindow
+        if self._mosaic_win is None:
+            self._mosaic_win = MosaicBrowserWindow(parent=self)
+        self._mosaic_win.show()
+        self._mosaic_win.raise_()
+        self._mosaic_win.activateWindow()
 
     def _set_section_visible(self, on: bool):
         self.section_plate.setVisible(on)

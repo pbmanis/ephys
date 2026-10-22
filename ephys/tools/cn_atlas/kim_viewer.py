@@ -14,6 +14,7 @@ import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtWidgets
 
 from . import alignment_store
+from . import coords as coords_mod
 from . import ground_truth as gt_mod
 from . import kim as kim_mod
 from . import muniak as muniak_mod
@@ -147,7 +148,46 @@ class KimViewer:
             self.section_plate.on_section_line_changed = self._on_section_line_changed
             self.section_plate.set_picks(self.picks)
             self.section_plate.on_point_picked = self._point_picked
+            self._push_coord_frames()
         return panel
+
+    # -- coordinate reference frames ---------------------------------------
+    # Claude added 2026-10-22: build Kim-native / Bregma / Stereotaxic frames
+    # from the atlas geometry + config and hand them to the shared plate.
+    def _midline_x(self) -> float:
+        try:
+            return float(self.atlas.world_center()[0])
+        except Exception:  # noqa: BLE001 - volume may be missing
+            return 0.0
+
+    def _build_coord_frames(self):
+        bregma = self.cfg.get("KimBregmaWorld")
+        if bregma is not None:
+            bregma = [float(v) for v in bregma]
+        return coords_mod.build_frames(
+            self._midline_x(), bregma,
+            ml_sign=float(self.cfg.get("StereoMLRightSign", 1.0)),
+            ap_sign=float(self.cfg.get("StereoAPAnteriorSign", 1.0)),
+            dv_sign=float(self.cfg.get("StereoDVSign", 1.0)))
+
+    def _push_coord_frames(self):
+        if self.section_plate is None:
+            return
+        frames, bregma_set = self._build_coord_frames()
+        self.section_plate.set_coord_frames(
+            frames, self.cfg.get("DefaultCoordFrame", "Kim-native"), bregma_set)
+
+    def _set_bregma_from_pick(self):
+        if not self.picks.points:
+            self.status.setText("No picked point yet — left-click a slice first.")
+            return
+        world = self.picks.points[-1]["point"]
+        self.cfg["KimBregmaWorld"] = [float(world[0]), float(world[1]), float(world[2])]
+        self._push_coord_frames()
+        self.status.setText(
+            f"Bregma set from last pick @ ML={world[0] / 1000.0:.3f} "
+            f"AP={world[1] / 1000.0:.3f} DV={world[2] / 1000.0:.3f} mm (Kim-native) "
+            "— Bregma/Stereotaxic readouts now reference it.")
 
     # -- activation ---------------------------------------------------------
     def activate(self):
@@ -422,6 +462,12 @@ class KimViewer:
         self.clip_cb = QtWidgets.QCheckBox("Clip 3D view to slab")
         self.clip_cb.toggled.connect(self._on_clip_toggle)
         bl.addWidget(self.clip_cb)
+
+        # Claude added 2026-10-22: calibrate the Bregma/Stereotaxic origin by
+        # clicking bregma on a slice, then pressing this (uses the last pick).
+        self.bregma_btn = QtWidgets.QPushButton("Set bregma = last picked point")
+        self.bregma_btn.clicked.connect(self._set_bregma_from_pick)
+        bl.addWidget(self.bregma_btn)
 
         # --- oblique reslice from a drawn line ---
         bl.addWidget(QtWidgets.QLabel("<b>Oblique from line</b>"))
@@ -1078,6 +1124,11 @@ class KimViewer:
 
     def remember(self, prefs: dict):
         prefs["MuniakOverlay"] = self._overlay_params()
+        # Claude added 2026-10-22: persist a calibrated bregma + chosen frame.
+        if self.cfg.get("KimBregmaWorld") is not None:
+            prefs["KimBregmaWorld"] = [float(v) for v in self.cfg["KimBregmaWorld"]]
+        if self.section_plate is not None:
+            prefs["DefaultCoordFrame"] = self.section_plate.frame_combo.currentText()
 
     # -- ground truth (adjunct annotations) ---------------------------------
     def _build_gt_controls(self, form):
@@ -1210,9 +1261,12 @@ class KimViewer:
         self.picks.save()
         if self.section_plate is not None:
             self.section_plate.refresh_picks()
+            coord = self.section_plate.format_world(world)
+        else:
+            coord = (f"ML={world[0] / 1000.0:.3f} AP={world[1] / 1000.0:.3f} "
+                     f"DV={world[2] / 1000.0:.3f} mm")
         self.status.setText(
-            f"Picked point #{rec['id']} @ ML={world[0] / 1000.0:.3f} "
-            f"AP={world[1] / 1000.0:.3f} DV={world[2] / 1000.0:.3f} mm — saved "
+            f"Picked point #{rec['id']} @ {coord} — saved "
             f"({len(self.picks.points)} total)")
 
     def _gt_copy_here(self):

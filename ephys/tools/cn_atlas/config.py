@@ -34,6 +34,18 @@ DEFAULT_CONFIG: dict = {
     "KimTemplateFile": "UnifiedAtlas_template_coronal_20um-isotropic.nii",
     "KimOntologyFile": "UnifiedAtlas_Label_ontology_v2.csv",
     "KimVoxelSize": 20.0,  # micrometres / voxel (isotropic)
+    # --- coordinate reference frames (section readout) -------------------
+    # Claude added 2026-10-22. Bregma in Kim-world micrometres [x=ML, y=AP,
+    # z=DV]; None until calibrated (set it in the GUI via "Set bregma = last
+    # picked point", which persists it here). While None the Bregma/Stereotaxic
+    # readouts reference the midline in ML and fall back to Kim-native in AP/DV.
+    "KimBregmaWorld": None,
+    "DefaultCoordFrame": "Kim-native",   # Kim-native | Bregma | Stereotaxic
+    # Stereotaxic (Paxinos) axis signs, in case the Kim data axis direction is
+    # opposite the convention: +1 keeps the Kim direction, -1 flips it.
+    "StereoMLRightSign": 1.0,      # +1: +X is to the right of midline
+    "StereoAPAnteriorSign": 1.0,   # +1: +Y is anterior to bregma
+    "StereoDVSign": 1.0,           # +1: +Z is dorsal (ventral negative/depth)
     # --- shared ----------------------------------------------------------
     "CacheDir": "~/.cache/cn_alignment",
     "DefaultAtlas": "Muniak",

@@ -14,6 +14,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtWidgets
 
+from . import coords as coords_mod
 from . import ground_truth as gt_mod
 from . import section as section_mod
 
@@ -118,6 +119,17 @@ class SectionPlate(QtWidgets.QWidget):
             self.vb.addItem(_lbl)
         layout.addWidget(self.glw, stretch=1)
 
+        # Claude added 2026-10-22: coordinate reference-frame selector for the
+        # hover/pick readout (Kim-native / Bregma / Stereotaxic). Frames are
+        # supplied by the viewer via set_coord_frames(); the plate just picks one.
+        frow = QtWidgets.QHBoxLayout()
+        frow.setContentsMargins(2, 0, 2, 0)
+        frow.addWidget(QtWidgets.QLabel("Coords:"))
+        self.frame_combo = QtWidgets.QComboBox()
+        self.frame_combo.currentTextChanged.connect(self._on_frame_change)
+        frow.addWidget(self.frame_combo, stretch=1)
+        layout.addLayout(frow)
+
         self.readout = QtWidgets.QLabel("hover a region ...")
         self.readout.setStyleSheet("QLabel{padding:2px;}")
         layout.addWidget(self.readout)
@@ -133,6 +145,11 @@ class SectionPlate(QtWidgets.QWidget):
         self.gt_visible = False
         # Claude added 2026-10-22: saved alignment picks (set by the viewer).
         self.picks = None
+        # Claude added 2026-10-22: coordinate frames + last hover for the readout.
+        self._frames: dict = {}
+        self._bregma_set = False
+        self._last_world = None   # world um under the cursor (for frame re-render)
+        self._last_name = ""
         self._gt_rois: list = []        # [(roi, region, cid)]
         self._gt_ghosts: list = []      # faded curves for off-plane GT contours
         self._mode = None               # None | "contour" | "landmark"
@@ -221,6 +238,45 @@ class SectionPlate(QtWidgets.QWidget):
 
     def set_outlines_visible(self, on: bool):
         self.outline_curve.setVisible(on)
+
+    # -- coordinate reference frames ---------------------------------------
+    # Claude added 2026-10-22: the viewer builds the frames (it owns the atlas
+    # geometry + config); the plate only selects one and formats the readout.
+    def set_coord_frames(self, frames: dict, default: str = "Kim-native",
+                         bregma_set: bool = False):
+        self._frames = frames or {}
+        self._bregma_set = bool(bregma_set)
+        self.frame_combo.blockSignals(True)
+        self.frame_combo.clear()
+        self.frame_combo.addItems(list(self._frames.keys()))
+        if default in self._frames:
+            self.frame_combo.setCurrentText(default)
+        self.frame_combo.blockSignals(False)
+        self._render_coord_readout()
+
+    def _current_frame(self):
+        if not self._frames:
+            return None
+        return self._frames.get(self.frame_combo.currentText())
+
+    def format_world(self, world_um) -> str:
+        """M-L/A-P/D-V string for a world point in the selected frame (mm)."""
+        frame = self._current_frame()
+        if frame is None:
+            w = np.asarray(world_um, float).reshape(3)
+            return (f"ML={w[0] / 1000.0:.3f} AP={w[1] / 1000.0:.3f} "
+                    f"DV={w[2] / 1000.0:.3f} mm")
+        return frame.format(world_um, self._bregma_set)
+
+    def _on_frame_change(self, _name: str = ""):
+        self._render_coord_readout()
+
+    def _render_coord_readout(self):
+        """Re-render the hover readout for the current frame (no cursor move)."""
+        if self._last_world is None:
+            return
+        self.readout.setText(f"{self._last_name or '—'}   |   "
+                             f"{self.format_world(self._last_world)}")
 
     # -- saved alignment picks ---------------------------------------------
     # Claude added 2026-10-22: the viewer owns a PickedPoints store; the plate
@@ -851,10 +907,10 @@ class SectionPlate(QtWidgets.QWidget):
         #     return   # keep the line coordinate/angle readout visible
         if len(self._a) < 2 or len(self._b) < 2:
             return
-        # Claude added 2026-10-22: report the cursor's M-L / A-P / D-V world
-        # position (mm, 3 dp) alongside the structure name. plane_to_world gives
-        # the true 3D point for any orientation (cardinal, tilted, or oblique).
-        coord = self._coord_text(pt)
+        # Claude added 2026-10-22: report the cursor's M-L / A-P / D-V position
+        # (mm, 3 dp) in the selected reference frame alongside the structure
+        # name. plane_to_world gives the true 3D world point for any orientation
+        # (cardinal, tilted, or oblique); the frame re-references/relabels it.
         ai = int(round((pt.x() - self._a[0]) / (self._a[1] - self._a[0])))
         bi = int(round((pt.y() - self._b[0]) / (self._b[1] - self._b[0])))
         if 0 <= bi < self._lab.shape[0] and 0 <= ai < self._lab.shape[1]:
@@ -862,12 +918,11 @@ class SectionPlate(QtWidgets.QWidget):
             name = self._names(sid) if (sid and self._names) else ""
         else:
             name = ""
-        self.readout.setText(f"{name or '—'}{coord}")
-
-    def _coord_text(self, pt) -> str:
-        """'   |   ML=.. AP=.. DV=.. mm' for the cursor, or '' if no section."""
-        if self._section is None:
-            return ""
-        w = section_mod.plane_to_world(self._section, np.array([[pt.x(), pt.y()]]))[0]
-        return (f"   |   ML={w[0] / 1000.0:.3f} AP={w[1] / 1000.0:.3f} "
-                f"DV={w[2] / 1000.0:.3f} mm")
+        if self._section is not None:
+            self._last_world = section_mod.plane_to_world(
+                self._section, np.array([[pt.x(), pt.y()]]))[0]
+            self._last_name = name
+            self.readout.setText(f"{name or '—'}   |   "
+                                 f"{self.format_world(self._last_world)}")
+        else:
+            self.readout.setText(name or "—")
