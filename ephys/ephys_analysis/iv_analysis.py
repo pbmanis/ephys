@@ -9,6 +9,7 @@ import datetime
 import concurrent.futures
 import gc
 import logging
+import os
 from pathlib import Path
 from typing import List, Literal, Union
 import numpy as np
@@ -1115,8 +1116,22 @@ class IVAnalysis(Analysis):
         if full_spike_analysis:
             print("    Analyzing spike shapes", end=" ")
             if self.experiment.get("use_fast_spike_analysis", False) and _SAF is not None:
-                print("Using Fast analysis")
-                _SAF.analyzeSpikeShape_fast(self.SP, max_spike_shape=max_spike_shape)
+                # Claude 2026-10-14: thread the per-trace spike-shape work, but
+                # only when no outer process-parallelism is active
+                # (parallel_mode == "off"). Under "cell"/"day" the protocols/cells
+                # already run in separate processes, so threading here would
+                # oversubscribe the cores. analyzeSpikeShape_fast itself caps
+                # n_workers to min(n_workers, n_traces, cpu_count).
+                if self.parallel_mode == "off":
+                    shape_workers = int(
+                        self.experiment.get("fast_spike_shape_workers", os.cpu_count() or 1)
+                    )
+                else:
+                    shape_workers = 1
+                print(f"Using Fast analysis (n_workers={shape_workers})")
+                _SAF.analyzeSpikeShape_fast(
+                    self.SP, max_spike_shape=max_spike_shape, n_workers=shape_workers
+                )
 
             else:
                 self.SP.analyzeSpikeShape(max_spike_shape=max_spike_shape)
