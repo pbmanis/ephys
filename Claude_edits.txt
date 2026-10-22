@@ -837,5 +837,106 @@ scroll a few hundred um away -> it appears dashed/faded. CONTOUR_GHOST_TOL (300 
 is a first guess — tune if ghosts clutter or disappear too soon.
 
 ════════════════════════════════════════════════════════════════════════════════
+SESSION (2026-10-22) — CN atlas coordinate tools + NEW acq4 mosaic importer
+  Branch: lsps_direct
+════════════════════════════════════════════════════════════════════════════════
+
+──── A. Section-plate coordinate readout + picked points (cn_atlas) ────────────
+- section_view.py _on_hover now appends the cursor's M-L/A-P/D-V world position
+  (mm, 3 dp) next to the structure name (via section.plane_to_world; works for
+  cardinal, tilted, and oblique planes). Helper format_world() + _render_coord_readout.
+- Plain left-click (no modifiers, not double, not in line/contour/landmark/move
+  mode) records the cursor's 3D world point as an ALIGNMENT PICK. New
+  cn_atlas/picked_points.py (PickedPoints, mirrors ground_truth.py), persisted to
+  picked_points.json under Application Support. Plate draws picks near the plane as
+  green "+" markers (PICK_TOL=150um, refresh_picks); kim_viewer._point_picked
+  adds+saves+refreshes, reports in self.status. on_point_picked callback.
+
+──── B. Coordinate reference frames for the readout (cn_atlas) ─────────────────
+- NEW cn_atlas/coords.py (Frame dataclass + build_frames). A "Coords:" combo on the
+  plate selects Kim-native / Bregma / Stereotaxic; format_world() + frame-aware hover.
+  Kim world: +X=ML from the LEFT EDGE of the volume (midline = world_center x ~5700um),
+  +Y=AP, +Z=DV (0 dorsal top, ventral negative) — hence raw ML was confusing.
+    Kim-native  = raw world (identity).
+    Bregma      = translate to bregma, keep Kim axis directions.
+    Stereotaxic = Paxinos signs (ML +right/-left, AP +ant/-post, DV depth), signs
+                  configurable (Stereo{ML,AP,DV}Sign) in case Kim axis dir differs.
+- Bregma from config KimBregmaWorld [x,y,z]um (None until set). "Set bregma = last
+  picked point" button -> kim_viewer._set_bregma_from_pick writes cfg + persists in
+  remember(). Until set, Bregma/Stereotaxic use midline for ML, Kim-native AP/DV,
+  flagged "(bregma not set)". Config keys added to cn_atlas/config.py DEFAULT_CONFIG.
+- OPEN: assumed Kim +Y=anterior, +Z=dorsal (Stereo signs default +1); user must
+  verify AP direction on a known slice after calibrating bregma (flip signs if wrong).
+
+──── C. NEW acq4 .mosaic importer tool  (ephys/tools/cn_atlas/mosaic/) ─────────
+Goal: import acq4 mosaics, pre-align slices outside the atlas, export to the atlas
+aligner. Launch: python -m ephys.tools.cn_atlas.mosaic, or "Mosaic importer…" button
+added to CNAlignmentWindow (cochlear_nucleus_alignment.py _open_mosaic_importer).
+
+  .mosaic format (JSON): rootPath, items[], view. ImageCanvasItem (tiles; filename
+  rel to rootPath; usually-identity userTransform), MarkersCanvasItem (name=section
+  type, markers=[label,[x,y,z]] m), CellCanvasItem, RulerCanvasItem. TILE PLACEMENT
+  IS NOT IN THE .mosaic — it's in each tiff's dir .index: transform {pos[m],
+  scale[m/px, y neg], angle}. Final affine = item.userTransform ∘ .index transform.
+  Tile size = loaded array shape × scale (NOT region[] which is unbinned px).
+  GOTCHAS: acq4_reader's bundled tifffile crashes on current imagecodecs
+  (j2k_decode→htj2k_decode) → read pixels with modern tifffile pkg (+MetaArray for
+  .ma), use acq4_reader only for .index (ar._readIndex).
+
+  STEP 1 (done): reader.py (Qt-free MosaicReader.read → AssembledMosaic; numpy
+  affines, composite_tiles, extent), history.py (recent days/mosaic JSON in App
+  Support), browser.py (MosaicBrowserWindow: left day-chooser+recent+mosaic list,
+  right tabbed 2D assembly | 3D alignment). Empty day dir clears view + notes user.
+
+  STEP 2 core (done): stack.py (SliceStack/SliceEntry: flip_ud, rot_deg about
+  SliceEntry.center [centroid], side L/R, tx/ty, image_alpha, visible, include;
+  spectral color_for reversible; z_of=idx×thickness; PLANE_PRESETS incl
+  transstrial-CN {caudal_dorsal 25, off_horizontal 35} and sagittal-CN {off_sagittal
+  25}). alignment.py (AlignmentController: _AlignGLView GLViewWidget subclass).
+  THICKNESS = single value per day, default 250 um.
+
+  GUI refinements (several rounds, user feedback):
+   • Composite ONE image per slice (reader.composite_tiles inverse-warp, per-tile
+     robust levels, large tiles first) — fixes per-tile z-fighting (streaks /
+     vanishing slices). Composite is placement-INDEPENDENT (raw world), cached;
+     placement baked into the GLImageItem 4x4 transform so dragging never
+     re-rasterises. Slabs are oriented prisms (_prism_mesh/_prism_outline).
+   • Opacity: global "Fill opacity" (slab) + per-slice "Image opacity".
+   • Multi-add: mosaic list ExtendedSelection; Add displayed / Add selected / Add
+     all (browser all_/selected_mosaic_asms). Per-slice show/hide checkboxes.
+   • DIRECT MOUSE EDIT of the list-selected visible slice in 3D: drag body =
+     translate, grab corner handle = rotate ABOUT CENTROID; white outline + corner
+     handles mark selection; Rot/Δx/Δy boxes update live. Unproject via
+     inv(proj@view) (QMatrix4x4.data() column-major → reshape.T), intersect slice
+     z-plane — round-trip verified EXACT.
+   • "Show bounding lines" toggle (default ON).
+   • Per-image include/exclude: Tile.include defaults to the acq4 mosaic "visible"
+     flag (assembly now HONORS visibility by default). Browser left is a QScrollArea
+     with an "Images in mosaic" checklist (All/None/Mosaic-visible) + warning when
+     ≤1 of >1 images included (fix in acq4 MosaicEditor or click All).
+   • "Show slices as slabs (space-filling)": _image_zs draws N planes
+     (clamp(thickness/30,3,8)) through the thickness.
+   • Tissue outlines (default ON): threshold normalised composite (default Otsu over
+     combined histogram, adjustable slider + Auto), clean mask = fill_holes →
+     opening(disk, "Remove netting (px)" default 3) → keep components ≥5% of largest,
+     find_contours; drawn per-slice in slice colour sharing the image transform (move
+     with drag). Cached per entry by (n_included, threshold, netting_px). Intended to
+     later drive auto-alignment; contours+angles to be SAVED in export (step 3).
+
+STATUS: all mosaic/*.py + cochlear_nucleus_alignment.py byte-compile; reader
+geometry, composite coverage, unproject round-trip, model, and full-window build
+all validated headless (QT_QPA_PLATFORM=offscreen) on a real 39-tile mosaic. GL
+rendering itself NOT visually verified here (no display) — user evaluates live.
+Netting removal could NOT be validated (HK test data has no netting).
+
+RESUME NEXT SESSION (step 2 remaining, then step 3):
+  (2a) Interactive LABELED FIDUCIALS — plan: place on the 2D assembly view in-plane,
+       store per-slice in SliceEntry.fiducials, show as 3D GLScatter markers.
+  (3)  EXPORT spaced/adjusted stack + fiducials + stack.preset_descriptor() +
+       cleaned tissue contours (clean dataset) to the atlas aligner.
+  Possible: editable contours (erase netting manually); verify Stereo AP sign on
+  real data; tune tissue threshold/netting/slab-layer density on real CN slices.
+
+════════════════════════════════════════════════════════════════════════════════
 End of log
 ════════════════════════════════════════════════════════════════════════════════
