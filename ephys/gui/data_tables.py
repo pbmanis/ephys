@@ -885,23 +885,63 @@ class DataTables:
 
                 case "IV Analysis":
 
-                    def _do_row(row, mode: str = "selected"):
-                        pathparts = Path(row.cell_id).parts
+                    def _do_row(row, mode: str = "selected", important: bool = False):
+                        # Claude fixed 2026-10-14: guard against non-cell rows.
+                        # make_indexdata drops rows with a null cell_id from the
+                        # table, but they remain in the dataframe; Path(NaN) raised
+                        # here and aborted the whole "Analyze ALL IVs" run. Accepts
+                        # either a datasummary Series or an IndexData (both carry
+                        # .cell_id).
+                        if pd.isnull(row.cell_id):
+                            return
+                        pathparts = Path(str(row.cell_id)).parts
+                        if len(pathparts) < 3:  # need day / slice / cell
+                            return
                         slicecell = f"S{pathparts[-2][-1]:s}C{pathparts[-1][-1:]:s}"
                         day = str(Path(*pathparts[0:-2]))
 
                         FUNCS.textappend(f"    Day: {day:s}  slice_cell: {slicecell:s}")
                         print((f"    Day: {day!s}  slice_cell: {slicecell!s}"))
+                        if self.dry_run:
+                            print(f"(DRY RUN) Analyzing {row.cell_id!s}")
+                            return
                         self.analyze_ivs(
-                            mode=mode, day=day, slicecell=slicecell, cell_id=row.cell_id
+                            mode=mode,
+                            important=important,
+                            day=day,
+                            slicecell=slicecell,
+                            cell_id=row.cell_id,
                         )
+
+                    def _analyze_all(important: bool = False):
+                        # Claude 2026-10-14: analyze every valid cell in the table,
+                        # one cell at a time. Cross-cell parallelism from the GUI
+                        # is NOT safe on macOS: pyqtgraph's MP.Parallelize uses
+                        # os.fork(), which crashes once Qt/CoreFoundation is loaded
+                        # ("...PROCESS_HAS_FORKED...YOU_MUST_EXEC..."). We instead
+                        # leave self.parallel_mode as the user set it, so each cell
+                        # parallelizes its own protocols when Parallel Mode ==
+                        # "cell" -- that path uses concurrent.futures
+                        # (spawn-based), which is macOS-safe.
+                        self.Dock_Report.raiseDock()  # so we can monitor progress
+                        for _td in self.DS_table_manager.table_data:
+                            _do_row(_td, mode="selected", important=important)
+                        self.iv_finished_message()
+                        self.Dock_DataSummary.raiseDock()
 
                     match path[1]:
                         case "Analyze ALL IVs":
-                            self.DS_table_manager.dataframe.apply(_do_row, mode="selected", axis=1)
+                            # Claude fixed 2026-10-14: iterate the validated
+                            # table_data (cells only) instead of dataframe.apply,
+                            # which aborted on rows with a null cell_id. Cells are
+                            # now parallelized across workers (see _analyze_all).
+                            _analyze_all(important=False)
 
                         case "Analyze ALL IVs m/Important":
-                            self.DS_table_manager.dataframe.apply(_do_row, mode="important", axis=1)
+                            # Claude fixed 2026-10-14: as above; analyze each cell's
+                            # important protocols (mode="selected", important=True)
+                            # rather than re-running the whole dataset once per row.
+                            _analyze_all(important=True)
 
                         # analyze the selected cells, working from the *datasummary* table, not the Assembled table.
                         case "Analyze Selected IVs":
